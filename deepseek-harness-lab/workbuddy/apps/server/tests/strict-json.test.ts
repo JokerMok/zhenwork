@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {strictJson} from '../src/strict-json.ts';
+test('reject duplicate keys in nested objects and escaped equivalent names',()=>{for(const text of ['{"text":"a","text":"b"}','{"args":{"a":1,"a":2}}','{"text":1,"te\\u0078t":2}','[{"a":1,"a":2}]'])assert.throws(()=>strictJson(text),/DuplicateJsonKey/);});
+test('keys remain scoped per object and JSON string content is not syntax',()=>{for(const value of [{a:{text:'one'},b:{text:'two'}},[{a:1},{a:2}],{a:'\\" : [ ] { }',b:':',c:1},null,1,'hello'])assert.deepEqual(strictJson(JSON.stringify(value)),value);assert.throws(()=>strictJson('{invalid}'));});

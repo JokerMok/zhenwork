@@ -1,0 +1,27 @@
+{
+  "selectFile": "選擇檔案",
+  "selectDirectory": "選擇目錄",
+  "pleaseSelectFile": "請選擇一個檔案",
+  "pleaseSelectDirectory": "請選擇一個目錄",
+  "webFsPicker": {
+    "loadFailed": "無法打開該目錄",
+    "titleDirectory": "選擇伺服器上的資料夾",
+    "titleFile": "選擇伺服器上的檔案",
+    "selectedCount": "已選擇 {{count}} 項",
+    "up": "上級",
+    "go": "前往",
+    "empty": "這裡空空如也"
+  },
+  "enterpriseResources": {
+    "title": "企業資料",
+    "failed": "企業資料無法使用或權限已撤銷",
+    "connection": "无法连接企业服务器，请检查网络后重试。",
+    "denied": "资料权限已撤回或文件已停用，请重新选择。",
+    "tooLarge": "企业资料超过本次任务的 2 MiB 限制。",
+    "sessionClosed": "企业会话已结束，请重新登录。",
+    "attached": "資料已加入此任務",
+    "saved": "資料已儲存",
+    "use": "加入任務",
+    "save": "下載"
+  }
+}

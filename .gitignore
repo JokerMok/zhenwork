@@ -1,0 +1,33 @@
+.DS_Store
+**/node_modules/
+**/target/
+**/dist/
+**/dist-server/
+**/out/
+**/coverage/
+**/.state/
+**/.research/
+**/.env
+**/.env.*
+!**/.env.example
+**/logs/
+**/evidence/
+**/backups/
+**/secrets/
+**/*.log
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.dump
+**/*.tsbuildinfo
+
+# Prepared source snapshots are part of this public repository.
+!AionUi-enterprise-poc/upstream-core/
+!AionUi-enterprise-poc/upstream-aionrs/
+
+# Local continuity notes are not part of the public source.
+.codex/

@@ -1,0 +1,27 @@
+{
+  "selectFile": "Dosya Seç",
+  "selectDirectory": "Klasör Seç",
+  "pleaseSelectFile": "Lütfen bir dosya seçin",
+  "pleaseSelectDirectory": "Lütfen bir klasör seçin",
+  "webFsPicker": {
+    "loadFailed": "Bu dizin açılamıyor",
+    "titleDirectory": "Sunucuda bir klasör seçin",
+    "titleFile": "Sunucuda bir dosya seçin",
+    "selectedCount": "{{count}} seçildi",
+    "up": "Yukarı",
+    "go": "Git",
+    "empty": "Burada bir şey yok"
+  },
+  "enterpriseResources": {
+    "title": "Kurumsal dosyalar",
+    "failed": "Kurumsal dosya kullanılamıyor veya erişim iptal edildi",
+    "connection": "Cannot reach the enterprise server. Check the network and try again.",
+    "denied": "Access was revoked or the file is disabled. Choose it again.",
+    "tooLarge": "This enterprise file exceeds the 2 MiB task limit.",
+    "sessionClosed": "The enterprise session ended. Sign in again.",
+    "attached": "Dosya bu göreve eklendi",
+    "saved": "Dosya kaydedildi",
+    "use": "Göreve ekle",
+    "save": "İndir"
+  }
+}

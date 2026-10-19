@@ -1,0 +1,60 @@
+diff --git a/crates/aionui-project/src/chat_files.rs b/crates/aionui-project/src/chat_files.rs
+index 4a16a3c..6dbc3cd 100644
+--- a/crates/aionui-project/src/chat_files.rs
++++ b/crates/aionui-project/src/chat_files.rs
+@@ -69,7 +69,7 @@ impl ProjectService {
+     ///   realpath containment; read paths pass `Read`, the write endpoint passes `Write`); must exist
+     ///   (file or folder).
+     /// - `Upload` → an existing regular file under the managed `upload_root` (D2 invariant).
+-    /// - `Local` → a canonicalized existing regular file; **no sandbox** (the host picker that
++    /// - `Local` → a canonicalized existing file or directory; **no sandbox** (the host picker that
+     ///   produced it already exposes the whole filesystem).
+     ///
+     /// `op` only affects the `Project` arm's containment mode; `Upload`/`Local` are path-based and
+@@ -118,10 +118,10 @@ impl ProjectService {
+                 // which already exposes the whole filesystem. No managed-root
+                 // restriction (that is the upload channel's D2 invariant only);
+                 // just canonicalize (collapsing `..`/symlinks) and require an
+-                // existing regular file.
++                // existing file or directory.
+                 let canonical = std::fs::canonicalize(path)
+                     .map_err(|_| ProjectError::LocalPathNotReadable { path: path.clone() })?;
+-                if !canonical.is_file() {
++                if !canonical.is_file() && !canonical.is_dir() {
+                     return Err(ProjectError::LocalPathNotReadable { path: path.clone() });
+                 }
+                 Ok(canonical.to_string_lossy().into_owned())
+diff --git a/crates/aionui-project/src/chat_files_test.rs b/crates/aionui-project/src/chat_files_test.rs
+index 7c90f13..7f00022 100644
+--- a/crates/aionui-project/src/chat_files_test.rs
++++ b/crates/aionui-project/src/chat_files_test.rs
+@@ -293,13 +293,13 @@ async fn local_nonexistent_is_rejected() {
+ }
+ 
+ #[tokio::test]
+-async fn local_directory_is_rejected() {
++async fn local_directory_resolves_and_inlines_marker() {
+     let (service, _pe, _dir, upload_root) = setup().await;
+-    // A real directory is not a regular file → rejected.
+     let d = tempfile::tempdir().unwrap();
++    std::fs::write(d.path().join("sample.txt"), b"fixed sample").unwrap();
+     let path = d.path().to_string_lossy().into_owned();
+ 
+-    let err = service
++    let out = service
+         .resolve_chat_message(
+             "system_default_user",
+             "x",
+@@ -307,8 +307,10 @@ async fn local_directory_is_rejected() {
+             upload_root.path(),
+         )
+         .await
+-        .unwrap_err();
+-    assert!(matches!(err, ProjectError::LocalPathNotReadable { .. }), "got {err:?}");
++        .unwrap();
++    assert_eq!(out.files.len(), 1);
++    assert!(std::path::Path::new(&out.files[0]).is_dir());
++    assert_eq!(out.content, format!("x\n\n{AIONUI_FILES_MARKER}\n{}", out.files[0]));
+ }
+ 
+ #[tokio::test]

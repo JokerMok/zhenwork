@@ -1,0 +1,303 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 6c2b1d8..29ec255 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -38,6 +38,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "serial_test",
++ "shlex 1.3.0",
+  "tempfile",
+  "thiserror",
+  "tokio",
+@@ -864,7 +865,7 @@ dependencies = [
+  "find-msvc-tools",
+  "jobserver",
+  "libc",
+- "shlex",
++ "shlex 2.0.1",
+ ]
+ 
+ [[package]]
+@@ -3004,6 +3005,12 @@ dependencies = [
+  "lazy_static",
+ ]
+ 
++[[package]]
++name = "shlex"
++version = "1.3.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
++
+ [[package]]
+ name = "shlex"
+ version = "2.0.1"
+diff --git a/Cargo.toml b/Cargo.toml
+index 134e687..c766705 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -120,6 +120,7 @@ unicode-width = "0.2.2"
+ 
+ # Unix file flags (O_NOFOLLOW) for secure bundled skill file extraction
+ libc = "0.2"
++shlex = "1.3.0"
+ 
+ # Windows process containment
+ windows-sys = "0.61"
+diff --git a/crates/aion-agent/Cargo.toml b/crates/aion-agent/Cargo.toml
+index dc156f3..e5e40e8 100644
+--- a/crates/aion-agent/Cargo.toml
++++ b/crates/aion-agent/Cargo.toml
+@@ -22,6 +22,7 @@ tokio.workspace       = true
+ futures.workspace     = true
+ serde.workspace       = true
+ serde_json.workspace  = true
++shlex.workspace       = true
+ async-trait.workspace = true
+ anyhow.workspace      = true
+ thiserror.workspace   = true
+diff --git a/crates/aion-agent/src/orchestration.rs b/crates/aion-agent/src/orchestration.rs
+index 0aa3d52..3654d01 100644
+--- a/crates/aion-agent/src/orchestration.rs
++++ b/crates/aion-agent/src/orchestration.rs
+@@ -1,3 +1,4 @@
++use std::path::Path;
+ use std::sync::{Arc, Mutex};
+ 
+ use crate::confirm::{ConfirmResult, ToolConfirmer};
+@@ -11,6 +12,139 @@ use aion_types::tool::ToolResult;
+ 
+ use aion_tools::registry::ToolRegistry;
+ 
++const WEB_DOCX_READER: &str = "/opt/aionui/tools/read_docx.py";
++
++/// The enterprise Web Core is an isolated, read-only image with a single
++/// employee profile bind mount. Only these exact inspection operations skip a
++/// permission card; a general shell command still requires approval.
++fn enterprise_web_auto_approved(name: &str, input: &serde_json::Value) -> bool {
++    if std::env::var("AION_ENTERPRISE_WEB_CORE").ok().as_deref() != Some("1") {
++        return false;
++    }
++    let Some(profile) = std::env::var_os("AION_ENTERPRISE_PROFILE_DIR") else {
++        return false;
++    };
++    is_low_risk_web_tool(name, input, Path::new(&profile), WEB_DOCX_READER)
++}
++
++fn is_low_risk_web_tool(name: &str, input: &serde_json::Value, profile: &Path, reader: &str) -> bool {
++    if name == "ToolSearch" {
++        return true;
++    }
++    if name != "ExecCommand" || input.get("shell").is_some_and(|shell| shell != "auto") {
++        return false;
++    }
++    let Some(command) = input.get("cmd").and_then(serde_json::Value::as_str) else {
++        return false;
++    };
++    if command.len() > 4096 {
++        return false;
++    }
++    let Some(redirections) = simple_shell_redirections(command) else {
++        return false;
++    };
++    let Some(tokens) = shlex::split(command) else {
++        return false;
++    };
++    let words: Vec<&str> = tokens.iter().map(String::as_str).collect();
++    match words.as_slice() {
++        ["command", "-v", "officecli"] | ["officecli", "--version"] => redirections == 0,
++        ["officecli", "help", args @ ..] => {
++            redirections == 0
++                && args.len() <= 4
++                && args
++                    .iter()
++                    .all(|arg| !arg.is_empty() && arg.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-'))
++        }
++        ["officecli", "view", file, mode]
++            if matches!(*mode, "text" | "outline" | "stats" | "issues" | "annotated" | "html") =>
++        {
++            redirections == 0 && profile_document(file, profile)
++        }
++        ["officecli", "validate", file] | ["officecli", "validate", file, "--json"] => {
++            redirections == 0 && profile_document(file, profile)
++        }
++        ["officecli", "get", file, selector] | ["officecli", "query", file, selector] => {
++            redirections == 0 && !selector.is_empty() && profile_document(file, profile)
++        }
++        ["python3", "-I", script, file] if *script == reader => {
++            redirections == 0 && profile_document(file, profile) && file.ends_with(".docx")
++        }
++        ["python3", "-I", script, file, ">", output] if *script == reader => {
++            redirections == 1 && profile_document(file, profile) && file.ends_with(".docx") && safe_temp_output(output)
++        }
++        _ => false,
++    }
++}
++
++fn profile_document(file: &str, profile: &Path) -> bool {
++    let path = Path::new(file);
++    if !matches!(
++        path.extension().and_then(|ext| ext.to_str()),
++        Some("docx" | "xlsx" | "pptx")
++    ) {
++        return false;
++    }
++    let (Ok(root), Ok(document)) = (profile.canonicalize(), path.canonicalize()) else {
++        return false;
++    };
++    document.starts_with(root) && document.is_file()
++}
++
++fn safe_temp_output(output: &str) -> bool {
++    let Some(name) = output.strip_prefix("/tmp/") else {
++        return false;
++    };
++    !name.is_empty()
++        && name.len() <= 80
++        && name != "."
++        && name != ".."
++        && name
++            .bytes()
++            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
++}
++
++/// Reject expansion, pipelines, chained commands and shell control syntax.
++/// One spaced stdout redirection is permitted for the pinned document reader.
++fn simple_shell_redirections(command: &str) -> Option<usize> {
++    let chars: Vec<char> = command.chars().collect();
++    let mut quote = None;
++    let mut redirects = 0;
++    for (index, character) in chars.iter().enumerate() {
++        match quote {
++            Some('\'') => {
++                if *character == '\'' {
++                    quote = None;
++                }
++            }
++            Some('"') => {
++                if *character == '"' {
++                    quote = None;
++                } else if matches!(*character, '$' | '`' | '\\' | '\n' | '\r') {
++                    return None;
++                }
++            }
++            _ => match *character {
++                '\'' | '"' => quote = Some(*character),
++                '>' if index > 0
++                    && index + 1 < chars.len()
++                    && chars[index - 1].is_whitespace()
++                    && chars[index + 1].is_whitespace() =>
++                {
++                    redirects += 1;
++                    if redirects > 1 {
++                        return None;
++                    }
++                }
++                '$' | '`' | '\\' | ';' | '|' | '&' | '<' | '>' | '(' | ')' | '{' | '}' | '#' | '*' | '?' | '['
++                | ']' | '\n' | '\r' => return None,
++                _ => {}
++            },
++        }
++    }
++    quote.is_none().then_some(redirects)
++}
++
+ /// The combined output of a tool execution batch: protocol content blocks
+ /// paired with per-call context modifiers (None for non-skill tools).
+ pub struct ToolCallOutcome {
+@@ -268,7 +402,8 @@ pub async fn execute_tool_calls_with_approval(
+         // Check if approval is needed
+         let needs_approval = !auto_approve
+             && !allow_list.contains(&name.to_string())
+-            && !approval_manager.is_auto_approved(&category.to_string());
++            && !approval_manager.is_auto_approved(&category.to_string())
++            && !enterprise_web_auto_approved(name, input);
+ 
+         if needs_approval {
+             // Emit tool_request and wait for approval
+diff --git a/crates/aion-agent/src/orchestration_test.rs b/crates/aion-agent/src/orchestration_test.rs
+index ca1ed28..8b7dea3 100644
+--- a/crates/aion-agent/src/orchestration_test.rs
++++ b/crates/aion-agent/src/orchestration_test.rs
+@@ -5,6 +5,81 @@ mod tests {
+     use super::*;
+     use serde_json::json;
+ 
++    #[test]
++    fn enterprise_web_document_inspection_skips_only_low_risk_approvals() {
++        let profile = tempfile::tempdir().unwrap();
++        let document = profile.path().join("招标文件 最终版(2).docx");
++        std::fs::write(&document, b"sample").unwrap();
++        let file = document.to_str().unwrap();
++
++        assert!(is_low_risk_web_tool(
++            "ToolSearch",
++            &json!({"query": "officecli"}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++        assert!(is_low_risk_web_tool(
++            "ExecCommand",
++            &json!({"cmd": "command -v officecli"}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++        assert!(is_low_risk_web_tool(
++            "ExecCommand",
++            &json!({"cmd": format!("officecli view '{file}' text")}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++        assert!(is_low_risk_web_tool(
++            "ExecCommand",
++            &json!({"cmd": format!("python3 -I {WEB_DOCX_READER} '{file}' > /tmp/document.txt")}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++        assert!(!is_low_risk_web_tool(
++            "ExecCommand",
++            &json!({"cmd": format!("python3 {WEB_DOCX_READER} '{file}'")}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++        assert!(!is_low_risk_web_tool(
++            "ExecCommand",
++            &json!({"cmd": format!("officecli view '{file}' text && rm -rf /tmp")}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++        assert!(!is_low_risk_web_tool(
++            "ExecCommand",
++            &json!({"cmd": format!("officecli view \"$(touch /tmp/probe)\" text")}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++        assert!(!is_low_risk_web_tool(
++            "ExecCommand",
++            &json!({"cmd": format!("officecli view '{file}' text"), "shell": "/tmp/evil-shell"}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++        assert!(!is_low_risk_web_tool(
++            "ExecCommand",
++            &json!({"cmd": format!("python3 -I {WEB_DOCX_READER} '{file}' > /etc/passwd")}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++        assert!(!is_low_risk_web_tool(
++            "ExecCommand",
++            &json!({"cmd": "officecli create /tmp/new.docx"}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++        assert!(!is_low_risk_web_tool(
++            "Write",
++            &json!({}),
++            profile.path(),
++            WEB_DOCX_READER
++        ));
++    }
++
+     // -- truncate_display -----------------------------------------------------
+ 
+     #[test]

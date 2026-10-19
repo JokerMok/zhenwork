@@ -1,0 +1,190 @@
+diff --git a/crates/aionui-app/src/router/state.rs b/crates/aionui-app/src/router/state.rs
+index 55db9ea..d5b7f4d 100644
+--- a/crates/aionui-app/src/router/state.rs
++++ b/crates/aionui-app/src/router/state.rs
+@@ -487,7 +487,8 @@ pub fn build_system_state(services: &AppServices) -> SystemRouterState {
+         ClientPrefService::with_keep_awake_controller(client_pref_repo, keep_awake_controller, "system_default_user")
+     } else {
+         ClientPrefService::with_keep_awake_controller_without_restore(client_pref_repo, keep_awake_controller)
+-    };
++    }
++    .with_encryption_key(encryption_key);
+ 
+     SystemRouterState {
+         settings_service: SettingsService::new(Arc::new(SqliteSettingsRepository::new(pool.clone()))),
+@@ -1090,7 +1091,8 @@ pub fn build_office_state(services: &AppServices) -> OfficeRouterState {
+ pub fn build_shell_state(services: &AppServices) -> ShellRouterState {
+     let pool = services.database.pool().clone();
+     let client_pref_repo = Arc::new(SqliteClientPreferenceRepository::new(pool));
+-    let client_pref_service = ClientPrefService::new(client_pref_repo);
++    let client_pref_service = ClientPrefService::new(client_pref_repo)
++        .with_encryption_key(derive_encryption_key(&services.encryption_secret_raw));
+ 
+     ShellRouterState {
+         shell_service: Arc::new(aionui_shell::ShellService::new(Arc::new(
+diff --git a/crates/aionui-system/src/client_pref.rs b/crates/aionui-system/src/client_pref.rs
+index f16c135..ef2df25 100644
+--- a/crates/aionui-system/src/client_pref.rs
++++ b/crates/aionui-system/src/client_pref.rs
+@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
+ use std::sync::Arc;
+ 
+ use aionui_api_types::{ClientPreferencesResponse, UpdateClientPreferencesRequest};
++use aionui_common::{decrypt_string, encrypt_string};
+ use aionui_db::IClientPreferenceRepository;
+ use tracing::{debug, info, warn};
+ 
+@@ -10,12 +11,21 @@ use crate::keep_awake::{DynKeepAwakeController, KEEP_AWAKE_KEY, NoopKeepAwakeCon
+ 
+ /// Maximum allowed key length for client preferences.
+ const MAX_KEY_LENGTH: usize = 255;
++const ENCRYPTED_PREFIX: &str = "enc:v1:";
++
++fn contains_personal_credentials(key: &str) -> bool {
++    matches!(
++        key,
++        "tools.speechToText" | "speechToText" | "tools.imageGenerationModel" | "mcp.config" | "google.config"
++    )
++}
+ 
+ /// Business logic for client preferences (generic key-value store).
+ #[derive(Clone)]
+ pub struct ClientPrefService {
+     repo: Arc<dyn IClientPreferenceRepository>,
+     keep_awake_controller: DynKeepAwakeController,
++    encryption_key: Option<[u8; 32]>,
+ }
+ 
+ impl ClientPrefService {
+@@ -23,6 +33,7 @@ impl ClientPrefService {
+         Self {
+             repo,
+             keep_awake_controller: Arc::new(NoopKeepAwakeController),
++            encryption_key: None,
+         }
+     }
+ 
+@@ -43,9 +54,17 @@ impl ClientPrefService {
+         Self {
+             repo,
+             keep_awake_controller,
++            encryption_key: None,
+         }
+     }
+ 
++    /// Encrypt credential-bearing preference values while preserving legacy
++    /// plaintext rows for migration on their next edit.
++    pub fn with_encryption_key(mut self, key: [u8; 32]) -> Self {
++        self.encryption_key = Some(key);
++        self
++    }
++
+     /// Get all client preferences, or only the specified keys.
+     pub async fn get_preferences(
+         &self,
+@@ -61,8 +80,16 @@ impl ClientPrefService {
+         let mut found_keys = BTreeSet::new();
+         let mut map = ClientPreferencesResponse::new();
+         for row in rows {
++            let serialized = if let Some(ciphertext) = row.value.strip_prefix(ENCRYPTED_PREFIX) {
++                let key = self
++                    .encryption_key
++                    .ok_or_else(|| SystemError::Internal("Encrypted client preference key unavailable".into()))?;
++                decrypt_string(ciphertext, &key)?
++            } else {
++                row.value
++            };
+             let value: serde_json::Value =
+-                serde_json::from_str(&row.value).unwrap_or(serde_json::Value::String(row.value));
++                serde_json::from_str(&serialized).unwrap_or(serde_json::Value::String(serialized));
+             found_keys.insert(row.key.clone());
+             debug!(
+                 target: "aionui_feedback_diagnostics",
+@@ -121,7 +148,15 @@ impl ClientPrefService {
+                     value_bytes = serialized.len(),
+                     "feedback.runtime.client_preference_write"
+                 );
+-                upserts.push((key, serialized));
++                let stored = if contains_personal_credentials(&key) {
++                    match self.encryption_key {
++                        Some(secret) => format!("{ENCRYPTED_PREFIX}{}", encrypt_string(&serialized, &secret)?),
++                        None => serialized,
++                    }
++                } else {
++                    serialized
++                };
++                upserts.push((key, stored));
+             }
+         }
+ 
+@@ -331,6 +366,62 @@ mod tests {
+         ClientPrefService::new(repo)
+     }
+ 
++    #[tokio::test]
++    async fn credential_preferences_are_encrypted_at_rest_and_read_back() {
++        let service = setup().await.with_encryption_key([7; 32]);
++        let value = json!({ "provider": "openai", "openai": { "api_key": "speech-private-key" } });
++        service
++            .update_preferences(TEST_USER_ID, [("tools.speechToText".to_owned(), value.clone())].into())
++            .await
++            .unwrap();
++        let rows = service
++            .repo
++            .get_by_keys(TEST_USER_ID, &["tools.speechToText"])
++            .await
++            .unwrap();
++        assert!(rows[0].value.starts_with(ENCRYPTED_PREFIX));
++        assert!(!rows[0].value.contains("speech-private-key"));
++        let read = service
++            .get_preferences(TEST_USER_ID, Some(&["tools.speechToText"]))
++            .await
++            .unwrap();
++        assert_eq!(read["tools.speechToText"], value);
++        service
++            .update_preferences(TEST_USER_ID, [("speechToText".to_owned(), value)].into())
++            .await
++            .unwrap();
++        let legacy_rows = service.repo.get_by_keys(TEST_USER_ID, &["speechToText"]).await.unwrap();
++        assert!(legacy_rows[0].value.starts_with(ENCRYPTED_PREFIX));
++    }
++
++    #[tokio::test]
++    async fn legacy_plaintext_credential_preference_remains_readable_then_reencrypts() {
++        let legacy = setup().await;
++        let value = json!({ "provider": "deepgram", "deepgram": { "api_key": "old-secret" } });
++        legacy
++            .update_preferences(TEST_USER_ID, [("tools.speechToText".to_owned(), value.clone())].into())
++            .await
++            .unwrap();
++        let secured = legacy.with_encryption_key([9; 32]);
++        assert_eq!(
++            secured
++                .get_preferences(TEST_USER_ID, Some(&["tools.speechToText"]))
++                .await
++                .unwrap()["tools.speechToText"],
++            value
++        );
++        secured
++            .update_preferences(TEST_USER_ID, [("tools.speechToText".to_owned(), value)].into())
++            .await
++            .unwrap();
++        let rows = secured
++            .repo
++            .get_by_keys(TEST_USER_ID, &["tools.speechToText"])
++            .await
++            .unwrap();
++        assert!(rows[0].value.starts_with(ENCRYPTED_PREFIX));
++    }
++
+     async fn setup_with_keep_awake_controller(controller: DynKeepAwakeController) -> ClientPrefService {
+         let db = init_database_memory().await.unwrap();
+         sqlx::query(
+@@ -347,6 +438,7 @@ mod tests {
+         ClientPrefService {
+             repo,
+             keep_awake_controller: controller,
++            encryption_key: None,
+         }
+     }
+ 

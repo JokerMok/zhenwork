@@ -1,0 +1,251 @@
+diff --git a/Cargo.lock b/Cargo.lock
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -369,6 +369,7 @@
+  "libc",
+  "mime_guess",
+  "regex",
++ "reqwest",
+  "rusqlite",
+  "serde",
+  "serde_json",
+@@ -624,6 +625,7 @@
+  "cron",
+  "dashmap",
+  "iana-time-zone",
++ "reqwest",
+  "serde",
+  "serde_json",
+  "sqlx",
+diff --git a/crates/aionui-app/src/router/routes.rs b/crates/aionui-app/src/router/routes.rs
+--- a/crates/aionui-app/src/router/routes.rs
++++ b/crates/aionui-app/src/router/routes.rs
+@@ -654,6 +654,10 @@
+     }
+ }
+ 
++pub(crate) fn enterprise_local_token() -> Option<String> {
++    ENTERPRISE_LOCAL_TOKEN.get().cloned()
++}
++
+ #[cfg(test)]
+ mod tests {
+     use std::sync::Arc;
+diff --git a/crates/aionui-app/src/router/state.rs b/crates/aionui-app/src/router/state.rs
+--- a/crates/aionui-app/src/router/state.rs
++++ b/crates/aionui-app/src/router/state.rs
+@@ -1027,6 +1027,14 @@
+         services.event_bus.clone(),
+         services.agent_registry.clone(),
+     ));
++    if let Ok(raw_port) = std::env::var("AION_ENTERPRISE_CRON_AUTH_PORT") {
++        assert_eq!(std::env::var("AION_ENTERPRISE_ROLE").ok().as_deref(), Some("worker"),
++            "enterprise cron authorization requires worker mode");
++        let port = raw_port.parse::<u16>().expect("enterprise cron authorization port invalid");
++        let token = super::routes::enterprise_local_token()
++            .expect("enterprise cron authorization requires local capability");
++        aionui_cron::background_authorization::install(port, token);
++    }
+ 
+     let tick_service_ref: Arc<CronServiceTickRef> = Arc::new(CronServiceTickRef::default());
+     let tick_ref = tick_service_ref.clone();
+diff --git a/crates/aionui-cron/Cargo.toml b/crates/aionui-cron/Cargo.toml
+--- a/crates/aionui-cron/Cargo.toml
++++ b/crates/aionui-cron/Cargo.toml
+@@ -24,6 +24,7 @@
+ tracing.workspace = true
+ dashmap.workspace = true
+ async-trait.workspace = true
++reqwest.workspace = true
+ 
+ [dev-dependencies]
+ tokio = { workspace = true, features = ["test-util"] }
+diff --git a/crates/aionui-cron/src/executor.rs b/crates/aionui-cron/src/executor.rs
+--- a/crates/aionui-cron/src/executor.rs
++++ b/crates/aionui-cron/src/executor.rs
+@@ -211,6 +211,9 @@
+     }
+ 
+     pub(crate) async fn execute_prepared(&self, job: &CronJob, prepared: PreparedExecution) -> ExecutionResult {
++        if !crate::background_authorization::allows(&job.id).await {
++            return ExecutionResult::Error { message: "Background task authorization denied".into() };
++        }
+         self.execute_inner_with_busy_retry(job, &prepared.conversation_id, prepared.saved_skill.as_ref(), false)
+             .await
+     }
+@@ -220,6 +223,9 @@
+         job: &CronJob,
+         prepared: PreparedExecution,
+     ) -> ExecutionResult {
++        if !crate::background_authorization::allows(&job.id).await {
++            return ExecutionResult::Error { message: "Background task authorization denied".into() };
++        }
+         self.execute_inner_with_busy_retry(job, &prepared.conversation_id, prepared.saved_skill.as_ref(), true)
+             .await
+     }
+@@ -242,6 +248,11 @@
+             .await
+             .map_err(CronError::Database)?;
+         Ok(row.is_some())
++    }
++
++    pub fn is_background_job_active(&self, user_id: &str, job_id: &str) -> bool {
++        self.active_background_runs.lock().ok().is_some_and(|runs|
++            runs.values().any(|(owner, running_job)| owner == user_id && running_job == job_id))
+     }
+ 
+     pub fn is_conversation_claimed(&self, conversation_id: &str) -> bool {
+diff --git a/crates/aionui-cron/src/lib.rs b/crates/aionui-cron/src/lib.rs
+--- a/crates/aionui-cron/src/lib.rs
++++ b/crates/aionui-cron/src/lib.rs
+@@ -2,6 +2,7 @@
+ 
+ //! Scheduled job engine: cron scheduler, executor, and lifecycle event emitter.
+ mod artifacts;
++pub mod background_authorization;
+ pub mod error;
+ pub mod events;
+ pub mod executor;
+diff --git a/crates/aionui-cron/src/routes.rs b/crates/aionui-cron/src/routes.rs
+--- a/crates/aionui-cron/src/routes.rs
++++ b/crates/aionui-cron/src/routes.rs
+@@ -75,6 +75,7 @@
+             "/api/cron/jobs/{id}/skill",
+             get(has_skill).post(save_skill).delete(delete_skill),
+         )
++        .route("/api/cron/internal/active-job/{id}", get(active_background_job))
+         .with_state(state)
+ }
+ 
+@@ -275,6 +276,20 @@
+     Ok(Json(ApiResponse::success()))
+ }
+ 
++async fn active_background_job(
++    State(state): State<CronRouterState>,
++    Extension(user): Extension<CurrentUser>,
++    headers: HeaderMap,
++    Path(job_id): Path<String>,
++) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
++    if headers.get("x-aionui-internal").and_then(|value| value.to_str().ok()) != Some("1") {
++        return Err(ApiError::Forbidden("internal route".into()));
++    }
++    Ok(Json(ApiResponse::ok(serde_json::json!({
++        "active": state.cron_service.is_background_job_active(&user.id, &job_id)
++    }))))
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/crates/aionui-cron/src/service.rs b/crates/aionui-cron/src/service.rs
+--- a/crates/aionui-cron/src/service.rs
++++ b/crates/aionui-cron/src/service.rs
+@@ -789,6 +789,10 @@
+         }
+ 
+         info!("System resume: all cron timers rescheduled");
++    }
++
++    pub fn is_background_job_active(&self, user_id: &str, job_id: &str) -> bool {
++        self.executor.is_background_job_active(user_id, job_id)
+     }
+ 
+     pub async fn run_now(&self, user_id: &str, job_id: &str) -> Result<RunNowResponse, CronError> {
+diff --git a/crates/aionui-cron/src/background_authorization.rs b/crates/aionui-cron/src/background_authorization.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/aionui-cron/src/background_authorization.rs
+@@ -0,0 +1,92 @@
++use std::sync::OnceLock;
++use std::time::Duration;
++
++/// One Core process belongs to one employee. The RC2 service credential stays
++/// in Web Host; Core presents its existing private capability to the bridge.
++static AUTHORIZATION: OnceLock<BackgroundAuthorization> = OnceLock::new();
++
++struct BackgroundAuthorization {
++    host: &'static str,
++    port: u16,
++    token: String,
++    client: reqwest::Client,
++}
++
++impl BackgroundAuthorization {
++    fn new(port: u16, token: String) -> Self {
++        assert!(port >= 1024, "enterprise cron authorization port invalid");
++        assert!(token.len() >= 32 && token.bytes().all(|byte| byte.is_ascii_hexdigit()),
++            "enterprise cron authorization capability invalid");
++        let client = reqwest::Client::builder()
++            .no_proxy()
++            .redirect(reqwest::redirect::Policy::none())
++            .timeout(Duration::from_secs(12))
++            .build()
++            .expect("enterprise cron authorization client unavailable");
++        Self { host: "model-gateway", port, token, client }
++    }
++
++    async fn allows(&self, job_id: &str) -> bool {
++        if !job_id.starts_with("cron_") || !(13..=85).contains(&job_id.len()) ||
++            !job_id[5..].bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-') {
++            return false;
++        }
++        let url = format!("http://{}:{}/job/{job_id}", self.host, self.port);
++        matches!(self.client.get(url)
++            .header("x-aion-enterprise-local-token", &self.token)
++            .send().await, Ok(response) if response.status() == reqwest::StatusCode::NO_CONTENT)
++    }
++}
++
++pub fn install(port: u16, token: String) {
++    assert!(AUTHORIZATION.set(BackgroundAuthorization::new(port, token)).is_ok(),
++        "enterprise cron authorization already installed");
++}
++
++/// Desktop Core has no host background grant service. Enterprise Web Core
++/// installs this check before its scheduler starts and fails closed on errors.
++pub async fn allows(job_id: &str) -> bool {
++    match AUTHORIZATION.get() {
++        Some(authorization) => authorization.allows(job_id).await,
++        None => true,
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::sync::atomic::{AtomicBool, Ordering};
++    use std::sync::Arc;
++
++    #[tokio::test]
++    async fn checks_host_at_execution_time() {
++        let allowed = Arc::new(AtomicBool::new(true));
++        let decision = allowed.clone();
++        let token = "a".repeat(64);
++        let expected = token.clone();
++        let app = axum::Router::new().route("/job/cron_12345678", axum::routing::get(
++            move |headers: axum::http::HeaderMap| {
++                let decision = decision.clone();
++                let expected = expected.clone();
++                async move {
++                    if headers.get("x-aion-enterprise-local-token").and_then(|value| value.to_str().ok()) != Some(expected.as_str()) {
++                        axum::http::StatusCode::FORBIDDEN
++                    } else if decision.load(Ordering::SeqCst) {
++                        axum::http::StatusCode::NO_CONTENT
++                    } else {
++                        axum::http::StatusCode::FORBIDDEN
++                    }
++                }
++            }));
++        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let port = listener.local_addr().unwrap().port();
++        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
++        let mut authorization = BackgroundAuthorization::new(port, token);
++        authorization.host = "127.0.0.1";
++        assert!(authorization.allows("cron_12345678").await);
++        allowed.store(false, Ordering::SeqCst);
++        assert!(!authorization.allows("cron_12345678").await);
++        assert!(!authorization.allows("invalid-id").await);
++        server.abort();
++    }
++}

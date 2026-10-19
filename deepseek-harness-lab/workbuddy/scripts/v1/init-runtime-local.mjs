@@ -1,0 +1,15 @@
+/** Local-only runtime control configuration. Never reads the existing Provider credential. */
+import fs from 'node:fs';import path from 'node:path';import {execFileSync} from 'node:child_process';
+const root=path.resolve(import.meta.dirname,'../..'),dir=path.join(root,'.state/v1');const c=JSON.parse(fs.readFileSync(path.join(dir,'config.json')));if(c.mode!=='local')throw Error('Local mode required');
+const previousManager=fs.existsSync(path.join(dir,'manager.json'))?JSON.parse(fs.readFileSync(path.join(dir,'manager.json'),'utf8')):{};
+const image=previousManager.runtimeImage||'workspace-runtime:v1-local',imageDigest=JSON.parse(execFileSync('docker',['image','inspect',image],{encoding:'utf8'}))[0].Id;
+const credentials=path.resolve(root,'../evidence/harness-home/.credentials.yaml');if(!fs.statSync(credentials).isFile())throw Error('Existing Provider file missing');
+const save=(name,value)=>{const file=path.join(dir,name);fs.writeFileSync(file,typeof value==='string'?value:JSON.stringify(value,null,2),{mode:0o600});fs.chmodSync(file,0o600);return file;};
+const url=new URL(fs.readFileSync(c.databaseURLFile,'utf8').trim());url.hostname='host.docker.internal';save('gateway-database-url',url.href);
+const manager={host:'127.0.0.1',port:3419,databaseURLFile:c.databaseURLFile,managerSecretFile:c.managerSecretFile,runtimeImage:image,runtimeImageDigest:imageDigest,harnessSha:'ddefc45fbc7f8e46dd73185e68295696d1297887',gatewayContainer:'wb-v1-gateway',maxActiveRuntimes:4,memoryMb:768,...previousManager,runtimeImage:image,runtimeImageDigest:imageDigest};save('manager.json',manager);
+const gateway={databaseURLFile:'/run/secrets/database-url',providerSecretFile:'/run/secrets/provider',providerSecretFormat:'yaml-ref',capabilitySecretFile:'/run/secrets/capability',bffInternalURL:'http://host.docker.internal:3418'};save('gateway.json',gateway);
+const exists=execFileSync('docker',['ps','-a','--filter','name=^/wb-v1-gateway$','--format','{{.ID}}'],{encoding:'utf8'}).trim();if(exists)throw Error('Gateway already exists; controlled restart required');
+const args=['run','-d','--name','wb-v1-gateway','--label','workspace.product=v1-gateway','--network','bridge','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--user',`${process.getuid()}:${process.getgid()}`,'--memory','384m','--pids-limit','64','--tmpfs','/tmp:rw,noexec,nosuid,size=16m','--env','WORKSPACE_GATEWAY_CONFIG_FILE=/config/gateway.json'];
+for(const [source,target] of [[path.join(dir,'gateway.json'),'/config/gateway.json'],[path.join(dir,'gateway-database-url'),'/run/secrets/database-url'],[credentials,'/run/secrets/provider'],[c.capabilitySecretFile,'/run/secrets/capability']])args.push('--mount',`type=bind,src=${source},dst=${target},readonly`);
+args.push('workspace-gateway:v1-local');execFileSync('docker',args,{stdio:'pipe'});
+console.log(JSON.stringify({gateway:'wb-v1-gateway',publishedPorts:[],managerConfig:path.join(dir,'manager.json'),runtimeImageDigest:imageDigest,maxLocalRuntimes:4,providerCredentialReadByLauncher:false}));

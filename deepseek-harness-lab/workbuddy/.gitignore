@@ -1,0 +1,24 @@
+.env
+.env.*
+!.env.example
+.state/
+.build/
+node_modules/
+.DS_Store
+dist/
+coverage/
+.env.production
+secrets/
+backups/
+.tmp/
+evidence/*
+!evidence/v1/
+.research/
+.next/
+*.tsbuildinfo
+playwright-report/
+test-results/
+evidence/v1/local-remote-acceptance/quick-tunnel.json
+
+# Mutable local infrastructure snapshot; frozen phase evidence is retained.
+evidence/v1/rc2/current/

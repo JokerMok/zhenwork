@@ -1,0 +1,5 @@
+import fs from 'node:fs';import {login,req,save,root} from './helpers.mjs';
+await login();const {id,marker}=JSON.parse(fs.readFileSync(root+'/evidence/e2e-session.json'));const before=JSON.parse(fs.readFileSync(root+'/evidence/bff-before-restart.json')),after=JSON.parse(fs.readFileSync(root+'/.state/bff.json'));
+const cross=await req('user_b','POST',`/sessions/${id}/resume`,{});const resumed=await req('user_a','POST',`/sessions/${id}/resume`,{});const r=await req('user_a','POST',`/sessions/${id}/prompt`,{text:'Recall only the synthetic CONTEXT_MEMORY marker stored earlier in this conversation. Return its exact value. Do not call tools.'});
+const msg=r.body.events?.filter(e=>e.type==='assistant/message').at(-1);const text=msg?.data.message.content.filter(c=>c.type==='text').map(c=>c.text).join('');const pass=before.pid!==after.pid&&cross.status===404&&resumed.status===200&&r.status===200&&text===marker;
+save('restart-resume.json',{before,after,cross,resumed,response:r,pass});console.log(JSON.stringify({newProcess:before.pid!==after.pid,crossHttp:cross.status,resumeHttp:resumed.status,promptHttp:r.status,text,pass}));

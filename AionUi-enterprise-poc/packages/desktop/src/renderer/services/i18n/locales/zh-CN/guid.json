@@ -1,0 +1,69 @@
+{
+  "promptExamplesHint": "试试这些指令",
+  "defaultPrompts": {
+    "understand": "了解一下这个项目，用大白话告诉我它是做什么的、从哪里入手",
+    "cleanup": "帮我找出这个文件夹里重复和没用的文件，列出来让我确认",
+    "create": "帮我做一个精美的个人主页网页，做好后直接打开给我看"
+  },
+  "selectAssistantHint": "选择一位助手开始任务",
+  "assistantManagedHint": "企业助手已配置所需技能和工具连接，通常无需手动选择；下方仅用于按需调整。",
+  "toolConnections": "工具连接",
+  "enabledCount": "已启用 {{count}} 项",
+  "commandFallback": "可在当前会话使用的命令",
+  "skillDescriptionFallback": "可在当前会话使用的技能",
+  "skillNames": {
+    "enterpriseSuccinct": "企业简报",
+    "aionuiConfig": "工作台设置",
+    "conversationCreate": "新建会话",
+    "cron": "定时任务",
+    "officecli": "办公文档处理",
+    "sessionMessage": "会话消息",
+    "skillCreator": "制作技能",
+    "storyRoleplay": "故事角色扮演",
+    "weixinFileSend": "微信文件发送"
+  },
+  "skillDescriptions": {
+    "enterpriseSuccinct": "根据本次明确添加的资料生成简短中文简讯",
+    "aionuiConfig": "设置工作台、助手和连接",
+    "conversationCreate": "为当前账号创建新会话",
+    "cron": "创建和管理定时任务",
+    "officecli": "创建和处理常见办公文档",
+    "sessionMessage": "向其他会话发送消息",
+    "skillCreator": "创建或更新技能",
+    "storyRoleplay": "进行故事角色扮演",
+    "weixinFileSend": "通过微信发送文件"
+  },
+  "enterpriseCatalog": "企业资料检索",
+  "mcpNames": {
+    "enterpriseCatalog": "企业资料检索",
+    "chromeDevtools": "浏览器调试",
+    "aionuiBrowser": "内置浏览器",
+    "aionuiImageGeneration": "图片生成"
+  },
+  "commandNames": {
+    "open": "添加文件",
+    "copy": "复制回复",
+    "compact": "压缩对话",
+    "context": "查看上下文",
+    "clear": "清空对话",
+    "help": "命令帮助",
+    "quit": "退出命令模式"
+  },
+  "commandDescriptions": {
+    "open": "选择文件并添加到会话",
+    "copy": "复制上一条助手回复",
+    "compact": "压缩当前会话的上下文",
+    "context": "查看当前上下文用量",
+    "clear": "清空当前会话历史",
+    "help": "列出可用命令",
+    "quit": "退出命令交互模式"
+  },
+  "workspace": {
+    "workInProject": "在项目中工作",
+    "optional": "可选",
+    "clearWorkspace": "清除",
+    "specifyWorkspace": "选择项目文件夹",
+    "searchPlaceholder": "搜索项目…",
+    "noProject": "不使用项目"
+  }
+}

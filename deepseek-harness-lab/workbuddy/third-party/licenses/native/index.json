@@ -1,0 +1,387 @@
+[
+  {
+    "archive": "00-0.5.tar.gz",
+    "member": "proxy-libintl-0.5/COPYING",
+    "output": "00-0.5.tar.gz--proxy-libintl-0.5_COPYING"
+  },
+  {
+    "archive": "01-2.3.3.tar.gz",
+    "member": "zlib-ng-2.3.3/LICENSE.md",
+    "output": "01-2.3.3.tar.gz--zlib-ng-2.3.3_LICENSE.md"
+  },
+  {
+    "archive": "02-libffi-3.8.0.tar.gz",
+    "member": "libffi-3.8.0/LICENSE-BUILDTOOLS",
+    "output": "02-libffi-3.8.0.tar.gz--libffi-3.8.0_LICENSE-BUILDTOOLS"
+  },
+  {
+    "archive": "02-libffi-3.8.0.tar.gz",
+    "member": "libffi-3.8.0/LICENSE",
+    "output": "02-libffi-3.8.0.tar.gz--libffi-3.8.0_LICENSE"
+  },
+  {
+    "archive": "03-glib-2.89.4.tar.xz",
+    "member": "glib-2.89.4/LICENSES/LicenseRef-old-glib-tests.txt",
+    "output": "03-glib-2.89.4.tar.xz--glib-2.89.4_LICENSES_LicenseRef-old-glib-tests.txt"
+  },
+  {
+    "archive": "03-glib-2.89.4.tar.xz",
+    "member": "glib-2.89.4/docs/reference/COPYING",
+    "output": "03-glib-2.89.4.tar.xz--glib-2.89.4_docs_reference_COPYING"
+  },
+  {
+    "archive": "03-glib-2.89.4.tar.xz",
+    "member": "glib-2.89.4/subprojects/gvdb/COPYING",
+    "output": "03-glib-2.89.4.tar.xz--glib-2.89.4_subprojects_gvdb_COPYING"
+  },
+  {
+    "archive": "05-libxml2-2.15.3.tar.xz",
+    "member": "libxml2-2.15.3/Copyright",
+    "output": "05-libxml2-2.15.3.tar.xz--libxml2-2.15.3_Copyright"
+  },
+  {
+    "archive": "05-libxml2-2.15.3.tar.xz",
+    "member": "libxml2-2.15.3/test/html-tokenizer/NOTICE",
+    "output": "05-libxml2-2.15.3.tar.xz--libxml2-2.15.3_test_html-tokenizer_NOTICE"
+  },
+  {
+    "archive": "05-libxml2-2.15.3.tar.xz",
+    "member": "libxml2-2.15.3/result/html-tokenizer/NOTICE",
+    "output": "05-libxml2-2.15.3.tar.xz--libxml2-2.15.3_result_html-tokenizer_NOTICE"
+  },
+  {
+    "archive": "06-libexif-0.6.26.tar.xz",
+    "member": "libexif-0.6.26/COPYING",
+    "output": "06-libexif-0.6.26.tar.xz--libexif-0.6.26_COPYING"
+  },
+  {
+    "archive": "07-lcms2-2.19.1.tar.gz",
+    "member": "lcms2-2.19.1/LICENSE",
+    "output": "07-lcms2-2.19.1.tar.gz--lcms2-2.19.1_LICENSE"
+  },
+  {
+    "archive": "07-lcms2-2.19.1.tar.gz",
+    "member": "lcms2-2.19.1/plugins/fast_float/COPYING.GPL3",
+    "output": "07-lcms2-2.19.1.tar.gz--lcms2-2.19.1_plugins_fast_float_COPYING.GPL3"
+  },
+  {
+    "archive": "07-lcms2-2.19.1.tar.gz",
+    "member": "lcms2-2.19.1/plugins/threaded/COPYING.GPL3",
+    "output": "07-lcms2-2.19.1.tar.gz--lcms2-2.19.1_plugins_threaded_COPYING.GPL3"
+  },
+  {
+    "archive": "07-lcms2-2.19.1.tar.gz",
+    "member": "lcms2-2.19.1/utils/jpgicc/LICENSE_iccjpeg",
+    "output": "07-lcms2-2.19.1.tar.gz--lcms2-2.19.1_utils_jpgicc_LICENSE_iccjpeg"
+  },
+  {
+    "archive": "08-libaom-3.15.0.tar.gz",
+    "member": "libaom-3.15.0/LICENSE",
+    "output": "08-libaom-3.15.0.tar.gz--libaom-3.15.0_LICENSE"
+  },
+  {
+    "archive": "08-libaom-3.15.0.tar.gz",
+    "member": "libaom-3.15.0/third_party/fastfeat/LICENSE",
+    "output": "08-libaom-3.15.0.tar.gz--libaom-3.15.0_third_party_fastfeat_LICENSE"
+  },
+  {
+    "archive": "08-libaom-3.15.0.tar.gz",
+    "member": "libaom-3.15.0/third_party/googletest/src/LICENSE",
+    "output": "08-libaom-3.15.0.tar.gz--libaom-3.15.0_third_party_googletest_src_LICENSE"
+  },
+  {
+    "archive": "08-libaom-3.15.0.tar.gz",
+    "member": "libaom-3.15.0/third_party/highway/LICENSE-BSD3",
+    "output": "08-libaom-3.15.0.tar.gz--libaom-3.15.0_third_party_highway_LICENSE-BSD3"
+  },
+  {
+    "archive": "08-libaom-3.15.0.tar.gz",
+    "member": "libaom-3.15.0/third_party/libwebm/LICENSE.TXT",
+    "output": "08-libaom-3.15.0.tar.gz--libaom-3.15.0_third_party_libwebm_LICENSE.TXT"
+  },
+  {
+    "archive": "08-libaom-3.15.0.tar.gz",
+    "member": "libaom-3.15.0/third_party/libyuv/LICENSE",
+    "output": "08-libaom-3.15.0.tar.gz--libaom-3.15.0_third_party_libyuv_LICENSE"
+  },
+  {
+    "archive": "08-libaom-3.15.0.tar.gz",
+    "member": "libaom-3.15.0/third_party/vector/LICENSE",
+    "output": "08-libaom-3.15.0.tar.gz--libaom-3.15.0_third_party_vector_LICENSE"
+  },
+  {
+    "archive": "08-libaom-3.15.0.tar.gz",
+    "member": "libaom-3.15.0/third_party/x86inc/LICENSE",
+    "output": "08-libaom-3.15.0.tar.gz--libaom-3.15.0_third_party_x86inc_LICENSE"
+  },
+  {
+    "archive": "09-libheif-1.23.2.tar.gz",
+    "member": "libheif-1.23.2/COPYING",
+    "output": "09-libheif-1.23.2.tar.gz--libheif-1.23.2_COPYING"
+  },
+  {
+    "archive": "09-libheif-1.23.2.tar.gz",
+    "member": "libheif-1.23.2/examples/COPYING",
+    "output": "09-libheif-1.23.2.tar.gz--libheif-1.23.2_examples_COPYING"
+  },
+  {
+    "archive": "10-0826579.tar.gz",
+    "member": "mozjpeg-08265790774cd0714832c9e675522acbe5581437/LICENSE.md",
+    "output": "10-0826579.tar.gz--mozjpeg-08265790774cd0714832c9e675522acbe5581437_LICENSE.md"
+  },
+  {
+    "archive": "10-0826579.tar.gz",
+    "member": "mozjpeg-08265790774cd0714832c9e675522acbe5581437/java/doc/legal/LICENSE",
+    "output": "10-0826579.tar.gz--mozjpeg-08265790774cd0714832c9e675522acbe5581437_java_doc_legal_LICENSE"
+  },
+  {
+    "archive": "10-0826579.tar.gz",
+    "member": "mozjpeg-08265790774cd0714832c9e675522acbe5581437/release/License.rtf",
+    "output": "10-0826579.tar.gz--mozjpeg-08265790774cd0714832c9e675522acbe5581437_release_License.rtf"
+  },
+  {
+    "archive": "12-v1.6.58.tar.gz",
+    "member": "libpng-1.6.58/LICENSE",
+    "output": "12-v1.6.58.tar.gz--libpng-1.6.58_LICENSE"
+  },
+  {
+    "archive": "12-v1.6.58.tar.gz",
+    "member": "libpng-1.6.58/ci/LICENSE_MIT.txt",
+    "output": "12-v1.6.58.tar.gz--libpng-1.6.58_ci_LICENSE_MIT.txt"
+  },
+  {
+    "archive": "12-v1.6.58.tar.gz",
+    "member": "libpng-1.6.58/contrib/gregbook/COPYING",
+    "output": "12-v1.6.58.tar.gz--libpng-1.6.58_contrib_gregbook_COPYING"
+  },
+  {
+    "archive": "12-v1.6.58.tar.gz",
+    "member": "libpng-1.6.58/contrib/gregbook/LICENSE",
+    "output": "12-v1.6.58.tar.gz--libpng-1.6.58_contrib_gregbook_LICENSE"
+  },
+  {
+    "archive": "12-v1.6.58.tar.gz",
+    "member": "libpng-1.6.58/contrib/pngexif/LICENSE_MIT.txt",
+    "output": "12-v1.6.58.tar.gz--libpng-1.6.58_contrib_pngexif_LICENSE_MIT.txt"
+  },
+  {
+    "archive": "12-v1.6.58.tar.gz",
+    "member": "libpng-1.6.58/contrib/pngminus/LICENSE.txt",
+    "output": "12-v1.6.58.tar.gz--libpng-1.6.58_contrib_pngminus_LICENSE.txt"
+  },
+  {
+    "archive": "13-v2.4.1.tar.gz",
+    "member": "libimagequant-2.4.1/COPYRIGHT",
+    "output": "13-v2.4.1.tar.gz--libimagequant-2.4.1_COPYRIGHT"
+  },
+  {
+    "archive": "14-libwebp-1.6.0.tar.gz",
+    "member": "libwebp-1.6.0/COPYING",
+    "output": "14-libwebp-1.6.0.tar.gz--libwebp-1.6.0_COPYING"
+  },
+  {
+    "archive": "15-libtiff-v4.7.2.tar.gz",
+    "member": "libtiff-v4.7.2/LICENSE.md",
+    "output": "15-libtiff-v4.7.2.tar.gz--libtiff-v4.7.2_LICENSE.md"
+  },
+  {
+    "archive": "15-libtiff-v4.7.2.tar.gz",
+    "member": "libtiff-v4.7.2/doc/project/license.rst",
+    "output": "15-libtiff-v4.7.2.tar.gz--libtiff-v4.7.2_doc_project_license.rst"
+  },
+  {
+    "archive": "16-1.4.0.tar.gz",
+    "member": "highway-1.4.0/LICENSE",
+    "output": "16-1.4.0.tar.gz--highway-1.4.0_LICENSE"
+  },
+  {
+    "archive": "16-1.4.0.tar.gz",
+    "member": "highway-1.4.0/debian/copyright",
+    "output": "16-1.4.0.tar.gz--highway-1.4.0_debian_copyright"
+  },
+  {
+    "archive": "17-VER-2-14-3.tar.gz",
+    "member": "freetype-VER-2-14-3/LICENSE.TXT",
+    "output": "17-VER-2-14-3.tar.gz--freetype-VER-2-14-3_LICENSE.TXT"
+  },
+  {
+    "archive": "17-VER-2-14-3.tar.gz",
+    "member": "freetype-VER-2-14-3/docs/FTL.TXT",
+    "output": "17-VER-2-14-3.tar.gz--freetype-VER-2-14-3_docs_FTL.TXT"
+  },
+  {
+    "archive": "18-expat-2.8.3.tar.xz",
+    "member": "expat-2.8.3/COPYING",
+    "output": "18-expat-2.8.3.tar.xz--expat-2.8.3_COPYING"
+  },
+  {
+    "archive": "19-libarchive-3.8.9.tar.xz",
+    "member": "libarchive-3.8.9/COPYING",
+    "output": "19-libarchive-3.8.9.tar.xz--libarchive-3.8.9_COPYING"
+  },
+  {
+    "archive": "20-fontconfig-2.18.3.tar.gz",
+    "member": "fontconfig-2.18.3/COPYING",
+    "output": "20-fontconfig-2.18.3.tar.gz--fontconfig-2.18.3_COPYING"
+  },
+  {
+    "archive": "21-14.3.1.tar.gz",
+    "member": "harfbuzz-14.3.1/COPYING",
+    "output": "21-14.3.1.tar.gz--harfbuzz-14.3.1_COPYING"
+  },
+  {
+    "archive": "21-14.3.1.tar.gz",
+    "member": "harfbuzz-14.3.1/src/ms-use/COPYING",
+    "output": "21-14.3.1.tar.gz--harfbuzz-14.3.1_src_ms-use_COPYING"
+  },
+  {
+    "archive": "21-14.3.1.tar.gz",
+    "member": "harfbuzz-14.3.1/test/COPYING",
+    "output": "21-14.3.1.tar.gz--harfbuzz-14.3.1_test_COPYING"
+  },
+  {
+    "archive": "21-14.3.1.tar.gz",
+    "member": "harfbuzz-14.3.1/test/shape/data/aots/COPYING",
+    "output": "21-14.3.1.tar.gz--harfbuzz-14.3.1_test_shape_data_aots_COPYING"
+  },
+  {
+    "archive": "21-14.3.1.tar.gz",
+    "member": "harfbuzz-14.3.1/test/shape/data/text-rendering-tests/COPYING",
+    "output": "21-14.3.1.tar.gz--harfbuzz-14.3.1_test_shape_data_text-rendering-tests_COPYING"
+  },
+  {
+    "archive": "22-pixman-0.46.4.tar.gz",
+    "member": "pixman-0.46.4/COPYING",
+    "output": "22-pixman-0.46.4.tar.gz--pixman-0.46.4_COPYING"
+  },
+  {
+    "archive": "23-cairo-1.18.4.tar.xz",
+    "member": "cairo-1.18.4/COPYING",
+    "output": "23-cairo-1.18.4.tar.xz--cairo-1.18.4_COPYING"
+  },
+  {
+    "archive": "23-cairo-1.18.4.tar.xz",
+    "member": "cairo-1.18.4/COPYING-LGPL-2.1",
+    "output": "23-cairo-1.18.4.tar.xz--cairo-1.18.4_COPYING-LGPL-2.1"
+  },
+  {
+    "archive": "23-cairo-1.18.4.tar.xz",
+    "member": "cairo-1.18.4/COPYING-MPL-1.1",
+    "output": "23-cairo-1.18.4.tar.xz--cairo-1.18.4_COPYING-MPL-1.1"
+  },
+  {
+    "archive": "23-cairo-1.18.4.tar.xz",
+    "member": "cairo-1.18.4/perf/COPYING",
+    "output": "23-cairo-1.18.4.tar.xz--cairo-1.18.4_perf_COPYING"
+  },
+  {
+    "archive": "23-cairo-1.18.4.tar.xz",
+    "member": "cairo-1.18.4/test/COPYING",
+    "output": "23-cairo-1.18.4.tar.xz--cairo-1.18.4_test_COPYING"
+  },
+  {
+    "archive": "23-cairo-1.18.4.tar.xz",
+    "member": "cairo-1.18.4/util/COPYING",
+    "output": "23-cairo-1.18.4.tar.xz--cairo-1.18.4_util_COPYING"
+  },
+  {
+    "archive": "23-cairo-1.18.4.tar.xz",
+    "member": "cairo-1.18.4/util/cairo-script/COPYING",
+    "output": "23-cairo-1.18.4.tar.xz--cairo-1.18.4_util_cairo-script_COPYING"
+  },
+  {
+    "archive": "23-cairo-1.18.4.tar.xz",
+    "member": "cairo-1.18.4/util/cairo-trace/COPYING",
+    "output": "23-cairo-1.18.4.tar.xz--cairo-1.18.4_util_cairo-trace_COPYING"
+  },
+  {
+    "archive": "23-cairo-1.18.4.tar.xz",
+    "member": "cairo-1.18.4/util/cairo-trace/COPYING-GPL-3",
+    "output": "23-cairo-1.18.4.tar.xz--cairo-1.18.4_util_cairo-trace_COPYING-GPL-3"
+  },
+  {
+    "archive": "24-fribidi-1.0.16.tar.xz",
+    "member": "fribidi-1.0.16/COPYING",
+    "output": "24-fribidi-1.0.16.tar.xz--fribidi-1.0.16_COPYING"
+  },
+  {
+    "archive": "25-pango-1.58.2.tar.xz",
+    "member": "pango-1.58.2/COPYING",
+    "output": "25-pango-1.58.2.tar.xz--pango-1.58.2_COPYING"
+  },
+  {
+    "archive": "26-librsvg-2.62.91.tar.xz",
+    "member": "librsvg-2.62.91/COPYING.LIB",
+    "output": "26-librsvg-2.62.91.tar.xz--librsvg-2.62.91_COPYING.LIB"
+  },
+  {
+    "archive": "26-librsvg-2.62.91.tar.xz",
+    "member": "librsvg-2.62.91/librsvg-rebind/LICENSE",
+    "output": "26-librsvg-2.62.91.tar.xz--librsvg-2.62.91_librsvg-rebind_LICENSE"
+  },
+  {
+    "archive": "27-v0.5.3.tar.gz",
+    "member": "cgif-0.5.3/LICENSE",
+    "output": "27-v0.5.3.tar.gz--cgif-0.5.3_LICENSE"
+  },
+  {
+    "archive": "28-v2.0.2.tar.gz",
+    "member": "libultrahdr-2.0.2/LICENSE",
+    "output": "28-v2.0.2.tar.gz--libultrahdr-2.0.2_LICENSE"
+  },
+  {
+    "archive": "28-v2.0.2.tar.gz",
+    "member": "libultrahdr-2.0.2/LICENSE-APACHE",
+    "output": "28-v2.0.2.tar.gz--libultrahdr-2.0.2_LICENSE-APACHE"
+  },
+  {
+    "archive": "28-v2.0.2.tar.gz",
+    "member": "libultrahdr-2.0.2/LICENSE-MIT",
+    "output": "28-v2.0.2.tar.gz--libultrahdr-2.0.2_LICENSE-MIT"
+  },
+  {
+    "archive": "28-v2.0.2.tar.gz",
+    "member": "libultrahdr-2.0.2/adobe-hdr-gain-map-license/NOTICE",
+    "output": "28-v2.0.2.tar.gz--libultrahdr-2.0.2_adobe-hdr-gain-map-license_NOTICE"
+  },
+  {
+    "archive": "28-v2.0.2.tar.gz",
+    "member": "libultrahdr-2.0.2/tests/data/LICENSE",
+    "output": "28-v2.0.2.tar.gz--libultrahdr-2.0.2_tests_data_LICENSE"
+  },
+  {
+    "archive": "28-v2.0.2.tar.gz",
+    "member": "libultrahdr-2.0.2/third_party/image_io/LICENSE",
+    "output": "28-v2.0.2.tar.gz--libultrahdr-2.0.2_third_party_image_io_LICENSE"
+  },
+  {
+    "archive": "28-v2.0.2.tar.gz",
+    "member": "libultrahdr-2.0.2/third_party/image_io/src/modp_b64/LICENSE",
+    "output": "28-v2.0.2.tar.gz--libultrahdr-2.0.2_third_party_image_io_src_modp_b64_LICENSE"
+  },
+  {
+    "archive": "30-vips-8.18.6.tar.xz",
+    "member": "vips-8.18.6/LICENSE",
+    "output": "30-vips-8.18.6.tar.xz--vips-8.18.6_LICENSE"
+  },
+  {
+    "archive": "30-vips-8.18.6.tar.xz",
+    "member": "vips-8.18.6/libvips/foreign/libnsgif/COPYING",
+    "output": "30-vips-8.18.6.tar.xz--vips-8.18.6_libvips_foreign_libnsgif_COPYING"
+  },
+  {
+    "archive": "33-v1.3.3.tar.gz",
+    "member": "sharp-libvips-1.3.3/LICENSE",
+    "output": "33-v1.3.3.tar.gz--sharp-libvips-1.3.3_LICENSE"
+  },
+  {
+    "archive": "34-v0.35.4.tar.gz",
+    "member": "sharp-0.35.4/LICENSE",
+    "output": "34-v0.35.4.tar.gz--sharp-0.35.4_LICENSE"
+  },
+  {
+    "archive": "fontconfig-2.18.3.tar.xz",
+    "member": "fontconfig-2.18.3/COPYING",
+    "output": "fontconfig-2.18.3.tar.xz--fontconfig-2.18.3_COPYING"
+  }
+]

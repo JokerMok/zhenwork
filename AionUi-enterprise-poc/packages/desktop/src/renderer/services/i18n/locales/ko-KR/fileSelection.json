@@ -1,0 +1,27 @@
+{
+  "selectFile": "파일 선택",
+  "selectDirectory": "디렉토리 선택",
+  "pleaseSelectFile": "파일을 선택하세요",
+  "pleaseSelectDirectory": "디렉토리를 선택하세요",
+  "webFsPicker": {
+    "loadFailed": "이 디렉터리를 열 수 없습니다",
+    "titleDirectory": "서버의 폴더 선택",
+    "titleFile": "서버의 파일 선택",
+    "selectedCount": "{{count}}개 선택됨",
+    "up": "위로",
+    "go": "이동",
+    "empty": "비어 있습니다"
+  },
+  "enterpriseResources": {
+    "title": "기업 자료",
+    "failed": "기업 자료를 사용할 수 없거나 권한이 취소되었습니다",
+    "connection": "Cannot reach the enterprise server. Check the network and try again.",
+    "denied": "Access was revoked or the file is disabled. Choose it again.",
+    "tooLarge": "This enterprise file exceeds the 2 MiB task limit.",
+    "sessionClosed": "The enterprise session ended. Sign in again.",
+    "attached": "자료를 이 작업에 추가했습니다",
+    "saved": "자료를 저장했습니다",
+    "use": "작업에 추가",
+    "save": "다운로드"
+  }
+}

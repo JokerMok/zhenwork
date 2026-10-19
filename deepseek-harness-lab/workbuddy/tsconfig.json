@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": ".",
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": false,
+    "noUncheckedIndexedAccess": true
+  },
+  "include": [
+    "apps/server/**/*.ts",
+    "apps/manager/**/*.ts",
+    "apps/gateway/**/*.ts",
+    "packages/**/*.ts",
+    "tests/v1/**/*.ts"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "apps/web"
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "name": "enterprise-ai-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:alpha": "node tests/adversarial.mjs",
+    "typecheck": "tsc --noEmit && npm run typecheck -w @workspace/web",
+    "build:services": "tsc",
+    "build:web": "npm run build -w @workspace/web",
+    "test": "node --test packages/database/tests/*.test.ts packages/contracts/tests/*.test.ts apps/server/tests/*.test.ts apps/gateway/tests/*.test.ts apps/manager/tests/*.test.ts",
+    "migrate": "node apps/server/src/migrate.ts",
+    "bootstrap": "node apps/server/src/bootstrap.ts",
+    "dev:api": "node apps/server/src/main.ts",
+    "dev:web": "npm run dev -w @workspace/web",
+    "lint": "eslint apps packages",
+    "test:integration": "node --test tests/v1/*.test.ts",
+    "scan:license": "node scripts/v1/license-scan.mjs",
+    "scan:secrets": "node scripts/v1/secret-scan.mjs",
+    "sbom": "npm sbom --sbom-format cyclonedx",
+    "scan:dependencies": "npm audit --audit-level=high"
+  },
+  "dependencies": {
+    "better-auth": "1.7.5",
+    "pg": "8.16.3",
+    "ws": "8.21.3",
+    "zod": "4.3.6"
+  },
+  "version": "1.0.0-rc.1",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": "^24.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.58.2",
+    "@types/busboy": "1.5.4",
+    "@types/node": "22.10.2",
+    "@types/pg": "8.15.5",
+    "@types/ws": "8.18.1",
+    "eslint": "10.10.0",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.70.0"
+  }
+}

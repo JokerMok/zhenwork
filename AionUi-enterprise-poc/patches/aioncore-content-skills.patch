@@ -1,0 +1,844 @@
+diff --git a/crates/aionui-app/assets/builtin-skills/mermaid/SKILL.md b/crates/aionui-app/assets/builtin-skills/mermaid/SKILL.md
+index bee1577..0aa48be 100644
+--- a/crates/aionui-app/assets/builtin-skills/mermaid/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/mermaid/SKILL.md
+@@ -25,7 +25,8 @@ Render Mermaid diagrams using `beautiful-mermaid` library. Supports 5 diagram ty
+ 
+ ## Quick Start
+ 
+-> Dependencies (`beautiful-mermaid`) auto-install on first run.
++> The Linux Web Core bundles `tsx` and `beautiful-mermaid`. Check that they are
++> available if rendering fails; do not install packages during an employee task.
+ 
+ ### SVG Output (Default)
+ 
+@@ -34,7 +35,7 @@ Render Mermaid diagrams using `beautiful-mermaid` library. Supports 5 diagram ty
+ npx tsx scripts/render.ts diagram.mmd --output diagram.svg
+ 
+ # From stdin
+-echo "graph LR; A-->B-->C" | npx tsx scripts/render.ts --stdin --output flow.svg
++printf 'flowchart LR\n  A --> B --> C\n' | npx tsx scripts/render.ts --stdin --output flow.svg
+ ```
+ 
+ ### ASCII Output (Terminal)
+@@ -44,7 +45,7 @@ echo "graph LR; A-->B-->C" | npx tsx scripts/render.ts --stdin --output flow.svg
+ npx tsx scripts/render.ts diagram.mmd --ascii
+ 
+ # Pipe directly
+-echo "graph TD; Start-->End" | npx tsx scripts/render.ts --stdin --ascii
++printf 'flowchart TD\n  Start --> End\n' | npx tsx scripts/render.ts --stdin --ascii
+ ```
+ 
+ Output example:
+diff --git a/crates/aionui-app/assets/builtin-skills/mermaid/scripts/render.ts b/crates/aionui-app/assets/builtin-skills/mermaid/scripts/render.ts
+index 036ed22..0a75a84 100644
+--- a/crates/aionui-app/assets/builtin-skills/mermaid/scripts/render.ts
++++ b/crates/aionui-app/assets/builtin-skills/mermaid/scripts/render.ts
+@@ -8,26 +8,23 @@
+  */
+ 
+ import { readFileSync, writeFileSync, existsSync } from 'fs';
+-import { resolve } from 'path';
+-import { execSync } from 'child_process';
++import { resolve, join, delimiter } from 'path';
++import { pathToFileURL } from 'url';
+ 
+-// Auto-install beautiful-mermaid if not present
+-async function ensureDependency(): Promise<void> {
++// Dynamic import for beautiful-mermaid (ESM module)
++async function loadMermaid() {
+   try {
+-    await import('beautiful-mermaid');
++    return await import('beautiful-mermaid');
+   } catch {
+-    console.error('Installing beautiful-mermaid...');
+-    execSync('npm install beautiful-mermaid', { stdio: 'inherit' });
++    // ESM ignores NODE_PATH, so resolve the Web Core's preinstalled module.
++    for (const root of (process.env.NODE_PATH || '').split(delimiter).filter(Boolean)) {
++      const entry = join(root, 'beautiful-mermaid', 'dist', 'index.js');
++      if (existsSync(entry)) return import(pathToFileURL(entry).href);
++    }
++    throw new Error('beautiful-mermaid is unavailable in this runtime');
+   }
+ }
+ 
+-// Dynamic import for beautiful-mermaid (ESM module)
+-async function loadMermaid() {
+-  await ensureDependency();
+-  const mod = await import('beautiful-mermaid');
+-  return mod;
+-}
+-
+ interface Options {
+   input?: string;
+   stdin: boolean;
+diff --git a/crates/aionui-app/assets/builtin-skills/morph-ppt-3d/SKILL.md b/crates/aionui-app/assets/builtin-skills/morph-ppt-3d/SKILL.md
+index 498b80c..8859c6b 100644
+--- a/crates/aionui-app/assets/builtin-skills/morph-ppt-3d/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/morph-ppt-3d/SKILL.md
+@@ -28,12 +28,10 @@ This file covers **3D-specific additions** and an **enriched design system** com
+ 
+ ## Setup
+ 
+-If `officecli` is missing:
+-
+-- **macOS / Linux**: `curl -fsSL https://d.officecli.ai/install.sh | bash`
+-- **Windows (PowerShell)**: `irm https://d.officecli.ai/install.ps1 | iex`
+-
+-Verify with `officecli --version` (open a new terminal if PATH hasn't picked up). If install fails, download a binary from https://github.com/iOfficeAI/OfficeCLI/releases.
++Check `officecli --version` before running the examples. The Linux Web Core bundles
++OfficeCLI. If it is unavailable, report a service dependency error; do not
++install software during an employee task. Desktop installations may have a
++different tool inventory.
+ 
+ ## Use when
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/morph-ppt/SKILL.md b/crates/aionui-app/assets/builtin-skills/morph-ppt/SKILL.md
+index 638471b..75496d4 100644
+--- a/crates/aionui-app/assets/builtin-skills/morph-ppt/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/morph-ppt/SKILL.md
+@@ -27,12 +27,10 @@ When the pptx base rules cover it, the text here says `→ see pptx v2 §X`. Rea
+ 
+ ## Setup
+ 
+-If `officecli` is missing:
+-
+-- **macOS / Linux**: `curl -fsSL https://d.officecli.ai/install.sh | bash`
+-- **Windows (PowerShell)**: `irm https://d.officecli.ai/install.ps1 | iex`
+-
+-Verify with `officecli --version` (open a new terminal if PATH hasn't picked up). If install fails, download a binary from https://github.com/iOfficeAI/OfficeCLI/releases.
++Check `officecli --version` before running the examples. The Linux Web Core bundles
++OfficeCLI. If it is unavailable, report a service dependency error; do not
++install software during an employee task. Desktop installations may have a
++different tool inventory.
+ 
+ ## ⚠️ Help-First Rule
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/officecli-academic-paper/SKILL.md b/crates/aionui-app/assets/builtin-skills/officecli-academic-paper/SKILL.md
+index e7f8684..caab041 100644
+--- a/crates/aionui-app/assets/builtin-skills/officecli-academic-paper/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/officecli-academic-paper/SKILL.md
+@@ -27,12 +27,10 @@ When the docx base rules cover it, the text here says `→ see docx v2 §X`. Rea
+ 
+ ## Setup
+ 
+-If `officecli` is missing:
+-
+-- **macOS / Linux**: `curl -fsSL https://d.officecli.ai/install.sh | bash`
+-- **Windows (PowerShell)**: `irm https://d.officecli.ai/install.ps1 | iex`
+-
+-Verify with `officecli --version` (open a new terminal if PATH hasn't picked up). If install fails, download a binary from https://github.com/iOfficeAI/OfficeCLI/releases.
++Check `officecli --version` before running the examples. The Linux Web Core bundles
++OfficeCLI. If it is unavailable, report a service dependency error; do not
++install software during an employee task. Desktop installations may have a
++different tool inventory.
+ 
+ ## ⚠️ Help-First Rule
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/officecli-data-dashboard/SKILL.md b/crates/aionui-app/assets/builtin-skills/officecli-data-dashboard/SKILL.md
+index c3e0b42..d05905e 100644
+--- a/crates/aionui-app/assets/builtin-skills/officecli-data-dashboard/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/officecli-data-dashboard/SKILL.md
+@@ -25,12 +25,10 @@ A dashboard is not "a spreadsheet with charts". It is a composition: **one Dashb
+ 
+ ## Setup
+ 
+-If `officecli` is missing:
+-
+-- **macOS / Linux**: `curl -fsSL https://d.officecli.ai/install.sh | bash`
+-- **Windows (PowerShell)**: `irm https://d.officecli.ai/install.ps1 | iex`
+-
+-Verify with `officecli --version` (open a new terminal if PATH hasn't picked up). If install fails, download a binary from https://github.com/iOfficeAI/OfficeCLI/releases.
++Check `officecli --version` before running the examples. The Linux Web Core bundles
++OfficeCLI. If it is unavailable, report a service dependency error; do not
++install software during an employee task. Desktop installations may have a
++different tool inventory.
+ 
+ ## ⚠️ Help-First Rule
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/officecli-docx/SKILL.md b/crates/aionui-app/assets/builtin-skills/officecli-docx/SKILL.md
+index 0a4a7b3..7e871e9 100644
+--- a/crates/aionui-app/assets/builtin-skills/officecli-docx/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/officecli-docx/SKILL.md
+@@ -23,12 +23,10 @@ description: "Use this skill any time a .docx file is involved -- as input, outp
+ 
+ ## Setup
+ 
+-If `officecli` is missing:
+-
+-- **macOS / Linux**: `curl -fsSL https://d.officecli.ai/install.sh | bash`
+-- **Windows (PowerShell)**: `irm https://d.officecli.ai/install.ps1 | iex`
+-
+-Verify with `officecli --version` (open a new terminal if PATH hasn't picked up). If install fails, download a binary from https://github.com/iOfficeAI/OfficeCLI/releases.
++Check `officecli --version` before running the examples. The Linux Web Core bundles
++OfficeCLI. If it is unavailable, report a service dependency error; do not
++install software during an employee task. Desktop installations may have a
++different tool inventory.
+ 
+ ## ⚠️ Help-First Rule
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/officecli-financial-model/SKILL.md b/crates/aionui-app/assets/builtin-skills/officecli-financial-model/SKILL.md
+index 79fdb41..c63047a 100644
+--- a/crates/aionui-app/assets/builtin-skills/officecli-financial-model/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/officecli-financial-model/SKILL.md
+@@ -27,12 +27,10 @@ When the xlsx base rules cover it, the text here says `→ see xlsx v2 §X`. Rea
+ 
+ ## Setup
+ 
+-If `officecli` is missing:
+-
+-- **macOS / Linux**: `curl -fsSL https://d.officecli.ai/install.sh | bash`
+-- **Windows (PowerShell)**: `irm https://d.officecli.ai/install.ps1 | iex`
+-
+-Verify with `officecli --version` (open a new terminal if PATH hasn't picked up). If install fails, download a binary from https://github.com/iOfficeAI/OfficeCLI/releases.
++Check `officecli --version` before running the examples. The Linux Web Core bundles
++OfficeCLI. If it is unavailable, report a service dependency error; do not
++install software during an employee task. Desktop installations may have a
++different tool inventory.
+ 
+ ## Help-First Rule
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/officecli-pitch-deck/SKILL.md b/crates/aionui-app/assets/builtin-skills/officecli-pitch-deck/SKILL.md
+index 97dd774..73265ad 100644
+--- a/crates/aionui-app/assets/builtin-skills/officecli-pitch-deck/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/officecli-pitch-deck/SKILL.md
+@@ -27,12 +27,10 @@ When the pptx base rules cover it, the text here says `→ see pptx v2 §X`. Rea
+ 
+ ## Setup
+ 
+-If `officecli` is missing:
+-
+-- **macOS / Linux**: `curl -fsSL https://d.officecli.ai/install.sh | bash`
+-- **Windows (PowerShell)**: `irm https://d.officecli.ai/install.ps1 | iex`
+-
+-Verify with `officecli --version` (open a new terminal if PATH hasn't picked up). If install fails, download a binary from https://github.com/iOfficeAI/OfficeCLI/releases.
++Check `officecli --version` before running the examples. The Linux Web Core bundles
++OfficeCLI. If it is unavailable, report a service dependency error; do not
++install software during an employee task. Desktop installations may have a
++different tool inventory.
+ 
+ ## ⚠️ Help-First Rule
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/officecli-pptx/SKILL.md b/crates/aionui-app/assets/builtin-skills/officecli-pptx/SKILL.md
+index 8db9ffe..5c88650 100644
+--- a/crates/aionui-app/assets/builtin-skills/officecli-pptx/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/officecli-pptx/SKILL.md
+@@ -23,12 +23,10 @@ description: "Use this skill any time a .pptx file is involved -- as input, outp
+ 
+ ## Setup
+ 
+-If `officecli` is missing:
+-
+-- **macOS / Linux**: `curl -fsSL https://d.officecli.ai/install.sh | bash`
+-- **Windows (PowerShell)**: `irm https://d.officecli.ai/install.ps1 | iex`
+-
+-Verify with `officecli --version` (open a new terminal if PATH hasn't picked up). If install fails, download a binary from https://github.com/iOfficeAI/OfficeCLI/releases.
++Check `officecli --version` before running the examples. The Linux Web Core bundles
++OfficeCLI. If it is unavailable, report a service dependency error; do not
++install software during an employee task. Desktop installations may have a
++different tool inventory.
+ 
+ ## ⚠️ Help-First Rule
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/officecli-word-form/SKILL.md b/crates/aionui-app/assets/builtin-skills/officecli-word-form/SKILL.md
+index fdcffe3..c93b79d 100644
+--- a/crates/aionui-app/assets/builtin-skills/officecli-word-form/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/officecli-word-form/SKILL.md
+@@ -25,29 +25,10 @@ description: "Use this skill to create fillable Word forms (.docx) with real Con
+ 
+ ## BEFORE YOU START (CRITICAL)
+ 
+-**If `officecli` is not installed:**
+-
+-`macOS / Linux`
+-
+-```bash
+-if ! command -v officecli >/dev/null 2>&1; then
+-    curl -fsSL https://d.officecli.ai/install.sh | bash
+-fi
+-```
+-
+-`Windows (PowerShell)`
+-
+-```powershell
+-if (-not (Get-Command officecli -ErrorAction SilentlyContinue)) {
+-    irm https://d.officecli.ai/install.ps1 | iex
+-}
+-```
+-
+-Verify: `officecli --version`
+-
+-If `officecli` is still not found after first install, open a new terminal and run the verify command again.
+-
+-If the install command above fails (e.g. blocked by security policy, no network access, or insufficient permissions), install manually — download the binary for your platform from https://github.com/iOfficeAI/OfficeCLI/releases — then re-run the verify command.
++Check `officecli --version` before running the examples. The Linux Web Core bundles
++OfficeCLI. If it is unavailable, report a service dependency error; do not
++install software during an employee task. Desktop installations may have a
++different tool inventory.
+ 
+ ## Help-First Rule
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/officecli-xlsx/SKILL.md b/crates/aionui-app/assets/builtin-skills/officecli-xlsx/SKILL.md
+index a3fb062..ecdb673 100644
+--- a/crates/aionui-app/assets/builtin-skills/officecli-xlsx/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/officecli-xlsx/SKILL.md
+@@ -23,12 +23,10 @@ description: "Use this skill any time a .xlsx file is involved -- as input, outp
+ 
+ ## Setup
+ 
+-If `officecli` is missing:
+-
+-- **macOS / Linux**: `curl -fsSL https://d.officecli.ai/install.sh | bash`
+-- **Windows (PowerShell)**: `irm https://d.officecli.ai/install.ps1 | iex`
+-
+-Verify with `officecli --version` (open a new terminal if PATH hasn't picked up). If install fails, download a binary from https://github.com/iOfficeAI/OfficeCLI/releases.
++Check `officecli --version` before running the examples. The Linux Web Core bundles
++OfficeCLI. If it is unavailable, report a service dependency error; do not
++install software during an employee task. Desktop installations may have a
++different tool inventory.
+ 
+ ## ⚠️ Help-First Rule
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/pdf/SKILL.md b/crates/aionui-app/assets/builtin-skills/pdf/SKILL.md
+index 83a48d5..7967a78 100644
+--- a/crates/aionui-app/assets/builtin-skills/pdf/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/pdf/SKILL.md
+@@ -8,6 +8,11 @@ license: Proprietary. LICENSE.txt has complete terms
+ 
+ # PDF Processing Guide
+ 
++The Linux Web Core bundles the PDF libraries and commands used below, including
++OCR. Check the relevant command or Python import before use. Do not install
++packages during an employee task; report a runtime dependency error if one is
++missing.
++
+ ## Overview
+ 
+ This guide covers essential PDF processing operations using Python libraries and command-line tools. For advanced features, JavaScript libraries, and detailed examples, see reference.md. If you need to fill out a PDF form, read forms.md and follow its instructions.
+@@ -227,7 +232,7 @@ pdftk input.pdf rotate 1east output rotated.pdf
+ ### Extract Text from Scanned PDFs
+ 
+ ```python
+-# Requires: pip install pytesseract pdf2image
++# Web Core includes pytesseract, pdf2image, Poppler, and Tesseract.
+ import pytesseract
+ from pdf2image import convert_from_path
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/story-roleplay/SKILL.md b/crates/aionui-app/assets/builtin-skills/story-roleplay/SKILL.md
+index 367c48c..a8ea4e8 100644
+--- a/crates/aionui-app/assets/builtin-skills/story-roleplay/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/story-roleplay/SKILL.md
+@@ -1,6 +1,6 @@
+ ---
+ name: story-roleplay
+-description: Parse and apply character cards and world info files in multiple formats (PNG, WebP, JSON), fully compatible with SillyTavern format. Supports automatic parsing, keyword triggering, and dynamic updates.
++description: Parse and apply SillyTavern character cards and world info from PNG metadata or JSON. Supports keyword triggering and dynamic updates.
+ ---
+ 
+ > **⚠️ Platform note — read before running any command.** The shell snippets in this skill are written for **macOS / Linux** (bash/zsh). Always check which OS you are on first. On **Windows** do **not** run them verbatim — the underlying tool/CLI commands are usually cross-platform, but the surrounding shell syntax is not. Translate it to PowerShell before running:
+@@ -25,7 +25,7 @@ Parse and apply character cards and world info files for immersive story rolepla
+ 
+ ## ⚠️ Core Constraints (Must Follow)
+ 
+-1. **🚫 ABSOLUTELY FORBIDDEN**: Guessing PNG/WebP image content, must use parser tool to extract data
++1. **🚫 ABSOLUTELY FORBIDDEN**: Guessing PNG image content, must use parser tool to extract data
+ 2. **✅ MUST EXECUTE**: Prioritize copying preset tool (`skills/story-roleplay/scripts/`), create only if not found
+ 3. **⚠️ LAST RESORT**: When creating scripts, use complete code at end of file, version must be `1.0.0` (do not use `^`)
+ 
+@@ -76,14 +76,14 @@ Try in the following order until successful:
+ 
+   - If files don't exist, continue to next method or use fallback option
+ 
+-**Step 2: Install Dependencies**
++**Step 2: Check Dependencies**
+ 
+ ```bash
+-npm install
++node -e "require('png-chunks-extract'); require('png-chunk-text')"
+ ```
+ 
+-- Wait for completion, check if `node_modules` was created
+-- If fails: Check network/permission/Node.js environment
++- Linux Web Core bundles both packages. If this check fails, report a runtime
++  dependency error; do not install packages during an employee task.
+ 
+ **Step 3: Execute Parser**
+ 
+@@ -117,7 +117,7 @@ node parse-character-card.js world-info.png world-info.json --world-info
+   - Check error message (script will output specific error)
+   - Common errors:
+     - "PNG metadata does not contain any text chunks" → Image may not be a valid SillyTavern character card
+-    - "Required dependencies not found" → Need to run `npm install` first
++    - "Required dependencies not found" → Report a runtime dependency error
+     - "Image file not found" → Check if image path is correct
+   - **ABSOLUTELY CANNOT guess or fabricate information**, must report error clearly
+ 
+@@ -136,7 +136,7 @@ If all above methods fail (possibly due to system permission issues), creating s
+ 
+ **Triggers**: character card, 角色卡, load character, 加载角色, parse character, 解析角色卡
+ 
+-**Description**: Parse character card files in multiple formats, including PNG, WebP image formats and JSON file format.
++**Description**: Parse character card data from PNG metadata or JSON files.
+ 
+ ### Supported Formats
+ 
+@@ -148,16 +148,10 @@ If all above methods fail (possibly due to system permission issues), creating s
+ 
+ **Processing**: Use common parser tool workflow (see above), use character card command format when executing.
+ 
+-#### 2. WebP Image Format (SillyTavern Compatible)
++#### 2. WebP Image Format
+ 
+-- Data location: In WebP EXIF/XMP metadata or text chunks
+-- Keywords: `chara` (v2) or `ccv3` (v3)
+-
+-**Processing**:
+-
+-- **Recommended**: Convert WebP to PNG first, then use PNG parser tool
+-- Or try using PNG parser tool (if WebP contains similar metadata structure)
+-- If conversion or parsing not possible, prompt user to provide JSON format or re-export from SillyTavern
++The bundled parser does not read WebP metadata. Ask for a PNG or JSON export;
++converting the image pixels to PNG does not preserve its character metadata.
+ 
+ #### 3. JSON File Format
+ 
+@@ -171,11 +165,11 @@ If all above methods fail (possibly due to system permission issues), creating s
+ 
+ ### Parsing Steps
+ 
+-**Important: PNG/WebP images must use parser tool, guessing content is forbidden**
++**Important: PNG images must use the parser tool; do not guess image content**
+ 
+ 1. **Detect file format**:
+    - **JSON files**: Read and parse directly (simplest, preferred)
+-   - **PNG/WebP files**: Use common parser tool workflow (see above)
++   - **PNG files**: Use common parser tool workflow (see above)
+ 
+ 2. **Extract character information**:
+    - `name`: Character name
+@@ -192,7 +186,7 @@ If all above methods fail (possibly due to system permission issues), creating s
+    - Apply character_book entries to conversation
+ 
+ 4. **Save as JSON format (after parsing images)**:
+-   - After successfully parsing PNG/WebP images, **automatically convert to JSON format**
++   - After successfully parsing PNG images, **automatically convert to JSON format**
+    - Save as `character.json` in workspace
+    - Preserve all original data from image
+ 
+@@ -200,7 +194,7 @@ If all above methods fail (possibly due to system permission issues), creating s
+ 
+ - **Prefer JSON format** (easiest to parse, no additional tools needed)
+ - **PNG format**: Must use parser tool, guessing content is forbidden
+-- **WebP format**: Convert to PNG then use parser tool, or use JSON format
++- **WebP format**: Unsupported by the bundled parser; request a PNG or JSON export
+ - **Error handling**: When parsing fails, must provide clear error message, absolutely cannot guess or fabricate character information
+ - **Always save parsed images as JSON format** for easier viewing and editing
+ 
+@@ -210,7 +204,7 @@ If all above methods fail (possibly due to system permission issues), creating s
+ 
+ **Triggers**: world info, 世界信息, world tree, 世界树, load world info, 加载世界信息
+ 
+-**Description**: Parse and apply world info files, implementing keyword trigger mechanism. Supports JSON files and PNG/WebP image formats (with embedded world info data).
++**Description**: Parse and apply world info files, implementing keyword trigger mechanism. Supports JSON files and PNG images with embedded world info data.
+ 
+ ### Supported Formats
+ 
+@@ -238,12 +232,9 @@ If all above methods fail (possibly due to system permission issues), creating s
+ 
+ **Processing**: Use common parser tool workflow (see above), use `--world-info` flag when executing.
+ 
+-#### 3. WebP Image Format (SillyTavern Compatible)
+-
+-**Processing**:
++#### 3. WebP Image Format
+ 
+-- **Recommended**: Convert WebP to PNG first, then use PNG parser
+-- If conversion fails, suggest user use JSON format or re-export from SillyTavern
++The bundled parser does not read WebP metadata. Ask for a PNG or JSON export.
+ 
+ ### Field Descriptions
+ 
+@@ -262,7 +253,7 @@ If all above methods fail (possibly due to system permission issues), creating s
+ 
+ 1. **Detect file format**:
+    - **JSON files**: Read and parse directly (simplest, preferred)
+-   - **PNG/WebP files**: Use common parser tool workflow (see above), use `--world-info` flag
++   - **PNG files**: Use common parser tool workflow (see above), use `--world-info` flag
+ 
+ 2. **Extract world info**:
+    - Read output JSON file
+@@ -270,14 +261,14 @@ If all above methods fail (possibly due to system permission issues), creating s
+    - Verify JSON structure is correct (must contain `entries` field)
+ 
+ 3. **Save as JSON format (after parsing images)**:
+-   - After successfully parsing PNG/WebP images, automatically convert to JSON format
++   - After successfully parsing PNG images, automatically convert to JSON format
+    - Save as `world-info.json` in workspace
+ 
+ ### Best Practices
+ 
+ - **Prefer JSON format** (easiest to parse, no additional tools needed)
+ - **PNG format**: Use same parser tool as character cards (with `--world-info` flag)
+-- **WebP format**: Recommend converting to PNG or using JSON format
++- **WebP format**: Unsupported by the bundled parser; request a PNG or JSON export
+ - Keywords should be specific and meaningful, avoid overly broad keywords
+ - **Always save parsed images as JSON format** for easier viewing and editing
+ 
+@@ -315,12 +306,12 @@ character_book field in character card:
+ ### Automatic Detection
+ 
+ 1. **Scan workspace**:
+-   - Find character card files: `character.png`, `character.webp`, `character.json`, `*.character.json`
+-   - Find world info files: `world-info.png`, `world-info.webp`, `world-info.json`, `world.json`
++   - Find character card files: `character.png`, `character.json`, `*.character.json`
++   - Find world info files: `world-info.png`, `world-info.json`, `world.json`
+ 
+ 2. **Format recognition and parsing**:
+    - **JSON files**: Read directly
+-   - **PNG/WebP images**: Use common parser tool workflow (see above)
++   - **PNG images**: Use common parser tool workflow (see above)
+ 
+ 3. **Apply parsed results**:
+    - Apply parsed results to conversation context
+@@ -356,12 +347,12 @@ Users can manually load via:
+ 
+ ## Compatibility
+ 
+-This skill is fully compatible with SillyTavern formats:
++This skill supports these SillyTavern exports:
+ 
+ - ✅ PNG image format (embedded JSON, SillyTavern standard) - for character cards and world info
+-- ✅ WebP image format (embedded JSON, SillyTavern compatible) - for character cards and world info
++- ⚠️ WebP metadata is not supported by the bundled parser
+ - ✅ JSON file format (Tavern Card V2/V3) - for character cards and world info
+-- ✅ World info format (PNG/WebP images use keyword `naidata`)
++- ✅ World info format (PNG images use keyword `naidata`)
+ - ✅ Character Book (character knowledge base)
+ 
+ ---
+diff --git a/crates/aionui-app/assets/builtin-skills/story-roleplay/scripts/parse-character-card.js b/crates/aionui-app/assets/builtin-skills/story-roleplay/scripts/parse-character-card.js
+index 314dc1b..82113f9 100644
+--- a/crates/aionui-app/assets/builtin-skills/story-roleplay/scripts/parse-character-card.js
++++ b/crates/aionui-app/assets/builtin-skills/story-roleplay/scripts/parse-character-card.js
+@@ -20,7 +20,7 @@ try {
+   PNGtext = require('png-chunk-text');
+ } catch (error) {
+   console.error('Error: Required dependencies not found.');
+-  console.error('Please run: npm install png-chunks-extract png-chunk-text');
++  console.error('The runtime is missing bundled PNG parser dependencies.');
+   process.exit(1);
+ }
+ 
+@@ -128,10 +128,8 @@ if (require.main === module) {
+         jsonData = extractFromPng(imagePath);
+       }
+     } else if (ext === '.webp') {
+-      // WebP support would require additional library
+-      // For now, suggest converting to PNG or using JSON format
+-      console.error('Error: WebP format parsing requires additional setup.');
+-      console.error('Please convert to PNG or use JSON format.');
++      console.error('Error: WebP metadata is not supported by this parser.');
++      console.error('Please export the original card as PNG or JSON.');
+       process.exit(1);
+     } else {
+       console.error(`Error: Unsupported file format: ${ext}`);
+diff --git a/crates/aionui-app/assets/builtin-skills/x-recruiter/SKILL.md b/crates/aionui-app/assets/builtin-skills/x-recruiter/SKILL.md
+index d8bafeb..e9eaa79 100644
+--- a/crates/aionui-app/assets/builtin-skills/x-recruiter/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/x-recruiter/SKILL.md
+@@ -7,6 +7,10 @@ description: 用于在 X (x.com) 发布招聘帖子。包含文案规范、图
+ 
+ # X Recruiter (X 招聘助手)
+ 
++网页端 Core 可以生成文案和图片，但不能展示此技能使用的有界面登录浏览器。
++在网页端交付待审核发布包，由用户在自己的浏览器中登录、检查并发布；
++不要在员工容器中安装 Playwright 或运行 `publish_x.py`。
++
+ 本技能用于快速在 X 发布招聘信息，包含文案规则、封面/详情图提示与自动化发布脚本。
+ 
+ ## 核心工作流
+@@ -21,13 +25,15 @@ description: 用于在 X (x.com) 发布招聘帖子。包含文案规范、图
+ 
+ ### 2. 生成视觉素材
+ 
+-使用 `scripts/generate_images.js` 生成图片。
++先写入 `job.json`，字段为 `role`、`company`、`apply`（必填），
++以及 `tagline`、`responsibilities`、`requirements`（后两项为字符串数组）。
++使用 `scripts/generate_images.js` 生成图片。不要捏造公司或投递方式。
+ 
+ - **操作**：
+   ```bash
+-  node scripts/generate_images.js
++  node scripts/generate_images.js job.json ./output
+   ```
+-- **产出**：`cover.png`, `jd_details.png`
++- **产出**：`output/cover.png`, `output/jd_details.png`
+ 
+ ### 3. 生成文案
+ 
+@@ -40,10 +46,9 @@ description: 用于在 X (x.com) 发布招聘帖子。包含文案规范、图
+ 
+ 使用 `scripts/publish_x.py` 启动浏览器进行发布。
+ 
+-**前置要求**：
++**桌面端前置要求**（网页端跳过此节）：
+ 
+-- 安装 Playwright: `pip install playwright`
+-- 安装浏览器驱动: `playwright install chromium`
++- 使用已配置 Playwright 和可见 Chromium 的桌面环境；若不可用，交付待审核发布包。
+ 
+ **执行命令**：
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/x-recruiter/scripts/generate_images.js b/crates/aionui-app/assets/builtin-skills/x-recruiter/scripts/generate_images.js
+index 9134435..62b3bc1 100644
+--- a/crates/aionui-app/assets/builtin-skills/x-recruiter/scripts/generate_images.js
++++ b/crates/aionui-app/assets/builtin-skills/x-recruiter/scripts/generate_images.js
+@@ -1,11 +1,119 @@
+ const fs = require('fs');
++const path = require('path');
++const { createCanvas } = require('canvas');
+ 
+-// Placeholder generator instructions. Replace with real image generation if needed.
+-const output = [
+-  'Generate cover.png and jd_details.png with 1080x1350 resolution.',
+-  'Cover: role title + short tagline + company name.',
+-  'Details: responsibilities, requirements, apply method.',
+-].join('\n');
++const configPath = process.argv[2];
++const outputDir = path.resolve(process.argv[3] || process.cwd());
++if (!configPath) {
++  console.error('Usage: node generate_images.js job.json [output-directory]');
++  process.exit(2);
++}
+ 
+-fs.writeFileSync('image_instructions.txt', output);
+-console.log('Wrote image_instructions.txt');
++const job = JSON.parse(fs.readFileSync(configPath, 'utf8'));
++for (const field of ['role', 'company', 'apply']) {
++  if (typeof job[field] !== 'string' || !job[field].trim()) {
++    throw new Error(`Missing job field: ${field}`);
++  }
++}
++
++const WIDTH = 1080;
++const HEIGHT = 1350;
++const FONT = '"Noto Sans CJK SC", sans-serif';
++const colors = { background: '#101419', surface: '#192129', text: '#F4F7F7', muted: '#B5C4C8', accent: '#50E3B1' };
++
++function frame(ctx, label) {
++  ctx.fillStyle = colors.background;
++  ctx.fillRect(0, 0, WIDTH, HEIGHT);
++  ctx.fillStyle = colors.accent;
++  ctx.fillRect(72, 80, 76, 8);
++  ctx.fillStyle = colors.muted;
++  ctx.font = `28px ${FONT}`;
++  ctx.fillText(label, 72, 145);
++  ctx.strokeStyle = '#31454A';
++  ctx.lineWidth = 2;
++  ctx.beginPath();
++  ctx.moveTo(72, 1195);
++  ctx.lineTo(1008, 1195);
++  ctx.stroke();
++  ctx.fillStyle = colors.text;
++  ctx.font = `28px ${FONT}`;
++  ctx.fillText(job.company, 72, 1250, 900);
++}
++
++function lines(ctx, text, maxWidth, maxLines) {
++  const result = [];
++  let line = '';
++  for (const character of String(text)) {
++    if (character === '\n' || ctx.measureText(line + character).width > maxWidth) {
++      if (line) result.push(line);
++      line = character === '\n' ? '' : character;
++    } else {
++      line += character;
++    }
++  }
++  if (line) result.push(line);
++  if (result.length > maxLines) {
++    result.length = maxLines;
++    result[maxLines - 1] = result[maxLines - 1].replace(/.$/, '…');
++  }
++  return result;
++}
++
++function drawLines(ctx, text, x, y, width, lineHeight, maxLines) {
++  for (const line of lines(ctx, text, width, maxLines)) {
++    ctx.fillText(line, x, y, width);
++    y += lineHeight;
++  }
++  return y;
++}
++
++function save(name, draw) {
++  const canvas = createCanvas(WIDTH, HEIGHT);
++  draw(canvas.getContext('2d'));
++  fs.mkdirSync(outputDir, { recursive: true });
++  const target = path.join(outputDir, name);
++  fs.writeFileSync(target, canvas.toBuffer('image/png'));
++  console.log(target);
++}
++
++save('cover.png', (ctx) => {
++  frame(ctx, 'WE ARE HIRING');
++  ctx.fillStyle = colors.text;
++  ctx.font = `bold 88px ${FONT}`;
++  const titleEnd = drawLines(ctx, job.role, 72, 405, 930, 112, 3);
++  ctx.fillStyle = colors.accent;
++  ctx.fillRect(72, titleEnd + 24, 94, 8);
++  ctx.fillStyle = colors.muted;
++  ctx.font = `40px ${FONT}`;
++  drawLines(ctx, job.tagline || '一起做有价值的事', 72, titleEnd + 116, 900, 58, 3);
++  ctx.fillStyle = colors.surface;
++  ctx.fillRect(72, 985, 936, 142);
++  ctx.fillStyle = colors.text;
++  ctx.font = `32px ${FONT}`;
++  drawLines(ctx, `投递方式：${job.apply}`, 100, 1048, 870, 46, 2);
++});
++
++save('jd_details.png', (ctx) => {
++  frame(ctx, 'ROLE DETAILS');
++  ctx.fillStyle = colors.text;
++  ctx.font = `bold 55px ${FONT}`;
++  drawLines(ctx, job.role, 72, 245, 930, 74, 2);
++  let y = 395;
++  for (const [heading, entries] of [['岗位职责', job.responsibilities], ['任职要求', job.requirements]]) {
++    ctx.fillStyle = colors.accent;
++    ctx.font = `bold 39px ${FONT}`;
++    ctx.fillText(heading, 72, y);
++    y += 68;
++    ctx.fillStyle = colors.text;
++    ctx.font = `30px ${FONT}`;
++    for (const entry of (Array.isArray(entries) ? entries : []).slice(0, 4)) {
++      y = drawLines(ctx, `• ${entry}`, 80, y, 900, 44, 2) + 12;
++      if (y > 1010) break;
++    }
++    y += 40;
++    if (y > 1030) break;
++  }
++  ctx.fillStyle = colors.accent;
++  ctx.font = `31px ${FONT}`;
++  drawLines(ctx, `投递：${job.apply}`, 72, 1130, 900, 42, 1);
++});
+diff --git a/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/SKILL.md b/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/SKILL.md
+index 00d6b87..104bc82 100644
+--- a/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/SKILL.md
+@@ -7,6 +7,10 @@ description: 用于在小红书上发布高质量的 AI 相关岗位招聘帖子
+ 
+ # Xiaohongshu Recruiter (小红书招聘助手)
+ 
++网页端 Core 可以生成文案和图片，但不能展示此技能使用的有界面登录浏览器。
++在网页端交付待审核发布包，由用户在自己的浏览器中登录、检查并发布；
++不要在员工容器中安装 Playwright 或运行 `publish_xiaohongshu.py`。
++
+ 本技能旨在帮助用户快速、专业地在小红书发布 AI 岗位的招聘信息。通过 "Systemic Flux" 设计理念生成符合极客审美的视觉素材，并提供 Playwright 脚本实现半自动化发布。
+ 
+ ## 核心工作流
+@@ -17,8 +21,8 @@ description: 用于在小红书上发布高质量的 AI 相关岗位招聘帖子
+ 
+ 1. 不再向用户追问细节，由模型自行补全招聘信息与文案。
+ 2. 不要求用户提供邮箱或投递方式，模型自动补一个“私信联系/评论联系”的默认投递方式。
+-3. 自动生成封面图与详情图，并直接进入发布流程。
+-4. 自动打开浏览器，等待用户扫码登录后，自动填写图文信息并一键发布。
++3. 自动生成封面图与详情图，连同文案交付待审核发布包。
++4. 仅在有可见的用户浏览器且用户明确授权发布时进入发布流程。
+ 
+ ### 1. 信息收集
+ 
+@@ -30,14 +34,16 @@ description: 用于在小红书上发布高质量的 AI 相关岗位招聘帖子
+ 
+ ### 2. 生成视觉素材 (Visual Generation)
+ 
+-默认使用本地脚本 `scripts/generate_images.js` 生成图片（暂时隐藏/禁用大模型生图流程）。
++先写入 `job.json`：`role`、`description`、`apply` 为非空字符串，
++`responsibilities`、`requirements` 为字符串数组；可选 `coverLine1`、
++`coverLine2`、`slogan1`、`slogan2`。未提供投递方式时使用“私信联系”，
++不要虚构邮箱、公司或岗位要求。再用本地脚本生成图片。
+ 
+ - **操作**：
+   ```bash
+-  node scripts/generate_images.js
++  node scripts/generate_images.js job.json ./output
+   ```
+-  _(注：可视情况修改脚本中的文本配置)_
+-- **产出**：`cover.png`, `jd_details.png`
++- **产出**：`output/cover.png`, `output/jd_details.png`
+ 
+ ### 3. 生成文案 (Content Generation)
+ 
+@@ -51,10 +57,9 @@ description: 用于在小红书上发布高质量的 AI 相关岗位招聘帖子
+ 
+ 使用 `scripts/publish_xiaohongshu.py` 启动浏览器进行发布。
+ 
+-**前置要求**：
++**桌面端前置要求**（网页端跳过此节）：
+ 
+-- 安装 Playwright: `pip install playwright`
+-- 安装浏览器驱动: `playwright install chromium`
++- 使用已配置 Playwright 和可见 Chromium 的桌面环境；若不可用，交付待审核发布包。
+ 
+ **执行命令**：
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/assets/rules.md b/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/assets/rules.md
+index a17b83e..3a52b56 100644
+--- a/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/assets/rules.md
++++ b/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/assets/rules.md
+@@ -37,7 +37,7 @@
+ 
+ 1.  **环境准备**：
+     - 确保 Node.js 环境可用。
+-    - 安装依赖：`npm install canvas`。
++    - 网页端 Core 已内置 `canvas`；缺失时报告运行环境问题，不在员工任务中安装。
+ 2.  **脚本执行**：
+     - 创建或调用 `generate_images.js`。
+     - 脚本需包含 `Systemic Flux` 配色与布局逻辑。
+diff --git a/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/scripts/generate_images.js b/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/scripts/generate_images.js
+index b563a78..4e08dbb 100644
+--- a/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/scripts/generate_images.js
++++ b/crates/aionui-app/assets/builtin-skills/xiaohongshu-recruiter/scripts/generate_images.js
+@@ -151,8 +151,8 @@ function generateCover(title1, title2, slogan1, slogan2) {
+ 
+   ctx.fillStyle = COLORS.textPrimary;
+   ctx.font = 'bold 100px Mono';
+-  ctx.fillText(title1 || 'AGENT', PADDING, 420);
+-  ctx.fillText(title2 || 'DESIGNER', PADDING, 520);
++  ctx.fillText(title1 || 'AGENT', PADDING, 420, WIDTH - PADDING * 2);
++  ctx.fillText(title2 || 'DESIGNER', PADDING, 520, WIDTH - PADDING * 2);
+ 
+   const cx = WIDTH / 2;
+   const cy = HEIGHT / 2 + 150;
+@@ -286,11 +286,26 @@ function generateJD(roleTitle, roleDesc, responsibilities, requirements, email)
+ }
+ 
+ // --- Main execution ---
+-// Defaults
+-const defaults = {};
++const configPath = process.argv[2];
++const outputDir = path.resolve(process.argv[3] || process.cwd());
++if (!configPath) {
++  console.error('Usage: node generate_images.js job.json [output-directory]');
++  process.exit(2);
++}
+ 
+-// You could parse process.argv here to override defaults if needed
+-// For now, we'll use the hardcoded structure or let the user edit this file.
++const job = JSON.parse(fs.readFileSync(configPath, 'utf8'));
++for (const field of ['role', 'description', 'apply']) {
++  if (typeof job[field] !== 'string' || !job[field].trim()) {
++    throw new Error(`Missing job field: ${field}`);
++  }
++}
++for (const field of ['responsibilities', 'requirements']) {
++  if (!Array.isArray(job[field]) || !job[field].every((value) => typeof value === 'string')) {
++    throw new Error(`Expected string array: ${field}`);
++  }
++}
+ 
+-generateCover(defaults.title1, defaults.title2, defaults.slogan1, defaults.slogan2);
+-generateJD(defaults.roleTitle, defaults.roleDesc, defaults.responsibilities, defaults.requirements, defaults.email);
++fs.mkdirSync(outputDir, { recursive: true });
++process.chdir(outputDir);
++generateCover(job.coverLine1 || job.role, job.coverLine2 || '招聘中', job.slogan1, job.slogan2);
++generateJD(job.role, job.description, job.responsibilities, job.requirements, job.apply);

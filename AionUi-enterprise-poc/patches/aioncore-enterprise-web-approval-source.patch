@@ -1,0 +1,131 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 94ed1f9..5ceeb75 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -117,7 +117,6 @@ dependencies = [
+ [[package]]
+ name = "aion-agent"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "aion-compact",
+  "aion-config",
+@@ -138,6 +137,7 @@ dependencies = [
+  "is-terminal",
+  "serde",
+  "serde_json",
++ "shlex",
+  "thiserror 2.0.18",
+  "tokio",
+  "tracing",
+@@ -148,7 +148,6 @@ dependencies = [
+ [[package]]
+ name = "aion-compact"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "regex",
+  "serde",
+@@ -160,7 +159,6 @@ dependencies = [
+ [[package]]
+ name = "aion-config"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "aion-compact",
+  "aion-process",
+@@ -185,7 +183,6 @@ dependencies = [
+ [[package]]
+ name = "aion-mcp"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "aion-config",
+  "aion-protocol",
+@@ -206,7 +203,6 @@ dependencies = [
+ [[package]]
+ name = "aion-memory"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "aion-config",
+  "chrono",
+@@ -220,7 +216,6 @@ dependencies = [
+ [[package]]
+ name = "aion-process"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "libc",
+  "tokio",
+@@ -231,7 +226,6 @@ dependencies = [
+ [[package]]
+ name = "aion-protocol"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "aion-types",
+  "serde",
+@@ -244,7 +238,6 @@ dependencies = [
+ [[package]]
+ name = "aion-providers"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "aion-config",
+  "aion-types",
+@@ -273,7 +266,6 @@ dependencies = [
+ [[package]]
+ name = "aion-skills"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "aion-config",
+  "aion-mcp",
+@@ -300,7 +292,6 @@ dependencies = [
+ [[package]]
+ name = "aion-tools"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "aion-config",
+  "aion-process",
+@@ -322,7 +313,6 @@ dependencies = [
+ [[package]]
+ name = "aion-types"
+ version = "0.2.11"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "async-trait",
+  "base64",
+@@ -7117,7 +7109,6 @@ dependencies = [
+ [[package]]
+ name = "workspace-hack"
+ version = "0.1.0"
+-source = "git+https://github.com/iOfficeAI/aionrs.git?tag=v0.2.11#8e61a90329fa9f67c4fdf7e97fe02c24dba33f75"
+ dependencies = [
+  "bitflags",
+  "cc",
+diff --git a/Cargo.toml b/Cargo.toml
+index 5846fbd..debb7ff 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -65,12 +65,12 @@ aionui-cron = { path = "crates/aionui-cron" }
+ aionui-assistant = { path = "crates/aionui-assistant" }
+ aionui-app = { path = "crates/aionui-app" }
+ 
+-aion-agent = { git = "https://github.com/iOfficeAI/aionrs.git", tag = "v0.2.11" }
+-aion-providers = { git = "https://github.com/iOfficeAI/aionrs.git", tag = "v0.2.11" }
+-aion-types = { git = "https://github.com/iOfficeAI/aionrs.git", tag = "v0.2.11" }
+-aion-protocol = { git = "https://github.com/iOfficeAI/aionrs.git", tag = "v0.2.11" }
+-aion-config = { git = "https://github.com/iOfficeAI/aionrs.git", tag = "v0.2.11" }
+-aion-mcp = { git = "https://github.com/iOfficeAI/aionrs.git", tag = "v0.2.11" }
++aion-agent = { path = "../upstream-aionrs/crates/aion-agent" }
++aion-providers = { path = "../upstream-aionrs/crates/aion-providers" }
++aion-types = { path = "../upstream-aionrs/crates/aion-types" }
++aion-protocol = { path = "../upstream-aionrs/crates/aion-protocol" }
++aion-config = { path = "../upstream-aionrs/crates/aion-config" }
++aion-mcp = { path = "../upstream-aionrs/crates/aion-mcp" }
+ 
+ # Core framework
+ tokio = { version = "1", features = ["full"] }

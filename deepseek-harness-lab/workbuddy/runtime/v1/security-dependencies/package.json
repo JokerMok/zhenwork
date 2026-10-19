@@ -1,0 +1,12 @@
+{
+  "name": "workspace-harness-security-dependencies",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Packaging-only patched third-party dependencies; upstream Harness source and lock remain unchanged",
+  "dependencies": {
+    "fast-uri": "3.1.6",
+    "ip-address": "10.3.1",
+    "js-yaml": "4.3.2",
+    "sharp": "0.35.4"
+  }
+}

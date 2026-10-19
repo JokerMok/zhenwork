@@ -1,0 +1,251 @@
+diff --git a/crates/aionui-ai-agent/src/factory/aionrs.rs b/crates/aionui-ai-agent/src/factory/aionrs.rs
+index d4c09cd..6d243bb 100644
+--- a/crates/aionui-ai-agent/src/factory/aionrs.rs
++++ b/crates/aionui-ai-agent/src/factory/aionrs.rs
+@@ -30,7 +30,20 @@ use crate::types::{AionrsCompatOverrides, AionrsResolvedConfig};
+ /// Render this conversation's skills index, or `""` when there is nothing to add.
+ async fn skill_index_text(deps: &AgentFactoryDeps, user_id: &str, skills: &[String]) -> String {
+     let index = deps.skill_manager.discover_by_names_for_user(user_id, skills).await;
+-    crate::capability::skill_manager::build_skills_index_text(&index)
++    let mut text = crate::capability::skill_manager::build_skills_index_text(&index);
++    // The RC2 resource is explicitly selected in this conversation. Load its
++    // published body through AionCore's native Skill manager so the first turn
++    // uses the instruction, even when the model does not call `skills show`.
++    if std::env::var("AION_ENTERPRISE_ROLE").ok().as_deref() == Some("worker")
++        && let Ok(name) = std::env::var("AION_ENTERPRISE_SKILL_NAME")
++        && skills.iter().any(|selected| selected == &name)
++        && let Some(skill) = deps.skill_manager.get_skill(&name).await
++        && let Some(body) = skill.body.filter(|body| body.len() <= 16_000)
++    {
++        text.push_str(&format!("\n\n## Selected enterprise skill: {name}\n{body}"));
++        info!(skill_name = %name, "enterprise skill body injected");
++    }
++    text
+ }
+ 
+ /// Append the index to the system prompt, keeping the assistant's own rules in
+@@ -234,7 +247,12 @@ pub(super) async fn build(
+         }
+     }
+ 
+-    let agent = AionrsAgentManager::new(ctx.conversation_id, ctx.workspace, config, resume_session).await?;
++    let skill_root = aionui_extension::skill_view::view_dir(&deps.data_dir, &ctx.user_id, &ctx.conversation_id)
++        .ok()
++        .filter(|root| root.join(".aionrs").join("skills").is_dir());
++    let agent =
++        AionrsAgentManager::new_with_skill_root(ctx.conversation_id, ctx.workspace, config, resume_session, skill_root)
++            .await?;
+     Ok(AgentInstance::Aionrs(Arc::new(agent)))
+ }
+ 
+diff --git a/crates/aionui-ai-agent/src/manager/aionrs/agent.rs b/crates/aionui-ai-agent/src/manager/aionrs/agent.rs
+index 3291d92..67c6d5e 100644
+--- a/crates/aionui-ai-agent/src/manager/aionrs/agent.rs
++++ b/crates/aionui-ai-agent/src/manager/aionrs/agent.rs
+@@ -122,6 +122,9 @@ pub struct AionrsAgentManager {
+     /// Signalled by `cancel()` to abort an in-flight `engine.run()` via
+     /// `tokio::select!` in `send_message()`.
+     cancel_notify: Arc<Notify>,
++    /// Enterprise proxy capability used to terminate the detached provider
++    /// stream after aionrs has stopped consuming its receiver.
++    enterprise_model_abort: Option<(String, String)>,
+     /// Signalled after an in-flight turn emits its terminal event.
+     turn_finished_notify: Arc<Notify>,
+ }
+@@ -136,14 +139,78 @@ impl Drop for AionrsAgentManager {
+     }
+ }
+ 
++fn enterprise_model_abort_target(
++    base_url: Option<&str>,
++    api_key: &str,
++    conversation_id: &str,
++    enterprise_worker: bool,
++) -> Option<(String, String)> {
++    if !enterprise_worker || api_key.is_empty() {
++        return None;
++    }
++    let mut url = reqwest::Url::parse(base_url?).ok()?;
++    if url.scheme() != "http"
++        || !matches!(url.host_str(), Some("127.0.0.1" | "model-gateway"))
++        || url.port().is_none()
++        || !url.username().is_empty()
++        || url.password().is_some()
++        || url.query().is_some()
++        || url.fragment().is_some()
++        || url.path() != format!("/conversations/{conversation_id}")
++    {
++        return None;
++    }
++    url.set_path(&format!("/conversations/{conversation_id}/cancel"));
++    Some((url.to_string(), api_key.to_owned()))
++}
++
++#[cfg(test)]
++mod enterprise_model_abort_tests {
++    use super::enterprise_model_abort_target;
++
++    #[test]
++    fn only_private_enterprise_conversation_proxy_can_receive_abort() {
++        let expected = enterprise_model_abort_target(
++            Some("http://model-gateway:32124/conversations/a1b2c3d4"), "capability", "a1b2c3d4", true,
++        );
++        assert_eq!(expected, Some(("http://model-gateway:32124/conversations/a1b2c3d4/cancel".into(), "capability".into())));
++        for candidate in [
++            "http://model-gateway:32124/conversations/other",
++            "http://example.com:32124/conversations/a1b2c3d4",
++            "https://model-gateway:32124/conversations/a1b2c3d4",
++            "http://model-gateway:32124/conversations/a1b2c3d4?leak=1",
++        ] {
++            assert!(enterprise_model_abort_target(Some(candidate), "capability", "a1b2c3d4", true).is_none());
++        }
++        assert!(enterprise_model_abort_target(Some("http://127.0.0.1:32124/conversations/a1b2c3d4"),
++            "capability", "a1b2c3d4", false).is_none());
++    }
++}
++
+ impl AionrsAgentManager {
+     pub async fn new(
+         conversation_id: String,
+         workspace: String,
+         config_extra: AionrsResolvedConfig,
+         resume_session: Option<Session>,
++    ) -> Result<Self, AgentError> {
++        Self::new_with_skill_root(conversation_id, workspace, config_extra, resume_session, None).await
++    }
++
++    pub async fn new_with_skill_root(
++        conversation_id: String,
++        workspace: String,
++        config_extra: AionrsResolvedConfig,
++        resume_session: Option<Session>,
++        skill_root: Option<PathBuf>,
+     ) -> Result<Self, AgentError> {
+         let runtime = AgentRuntime::new(conversation_id.clone(), workspace.clone(), 128);
++        let enterprise_model_abort = enterprise_model_abort_target(
++            config_extra.base_url.as_deref(),
++            &config_extra.api_key,
++            &conversation_id,
++            std::env::var("AION_ENTERPRISE_ROLE").ok().as_deref() == Some("worker"),
++        );
+         let sink: Arc<dyn OutputSink> = Arc::new(BackendOutputSink::new(runtime.event_sender()));
+         let runtime_env = config_extra.runtime_env.clone();
+         let image_input_override = config_extra.compat_overrides.image_input;
+@@ -220,6 +287,9 @@ impl AionrsAgentManager {
+         let provider_label = config.provider_label.clone();
+ 
+         let mut bootstrap = AgentBootstrap::new(config, &workspace, sink).runtime_env(runtime_env);
++        if let Some(skill_root) = skill_root {
++            bootstrap = bootstrap.extra_skill_dirs(vec![skill_root]);
++        }
+         if let Some(session) = resume_session {
+             info!(
+                 conversation_id = %conversation_id,
+@@ -283,6 +353,7 @@ impl AionrsAgentManager {
+             confirmations,
+             final_input_dump,
+             cancel_notify: Arc::new(Notify::new()),
++            enterprise_model_abort,
+             turn_finished_notify: Arc::new(Notify::new()),
+         })
+     }
+@@ -484,7 +555,26 @@ impl IAgentTask for AionrsAgentManager {
+     }
+ 
+     async fn cancel(&self) -> Result<(), AgentError> {
+-        self.request_stop(None, "cancel");
++        if self.request_stop(None, "cancel") {
++            if let Some((url, key)) = &self.enterprise_model_abort {
++                // aionrs v0.2.11 spawns the provider stream separately; dropping
++                // engine.run() stops UI output but does not close its HTTP stream.
++                // The private model proxy owns that stream and can abort it.
++                match reqwest::Client::builder()
++                    .no_proxy()
++                    .redirect(reqwest::redirect::Policy::none())
++                    .timeout(Duration::from_secs(2))
++                    .build()
++                {
++                    Ok(client) => match client.post(url).bearer_auth(key).send().await {
++                        Ok(response) if response.status() == reqwest::StatusCode::NO_CONTENT => {}
++                        Ok(response) => warn!(status = %response.status(), "Enterprise model stream abort was not accepted"),
++                        Err(error) => warn!(error = %error, "Enterprise model stream abort failed"),
++                    },
++                    Err(error) => warn!(error = %error, "Enterprise model stream abort client unavailable"),
++                }
++            }
++        }
+         Ok(())
+     }
+ 
+diff --git a/crates/aionui-app/assets/builtin-skills/auto-inject/officecli/SKILL.md b/crates/aionui-app/assets/builtin-skills/auto-inject/officecli/SKILL.md
+index 1c8fa3f..f0d4624 100644
+--- a/crates/aionui-app/assets/builtin-skills/auto-inject/officecli/SKILL.md
++++ b/crates/aionui-app/assets/builtin-skills/auto-inject/officecli/SKILL.md
+@@ -23,19 +23,13 @@ description: Create, analyze, proofread, and modify Office documents (.docx, .xl
+ 
+ AI-friendly CLI for .docx, .xlsx, .pptx. Single binary, no dependencies, no Office installation needed.
+ 
+-## Install
++## Availability
+ 
+-If `officecli` is not installed:
+-
+-```bash
+-# macOS / Linux
+-curl -fsSL https://d.officecli.ai/install.sh | bash
+-
+-# Windows (PowerShell)
+-irm https://d.officecli.ai/install.ps1 | iex
+-```
+-
+-Verify with `officecli --version`. If still not found after install, open a new terminal.
++Check `command -v officecli` before using it. Do not download or install a
++tool during an employee task. If it is unavailable, use an existing local
++reader for read-only work (for example, `textutil -convert txt -stdout` for a
++DOCX on macOS) or explain the missing dependency. Ask the user before any
++software installation; never run a remote install script as part of a task.
+ 
+ ---
+ 
+diff --git a/crates/aionui-extension/src/skill_view.rs b/crates/aionui-extension/src/skill_view.rs
+index 4ba464a..5ef8e9d 100644
+--- a/crates/aionui-extension/src/skill_view.rs
++++ b/crates/aionui-extension/src/skill_view.rs
+@@ -164,6 +164,25 @@ pub async fn rebuild_view(
+     let previously_linked = existing_link_names(&skills_dir).await;
+ 
+     tokio::fs::create_dir_all(view.join(PLUGIN_MANIFEST_DIR)).await?;
++    tokio::fs::create_dir_all(&skills_dir).await?;
++    // aionrs looks for <extra-root>/.aionrs/skills, while ACP backends use
++    // <view>/skills. Both must resolve to this conversation's exact ACL view.
++    let aionrs_dir = view.join(".aionrs");
++    tokio::fs::create_dir_all(&aionrs_dir).await?;
++    let aionrs_skills = aionrs_dir.join("skills");
++    match tokio::fs::symlink_metadata(&aionrs_skills).await {
++        Ok(_) => {
++            if tokio::fs::canonicalize(&aionrs_skills).await? != tokio::fs::canonicalize(&skills_dir).await? {
++                return Err(ExtensionError::PathTraversal(
++                    "aionrs skill view points outside this conversation".into(),
++                ));
++            }
++        }
++        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
++            create_symlink(&skills_dir, &aionrs_skills).await?;
++        }
++        Err(e) => return Err(ExtensionError::Io(e)),
++    }
+     tokio::fs::write(
+         view.join(PLUGIN_MANIFEST_DIR).join(PLUGIN_MANIFEST_FILE),
+         plugin_manifest_body(),
+@@ -388,6 +407,11 @@ mod tests {
+             std::fs::read_to_string(view.join("skills").join("cron").join("references").join("notes.md")).unwrap(),
+             "REFTOKEN"
+         );
++        assert_eq!(
++            std::fs::read_to_string(view.join(".aionrs").join("skills").join("officecli").join("SKILL.md")).unwrap(),
++            std::fs::read_to_string(view.join("skills").join("officecli").join("SKILL.md")).unwrap(),
++            "aionrs must see the same authorized skill body"
++        );
+     }
+ 
+     /// AionUi OWNS this directory, so unlike the old workspace path there is no

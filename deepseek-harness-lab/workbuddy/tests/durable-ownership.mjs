@@ -1,0 +1,4 @@
+import fs from 'node:fs';import {login,req,save,root,canaries} from './helpers.mjs';
+await login();const sessions=JSON.parse(fs.readFileSync(root+'/evidence/attack-sessions.json')),rows=[];
+for(const u of ['user_a','user_b']){const v=u==='user_a'?'user_b':'user_a',id=sessions[u][0];const resume=await req(u,'POST',`/sessions/${id}/resume`,{}),read=await req(u,'GET',`/sessions/${id}`),cross=await req(v,'GET',`/sessions/${id}`);const pass=resume.status===200&&read.status===200&&JSON.stringify(read).includes(canaries[u].session)&&cross.status===404;rows.push({user:u,resumeHttp:resume.status,readHttp:read.status,crossHttp:cross.status,ownMarkerPresent:JSON.stringify(read).includes(canaries[u].session),status:pass?'PASS':'FAIL'});}
+save('durable-ownership.json',rows);console.log(JSON.stringify(rows));

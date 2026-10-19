@@ -1,0 +1,47 @@
+diff --git a/crates/aionui-ai-agent/src/capability/backend_output_sink.rs b/crates/aionui-ai-agent/src/capability/backend_output_sink.rs
+index 9d0abb7..a3c6937 100644
+--- a/crates/aionui-ai-agent/src/capability/backend_output_sink.rs
++++ b/crates/aionui-ai-agent/src/capability/backend_output_sink.rs
+@@ -23,6 +23,13 @@ impl BackendOutputSink {
+             Some(format!("aionrs-{id}"))
+         }
+     }
++
++    fn is_internal_diagnostic(msg: &str) -> bool {
++        matches!(msg, "Cache full miss: ToolsChanged" | "Cache full miss: TtlExpiry")
++            || (msg.starts_with("Microcompact: cleared ")
++                && msg.contains(" tool results (")
++                && msg.ends_with(" tokens freed)"))
++    }
+ }
+ 
+ impl OutputSink for BackendOutputSink {
+@@ -147,6 +154,10 @@ impl OutputSink for BackendOutputSink {
+     }
+ 
+     fn emit_info(&self, msg: &str) {
++        if Self::is_internal_diagnostic(msg) {
++            tracing::debug!(reason = %msg, "Aionrs internal diagnostic");
++            return;
++        }
+         let _ = self.event_tx.send(AgentStreamEvent::Tips(TipsEventData {
+             content: msg.to_owned(),
+             tip_type: TipType::Success,
+@@ -318,6 +329,17 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn internal_diagnostics_do_not_become_user_tips() {
++        let (sink, mut rx) = make_sink();
++        sink.emit_info("Cache full miss: ToolsChanged");
++        sink.emit_info("Cache full miss: TtlExpiry");
++        sink.emit_info("Microcompact: cleared 6 tool results (~44 tokens freed)");
++        assert!(rx.try_recv().is_err());
++        sink.emit_info("operation completed");
++        assert!(matches!(rx.try_recv(), Ok(AgentStreamEvent::Tips(_))));
++    }
++
+     #[test]
+     fn emit_tool_call_carries_input() {
+         let (sink, mut rx) = make_sink();

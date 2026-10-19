@@ -1,0 +1,5 @@
+import assert from 'node:assert/strict';import {test} from 'node:test';
+import {BrandSchema,defaultBrand,PromptSchema,UserUpdateSchema} from '../src/index.ts';
+test('brand rejects executable color and external asset URLs',()=>{assert.equal(BrandSchema.safeParse({...defaultBrand,primaryColor:'url(https://example.com)'}).success,false);assert.equal(BrandSchema.safeParse({...defaultBrand,logo:'https://example.com/image.png'}).success,false);assert.equal(BrandSchema.safeParse(defaultBrand).success,true);});
+test('user update rejects caller ownership and arbitrary roles',()=>{assert.equal(UserUpdateSchema.safeParse({enabled:true,owner:'someone'}).success,false);assert.equal(UserUpdateSchema.safeParse({roleIds:['super_admin']}).success,false);});
+test('prompt requires a valid idempotency key and rejects owner/runtime fields',()=>{assert.equal(PromptSchema.safeParse({text:'hello'}).success,false);assert.equal(PromptSchema.safeParse({text:'hello',idempotencyKey:'dc5a389f-437c-46bb-8f20-9adf9405c2f9',runtimeId:'other'}).success,false);});

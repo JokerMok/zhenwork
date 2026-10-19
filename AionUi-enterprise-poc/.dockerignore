@@ -1,0 +1,11 @@
+node_modules
+upstream-core/target
+upstream-core/.git
+upstream-aionrs/target
+upstream-aionrs/.git
+out
+dist-server
+.git
+.github
+data
+*.log

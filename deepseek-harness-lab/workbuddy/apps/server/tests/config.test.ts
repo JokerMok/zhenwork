@@ -1,0 +1,3 @@
+import assert from 'node:assert/strict';import {test} from 'node:test';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
+import {readSecret} from '../src/config.ts';
+test('secret reader rejects symlinks and broad permissions',()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-secret-test-'));try{const file=path.join(dir,'secret');fs.writeFileSync(file,'a'.repeat(40),{mode:0o600});assert.equal(readSecret(file).length,40);fs.symlinkSync(file,path.join(dir,'link'));assert.throws(()=>readSecret(path.join(dir,'link')),/regular file/);fs.chmodSync(file,0o644);assert.throws(()=>readSecret(file),/owner-only/);}finally{fs.rmSync(dir,{recursive:true,force:true});}});

@@ -1,0 +1,332 @@
+diff --git a/crates/aionui-ai-agent/src/factory/aionrs.rs b/crates/aionui-ai-agent/src/factory/aionrs.rs
+--- a/crates/aionui-ai-agent/src/factory/aionrs.rs
++++ b/crates/aionui-ai-agent/src/factory/aionrs.rs
+@@ -127,6 +127,13 @@
+     )
+     .await;
+ 
++    // The Web Host keeps RC2 grants outside this Core. Carry the trusted
++    // conversation identity in requests to its private MCP bridge so it can
++    // select only a grant for the scheduler turn currently executing.
++    if std::env::var("AION_ENTERPRISE_ROLE").ok().as_deref() == Some("worker") {
++        scope_enterprise_mcp_urls(&mut extra_mcp_servers, &ctx.conversation_id)?;
++    }
++
+     if !extra_mcp_servers.is_empty() {
+         info!(
+             conversation_id = %ctx.conversation_id,
+@@ -157,7 +164,7 @@
+     let provider = map_aionrs_provider(&row.platform, &model_id, row.model_protocols.as_deref())?;
+     let model_overrides = resolve_model_compat_overrides(&model_id, &row.model_settings)?;
+ 
+-    let (base_url, mut compat_overrides) = resolve_aionrs_url_and_compat_with_mode(
++    let (mut base_url, mut compat_overrides) = resolve_aionrs_url_and_compat_with_mode(
+         &row.platform,
+         &row.base_url,
+         &provider,
+@@ -165,6 +172,16 @@
+         row.is_full_url,
+         model_overrides.openai_api_mode,
+     );
++    if row.id == "rc2-enterprise-model"
++        && std::env::var("AION_ENTERPRISE_ROLE").ok().as_deref() == Some("worker")
++    {
++        if ctx.conversation_id.is_empty()
++            || !ctx.conversation_id.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
++        {
++            return Err(AgentError::bad_request("Invalid enterprise conversation ID"));
++        }
++        base_url = base_url.map(|value| format!("{value}/conversations/{}", ctx.conversation_id));
++    }
+     compat_overrides.image_input = model_overrides.image_input;
+ 
+     if provider == "openai" {
+@@ -254,6 +271,31 @@
+         AionrsAgentManager::new_with_skill_root(ctx.conversation_id, ctx.workspace, config, resume_session, skill_root)
+             .await?;
+     Ok(AgentInstance::Aionrs(Arc::new(agent)))
++}
++
++fn scope_enterprise_mcp_urls(
++    servers: &mut HashMap<String, McpServerConfig>,
++    conversation_id: &str,
++) -> Result<(), AgentError> {
++    for (name, server) in servers {
++        if !name.starts_with("rc2-enterprise-") || server.transport != TransportType::StreamableHttp {
++            continue;
++        }
++        let Some(url) = server.url.as_deref() else { continue };
++        let Some(port) = url.strip_prefix("http://model-gateway:").and_then(|tail| tail.strip_suffix("/mcp")) else {
++            continue;
++        };
++        if port.parse::<u16>().ok().filter(|value| *value != 0).is_none() {
++            continue;
++        }
++        if conversation_id.is_empty()
++            || !conversation_id.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
++        {
++            return Err(AgentError::bad_request("Invalid enterprise conversation ID"));
++        }
++        server.url = Some(format!("http://model-gateway:{port}/conversations/{conversation_id}/mcp"));
++    }
++    Ok(())
+ }
+ 
+ /// Resolve the session an aionrs build starts from.
+@@ -901,6 +943,32 @@
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++
++    #[test]
++    fn web_enterprise_mcp_url_carries_conversation_without_touching_personal_mcp() {
++        let make_server = |url: &str| McpServerConfig {
++            transport: TransportType::StreamableHttp,
++            command: None,
++            args: None,
++            env: None,
++            url: Some(url.to_owned()),
++            headers: Some(HashMap::from([("Authorization".to_owned(), "Bearer local".to_owned())])),
++            deferred: Some(false),
++            startup_timeout_ms: None,
++        };
++        let enterprise = "rc2-enterprise-11111111-1111-4111-8111-111111111111";
++        let mut servers = HashMap::from([
++            (enterprise.to_owned(), make_server("http://model-gateway:32123/mcp")),
++            ("personal".to_owned(), make_server("https://personal.example/mcp")),
++        ]);
++        scope_enterprise_mcp_urls(&mut servers, "a1b2c3d4").expect("valid conversation");
++        assert_eq!(servers[enterprise].url.as_deref(),
++            Some("http://model-gateway:32123/conversations/a1b2c3d4/mcp"));
++        assert_eq!(servers["personal"].url.as_deref(), Some("https://personal.example/mcp"));
++        assert!(scope_enterprise_mcp_urls(&mut HashMap::from([
++            (enterprise.to_owned(), make_server("http://model-gateway:32123/mcp")),
++        ]), "../other").is_err());
++    }
+     use aionui_realtime::BroadcastEventBus;
+     use aionui_runtime::{ManagedResourcesMode, init as init_runtime, set_managed_resources_mode};
+     use std::sync::OnceLock;
+diff --git a/crates/aionui-cron/src/executor.rs b/crates/aionui-cron/src/executor.rs
+--- a/crates/aionui-cron/src/executor.rs
++++ b/crates/aionui-cron/src/executor.rs
+@@ -1,5 +1,6 @@
++use std::collections::HashMap;
+ use std::path::{Path, PathBuf};
+-use std::sync::Arc;
++use std::sync::{Arc, Mutex};
+ 
+ use aionui_ai_agent::AgentRegistry;
+ use aionui_ai_agent::task_manager::IWorkerTaskManager;
+@@ -63,6 +64,20 @@
+     broadcaster: Arc<dyn EventBroadcaster>,
+     agent_registry: Arc<AgentRegistry>,
+     skill_suggest_detector: SkillSuggestDetector,
++    active_background_runs: Arc<Mutex<HashMap<String, (String, String)>>>,
++}
++
++struct ActiveBackgroundRun {
++    runs: Arc<Mutex<HashMap<String, (String, String)>>>,
++    conversation_id: String,
++}
++
++impl Drop for ActiveBackgroundRun {
++    fn drop(&mut self) {
++        if let Ok(mut runs) = self.runs.lock() {
++            runs.remove(&self.conversation_id);
++        }
++    }
+ }
+ 
+ impl JobExecutor {
+@@ -86,7 +101,18 @@
+             broadcaster,
+             agent_registry,
+             skill_suggest_detector,
+-        }
++            active_background_runs: Arc::new(Mutex::new(HashMap::new())),
++        }
++    }
++
++    /// Only a scheduler-dispatched turn appears here. Persisted conversation
++    /// source/extra fields are user-editable and cannot authorize a grant.
++    pub fn active_background_job_for(&self, user_id: &str, conversation_id: &str) -> Option<String> {
++        self.active_background_runs
++            .lock()
++            .ok()?
++            .get(conversation_id)
++            .and_then(|(owner, job_id)| (owner == user_id).then(|| job_id.clone()))
+     }
+ 
+     pub async fn execute(&self, job: &CronJob) -> ExecutionResult {
+@@ -772,6 +798,24 @@
+             on_started,
+         };
+ 
++        let _active_background_run = {
++            let Ok(mut runs) = self.active_background_runs.lock() else {
++                return ExecutionResult::Error {
++                    message: "Background run state unavailable".to_owned(),
++                };
++            };
++            if runs.contains_key(conversation_id) {
++                return ExecutionResult::Error {
++                    message: "Conversation already has a background run".to_owned(),
++                };
++            }
++            runs.insert(conversation_id.to_owned(), (user_id.clone(), job.id.clone()));
++            ActiveBackgroundRun {
++                runs: Arc::clone(&self.active_background_runs),
++                conversation_id: conversation_id.to_owned(),
++            }
++        };
++
+         match self.conversation_service.run_agent_turn(turn_req).await {
+             Ok(outcome) => {
+                 if outcome.status == ConversationAgentTurnStatus::Failed {
+diff --git a/crates/aionui-cron/src/routes.rs b/crates/aionui-cron/src/routes.rs
+--- a/crates/aionui-cron/src/routes.rs
++++ b/crates/aionui-cron/src/routes.rs
+@@ -66,6 +66,10 @@
+             put(update_conversation_cron),
+         )
+         .route("/api/cron/internal/system-resume", post(system_resume))
++        .route(
++            "/api/cron/internal/active-conversation/{id}",
++            get(active_background_conversation),
++        )
+         .route("/api/cron/jobs/{id}/conversations", get(list_conversations_by_cron_job))
+         .route(
+             "/api/cron/jobs/{id}/skill",
+@@ -144,6 +148,22 @@
+ 
+     state.cron_service.handle_system_resume().await;
+     Ok(Json(ApiResponse::success()))
++}
++
++async fn active_background_conversation(
++    State(state): State<CronRouterState>,
++    Extension(user): Extension<CurrentUser>,
++    headers: HeaderMap,
++    Path(conversation_id): Path<String>,
++) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
++    if headers.get("x-aionui-internal").and_then(|value| value.to_str().ok()) != Some("1") {
++        return Err(ApiError::Forbidden("internal route".into()));
++    }
++    let job_id = state
++        .cron_service
++        .active_background_job_for(&user.id, &conversation_id)
++        .ok_or_else(|| ApiError::NotFound("Active background run not found".into()))?;
++    Ok(Json(ApiResponse::ok(serde_json::json!({ "job_id": job_id }))))
+ }
+ 
+ async fn create_conversation_cron(
+diff --git a/crates/aionui-cron/src/service.rs b/crates/aionui-cron/src/service.rs
+--- a/crates/aionui-cron/src/service.rs
++++ b/crates/aionui-cron/src/service.rs
+@@ -77,6 +77,10 @@
+ }
+ 
+ impl CronService {
++    pub fn active_background_job_for(&self, user_id: &str, conversation_id: &str) -> Option<String> {
++        self.executor.active_background_job_for(user_id, conversation_id)
++    }
++
+     pub fn new(deps: CronServiceDeps) -> Self {
+         Self {
+             repo: deps.repo,
+diff --git a/crates/aionui-ai-agent/src/mcp_resolve.rs b/crates/aionui-ai-agent/src/mcp_resolve.rs
+--- a/crates/aionui-ai-agent/src/mcp_resolve.rs
++++ b/crates/aionui-ai-agent/src/mcp_resolve.rs
+@@ -64,7 +64,15 @@
+             continue;
+         }
+         match row_to_session_mcp_server(&row).await {
+-            Ok(server) => servers.push(server),
++            Ok(mut server) => {
++                if std::env::var("AION_ENTERPRISE_ROLE").ok().as_deref() == Some("worker")
++                    && !scope_enterprise_mcp_url(&mut server, conversation_id)
++                {
++                    warn!(conversation_id, server_id = %row.id, "mcp_resolve: invalid enterprise conversation ID; skipping managed server");
++                    continue;
++                }
++                servers.push(server);
++            }
+             Err(err) => {
+                 warn!(
+                     conversation_id,
+@@ -85,6 +93,36 @@
+         );
+     }
+     servers
++}
++
++/// Bind Web Host managed MCP calls to the current conversation. The bridge
++/// resolves its grant from the trusted scheduler run for this ID.
++fn scope_enterprise_mcp_url(server: &mut SessionMcpServer, conversation_id: &str) -> bool {
++    if !server.name.starts_with("rc2-enterprise-") {
++        return true;
++    }
++    let SessionMcpTransport::StreamableHttp { url, .. } = &mut server.transport else {
++        return true;
++    };
++    let Some(port) = url
++        .strip_prefix("http://model-gateway:")
++        .and_then(|tail| tail.strip_suffix("/mcp"))
++    else {
++        return true;
++    };
++    if port.parse::<u16>().ok().filter(|value| *value != 0).is_none() {
++        return true;
++    }
++    if conversation_id.is_empty()
++        || conversation_id.len() > 100
++        || !conversation_id
++            .chars()
++            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
++    {
++        return false;
++    }
++    *url = format!("http://model-gateway:{port}/conversations/{conversation_id}/mcp");
++    true
+ }
+ 
+ /// Parse one `McpServerRow` into a neutral `SessionMcpServer`, resolving the stdio
+@@ -282,6 +320,38 @@
+ 
+     fn test_broadcaster() -> Arc<dyn EventBroadcaster> {
+         Arc::new(aionui_realtime::BroadcastEventBus::new(16))
++    }
++
++    #[test]
++    fn scopes_managed_mcp_without_touching_personal_url() {
++        let mut managed = SessionMcpServer {
++            id: "managed".into(),
++            name: "rc2-enterprise-11111111-1111-4111-8111-111111111111".into(),
++            transport: SessionMcpTransport::StreamableHttp {
++                url: "http://model-gateway:32123/mcp".into(),
++                headers: Default::default(),
++            },
++        };
++        assert!(scope_enterprise_mcp_url(&mut managed, "a1b2c3d4"));
++        assert!(matches!(&managed.transport, SessionMcpTransport::StreamableHttp { url, .. }
++            if url == "http://model-gateway:32123/conversations/a1b2c3d4/mcp"));
++
++        let mut personal = managed.clone();
++        personal.name = "personal".into();
++        personal.transport = SessionMcpTransport::StreamableHttp {
++            url: "https://personal.example/mcp".into(),
++            headers: Default::default(),
++        };
++        assert!(scope_enterprise_mcp_url(&mut personal, "../other"));
++        assert!(matches!(&personal.transport, SessionMcpTransport::StreamableHttp { url, .. }
++            if url == "https://personal.example/mcp"));
++
++        let mut invalid = managed.clone();
++        invalid.transport = SessionMcpTransport::StreamableHttp {
++            url: "http://model-gateway:32123/mcp".into(),
++            headers: Default::default(),
++        };
++        assert!(!scope_enterprise_mcp_url(&mut invalid, "../other"));
+     }
+ 
+     #[tokio::test]

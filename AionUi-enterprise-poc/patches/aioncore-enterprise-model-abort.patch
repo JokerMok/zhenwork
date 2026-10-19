@@ -1,0 +1,11 @@
+diff --git a/crates/aionui-ai-agent/Cargo.toml b/crates/aionui-ai-agent/Cargo.toml
+--- a/crates/aionui-ai-agent/Cargo.toml
++++ b/crates/aionui-ai-agent/Cargo.toml
+@@ -29,6 +29,7 @@
+ dirs.workspace = true
+ getrandom.workspace = true
+ regex.workspace = true
++reqwest.workspace = true
+ dashmap.workspace = true
+ futures-util.workspace = true
+ serde.workspace = true

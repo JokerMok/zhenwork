@@ -1,0 +1,14 @@
+{
+  "name": "@workspace/server",
+  "version": "1.0.0-rc.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "better-auth": "1.7.5",
+    "busboy": "1.6.0",
+    "pg": "8.16.3",
+    "sharp": "0.35.4",
+    "ws": "8.21.3",
+    "zod": "4.3.6"
+  }
+}

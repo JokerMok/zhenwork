@@ -1,0 +1,1135 @@
+import { randomBytes } from 'node:crypto';
+import { readFile, realpath } from 'node:fs/promises';
+import http, { type IncomingMessage, type ServerResponse } from 'node:http';
+import net from 'node:net';
+import path from 'node:path';
+import type { Duplex } from 'node:stream';
+import serveHandler from 'serve-handler';
+import enLogin from '../../desktop/src/renderer/services/i18n/locales/en-US/login.json' with { type: 'json' };
+import zhLogin from '../../desktop/src/renderer/services/i18n/locales/zh-CN/login.json' with { type: 'json' };
+import { enterpriseCoreBase, enterpriseCoreHost, enterpriseProxyHost } from './enterprise-core-address.js';
+
+export type EnterpriseActor = { serverId: string; userId: string };
+export type EnterpriseCore = { port: number; localToken: string; stop: () => Promise<void>; invalidated?: Promise<void>;
+  /** Host-visible mount path for this actor's service workspace. */
+  workspaceRoot?: string;
+  /** Private actor-network IPv4, or loopback for local development. */
+  host?: string;
+  /** Address that Core uses for the Web Host's model/MCP capability proxies. */
+  proxyHost?: '127.0.0.1' | 'model-gateway';
+  /** A loopback tunnel into a Core that only joins its actor's internal network. */
+  networkMode?: 'container';
+  /** Host-local loopback on Docker Desktop, or the Linux docker0 gateway. */
+  proxyBindHost?: string;
+  /** Admit a newly started host proxy into the actor's bridge before Core uses it. */
+  registerProxyPort?: (port: number) => Promise<void>;
+  /** Revoke the route before a closed host port can be reused by another process. */
+  unregisterProxyPort?: (port: number) => Promise<void> };
+export type EnterpriseLogin = { actor: EnterpriseActor; username?: string; validate: () => Promise<boolean>;
+  brand?: () => Promise<unknown>; close: () => Promise<void> };
+export type EnterpriseGatewayOptions = {
+  staticDir: string;
+  /** Public HTTPS origin terminated by the trusted reverse proxy. */
+  publicOrigin: string;
+  port: number;
+  login: (username: string, password: string) => Promise<EnterpriseLogin>;
+  /** Public RC2 display fields for the unauthenticated login page. */
+  publicBrand?: () => Promise<unknown>;
+  /** Validate a desktop supervisor's existing RC2 cookie on the server. */
+  resume?: (rc2Cookie: string) => Promise<EnterpriseLogin>;
+  startCore: (actor: EnterpriseActor) => Promise<EnterpriseCore>;
+  /** Issue or revoke one job-scoped RC2 grant after Core accepts a cron mutation. */
+  syncCronGrant?: (actor: EnterpriseActor, jobId: string, enabled: boolean) => Promise<void>;
+  hasBackgroundJobs?: (actor: EnterpriseActor) => boolean;
+  /** Recheck a stored background grant with RC2 before retaining a Core. */
+  authorizeBackground?: (actor: EnterpriseActor) => Promise<boolean>;
+  reconcileCronJobs?: (actor: EnterpriseActor) => Promise<void>;
+  maxSessions?: number;
+  maxCores?: number;
+  /** Bound simultaneous Docker Core startups; queued starts are also bounded. */
+  maxStartingCores?: number;
+  maxQueuedCoreStarts?: number;
+  coreStartWaitMs?: number;
+  /** Reclaim an unused Core after this interval; zero disables idle reclamation. */
+  coreIdleMs?: number;
+  /** Loopback browser smoke tests only; the production CLI never enables this. */
+  allowInsecureLoopbackDev?: boolean;
+};
+
+type Session = EnterpriseLogin & {
+  sockets: Set<Duplex>;
+  requests: Set<http.ClientRequest>;
+  responses: Set<ServerResponse>;
+  expiresAt: number;
+  validating?: Promise<boolean>;
+};
+class CoreCapacityError extends Error {}
+const COOKIE_NAME = '__Host-aion-enterprise-web';
+const DEV_COOKIE_NAME = 'aion-enterprise-web-dev';
+// Core creates conversation IDs with generate_short_id() (8 hex chars), while
+// imported or older conversations may have full UUID IDs.
+const isConversationId = (value: unknown): value is string => typeof value === 'string' &&
+  (/^[0-9a-f]{8}$/i.test(value) || /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value));
+const SESSION_MS = 8 * 60 * 60 * 1000;
+// Private WebSocket close code: the browser waits for the next user action
+// before reconnecting, so an idle Core does not restart immediately.
+const IDLE_CORE_WS_CLOSE = Buffer.from([0x88, 0x02, 0x0f, 0xa1]); // 4001
+const MAX_BODY = 50 * 1024 * 1024;
+const LOGIN_BODY = 4096;
+const MAX_PROVIDER_RESPONSE = 2 * 1024 * 1024;
+
+type LoginBrand = {
+  productName: string; companyName: string; loginTitle: string; loginSubtitle: string;
+  supportText: string; copyright: string; primaryColor: string; logoDataUrl: string;
+};
+
+function loginBrand(value: unknown): LoginBrand | null {
+  if (!value || typeof value !== 'object') return null;
+  const brand = value as Record<string, unknown>;
+  const field = (name: string, max: number): string =>
+    typeof brand[name] === 'string' ? brand[name].trim().slice(0, max) : '';
+  const productName = field('productName', 80);
+  if (!productName) return null;
+  const color = field('primaryColor', 7);
+  const logo = field('logoDataUrl', 2_800_000);
+  return {
+    productName,
+    companyName: field('companyName', 100),
+    loginTitle: field('loginTitle', 100),
+    loginSubtitle: field('loginSubtitle', 300),
+    supportText: field('supportText', 300),
+    copyright: field('copyright', 200),
+    primaryColor: /^#[0-9a-f]{6}$/i.test(color) ? color : '#2563eb',
+    logoDataUrl: /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(logo) ? logo : '',
+  };
+}
+
+function html(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;',
+    '"': '&quot;', "'": '&#39;' })[char] || char);
+}
+
+function contrastingInk(hex: string): '#15243a' | '#ffffff' {
+  const channels = [1, 3, 5].map((index) => {
+    const value = parseInt(hex.slice(index, index + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  return luminance > 0.19 ? '#15243a' : '#ffffff';
+}
+
+function loginPage(brand: LoginBrand | null, english: boolean, nonce: string): string {
+  const copy = english ? enLogin : zhLogin;
+  const language = english ? 'en' : 'zh-CN';
+  const product = brand?.productName || copy.brand;
+  const title = brand?.loginTitle || copy.submit;
+  const subtitle = brand?.loginSubtitle || copy.subtitle;
+  const color = brand?.primaryColor || '#2563eb';
+  const ink = contrastingInk(color);
+  const logo = brand?.logoDataUrl
+    ? `<img class="brand-logo" src="${brand.logoDataUrl}" alt="${html(product)}" width="56" height="56">`
+    : `<span class="brand-logo brand-initial" aria-hidden="true">${html(product.slice(0, 1))}</span>`;
+  const feedback = JSON.stringify({
+    submitting: copy.submitting,
+    invalid: copy.errors.invalidCredentials,
+    busy: copy.errors.tooManyAttempts,
+    unavailable: copy.errors.serverError,
+    network: copy.errors.networkError,
+  }).replace(/</g, '\\u003c');
+  return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>${html(product)} · ${html(title)}</title><style nonce="${nonce}">
+:root{--brand:${color};--brand-ink:${ink};font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;color:#1a2b42;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:clamp(16px,4vw,48px)}::selection{background:var(--brand);color:var(--brand-ink)}.shell{width:min(100%,960px);min-height:560px;display:grid;grid-template-columns:minmax(300px,.92fr) minmax(380px,1fr);overflow:hidden;border-radius:20px;background:#fff;box-shadow:0 24px 70px -32px rgba(18,36,65,.36)}.brand-side{display:flex;flex-direction:column;justify-content:space-between;gap:48px;padding:clamp(30px,4vw,52px);background:var(--brand);color:var(--brand-ink)}.brand-top{display:flex;align-items:center;gap:14px;min-width:0}.brand-logo{width:56px;height:56px;flex:none;object-fit:contain;border-radius:14px;background:#fff;padding:6px}.brand-initial{display:grid;place-items:center;color:#1a2b42;font-size:30px;font-weight:700}.company{font-size:14px;font-weight:650;line-height:1.5;overflow-wrap:anywhere}.brand-name{max-width:12ch;margin:0;font-size:clamp(32px,4vw,48px);line-height:1.16;letter-spacing:-.025em;overflow-wrap:anywhere}.brand-footer{font-size:13px;line-height:1.6;opacity:.85;overflow-wrap:anywhere}.form-side{display:flex;flex-direction:column;justify-content:center;padding:clamp(30px,6vw,70px)}h1{margin:0 0 12px;font-size:clamp(27px,3vw,34px);line-height:1.25;letter-spacing:-.025em;overflow-wrap:anywhere}.subtitle{margin:0 0 38px;color:#52647c;font-size:15px;line-height:1.7;overflow-wrap:anywhere}form{display:grid;gap:20px}label{display:grid;gap:8px;font-size:14px;font-weight:650}input{width:100%;min-height:48px;padding:12px 14px;border:1px solid #b9c6d5;border-radius:10px;background:#fff;color:#1a2b42;font:inherit;font-weight:400;outline:none;transition:border-color .15s,box-shadow .15s}input:hover{border-color:#6e8098}input:focus-visible{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent)}button{min-height:48px;margin-top:8px;border:0;border-radius:10px;background:var(--brand);color:var(--brand-ink);font:inherit;font-weight:700;cursor:pointer;transition:filter .15s,transform .15s}button:hover{filter:brightness(.94)}button:active{transform:translateY(1px)}button:focus-visible{outline:3px solid #1a2b42;outline-offset:3px}button:disabled{cursor:wait;opacity:.68;transform:none}.error{min-height:22px;margin:16px 0 0;color:#a02d2d;font-size:14px;line-height:1.6}.support{margin:24px 0 0;color:#52647c;font-size:13px;line-height:1.6;overflow-wrap:anywhere}@media(max-width:760px){body{display:block;padding:0;background:#fff}.shell{display:block;min-height:100dvh;border-radius:0;box-shadow:none}.brand-side{gap:28px;padding:26px 24px 30px}.brand-name{max-width:none;font-size:29px}.brand-footer{display:none}.form-side{padding:36px 24px 48px;max-width:520px;margin:auto}.subtitle{margin-bottom:30px}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important}}
+</style></head><body><main class="shell"><section class="brand-side" aria-label="${html(product)}"><div class="brand-top">${logo}${brand?.companyName ? `<span class="company">${html(brand.companyName)}</span>` : ''}</div><p class="brand-name">${html(product)}</p>${brand?.copyright ? `<div class="brand-footer">${html(brand.copyright)}</div>` : '<div></div>'}</section><section class="form-side"><h1>${html(title)}</h1><p class="subtitle">${html(subtitle)}</p><form id="login"><label for="username">${html(copy.enterpriseAccountLabel)}<input id="username" name="username" autocomplete="username" required maxlength="100"></label><label for="password">${html(copy.password)}<input id="password" name="password" type="password" autocomplete="current-password" required></label><button id="submit" type="submit">${html(copy.submit)}</button></form><p id="error" class="error" role="alert" aria-live="polite"></p>${brand?.supportText ? `<p class="support">${html(brand.supportText)}</p>` : ''}</section></main><script nonce="${nonce}">const copy=${feedback};const form=document.getElementById('login');const button=document.getElementById('submit');const error=document.getElementById('error');form.addEventListener('submit',async(event)=>{event.preventDefault();error.textContent='';button.disabled=true;button.textContent=copy.submitting;try{const fields=new FormData(form);const response=await fetch('/enterprise/login',{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify({username:fields.get('username'),password:fields.get('password')})});if(response.ok){location.replace('/');return}error.textContent=response.status===401?copy.invalid:response.status===429?copy.busy:copy.unavailable}catch{error.textContent=copy.network}finally{button.disabled=false;button.textContent=${JSON.stringify(copy.submit)}}});</script></body></html>`;
+}
+
+function providerRoute(url: string): boolean {
+  return /^\/api\/providers(?:\/|\?|$)/.test(url);
+}
+
+function mcpServerRoute(url: string): boolean {
+  return /^\/api\/mcp\/(?:servers|agent-configs)(?:\/|\?|$)/.test(url);
+}
+
+function clientSettingsRoute(url: string): boolean {
+  return /^\/api\/settings\/client(?:\?|$)/.test(url);
+}
+
+function urlMayContainCredentials(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return Boolean(url.username || url.password || url.search || url.hash);
+  } catch {
+    // Do not return an unparseable stored endpoint to the browser.
+    return true;
+  }
+}
+
+function scrubProviderSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(scrubProviderSecrets);
+  if (!value || typeof value !== 'object') return value;
+  const object = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(object)) {
+    if (key === 'api_key' && typeof item === 'string') {
+      result.api_key = '';
+      result.api_key_configured = item.length > 0;
+      result.api_key_count = item.split(/[,\n]/).filter((part) => part.trim()).length;
+    } else if (key === 'base_url' && typeof item === 'string' && item && urlMayContainCredentials(item)) {
+      result.base_url = '';
+      result.base_url_configured = item.length > 0;
+    } else if (key === 'secret_access_key' && typeof item === 'string') {
+      result.secret_access_key = '';
+      result.secret_access_key_configured = item.length > 0;
+    } else if (key === 'access_key_id' && typeof item === 'string') {
+      result.access_key_id = '';
+      result.access_key_id_configured = item.length > 0;
+    } else {
+      result[key] = scrubProviderSecrets(item);
+    }
+  }
+  return result;
+}
+
+function scrubMcpServerSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(scrubMcpServerSecrets);
+  if (!value || typeof value !== 'object') return value;
+  const object = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(object)) {
+    if (key === 'original_json') {
+      result[key] = '';
+    } else if (key === 'transport' && item && typeof item === 'object') {
+      const transport = item as Record<string, unknown>;
+      // MCP arguments, environment, URLs and headers may all contain tokens.
+      result[key] = transport.type === 'stdio'
+        ? { type: 'stdio', command: '', args: [], env: {}, credentials_configured: true }
+        : { type: transport.type, url: '', headers: {}, credentials_configured: true };
+    } else {
+      result[key] = scrubMcpServerSecrets(item);
+    }
+  }
+  return result;
+}
+
+function scrubClientSettings(value: unknown): unknown {
+  const cleaned = scrubProviderSecrets(value) as { data?: Record<string, unknown> } | null;
+  if (cleaned?.data && Object.hasOwn(cleaned.data, 'mcp.config')) {
+    cleaned.data['mcp.config'] = scrubMcpServerSecrets(cleaned.data['mcp.config']);
+  }
+  const google = cleaned?.data?.['google.config'];
+  if (google && typeof google === 'object' && !Array.isArray(google)) {
+    const settings = google as Record<string, unknown>;
+    if (typeof settings.proxy === 'string') {
+      settings.proxy_configured = settings.proxy.length > 0;
+      settings.proxy = '';
+    }
+  }
+  return cleaned;
+}
+
+function mergeClientSettingsSecrets(next: unknown, previous: unknown): unknown {
+  if (Array.isArray(next)) {
+    const old = Array.isArray(previous) ? previous : [];
+    return next.map((item, index) => {
+      const prior = item && typeof item === 'object' && 'id' in item
+        ? old.find((candidate) => candidate && typeof candidate === 'object' && candidate.id === item.id)
+        : old[index];
+      return mergeClientSettingsSecrets(item, prior);
+    });
+  }
+  if (!next || typeof next !== 'object') return next;
+  const object = next as Record<string, unknown>;
+  const old = previous && typeof previous === 'object' ? previous as Record<string, unknown> : {};
+  const merged: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(object)) {
+    if (key.endsWith('_configured') || key === 'credentials_configured' || key === 'api_key_count') continue;
+    if (['api_key', 'secret_access_key', 'access_key_id', 'proxy'].includes(key) && value === '' &&
+        object[`${key}_configured`] === true && typeof old[key] === 'string') {
+      merged[key] = old[key];
+    } else if (key === 'transport' && value && typeof value === 'object' &&
+        (value as Record<string, unknown>).credentials_configured === true &&
+        !((value as Record<string, unknown>).url || (value as Record<string, unknown>).command)) {
+      merged[key] = old[key] ?? value;
+    } else {
+      merged[key] = mergeClientSettingsSecrets(value, old[key]);
+    }
+  }
+  return merged;
+}
+
+function actorKey(actor: EnterpriseActor): string {
+  if (!/^[a-zA-Z0-9._-]{1,100}$/.test(actor.serverId) || !/^[0-9]{1,20}$/.test(actor.userId)) {
+    throw new Error('Invalid enterprise actor');
+  }
+  return `${actor.serverId}:${actor.userId}`;
+}
+
+function withinDirectory(candidate: string, root: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+async function scopedDirectoryEntries(value: unknown, root: string): Promise<Array<Record<string, unknown>>> {
+  if (!Array.isArray(value)) throw new Error('Invalid Core directory response');
+  const candidates = await Promise.all(value.map(async (raw): Promise<Record<string, unknown> | null> => {
+    if (!raw || typeof raw !== 'object') return null;
+    const item = raw as Record<string, unknown>;
+    if (typeof item.name !== 'string' || typeof item.full_path !== 'string' ||
+        typeof item.is_dir !== 'boolean') return null;
+    const resolved = await realpath(item.full_path).catch((): null => null);
+    if (!resolved || !withinDirectory(resolved, root)) return null;
+    return { name: item.name, full_path: item.full_path,
+      relative_path: path.relative(root, resolved), is_dir: item.is_dir, is_file: !item.is_dir,
+      ...(Array.isArray(item.children) ? { children: await scopedDirectoryEntries(item.children, root) } : {}) };
+  }));
+  return candidates.filter((item): item is Record<string, unknown> => item !== null);
+}
+
+function sessionId(req: IncomingMessage, cookieName: string): string | undefined {
+  const pair = req.headers.cookie
+    ?.split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${cookieName}=`));
+  const value = pair?.slice(cookieName.length + 1);
+  return value && /^[a-f0-9]{64}$/.test(value) ? value : undefined;
+}
+
+function body(req: IncomingMessage, limit: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (part: Buffer) => {
+      size += part.length;
+      if (size > limit) {
+        reject(new Error('Payload too large'));
+        req.destroy();
+      } else chunks.push(part);
+    });
+    req.once('end', () => resolve(Buffer.concat(chunks)));
+    req.once('error', reject);
+  });
+}
+
+function reply(res: ServerResponse, status: number, data: unknown): void {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(data));
+}
+
+function replyCoreFailure(res: ServerResponse, error: unknown): void {
+  if (error instanceof CoreCapacityError) {
+    res.setHeader('retry-after', '5');
+    reply(res, 503, { error: 'CORE_CAPACITY' });
+  } else reply(res, 503, { error: 'CORE_UNAVAILABLE' });
+}
+
+function proxyHeaders(req: IncomingMessage, core: EnterpriseCore): http.OutgoingHttpHeaders {
+  const headers = { ...req.headers };
+  delete headers.cookie;
+  delete headers.authorization;
+  delete headers['x-aion-enterprise-local-token'];
+  delete headers['x-forwarded-for'];
+  delete headers['x-forwarded-host'];
+  delete headers['x-forwarded-proto'];
+  headers.host = `${enterpriseCoreHost(core)}:${core.port}`;
+  headers.origin = enterpriseCoreBase(core);
+  headers['x-aion-enterprise-local-token'] = core.localToken;
+  if (req.url && (providerRoute(req.url) || mcpServerRoute(req.url) || clientSettingsRoute(req.url))) {
+    headers['accept-encoding'] = 'identity';
+  }
+  return headers;
+}
+
+/**
+ * HTTPS must terminate at a trusted proxy. This listener binds to loopback only.
+ * Login and validation are supplied by the RC2 adapter; one authenticated actor
+ * is routed to one server-side Core. No browser cookie or Core token crosses
+ * the proxy boundary.
+ */
+export async function startEnterpriseGateway(
+  opts: EnterpriseGatewayOptions
+): Promise<{ port: number; stop: () => Promise<void>;
+  reconcileAuthorization: () => Promise<void>;
+  reapIdleCores: () => Promise<void>;
+  capacity: () => { sessions: number; pendingSessions: number; cores: number;
+    starting: number; queuedStarts: number };
+  startBackgroundCore: (actor: EnterpriseActor) => Promise<void> }> {
+  const origin = new URL(opts.publicOrigin);
+  const localDev = opts.allowInsecureLoopbackDev === true && origin.protocol === 'http:' &&
+    ['127.0.0.1', 'localhost'].includes(origin.hostname);
+  const cookieName = localDev ? DEV_COOKIE_NAME : COOKIE_NAME;
+  if ((!localDev && origin.protocol !== 'https:') || origin.pathname !== '/' || origin.search || origin.hash) {
+    throw new Error('Enterprise web requires a fixed HTTPS origin');
+  }
+  const sessions = new Map<string, Session>();
+  type CoreEntry = { actor: EnterpriseActor; started: Promise<EnterpriseCore>; lastUsed: number;
+    ready: boolean; abort: AbortController };
+  const cores = new Map<string, CoreEntry>();
+  const stopping = new Map<string, Promise<void>>();
+  const maxSessions = opts.maxSessions ?? 100;
+  const maxCores = opts.maxCores ?? 50;
+  const maxStartingCores = opts.maxStartingCores ?? 4;
+  const maxQueuedCoreStarts = opts.maxQueuedCoreStarts ?? 20;
+  const coreStartWaitMs = opts.coreStartWaitMs ?? 120_000;
+  const coreIdleMs = opts.coreIdleMs ?? 10 * 60_000;
+  if (![maxSessions, maxCores, maxStartingCores, coreStartWaitMs].every((value) =>
+    Number.isSafeInteger(value) && value > 0) ||
+    ![maxQueuedCoreStarts, coreIdleMs].every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    throw new Error('Enterprise Core capacity configuration invalid');
+  }
+  let starting = 0;
+  let pendingSessions = 0;
+  type StartWaiter = { resolve: () => void; reject: (error: Error) => void;
+    timeout: ReturnType<typeof setTimeout>; signal: AbortSignal; onAbort: () => void };
+  const queuedStarts: StartWaiter[] = [];
+  let shuttingDown = false;
+  const acquireStart = async (signal: AbortSignal): Promise<void> => {
+    if (shuttingDown || signal.aborted) throw new Error('Enterprise Core startup cancelled');
+    if (starting < maxStartingCores) { starting += 1; return; }
+    if (queuedStarts.length >= maxQueuedCoreStarts) throw new CoreCapacityError('Core startup queue is full');
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        const index = queuedStarts.indexOf(waiter);
+        if (index >= 0) queuedStarts.splice(index, 1);
+        clearTimeout(waiter.timeout);
+        reject(new Error('Enterprise Core startup cancelled'));
+      };
+      const waiter: StartWaiter = { resolve, reject, signal, onAbort, timeout: setTimeout(() => {
+        const index = queuedStarts.indexOf(waiter);
+        if (index >= 0) queuedStarts.splice(index, 1);
+        signal.removeEventListener('abort', onAbort);
+        reject(new CoreCapacityError('Core startup wait timed out'));
+      }, coreStartWaitMs) };
+      waiter.timeout.unref();
+      queuedStarts.push(waiter);
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  };
+  const releaseStart = (): void => {
+    const next = queuedStarts.shift();
+    if (next) {
+      clearTimeout(next.timeout);
+      next.signal.removeEventListener('abort', next.onAbort);
+      next.resolve();
+    }
+    else starting -= 1;
+  };
+  const loginAttempts: number[] = [];
+  const authorizedBackground = async (actor: EnterpriseActor): Promise<boolean> =>
+    opts.hasBackgroundJobs?.(actor) === true &&
+    (!opts.authorizeBackground || await opts.authorizeBackground(actor).catch(() => false));
+  const stopCore = async (key: string): Promise<void> => {
+    const entry = cores.get(key);
+    if (!entry) return;
+    cores.delete(key);
+    entry.abort.abort();
+    const done = entry.started.then((core) => core.stop(), () => {});
+    stopping.set(key, done);
+    try { await done; }
+    finally { if (stopping.get(key) === done) stopping.delete(key); }
+  };
+
+  const actorSessions = (key: string): Session[] => [...sessions.values()].filter((session) =>
+    actorKey(session.actor) === key);
+  const idleCandidate = (key: string, entry: CoreEntry, allowSockets = false): boolean => coreIdleMs > 0 &&
+    cores.get(key) === entry && entry.ready && Date.now() - entry.lastUsed >= coreIdleMs &&
+    !actorSessions(key).some((session) => session.responses.size > 0 ||
+      (!allowSockets && session.sockets.size > 0)) && opts.hasBackgroundJobs?.(entry.actor) !== true;
+  const closeIdleSocket = (socket: Duplex): Promise<void> => new Promise((resolve) => {
+    if (socket.destroyed) { resolve(); return; }
+    const timer = setTimeout(() => { socket.destroy(); resolve(); }, 1_000);
+    timer.unref();
+    socket.once('close', () => { clearTimeout(timer); resolve(); });
+    socket.end(IDLE_CORE_WS_CLOSE);
+  });
+  const stopIdleCore = async (key: string, entry: CoreEntry): Promise<boolean> => {
+    if (!idleCandidate(key, entry, true)) return false;
+    let idle = false;
+    try {
+      const core = await entry.started;
+      const response = await fetch(`${enterpriseCoreBase(core)}/api/cron/internal/idle-ready`, {
+        headers: { 'x-aion-enterprise-local-token': core.localToken, 'x-aionui-internal': '1' },
+        signal: AbortSignal.timeout(3_000),
+      });
+      if (!response.ok || Number(response.headers.get('content-length') || 0) > 10_000) return false;
+      const raw = await response.text();
+      if (raw.length > 10_000) return false;
+      const body = JSON.parse(raw) as { success?: boolean; data?: { idle?: unknown } };
+      idle = body.success === true && body.data?.idle === true;
+    } catch { return false; }
+    // The worker checks running turns, background children and team coordinators.
+    if (!idle || !idleCandidate(key, entry, true)) return false;
+    await Promise.all(actorSessions(key).flatMap((session) => [...session.sockets].map(closeIdleSocket)));
+    if (!idleCandidate(key, entry)) return false;
+    await stopCore(key);
+    return true;
+  };
+  const reclaimIdleCores = async (stopAfterOne: boolean): Promise<void> => {
+    const candidates = [...cores].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+    if (stopAfterOne) {
+      for (const [key, entry] of candidates) {
+        if (await stopIdleCore(key, entry)) return;
+      }
+      return;
+    }
+    for (let index = 0; index < candidates.length; index += 8) {
+      await Promise.allSettled(candidates.slice(index, index + 8)
+        .map(([key, entry]) => stopIdleCore(key, entry)));
+    }
+  };
+  const reapIdleCores = (): Promise<void> => reclaimIdleCores(false);
+
+  const validOrigin = (req: IncomingMessage, unsafe: boolean): boolean => {
+    if (req.headers.host !== origin.host) return false;
+    return !unsafe || req.headers.origin === origin.origin;
+  };
+  const closeSessionConnections = (session: Session): void => {
+    for (const socket of session.sockets) socket.destroy();
+    for (const request of session.requests) request.destroy();
+    for (const response of session.responses) response.destroy();
+  };
+  const revoke = async (id: string): Promise<boolean> => {
+    const session = sessions.get(id);
+    if (!session) return true;
+    sessions.delete(id);
+    closeSessionConnections(session);
+    const key = actorKey(session.actor);
+    const last = ![...sessions.values()].some((other) => actorKey(other.actor) === key);
+    let backgroundReady = true;
+    if (last && cores.has(key) && opts.reconcileCronJobs) {
+      try { await opts.reconcileCronJobs(session.actor); }
+      catch { backgroundReady = false; }
+    }
+    await session.close().catch(() => {});
+    if (last && !(await authorizedBackground(session.actor))) {
+      try { await stopCore(key); }
+      catch { backgroundReady = false; }
+    }
+    return backgroundReady;
+  };
+  const validateSession = (session: Session): Promise<boolean> => {
+    if (session.validating) return session.validating;
+    const pending = session.validate().catch(() => false).finally(() => {
+      if (session.validating === pending) session.validating = undefined;
+    });
+    session.validating = pending;
+    return pending;
+  };
+  const authenticate = async (req: IncomingMessage): Promise<{ id: string; session: Session } | null> => {
+    const id = sessionId(req, cookieName);
+    const session = id && sessions.get(id);
+    if (!id || !session) return null;
+    if (session.expiresAt < Date.now() || !(await validateSession(session))) {
+      await revoke(id);
+      return null;
+    }
+    if (sessions.get(id) !== session) return null;
+    return { id, session };
+  };
+  const getCore = async (actor: EnterpriseActor, allowBackground = false): Promise<EnterpriseCore> => {
+    const key = actorKey(actor);
+    await stopping.get(key);
+    if (![...sessions.values()].some((session) => actorKey(session.actor) === key) &&
+        !(allowBackground && await authorizedBackground(actor))) {
+      throw new Error('Employee session closed');
+    }
+    let entry = cores.get(key);
+    if (!entry) {
+      if (cores.size >= maxCores) await reclaimIdleCores(true);
+      if (cores.size >= maxCores) throw new CoreCapacityError('Core capacity reached');
+      const abort = new AbortController();
+      const started = (async () => {
+        await acquireStart(abort.signal);
+        try {
+          if (abort.signal.aborted || cores.get(key) !== entry ||
+              (![...sessions.values()].some((session) => actorKey(session.actor) === key) &&
+                !(allowBackground && await authorizedBackground(actor)))) {
+            throw new Error('Employee session closed');
+          }
+          return await opts.startCore(actor);
+        } finally { releaseStart(); }
+      })().then(async (core) => {
+        try {
+          enterpriseCoreHost(core);
+          enterpriseProxyHost(core);
+          if (entry) entry.ready = true;
+          return core;
+        } catch (error) {
+          await core.stop();
+          throw error;
+        }
+      });
+      entry = { actor, started, lastUsed: Date.now(), ready: false, abort };
+      cores.set(key, entry);
+      void started.then((core) => core.invalidated?.then(async () => {
+        const affected = [...sessions].filter(([, session]) => actorKey(session.actor) === key).map(([id]) => id);
+        await Promise.all(affected.map(revoke));
+        if (cores.get(key)?.started === started) {
+          cores.delete(key);
+          const done = core.stop().catch(() => {});
+          stopping.set(key, done);
+          await done;
+          if (stopping.get(key) === done) stopping.delete(key);
+        }
+      })).catch(() => {});
+      started.catch(() => {
+        if (cores.get(key)?.started === started) cores.delete(key);
+      });
+    }
+    entry.lastUsed = Date.now();
+    return entry.started;
+  };
+
+  const reconcileAuthorization = async (): Promise<void> => {
+    await Promise.all([...sessions].map(async ([id, session]) => {
+      if (session.expiresAt < Date.now() || !(await validateSession(session))) {
+        if (sessions.get(id) === session) await revoke(id);
+      }
+    }));
+    for (const [key, entry] of cores) {
+      const backgroundReady = await authorizedBackground(entry.actor);
+      const actorSessions = [...sessions].filter(([, session]) => actorKey(session.actor) === key);
+      if (actorSessions.length && opts.hasBackgroundJobs?.(entry.actor) && !backgroundReady) {
+        // A stored grant that cannot be verified must stop the running Core,
+        // even when this employee has a valid interactive session. Keep the
+        // RC2 session itself; its next request starts a fresh Core.
+        for (const [, session] of actorSessions) closeSessionConnections(session);
+        await stopCore(key);
+      } else if (actorSessions.length) {
+        await opts.reconcileCronJobs?.(entry.actor).catch(() => {});
+      } else if (!backgroundReady) {
+        await stopCore(key);
+      }
+    }
+  };
+  let reaping = false;
+  const reap = setInterval(() => {
+    if (reaping) return;
+    reaping = true;
+    void reconcileAuthorization().then(reapIdleCores).catch(() => {}).finally(() => { reaping = false; });
+  }, 60_000);
+  reap.unref();
+
+  const server = http.createServer(async (req, res) => {
+    res.setHeader('x-aion-enterprise-web', '1');
+    const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(req.method || '');
+    if (!validOrigin(req, unsafe)) return reply(res, 403, { error: 'ORIGIN_DENIED' });
+    if (!req.url || !req.url.startsWith('/')) return reply(res, 400, { error: 'BAD_REQUEST' });
+    if (req.url.startsWith('/api/internal/') || req.url.startsWith('/api/cron/internal/')) {
+      return reply(res, 404, { error: 'NOT_FOUND' });
+    }
+    if (req.url === '/enterprise/login' && req.method === 'GET') {
+      const brand = loginBrand(await opts.publicBrand?.().catch((): null => null));
+      const english = /\ben(?:-|,|;|$)/i.test(req.headers['accept-language'] || '') &&
+        !/^zh\b/i.test(req.headers['accept-language'] || '');
+      const nonce = randomBytes(16).toString('base64');
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+        'content-security-policy':
+          `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; img-src data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+      });
+      res.end(loginPage(brand, english, nonce));
+      return;
+    }
+    if (req.url === '/enterprise/login' && req.method === 'POST') {
+      if (sessions.size + pendingSessions >= maxSessions) return reply(res, 503, { error: 'SESSION_CAPACITY' });
+      const now = Date.now();
+      while (loginAttempts.length && loginAttempts[0] < now - 60_000) loginAttempts.shift();
+      if (loginAttempts.length >= 300) return reply(res, 429, { error: 'TOO_MANY_ATTEMPTS' });
+      loginAttempts.push(now);
+      pendingSessions += 1;
+      try {
+        const input = JSON.parse((await body(req, LOGIN_BODY)).toString('utf8')) as {
+          username?: string;
+          password?: string;
+        };
+        if (typeof input.username !== 'string' || typeof input.password !== 'string') throw new Error('Invalid login');
+        const login = await opts.login(input.username, input.password);
+        actorKey(login.actor);
+        const id = randomBytes(32).toString('hex');
+        sessions.set(id, { ...login, sockets: new Set(), requests: new Set(), responses: new Set(), expiresAt: Date.now() + SESSION_MS });
+        res.setHeader('set-cookie', `${cookieName}=${id}; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict`);
+        return reply(res, 200, { ok: true });
+      } catch {
+        return reply(res, 401, { error: 'LOGIN_FAILED' });
+      } finally { pendingSessions -= 1; }
+    }
+    if (req.url === '/enterprise/desktop-session' && req.method === 'POST' && opts.resume) {
+      if (sessions.size + pendingSessions >= maxSessions) return reply(res, 503, { error: 'SESSION_CAPACITY' });
+      const borrowedCookie = req.headers['x-aion-rc2-session'];
+      if (typeof borrowedCookie !== 'string' || borrowedCookie.length > 2100) {
+        return reply(res, 401, { error: 'UNAUTHENTICATED' });
+      }
+      pendingSessions += 1;
+      try {
+        const resumed = await opts.resume(borrowedCookie);
+        actorKey(resumed.actor);
+        const id = randomBytes(32).toString('hex');
+        sessions.set(id, { ...resumed, sockets: new Set(), requests: new Set(), responses: new Set(),
+          expiresAt: Date.now() + SESSION_MS });
+        res.setHeader('set-cookie', `${cookieName}=${id}; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict`);
+        return reply(res, 200, { ok: true, actor: resumed.actor });
+      } catch {
+        return reply(res, 401, { error: 'UNAUTHENTICATED' });
+      } finally { pendingSessions -= 1; }
+    }
+    const auth = await authenticate(req);
+    if (!auth) {
+      if (req.method === 'GET' && !req.url.startsWith('/api/') && req.url !== '/enterprise/brand') {
+        res.writeHead(302, { location: '/enterprise/login', 'cache-control': 'no-store' });
+        res.end();
+        return;
+      }
+      return reply(res, 401, { error: 'UNAUTHENTICATED' });
+    }
+    if (req.url === '/enterprise/brand' && req.method === 'GET') {
+      try {
+        const raw = await auth.session.brand?.();
+        if (!raw || typeof raw !== 'object') return reply(res, 200, null);
+        const value = raw as Record<string, unknown>;
+        const productName = typeof value.productName === 'string' ? value.productName.trim().slice(0, 80) : '';
+        if (!productName) return reply(res, 200, null);
+        const primaryColor = typeof value.primaryColor === 'string' && /^#[0-9a-f]{6}$/i.test(value.primaryColor)
+          ? value.primaryColor : '';
+        const logoDataUrl = typeof value.logoDataUrl === 'string' &&
+          /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value.logoDataUrl) &&
+          value.logoDataUrl.length <= 2_800_000 ? value.logoDataUrl : '';
+        return reply(res, 200, { productName, primaryColor, logoDataUrl });
+      } catch {
+        return reply(res, 502, { error: 'BRAND_UNAVAILABLE' });
+      }
+    }
+    if ((req.url === '/enterprise/logout' || req.url === '/logout') && req.method === 'POST') {
+      res.setHeader('set-cookie', `${cookieName}=; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict; Max-Age=0`);
+      const backgroundTasksVerified = await revoke(auth.id);
+      return reply(res, 200, { ok: true, backgroundTasksVerified });
+    }
+    auth.session.responses.add(res);
+    res.once('close', () => auth.session.responses.delete(res));
+    if (req.url === '/api/auth/user' && req.method === 'GET') {
+      return reply(res, 200, { success: true,
+        user: { id: auth.session.actor.userId, username: auth.session.username || auth.session.actor.userId } });
+    }
+    if (req.url.startsWith('/enterprise/conversations') && req.method === 'GET') {
+      const query = new URL(req.url, origin);
+      if (query.pathname !== '/enterprise/conversations') return reply(res, 404, { error: 'NOT_FOUND' });
+      const cursor = query.searchParams.get('cursor');
+      if (cursor && !isConversationId(cursor)) return reply(res, 400, { error: 'BAD_REQUEST' });
+      try {
+        const core = await getCore(auth.session.actor);
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const route = `/api/conversations?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+        const upstream = await fetch(`${enterpriseCoreBase(core)}${route}`, {
+          headers: { 'x-aion-enterprise-local-token': core.localToken },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!upstream.ok || Number(upstream.headers.get('content-length') || 0) > MAX_PROVIDER_RESPONSE) {
+          return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        }
+        const raw = await upstream.text();
+        if (raw.length > MAX_PROVIDER_RESPONSE) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        const parsed: unknown = JSON.parse(raw);
+        const data = (parsed as { data?: { items?: unknown; has_more?: unknown } } | null)?.data;
+        if (!Array.isArray(data?.items)) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        const pinnedIds = new Set<string>();
+        let pinnedCursor: string | null = null;
+        for (let page = 0; page < 100; page += 1) {
+          const pinnedRoute: string = pinnedCursor
+            ? `/api/sidebar/items?scope=pinned&cursor=${encodeURIComponent(pinnedCursor)}&limit=100`
+            : '/api/sidebar?limit=1&win=pinned%3A100';
+          const pinnedResponse: Response = await fetch(`${enterpriseCoreBase(core)}${pinnedRoute}`, {
+            headers: { 'x-aion-enterprise-local-token': core.localToken },
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!pinnedResponse.ok || Number(pinnedResponse.headers.get('content-length') || 0) > MAX_PROVIDER_RESPONSE) {
+            return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+          }
+          const pinnedRaw: string = await pinnedResponse.text();
+          if (pinnedRaw.length > MAX_PROVIDER_RESPONSE) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+          const pinnedData = (JSON.parse(pinnedRaw) as { data?: unknown }).data as {
+            groups?: Array<{ scope?: { type?: string }; items?: unknown[]; has_more?: boolean; next_cursor?: string }>;
+            items?: unknown[]; has_more?: boolean; next_cursor?: string;
+          } | undefined;
+          if (!pinnedData || (!pinnedCursor && !Array.isArray(pinnedData.groups))) {
+            return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+          }
+          const pinnedGroup: { items?: unknown[]; has_more?: boolean; next_cursor?: string } | undefined =
+            pinnedCursor ? pinnedData : pinnedData.groups?.find((group) => group.scope?.type === 'pinned');
+          if (!pinnedGroup) {
+            if (pinnedCursor) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+            break;
+          }
+          if (!Array.isArray(pinnedGroup.items)) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+          for (const entry of pinnedGroup.items) {
+            const item = entry as { type?: string; conversation?: { id?: unknown } };
+            if (item?.type === 'conversation' && isConversationId(item.conversation?.id)) pinnedIds.add(item.conversation.id);
+          }
+          if (pinnedGroup.has_more !== true) break;
+          if (typeof pinnedGroup.next_cursor !== 'string' || pinnedGroup.next_cursor === pinnedCursor || page === 99) {
+            return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+          }
+          pinnedCursor = pinnedGroup.next_cursor;
+        }
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const actor = auth.session.actor;
+        const items = data.items.filter((item): item is Record<string, unknown> & { id: string } =>
+          !!item && typeof item === 'object' && isConversationId(item.id) &&
+          typeof item.name === 'string').map((item) => ({
+          key: `enterprise_web:${actor.serverId}:${actor.userId}:${item.id}`,
+          id: item.id,
+          source: 'enterprise_web',
+          name: item.name,
+          modified_at: typeof item.modified_at === 'number' ? item.modified_at : null,
+          status: typeof item.status === 'string' ? item.status : null,
+          pinned: pinnedIds.has(item.id),
+        }));
+        const lastId = data.items.at(-1)?.id;
+        const hasMore = data.has_more === true && isConversationId(lastId);
+        return reply(res, 200, { items, next_cursor: hasMore ? lastId : null });
+      } catch (error) {
+        if (!res.destroyed) return replyCoreFailure(res, error);
+        return;
+      }
+    }
+    if (req.url.startsWith('/enterprise/search?') && req.method === 'GET') {
+      const query = new URL(req.url, origin);
+      const keyword = query.searchParams.get('keyword')?.trim() || '';
+      const page = Number(query.searchParams.get('page') || '1');
+      if (!keyword || keyword.length > 200 || !Number.isInteger(page) || page < 1 || page > 1000) {
+        return reply(res, 400, { error: 'BAD_REQUEST' });
+      }
+      try {
+        const core = await getCore(auth.session.actor);
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const route = `/api/messages/search?keyword=${encodeURIComponent(keyword)}&page=${page}&page_size=20`;
+        const upstream = await fetch(`${enterpriseCoreBase(core)}${route}`, {
+          headers: { 'x-aion-enterprise-local-token': core.localToken }, signal: AbortSignal.timeout(10_000),
+        });
+        if (!upstream.ok || Number(upstream.headers.get('content-length') || 0) > MAX_PROVIDER_RESPONSE) {
+          return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        }
+        const raw = await upstream.text();
+        if (raw.length > MAX_PROVIDER_RESPONSE) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        const data = (JSON.parse(raw) as { data?: { items?: unknown; has_more?: unknown } } | null)?.data;
+        if (!Array.isArray(data?.items)) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const actor = auth.session.actor;
+        const items = data.items.filter((item): item is Record<string, unknown> =>
+          !!item && typeof item === 'object' && typeof item.message_id === 'string' &&
+          typeof item.preview_text === 'string' && typeof item.message_created_at === 'number' &&
+          !!item.conversation && typeof item.conversation === 'object' &&
+          isConversationId(item.conversation.id) &&
+          typeof item.conversation.name === 'string').map((item) => {
+          const conversation = item.conversation as { id: string; name: string };
+          return { key: `enterprise_web:${actor.serverId}:${actor.userId}:${conversation.id}`,
+            source: 'enterprise_web', conversation_id: conversation.id, name: conversation.name.slice(0, 500),
+            message_id: item.message_id, message_created_at: item.message_created_at,
+            preview_text: (item.preview_text as string).slice(0, 500) };
+        });
+        return reply(res, 200, { items, has_more: data.has_more === true });
+      } catch (error) {
+        if (!res.destroyed) return replyCoreFailure(res, error);
+        return;
+      }
+    }
+    if (clientSettingsRoute(req.url) && req.method === 'PUT') {
+      auth.session.responses.add(res);
+      const abort = new AbortController();
+      res.once('close', () => { auth.session.responses.delete(res); abort.abort(); });
+      try {
+        const raw = await body(req, 1024 * 1024);
+        const updates: unknown = JSON.parse(raw.toString('utf8'));
+        if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+          return reply(res, 400, { error: 'BAD_REQUEST' });
+        }
+        const core = await getCore(auth.session.actor);
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const base = `${enterpriseCoreBase(core)}/api/settings/client`;
+        const current = await fetch(base, { headers: { 'x-aion-enterprise-local-token': core.localToken },
+          signal: abort.signal });
+        if (!current.ok || Number(current.headers.get('content-length') || 0) > MAX_PROVIDER_RESPONSE) {
+          return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        }
+        const currentRaw = await current.text();
+        if (currentRaw.length > MAX_PROVIDER_RESPONSE) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        const previous = (JSON.parse(currentRaw) as { data?: unknown } | null)?.data;
+        const merged = mergeClientSettingsSecrets(updates, previous);
+        const saved = await fetch(base, { method: 'PUT', headers: {
+          'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken,
+        }, body: JSON.stringify(merged), signal: abort.signal });
+        const savedRaw = await saved.text();
+        if (savedRaw.length > MAX_PROVIDER_RESPONSE) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const cleaned = scrubClientSettings(JSON.parse(savedRaw));
+        reply(res, saved.status, cleaned);
+      } catch (error) {
+        if (error instanceof CoreCapacityError && !res.destroyed) return replyCoreFailure(res, error);
+        if (!res.destroyed) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+      }
+      return;
+    }
+    if (/^\/api\/fs\/dir(?:\?|$)/.test(req.url)) {
+      if (req.method !== 'POST') return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
+      auth.session.responses.add(res);
+      const abort = new AbortController();
+      res.once('close', () => { auth.session.responses.delete(res); abort.abort(); });
+      try {
+        const input = JSON.parse((await body(req, 8192)).toString('utf8')) as { dir?: unknown };
+        if (typeof input.dir !== 'string' || !path.isAbsolute(input.dir) || input.dir.length > 4096) {
+          return reply(res, 400, { error: 'BAD_REQUEST' });
+        }
+        const core = await getCore(auth.session.actor);
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        if (!core.workspaceRoot) return reply(res, 503, { error: 'WORKSPACE_UNAVAILABLE' });
+        const [root, directory] = await Promise.all([realpath(core.workspaceRoot), realpath(input.dir)]);
+        if (!withinDirectory(directory, root)) return reply(res, 403, { error: 'WORKSPACE_DENIED' });
+        const upstream = await fetch(`${enterpriseCoreBase(core)}/api/fs/dir`, { method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken },
+          body: JSON.stringify({ dir: input.dir, root: core.workspaceRoot }), signal: abort.signal });
+        if (!upstream.ok || Number(upstream.headers.get('content-length') || 0) > MAX_PROVIDER_RESPONSE) {
+          return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        }
+        const raw = await upstream.text();
+        if (raw.length > MAX_PROVIDER_RESPONSE) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        const parsed = JSON.parse(raw) as { success?: unknown; data?: unknown };
+        if (parsed.success !== true) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        const entries = await scopedDirectoryEntries(parsed.data, root);
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        return reply(res, 200, { success: true, data: entries });
+      } catch (error) {
+        if (error instanceof CoreCapacityError && !res.destroyed) return replyCoreFailure(res, error);
+        if (!res.destroyed) return reply(res, 400, { error: 'WORKSPACE_UNAVAILABLE' });
+        return;
+      }
+    }
+    const cronCollection = req.url === '/api/cron/jobs' && req.method === 'POST';
+    const cronItem = /^\/api\/cron\/jobs\/(cron_[A-Za-z0-9_-]{8,80})$/.exec(req.url);
+    if (opts.syncCronGrant && (cronCollection || (cronItem && ['PUT', 'DELETE'].includes(req.method || '')))) {
+      auth.session.responses.add(res);
+      res.once('close', () => auth.session.responses.delete(res));
+      try {
+        const requestBody = req.method === 'DELETE' ? undefined : await body(req, 1024 * 1024);
+        const core = await getCore(auth.session.actor);
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const base = enterpriseCoreBase(core);
+        const headers = { 'x-aion-enterprise-local-token': core.localToken, 'content-type': 'application/json' };
+        const upstream = await fetch(`${base}${req.url}`, { method: req.method, headers,
+          body: requestBody?.toString('utf8'), signal: AbortSignal.timeout(20_000) });
+        const raw = await upstream.text();
+        if (raw.length > MAX_PROVIDER_RESPONSE) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+        const parsed = JSON.parse(raw) as { success?: boolean; data?: { id?: string; enabled?: boolean } };
+        if (upstream.ok && parsed.success === true) {
+          const jobId = cronItem?.[1] || parsed.data?.id;
+          if (!jobId || !/^cron_[A-Za-z0-9_-]{8,80}$/.test(jobId))
+            return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+          const enabled = req.method !== 'DELETE' && parsed.data?.enabled === true;
+          try { await opts.syncCronGrant(auth.session.actor, jobId, enabled); }
+          catch {
+            if (enabled) {
+              await fetch(`${base}/api/cron/jobs/${jobId}`, { method: cronCollection ? 'DELETE' : 'PUT',
+                headers, body: cronCollection ? undefined : JSON.stringify({ enabled: false }),
+                signal: AbortSignal.timeout(5000) }).catch(() => {});
+            }
+            return reply(res, 503, { error: 'BACKGROUND_AUTHORIZATION_UNAVAILABLE' });
+          }
+        }
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        res.writeHead(upstream.status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(raw);
+      } catch (error) {
+        if (error instanceof CoreCapacityError && !res.destroyed) return replyCoreFailure(res, error);
+        if (!res.destroyed) reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+      }
+      return;
+    }
+    if (req.url.startsWith('/api/') || req.url.startsWith('/api?')) {
+      if (Number(req.headers['content-length'] || 0) > MAX_BODY) return reply(res, 413, { error: 'PAYLOAD_TOO_LARGE' });
+      auth.session.responses.add(res);
+      res.once('close', () => auth.session.responses.delete(res));
+      try {
+        const core = await getCore(auth.session.actor);
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const upstream = http.request(
+          {
+            hostname: enterpriseCoreHost(core),
+            port: core.port,
+            method: req.method,
+            path: req.url,
+            headers: proxyHeaders(req, core),
+          },
+          (upstreamRes) => {
+            const headers = { ...upstreamRes.headers };
+            delete headers['set-cookie'];
+            const scrubProviders = providerRoute(req.url || '');
+            const scrubMcpServers = mcpServerRoute(req.url || '');
+            const scrubPreferences = clientSettingsRoute(req.url || '');
+            if (scrubProviders || scrubMcpServers || scrubPreferences) {
+              if (!upstreamRes.headers['content-type']?.includes('application/json')) {
+                upstreamRes.resume();
+                reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+                return;
+              }
+              const chunks: Buffer[] = [];
+              let size = 0;
+              upstreamRes.on('data', (chunk: Buffer) => {
+                size += chunk.length;
+                if (size > MAX_PROVIDER_RESPONSE) upstreamRes.destroy();
+                else chunks.push(chunk);
+              });
+              upstreamRes.once('end', () => {
+                if (res.destroyed) return;
+                try {
+                  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+                  const cleaned = JSON.stringify(scrubProviders ? scrubProviderSecrets(parsed) :
+                    scrubMcpServers ? scrubMcpServerSecrets(parsed) : scrubClientSettings(parsed));
+                  delete headers['content-length'];
+                  delete headers['content-encoding'];
+                  delete headers['transfer-encoding'];
+                  res.writeHead(upstreamRes.statusCode || 502, headers);
+                  res.end(cleaned);
+                } catch {
+                  reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
+                }
+              });
+              upstreamRes.once('error', () => { if (!res.destroyed) reply(res, 502, { error: 'CORE_RESPONSE_INVALID' }); });
+              return;
+            }
+            res.writeHead(upstreamRes.statusCode || 502, headers);
+            upstreamRes.pipe(res);
+          }
+        );
+        auth.session.requests.add(upstream);
+        const clearRequest = () => auth.session.requests.delete(upstream);
+        upstream.once('close', clearRequest);
+        res.once('close', () => {
+          clearRequest();
+          auth.session.responses.delete(res);
+          if (!upstream.destroyed) upstream.destroy();
+        });
+        upstream.on('error', () => {
+          if (!res.headersSent) reply(res, 502, { error: 'CORE_UNAVAILABLE' });
+          else res.destroy();
+        });
+        let received = 0;
+        req.on('data', (chunk: Buffer) => {
+          received += chunk.length;
+          if (received > MAX_BODY) {
+            req.destroy();
+            upstream.destroy();
+          }
+        });
+        req.pipe(upstream);
+      } catch (error) {
+        if (!res.destroyed) return replyCoreFailure(res, error);
+      }
+      return;
+    }
+    if (req.url === '/login' || req.url === '/logout') return reply(res, 404, { error: 'NOT_FOUND' });
+    if (req.url === '/sw.js') return reply(res, 404, { error: 'OFFLINE_MODE_DISABLED' });
+    if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' ||
+        req.headers.accept?.includes('text/html'))) {
+      const html = await readFile(path.join(opts.staticDir, 'index.html'), 'utf8');
+      const nonce = randomBytes(16).toString('base64');
+      const content = html.replace('</head>', '<script>window.__AION_ENTERPRISE_WEB__=true;</script></head>')
+        .replace(/<script\b/g, `<script nonce="${nonce}"`);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
+        'content-security-policy': [
+          "default-src 'self'", `script-src 'self' 'nonce-${nonce}'`, "script-src-attr 'none'",
+          "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob: https:",
+          "font-src 'self' data:", `connect-src 'self' ${localDev ? 'ws' : 'wss'}://${origin.host}`,
+          "frame-src 'self' blob:", "worker-src 'self' blob:", "object-src 'none'",
+          "base-uri 'self'", "form-action 'self'",
+        ].join('; ') });
+      res.end(content);
+      return;
+    }
+    await serveHandler(req, res, { public: opts.staticDir, rewrites: [{ source: '**', destination: '/index.html' }] });
+  });
+
+  server.on('upgrade', (req, socket, head) => {
+    void (async () => {
+      if (!req.url || !/^\/(?:ws|api\/stt\/stream)(?:\?|$)/.test(req.url) || !validOrigin(req, true)) {
+        socket.destroy();
+        return;
+      }
+      const auth = await authenticate(req);
+      if (!auth) {
+        socket.destroy();
+        return;
+      }
+      const core = await getCore(auth.session.actor);
+      if (sessions.get(auth.id) !== auth.session) {
+        socket.destroy();
+        return;
+      }
+      const upstream = net.connect(core.port, enterpriseCoreHost(core));
+      auth.session.sockets.add(socket);
+      const monitor = setInterval(() => {
+        void authenticate(req).then((active) => {
+          if (!active || active.id !== auth.id) socket.destroy();
+        });
+      }, 5000);
+      monitor.unref();
+      const close = () => {
+        clearInterval(monitor);
+        auth.session.sockets.delete(socket);
+        socket.destroy();
+        upstream.destroy();
+      };
+      socket.once('error', close);
+      socket.once('close', close);
+      upstream.once('error', close);
+      upstream.once('close', close);
+      upstream.once('connect', () => {
+        const headers = proxyHeaders(req, core);
+        const lines = [`GET ${req.url} HTTP/1.1`];
+        for (const [name, value] of Object.entries(headers)) {
+          if (Array.isArray(value)) for (const part of value) lines.push(`${name}: ${part}`);
+          else if (value !== undefined) lines.push(`${name}: ${value}`);
+        }
+        upstream.write(`${lines.join('\r\n')}\r\n\r\n`);
+        if (head.length) upstream.write(head);
+        socket.pipe(upstream);
+        upstream.pipe(socket);
+      });
+    })().catch(() => socket.destroy());
+  });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(opts.port, '127.0.0.1', () => {
+        server.off('error', reject);
+        resolve();
+      });
+    });
+  } catch (error) {
+    clearInterval(reap);
+    throw error;
+  }
+  return {
+    port: (server.address() as { port: number }).port,
+    reconcileAuthorization,
+    reapIdleCores,
+    capacity: () => ({ sessions: sessions.size, pendingSessions, cores: cores.size,
+      starting, queuedStarts: queuedStarts.length }),
+    startBackgroundCore: async (actor) => {
+      if (!(await authorizedBackground(actor))) throw new Error('Background Core authorization unavailable');
+      await getCore(actor, true);
+    },
+    stop: async () => {
+      shuttingDown = true;
+      for (const waiter of queuedStarts.splice(0)) {
+        clearTimeout(waiter.timeout);
+        waiter.signal.removeEventListener('abort', waiter.onAbort);
+        waiter.reject(new Error('Enterprise gateway is stopping'));
+      }
+      clearInterval(reap);
+      const sessionResults = await Promise.all([...sessions.keys()].map(revoke));
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const coreResults = await Promise.allSettled([...cores.values()].map(async (entry) => (await entry.started).stop()));
+      const stoppingResults = await Promise.allSettled(stopping.values());
+      if (sessionResults.includes(false) || [...coreResults, ...stoppingResults].some((result) =>
+        result.status === 'rejected')) throw new Error('Enterprise Core shutdown incomplete');
+    },
+  };
+}

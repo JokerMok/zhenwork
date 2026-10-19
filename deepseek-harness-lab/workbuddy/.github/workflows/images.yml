@@ -1,0 +1,36 @@
+name: Candidate image builds
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  images:
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Checkout exact upstream without editing it
+        run: |
+          git clone --filter=blob:none https://github.com/deepseek-ai/deepseek-harness.git ../deepseek-harness
+          git -C ../deepseek-harness checkout --detach ddefc45fbc7f8e46dd73185e68295696d1297887
+      - name: Build control plane serially
+        run: node scripts/ops/build-images.mjs '${{ matrix.platform }}'
+      - name: Build the single Harness runtime from the source lock
+        run: node scripts/ops/build-runtime.mjs '${{ matrix.platform }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-build-evidence-${{ strategy.job-index }}
+          path: evidence/v1/p8/
+# Build-only workflow. No provider credential, deployment, registry publication,
+# or production acceptance is implied by a successful build.

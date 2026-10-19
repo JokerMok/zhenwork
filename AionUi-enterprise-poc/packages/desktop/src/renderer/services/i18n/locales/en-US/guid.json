@@ -1,0 +1,69 @@
+{
+  "promptExamplesHint": "Try these instructions",
+  "defaultPrompts": {
+    "understand": "Get to know this project and explain in plain words what it does and where to start",
+    "cleanup": "Find duplicate and useless files in this folder and list them for my confirmation",
+    "create": "Build me a beautiful personal homepage and open it for me when it's done"
+  },
+  "selectAssistantHint": "Select an assistant to start a task",
+  "assistantManagedHint": "The enterprise assistant has configured its skills and tool connections. Change them below only when needed.",
+  "toolConnections": "Tool connections",
+  "enabledCount": "{{count}} enabled",
+  "commandFallback": "Command available in this conversation",
+  "skillDescriptionFallback": "Skill available in this conversation",
+  "skillNames": {
+    "enterpriseSuccinct": "Enterprise brief",
+    "aionuiConfig": "Workspace settings",
+    "conversationCreate": "New conversation",
+    "cron": "Scheduled tasks",
+    "officecli": "Office documents",
+    "sessionMessage": "Conversation messages",
+    "skillCreator": "Create a skill",
+    "storyRoleplay": "Story roleplay",
+    "weixinFileSend": "Send a WeChat file"
+  },
+  "skillDescriptions": {
+    "enterpriseSuccinct": "Create a short brief from explicitly attached material",
+    "aionuiConfig": "Configure the workspace, assistants, and connections",
+    "conversationCreate": "Create a new conversation for this account",
+    "cron": "Create and manage scheduled tasks",
+    "officecli": "Create and edit common office documents",
+    "sessionMessage": "Send a message to another conversation",
+    "skillCreator": "Create or update a skill",
+    "storyRoleplay": "Play a role in a story",
+    "weixinFileSend": "Send a file through WeChat"
+  },
+  "enterpriseCatalog": "Enterprise catalog search",
+  "mcpNames": {
+    "enterpriseCatalog": "Enterprise catalog search",
+    "chromeDevtools": "Browser debugging",
+    "aionuiBrowser": "Built-in browser",
+    "aionuiImageGeneration": "Image generation"
+  },
+  "commandNames": {
+    "open": "Add file",
+    "copy": "Copy reply",
+    "compact": "Compact conversation",
+    "context": "View context",
+    "clear": "Clear conversation",
+    "help": "Command help",
+    "quit": "Exit command mode"
+  },
+  "commandDescriptions": {
+    "open": "Choose a file and add it to this conversation",
+    "copy": "Copy the previous assistant reply",
+    "compact": "Compact the current conversation context",
+    "context": "Show current context usage",
+    "clear": "Clear current conversation history",
+    "help": "List available commands",
+    "quit": "Exit the command interaction mode"
+  },
+  "workspace": {
+    "workInProject": "Work in a project",
+    "optional": "Optional",
+    "clearWorkspace": "Clear",
+    "specifyWorkspace": "Select project folder",
+    "searchPlaceholder": "Search projects…",
+    "noProject": "No Project"
+  }
+}

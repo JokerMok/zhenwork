@@ -1,0 +1,203 @@
+diff --git a/crates/aionui-app/src/lib.rs b/crates/aionui-app/src/lib.rs
+index 533b0a1..63066bb 100644
+--- a/crates/aionui-app/src/lib.rs
++++ b/crates/aionui-app/src/lib.rs
+@@ -14,5 +14,6 @@ pub use router::{
+     ChannelOrchestratorComponents, ModuleStates, RouterBuildError, RouterRuntime, build_assistant_state,
+     build_conversation_state, build_extension_states, build_module_states, build_ws_state, create_router,
+     create_router_with_all_state, create_router_with_runtime, create_router_with_states,
++    install_enterprise_local_token,
+ };
+ pub use services::AppServices;
+diff --git a/crates/aionui-app/src/main.rs b/crates/aionui-app/src/main.rs
+index ae3fc72..7498deb 100644
+--- a/crates/aionui-app/src/main.rs
++++ b/crates/aionui-app/src/main.rs
+@@ -29,6 +29,58 @@ fn main() -> ExitCode {
+ fn run_main() -> Result<ExitCode, MainError> {
+     let cli = Cli::parse();
+ 
++    if std::env::var("AION_ENTERPRISE_ROLE").ok().as_deref() == Some("worker")
++        && requires_enterprise_worker_capability(cli.command.as_ref())
++    {
++        let token = if let Some(token_path) = std::env::var("AION_ENTERPRISE_LOCAL_TOKEN_FILE").ok() {
++            assert_eq!(token_path, "/run/aionui/local-token", "enterprise capability file path invalid");
++            let file = std::path::Path::new("/run/aionui/local-token");
++            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
++            loop {
++                match std::fs::symlink_metadata(file) {
++                    Ok(metadata) => {
++                        assert!(metadata.file_type().is_file(), "enterprise capability file invalid");
++                        #[cfg(unix)]
++                        {
++                            use std::os::unix::fs::{MetadataExt, PermissionsExt};
++                            assert_eq!(metadata.uid(), unsafe { libc::geteuid() },
++                                "enterprise capability file owner invalid");
++                            assert_eq!(metadata.permissions().mode() & 0o077, 0,
++                                "enterprise capability file permissions invalid");
++                        }
++                        let token = std::fs::read_to_string(file)
++                            .expect("enterprise capability file unreadable");
++                        std::fs::remove_file(file)
++                            .expect("enterprise capability file could not be removed");
++                        break token;
++                    }
++                    Err(error) if error.kind() == std::io::ErrorKind::NotFound
++                        && std::time::Instant::now() < deadline =>
++                    {
++                        std::thread::sleep(std::time::Duration::from_millis(25));
++                    }
++                    Err(_) => panic!("enterprise capability file unavailable"),
++                }
++            }
++        } else if std::env::var("AION_ENTERPRISE_LOCAL_TOKEN_STDIN").ok().as_deref() == Some("1") {
++            let mut token = String::new();
++            std::io::stdin().read_line(&mut token)
++                .expect("enterprise capability stdin unavailable");
++            token.trim_end_matches(['\r', '\n']).to_owned()
++        } else {
++            panic!("enterprise worker requires capability via private file or stdin")
++        };
++        assert!(token.len() >= 32 && token.bytes().all(|byte| byte.is_ascii_hexdigit()),
++            "enterprise local capability invalid");
++        aionui_app::install_enterprise_local_token(token);
++        // SAFETY: this is before the Tokio runtime and any spawned worker thread.
++        unsafe {
++            std::env::remove_var("AION_ENTERPRISE_LOCAL_TOKEN");
++            std::env::remove_var("AION_ENTERPRISE_LOCAL_TOKEN_FILE");
++            std::env::remove_var("AION_ENTERPRISE_LOCAL_TOKEN_STDIN");
++        }
++    }
++
+     // mcp-* subcommands route into short-lived stdio helpers that live entirely
+     // outside the main HTTP server. They share the global flags so clap can
+     // parse a uniform CLI, but bypass `aionui_runtime::init` (which would
+@@ -56,6 +108,13 @@ fn run_main() -> Result<ExitCode, MainError> {
+     runtime.block_on(async_main(merged_path, cli))
+ }
+ 
++// The team stdio bridge is a child of the authenticated Worker. It uses the
++// per-team MCP token and never opens the HTTP API; the Worker's one-shot local
++// capability has already been consumed before this child starts.
++fn requires_enterprise_worker_capability(command: Option<&Command>) -> bool {
++    !matches!(command, Some(Command::McpTeamStdio))
++}
++
+ fn runtime_init_error_for_command(command: &Option<Command>, error: std::io::Error) -> MainError {
+     if command.is_none() {
+         return MainError::Bootstrap(
+@@ -167,6 +226,13 @@ async fn async_main(merged_path: String, cli: Cli) -> Result<ExitCode, MainError
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn enterprise_worker_capability_remains_required_except_for_team_stdio_helper() {
++        assert!(requires_enterprise_worker_capability(None));
++        assert!(requires_enterprise_worker_capability(Some(&Command::Capabilities)));
++        assert!(!requires_enterprise_worker_capability(Some(&Command::McpTeamStdio)));
++    }
++
+     fn runtime_error(command: Option<Command>) -> MainError {
+         runtime_init_error_for_command(&command, std::io::Error::other("raw runtime source"))
+     }
+diff --git a/crates/aionui-app/src/router/mod.rs b/crates/aionui-app/src/router/mod.rs
+index 92017b9..527bdde 100644
+--- a/crates/aionui-app/src/router/mod.rs
++++ b/crates/aionui-app/src/router/mod.rs
+@@ -16,6 +16,7 @@ mod trace;
+ 
+ pub use routes::{
+     RouterRuntime, create_router, create_router_with_all_state, create_router_with_runtime, create_router_with_states,
++    install_enterprise_local_token,
+ };
+ pub use state::{
+     ChannelOrchestratorComponents, ModuleStates, RouterBuildError, build_assistant_state, build_conversation_state,
+diff --git a/crates/aionui-app/src/router/routes.rs b/crates/aionui-app/src/router/routes.rs
+index e67514c..43dbc5b 100644
+--- a/crates/aionui-app/src/router/routes.rs
++++ b/crates/aionui-app/src/router/routes.rs
+@@ -1,11 +1,12 @@
+ //! Top-level router assembly: middleware stack + module route merges.
+ 
+-use std::sync::Arc;
++use std::sync::{Arc, OnceLock};
+ use std::time::Instant;
+ 
+ use axum::Json;
+ use axum::extract::DefaultBodyLimit;
+ use axum::extract::Request;
++use axum::extract::State;
+ use axum::http::{HeaderName, Method, StatusCode, header};
+ use axum::middleware::{Next, from_fn_with_state};
+ use axum::response::{IntoResponse, Response};
+@@ -54,11 +55,49 @@ use super::scm_monitor::{CompositeMessageRouter, spawn_scm_monitor};
+ use super::state::{ModuleStates, RouterBuildError, build_module_states, build_ws_state};
+ use super::trace::with_access_log;
+ 
++static ENTERPRISE_LOCAL_TOKEN: OnceLock<String> = OnceLock::new();
++
++/// Install the worker capability before starting the async runtime. This keeps
++/// it out of the environment inherited by user configured MCP subprocesses.
++pub fn install_enterprise_local_token(token: String) {
++    assert!(token.len() >= 32, "enterprise local capability is too short");
++    assert!(ENTERPRISE_LOCAL_TOKEN.set(token).is_ok(), "enterprise local capability already installed");
++}
++
+ pub struct RouterRuntime {
+     pub client_pref_service: ClientPrefService,
+     pub team_service: Arc<TeamSessionService>,
+ }
+ 
++// Enterprise desktop mode keeps the upstream local identity model inside a
++// per-user database, but requires a separate capability at the loopback edge.
++// Runtime routes already validate their own conversation-scoped token.
++async fn enterprise_local_gate(State(expected): State<String>, request: Request, next: Next) -> Response {
++    let path = request.uri().path();
++    if request.method() == Method::OPTIONS
++        || path == "/health"
++        || path.starts_with("/api/runtime/")
++        || path.starts_with("/internal/antigravity-hook/")
++    {
++        return next.run(request).await;
++    }
++    let supplied = request
++        .headers()
++        .get("x-aion-enterprise-local-token")
++        .and_then(|value| value.to_str().ok())
++        .unwrap_or("");
++    let a = supplied.as_bytes();
++    let b = expected.as_bytes();
++    let mut diff = a.len() ^ b.len();
++    for (left, right) in a.iter().zip(b.iter()) {
++        diff |= usize::from(*left ^ *right);
++    }
++    if diff != 0 {
++        return StatusCode::UNAUTHORIZED.into_response();
++    }
++    next.run(request).await
++}
++
+ async fn forward_event_bus_to_websocket(
+     mut event_rx: tokio::sync::broadcast::Receiver<WebSocketMessage<serde_json::Value>>,
+     ws_manager: Arc<WebSocketManager>,
+@@ -447,6 +486,20 @@ pub fn create_router_with_all_state(services: &AppServices, states: ModuleStates
+     let router = router.layer(DefaultBodyLimit::max(aionui_common::constants::BODY_LIMIT));
+     let router = router.layer(middleware::from_fn(normalize_boundary_error_response));
+ 
++    let router = if std::env::var("AION_ENTERPRISE_ROLE").ok().as_deref() == Some("worker") {
++        assert!(
++            services.identity_mode.is_local(),
++            "enterprise worker requires local identity mode"
++        );
++        let token = ENTERPRISE_LOCAL_TOKEN
++            .get()
++            .expect("enterprise worker requires a local capability")
++            .clone();
++        router.layer(from_fn_with_state(token, enterprise_local_gate))
++    } else {
++        router
++    };
++
+     let router = with_access_log(router);
+     tracing::info!(
+         elapsed_ms = boot.elapsed().as_millis(),

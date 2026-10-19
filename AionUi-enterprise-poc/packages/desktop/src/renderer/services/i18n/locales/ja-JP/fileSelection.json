@@ -1,0 +1,27 @@
+{
+  "selectFile": "ファイルを選択",
+  "selectDirectory": "ディレクトリを選択",
+  "pleaseSelectFile": "ファイルを選択してください",
+  "pleaseSelectDirectory": "ディレクトリを選択してください",
+  "webFsPicker": {
+    "loadFailed": "このディレクトリを開けません",
+    "titleDirectory": "サーバー上のフォルダーを選択",
+    "titleFile": "サーバー上のファイルを選択",
+    "selectedCount": "{{count}} 件選択中",
+    "up": "上へ",
+    "go": "移動",
+    "empty": "ここには何もありません"
+  },
+  "enterpriseResources": {
+    "title": "企業資料",
+    "failed": "企業資料を利用できないか、権限が取り消されました",
+    "connection": "Cannot reach the enterprise server. Check the network and try again.",
+    "denied": "Access was revoked or the file is disabled. Choose it again.",
+    "tooLarge": "This enterprise file exceeds the 2 MiB task limit.",
+    "sessionClosed": "The enterprise session ended. Sign in again.",
+    "attached": "資料をこのタスクに追加しました",
+    "saved": "資料を保存しました",
+    "use": "タスクに追加",
+    "save": "ダウンロード"
+  }
+}

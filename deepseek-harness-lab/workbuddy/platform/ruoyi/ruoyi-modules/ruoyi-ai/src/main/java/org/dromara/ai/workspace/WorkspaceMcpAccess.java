@@ -1,0 +1,29 @@
+package org.dromara.ai.workspace;
+import lombok.RequiredArgsConstructor;
+import org.dromara.common.json.utils.JsonUtils;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import java.net.URI;
+import java.util.*;
+@Service
+@RequiredArgsConstructor
+public class WorkspaceMcpAccess {
+ private final JdbcTemplate jdbc; private final AiResourceGuard guard; private final WorkspaceSecrets secrets;
+ public static Map<String,Object> configuration(Map<String,Object> input){
+  if(!Set.of("transport","endpoint","managedProfile","authType","allowedTools","timeoutSeconds").containsAll(input.keySet())||!"STREAMABLE_HTTP".equals(input.get("transport"))||!Set.of("BEARER","NONE").contains(input.get("authType")))throw new WorkspaceDenied(400,"InvalidMcpConfiguration");
+  String profile=Objects.toString(input.get("managedProfile"),"");String endpoint=Objects.toString(input.get("endpoint"),"");
+  if(!profile.isEmpty()){if(!profile.equals("acceptance-catalog")||!endpoint.isEmpty()||!"BEARER".equals(input.get("authType")))throw new WorkspaceDenied(400,"InvalidManagedMcpProfile");}
+  else try{URI u=URI.create(endpoint);String h=u.getHost();if(!"https".equals(u.getScheme())||u.getPort()!=-1||u.getUserInfo()!=null||u.getQuery()!=null||u.getFragment()!=null||h==null||!h.contains(".")||h.matches("[0-9.]+")||h.contains(":")||h.matches(".*\\.(local|localhost|internal)$")||!u.getPath().matches("/[a-zA-Z0-9/_.-]*")||endpoint.length()>500)throw new IllegalArgumentException();}catch(Exception e){throw new WorkspaceDenied(400,"InvalidMcpEndpoint");}
+  if(!(input.get("allowedTools") instanceof List<?> tools)||tools.isEmpty()||tools.size()>20||tools.stream().anyMatch(t->!(t instanceof String)||!t.toString().matches("[a-zA-Z0-9_-]{1,20}"))||new HashSet<>(tools).size()!=tools.size())throw new WorkspaceDenied(400,"InvalidMcpAllowedTools");
+  int timeout;try{timeout=Integer.parseInt(input.get("timeoutSeconds").toString());}catch(Exception e){throw new WorkspaceDenied(400,"InvalidMcpTimeout");}if(timeout<5||timeout>60)throw new WorkspaceDenied(400,"InvalidMcpTimeout");return new TreeMap<>(input);
+ }
+ public Map<String,Object> template(UUID id,int version,long user){var r=guard.require(id,user,AiResourceGuard.Action.USE);if(!"MCP".equals(r.get("resource_type")))throw new WorkspaceDenied(400,"McpResourceRequired");var versions=jdbc.queryForList("SELECT config::text FROM ai_resource_version WHERE resource_id=? AND version=?",id,version);if(versions.size()!=1)throw new WorkspaceDenied(404,"VersionNotFound");return JsonUtils.parseMap(versions.getFirst().get("config").toString());}
+ public Map<String,Object> owned(UUID id,long user){var rows=jdbc.queryForList("SELECT * FROM ai_mcp_connection WHERE id=? AND (owner_user_id=? OR scope='ENTERPRISE')",id,user);if(rows.size()!=1)throw new WorkspaceDenied(404,"McpConnectionNotFound");var r=rows.getFirst();guard.require((UUID)r.get("resource_id"),user,AiResourceGuard.Action.USE);return r;}
+ public List<Map<String,Object>> resolve(Object input,long user){if(input==null)return List.of();if(!(input instanceof List<?> ids)||ids.size()>8||new HashSet<>(ids).size()!=ids.size())throw new WorkspaceDenied(400,"InvalidMcpDependencies");List<Map<String,Object>> result=new ArrayList<>();for(Object raw:ids){UUID id;try{id=UUID.fromString(raw.toString());}catch(Exception e){throw new WorkspaceDenied(400,"InvalidMcpDependencies");}var r=guard.require(id,user,AiResourceGuard.Action.USE);int version=((Number)r.get("published_version")).intValue();var config=template(id,version,user);
+  var rows=jdbc.queryForList("SELECT * FROM ai_mcp_connection WHERE resource_id=? AND (owner_user_id=? OR scope='ENTERPRISE') ORDER BY CASE WHEN scope='PERSONAL' THEN 0 ELSE 1 END LIMIT 1",id,user);if(rows.isEmpty())throw new WorkspaceDenied(403,"McpConnectionRequired");var c=rows.getFirst();if(!Boolean.TRUE.equals(c.get("enabled"))||!"READY".equals(c.get("status")))throw new WorkspaceDenied(403,"McpConnectionNotReady");if(((Number)c.get("template_version")).intValue()!=version)throw new WorkspaceDenied(409,"McpTemplateReconnectionRequired");
+  var item=new LinkedHashMap<String,Object>();item.put("id",id.toString());item.put("version",version);item.put("authVersion",r.get("auth_version"));item.put("connectionId",c.get("id").toString());item.put("connectionAuthVersion",c.get("auth_version"));item.put("serverName",id.toString().replace("-",""));item.put("allowedTools",config.get("allowedTools"));item.put("timeoutSeconds",config.get("timeoutSeconds"));result.add(item);
+ }return result;}
+ public void checkRun(UUID run,long user){for(var p:jdbc.queryForList("SELECT c.*,p.auth_version AS pinned_auth_version FROM ai_run_connection p JOIN ai_mcp_connection c ON c.id=p.connection_id WHERE p.run_id=?",run)){if(!Boolean.TRUE.equals(p.get("enabled"))||!"READY".equals(p.get("status"))||!Objects.equals(p.get("auth_version"),p.get("pinned_auth_version"))||(!"ENTERPRISE".equals(p.get("scope"))&&!Objects.equals(p.get("owner_user_id"),user)))throw new WorkspaceDenied(403,"McpConnectionRevoked");}}
+ public void checkHistory(UUID session,long user){for(UUID run:jdbc.queryForList("SELECT DISTINCT r.id FROM ai_run r JOIN ai_run_connection p ON p.run_id=r.id WHERE r.session_id=?",UUID.class,session))checkRun(run,user);}
+ public Map<String,Object> secretPlan(UUID connection,long authVersion,long user){var c=owned(connection,user);if(!Boolean.TRUE.equals(c.get("enabled"))||((Number)c.get("auth_version")).longValue()!=authVersion)throw new WorkspaceDenied(403,"McpConnectionRevoked");var plan=new LinkedHashMap<>(template((UUID)c.get("resource_id"),((Number)c.get("template_version")).intValue(),user));plan.put("secret",c.get("secret_cipher")==null?"":secrets.decrypt(c.get("secret_cipher").toString()));return plan;}
+}

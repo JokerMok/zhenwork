@@ -1,0 +1,6 @@
+{
+  "name": "@workspace/contracts",
+  "version": "1.0.0-rc.1",
+  "private": true,
+  "type": "module"
+}

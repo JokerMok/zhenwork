@@ -1,0 +1,27 @@
+{
+  "snapshotDate": "2026-10-19",
+  "sources": [
+    {
+      "path": "AionUi-enterprise-poc",
+      "commit": "2a71f06863800bad96439d237d68fafe38137941",
+      "workingTreeIncluded": true
+    },
+    {
+      "path": "deepseek-harness-lab/workbuddy",
+      "commit": "021a753057e07d4f383fe53a2172a99ed47ee5f2",
+      "workingTreeIncluded": true
+    },
+    {
+      "path": "AionUi-enterprise-poc/upstream-core",
+      "commit": "47e66d0d151123e973b3fd1e77afcb5671b3f8c5",
+      "workingTreeIncluded": true
+    },
+    {
+      "path": "AionUi-enterprise-poc/upstream-aionrs",
+      "commit": "8e61a90329fa9f67c4fdf7e97fe02c24dba33f75",
+      "workingTreeIncluded": true
+    }
+  ],
+  "history": "Fresh public snapshot; local Git history and runtime data excluded",
+  "upstreamDirectoriesContainPatchedSource": true
+}

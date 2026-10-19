@@ -1,0 +1,10 @@
+# Local derivative of the already built pinned upstream. P8 rebuilds from the source lock.
+FROM workbuddy-alpha-runtime:ddefc45
+USER root
+COPY runtime/v1 /opt/workspace
+RUN chmod -R a-w /opt/workspace && chmod -R a+rX /opt/workspace
+ENV NARB_DISABLE_NATIVE_CACHE=1
+ENV DSH_HOME=/data/home HOME=/home/runtime DSH_TELEMETRY_DISABLED=1 DSH_AGENTS_HOME=/empty-agents
+USER 10001:10001
+WORKDIR /workspace
+CMD ["sleep","infinity"]

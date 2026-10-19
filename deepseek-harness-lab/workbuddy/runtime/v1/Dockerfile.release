@@ -1,0 +1,28 @@
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS build
+RUN node -e "const fs=require('fs');fs.mkdirSync('/etc/ssl/certs',{recursive:true});fs.writeFileSync('/etc/ssl/certs/ca-certificates.crt',require('tls').rootCertificates.join(String.fromCharCode(10)))"
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources && apt-get update && apt-get install -y --no-install-recommends git python3 make g++ musl-tools ca-certificates ripgrep bubblewrap && rm -rf /var/lib/apt/lists/*
+RUN npm install -g pnpm@11.7.0
+WORKDIR /opt/harness
+ADD upstream.tar /opt/harness/
+COPY runtime/v1/apply-install-policy.mjs /tmp/apply-install-policy.mjs
+RUN node /tmp/apply-install-policy.mjs /opt/harness
+RUN --mount=type=cache,id=workbuddy-pnpm,target=/pnpm/store pnpm install --frozen-lockfile --prefer-offline --store-dir=/pnpm/store --fetch-timeout=600000 --network-concurrency=4
+RUN DSH_CLIENT_COMMIT_HASH=ddefc45fbc7f8e46dd73185e68295696d1297887 npm run build:lib:host && npm --prefix native/system run build:native
+COPY runtime/v1/security-dependencies/package*.json /opt/harness/.workbuddy-security/
+RUN --mount=type=cache,id=workbuddy-npm,target=/root/.npm npm ci --prefix /opt/harness/.workbuddy-security --ignore-scripts --no-audit --no-fund --fetch-timeout=600000
+COPY runtime/v1/apply-security-dependencies.mjs /tmp/apply-security-dependencies.mjs
+RUN node /tmp/apply-security-dependencies.mjs /opt/harness
+COPY scripts/ops/prune-runtime-image.mjs /tmp/prune-runtime-image.mjs
+RUN node /tmp/prune-runtime-image.mjs /opt/harness
+FROM node:24-trixie-slim@sha256:23c6349d47723f5eb70c3f9b8124f33089cf88df9c21b6dd1818f8b856dae767
+RUN node -e "const fs=require('fs');fs.mkdirSync('/etc/ssl/certs',{recursive:true});fs.writeFileSync('/etc/ssl/certs/ca-certificates.crt',require('tls').rootCertificates.join(String.fromCharCode(10)))"
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources && apt-get -o Acquire::https::CaInfo=/etc/ssl/certs/ca-certificates.crt update && apt-get -o Acquire::https::CaInfo=/etc/ssl/certs/ca-certificates.crt upgrade -y && apt-get -o Acquire::https::CaInfo=/etc/ssl/certs/ca-certificates.crt install -y --no-install-recommends ca-certificates ripgrep bubblewrap && rm -rf /var/lib/apt/lists/*
+COPY --from=build /opt/harness /opt/harness
+LABEL workbuddy.upstream.sha="ddefc45fbc7f8e46dd73185e68295696d1297887"
+ENV HOME=/home/runtime DSH_HOME=/data/home DSH_TELEMETRY_DISABLED=1
+COPY runtime/v1 /opt/workspace
+RUN rm -f /usr/bin/infocmp && find /usr /bin /sbin -type f -perm /6000 -exec chmod a-s {} + && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /opt/yarn* /usr/local/bin/yarn /usr/local/bin/yarnpkg && chmod -R a-w /opt/workspace && chmod -R a+rX /opt/workspace && mkdir -p /workspace /data/home /home/runtime /empty-agents && chown 10001:10001 /workspace /data/home /home/runtime
+ENV NARB_DISABLE_NATIVE_CACHE=1 DSH_AGENTS_HOME=/empty-agents
+USER 10001:10001
+WORKDIR /workspace
+CMD ["sleep","infinity"]

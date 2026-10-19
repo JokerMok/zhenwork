@@ -1,0 +1,4 @@
+import fs from 'node:fs';
+if(process.env.NODE_TLS_REJECT_UNAUTHORIZED==='0')throw Error('TLS verification is disabled; refusing probe');
+const results=[];for(const url of ['https://registry.npmjs.org/busboy','https://api.github.com/repos/deepseek-ai/deepseek-harness']){try{const r=await fetch(url,{signal:AbortSignal.timeout(15000)});const body=await r.text();let message;try{message=JSON.parse(body).message?.slice(0,200);}catch{}results.push({url,status:r.status,tlsHandshake:'PASS',certificateValidation:'enabled',httpSuccess:r.ok,remaining:r.headers.get('x-ratelimit-remaining'),message});}catch(e){results.push({url,tlsHandshake:'unconfirmed',certificateValidation:'enabled',error:e.cause?.code||e.name});}}
+const report={date:new Date().toISOString(),layer:'host-node24',results};fs.writeFileSync('evidence/v1/local-takeover/host-tls.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));

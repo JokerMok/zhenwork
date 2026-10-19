@@ -1,0 +1,10 @@
+CREATE UNIQUE INDEX runs_one_active_owner_idx ON runs(owner_id) WHERE status IN ('starting','running','cancelling');
+ALTER TABLE runtimes ADD COLUMN capability_token_hash TEXT;
+ALTER TABLE runtimes ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE approvals ADD COLUMN consumed_at TIMESTAMPTZ;
+ALTER TABLE sessions ADD COLUMN assistant_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE usage_events ADD COLUMN usage_reported BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE runs ADD COLUMN gateway_error TEXT;
+ALTER TABLE runs ADD COLUMN request_id UUID;
+ALTER TABLE quota_reservations ADD COLUMN run_id UUID REFERENCES runs(id);
+ALTER TABLE usage_events ADD COLUMN run_id UUID REFERENCES runs(id);

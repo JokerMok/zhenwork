@@ -1,0 +1,11 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const c=JSON.parse(fs.readFileSync(process.env.WORKSPACE_CONFIG_FILE));const bootstrap=JSON.parse(fs.readFileSync(process.env.WORKSPACE_BOOTSTRAP_FILE));const base=`http://127.0.0.1:${c.port}`,checks=[];
+const run=async(name,fn)=>{await fn();checks.push({name,status:'PASS'});};
+await run('readiness',async()=>assert.equal((await fetch(base+'/health/ready')).status,200));
+await run('brand public read',async()=>assert.ok((await (await fetch(base+'/api/brand')).json()).productName));
+await run('unauthenticated principal rejected',async()=>assert.equal((await fetch(base+'/api/me')).status,401));
+await run('public signup disabled',async()=>assert.equal((await fetch(base+'/api/auth/sign-up/email',{method:'POST',headers:{origin:c.publicOrigin,'content-type':'application/json'},body:'{}'})).status,404));
+await run('cross-origin login rejected',async()=>assert.equal((await fetch(base+'/api/auth/sign-in/email',{method:'POST',headers:{origin:'https://untrusted.example','content-type':'application/json'},body:'{}'})).status,403));
+let cookie='';await run('login and server side identity',async()=>{const r=await fetch(base+'/api/auth/sign-in/email',{method:'POST',headers:{origin:c.publicOrigin,'content-type':'application/json'},body:JSON.stringify({email:bootstrap.email,password:fs.readFileSync(bootstrap.passwordFile,'utf8').trim()})});assert.equal(r.status,200);cookie=r.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ');assert.ok(cookie);const me=await(await fetch(base+'/api/me',{headers:{cookie}})).json();assert.equal(me.email,bootstrap.email);assert.ok(me.permissions.includes('system.manage'));});
+await run('logout revokes original cookie',async()=>{const r=await fetch(base+'/api/auth/sign-out',{method:'POST',headers:{origin:c.publicOrigin,'content-type':'application/json',cookie},body:'{}'});assert.equal(r.status,200);assert.equal((await fetch(base+'/api/me',{headers:{cookie}})).status,401);});
+console.log(JSON.stringify({checks,secretsPrinted:false},null,2));

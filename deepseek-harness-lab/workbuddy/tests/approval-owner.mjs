@@ -1,0 +1,6 @@
+import {login,create,req,socket,save} from './helpers.mjs';
+await login();const a=await create('user_a'),b=await create('user_b'),b2=await create('user_b'),frames=[];const w=socket('user_b',b);w.on('message',x=>frames.push(JSON.parse(x)));await new Promise(r=>w.once('open',r));
+const pending=req('user_b','POST',`/sessions/${b}/prompt`,{text:'Call boundary_action with label deny once. If denied stop.'});
+let approval;const until=Date.now()+18000;while(Date.now()<until){approval=frames.find(f=>f.event==='approval');if(approval)break;await new Promise(r=>setTimeout(r,100));}if(!approval)throw Error('NO_PENDING_APPROVAL');
+const rows=[];for(const [u,id,label]of [['user_a',b,'A approves actual B request'],['user_a',a,'A copies B approval into own session'],['user_b',b2,'B wrong-session replay']]){const r=await req(u,'POST',`/sessions/${id}/approval`,{approvalId:approval.id,decision:'allow'});rows.push({attack:label,expected:404,actual:r,status:r.status===404?'PASS':'FAIL'});}
+const correct=await req('user_b','POST',`/sessions/${b}/approval`,{approvalId:approval.id,decision:'deny'});rows.push({attack:'Owner correct approval control',expected:200,actual:correct,status:correct.status===200?'PASS':'FAIL'});await pending;save('approval-owner.json',{rows,frames});console.log(JSON.stringify(rows));w.close();

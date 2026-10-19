@@ -1,0 +1,13 @@
+FROM --platform=$BUILDPLATFORM golang:1.27.1-alpine@sha256:4cb7ac979db5fcc41cae44b2227ba5ab8a51e8807f40d9ba4dee20a0ad960b5b AS build
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+COPY deploy/v1/caddy/go.mod deploy/v1/caddy/main.go ./
+COPY deploy/v1/caddy/collect-licenses.sh /src/collect-licenses.sh
+RUN --mount=type=cache,id=workbuddy-go-mod,target=/go/pkg/mod --mount=type=cache,id=workbuddy-go-build,target=/root/.cache/go-build go mod tidy && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags '-s -w -X github.com/caddyserver/caddy/v2.CustomVersion=v2.11.4-workspace.1' -o /out/caddy . && sh /src/collect-licenses.sh
+FROM caddy:2.11.4-alpine@sha256:de23def33b17fb5d1290b0f6c2add1d70780e52341896c00a4c8a2a2fe9d355e
+COPY --from=build /out/caddy /usr/bin/caddy
+COPY --from=build /src/go.mod /src/go.sum /usr/share/workspace-build/
+COPY --from=build /out/licenses /usr/share/licenses/workspace-entry
+# High internal ports need no file capability; retain cap_drop ALL and non-root at runtime.
+RUN apk upgrade --no-cache && test -z "$(getcap /usr/bin/caddy)"

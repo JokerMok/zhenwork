@@ -1,0 +1,27 @@
+{
+  "selectFile": "Выбрать файл",
+  "selectDirectory": "Выбрать директорию",
+  "pleaseSelectFile": "Пожалуйста, выберите файл",
+  "pleaseSelectDirectory": "Пожалуйста, выберите директорию",
+  "webFsPicker": {
+    "loadFailed": "Не удалось открыть этот каталог",
+    "titleDirectory": "Выберите папку на сервере",
+    "titleFile": "Выберите файл на сервере",
+    "selectedCount": "Выбрано: {{count}}",
+    "up": "Вверх",
+    "go": "Перейти",
+    "empty": "Здесь пусто"
+  },
+  "enterpriseResources": {
+    "title": "Корпоративные файлы",
+    "failed": "Файл недоступен или доступ отозван",
+    "connection": "Cannot reach the enterprise server. Check the network and try again.",
+    "denied": "Access was revoked or the file is disabled. Choose it again.",
+    "tooLarge": "This enterprise file exceeds the 2 MiB task limit.",
+    "sessionClosed": "The enterprise session ended. Sign in again.",
+    "attached": "Файл добавлен в задачу",
+    "saved": "Файл сохранён",
+    "use": "Добавить в задачу",
+    "save": "Скачать"
+  }
+}

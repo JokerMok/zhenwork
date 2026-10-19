@@ -1,0 +1,16 @@
+import type {IncomingMessage} from 'node:http';import Busboy from 'busboy';import path from 'node:path';import {HttpError} from './auth.ts';import {checkText,filename} from './files.ts';
+export type Upload={name:string;mime:string;data:Buffer;type:string;text:string|null};
+const types:Record<string,string>={'.txt':'text/plain','.md':'text/markdown','.csv':'text/csv','.json':'application/json','.pdf':'application/pdf','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation'};
+let active=0;
+export async function receiveUploads(req:IncomingMessage,maxBytes:number,maxFiles=10):Promise<Upload[]>{
+ if(active>=2)throw new HttpError(429,'RateLimit');active++;
+ try{return await new Promise((resolve,reject)=>{let bb:ReturnType<typeof Busboy>;try{bb=Busboy({headers:req.headers,preservePath:true,defParamCharset:'utf8',limits:{files:maxFiles,fields:0,parts:maxFiles+1,fileSize:maxBytes,headerPairs:16,fieldNameSize:30}});}catch{reject(new HttpError(400,'ToolError'));return;}
+  const output:Upload[]=[],pending:Promise<void>[]=[];let received=0,bodyBytes=0,ended=false;const cleanup=()=>{clearTimeout(timer);req.removeListener('data',count);req.removeListener('aborted',aborted);};
+  const fail=(status=400)=>{if(ended)return;ended=true;cleanup();req.unpipe(bb);queueMicrotask(()=>bb.destroy());req.resume();reject(new HttpError(status,'ToolError'));};const count=(chunk:Buffer)=>{bodyBytes+=chunk.length;if(bodyBytes>maxBytes+65536)fail(413);};const aborted=()=>fail(400);const timer=setTimeout(()=>fail(408),60000);req.on('data',count);req.once('aborted',aborted);
+  bb.on('filesLimit',()=>fail(413));bb.on('fieldsLimit',()=>fail(400));bb.on('partsLimit',()=>fail(413));bb.on('error',()=>fail(400));
+  bb.on('file',(field,stream,info)=>{stream.on('error',()=>fail());if(!['files','file'].includes(field)){stream.resume();fail();return;}let name:string,extension:string,mime:string;try{name=filename(info.filename);extension=path.extname(name).toLowerCase();mime=types[extension]!;if(!mime||!['application/octet-stream',mime,...(['.txt','.md','.csv','.json'].includes(extension)?['text/plain']:[])].includes(info.mimeType))throw Error();}catch{stream.resume();fail(415);return;}
+   const chunks:Buffer[]=[];stream.on('limit',()=>fail(413));const task=new Promise<void>(done=>{stream.on('data',(chunk:Buffer)=>{received+=chunk.length;if(received>maxBytes){fail(413);return;}if(!ended)chunks.push(chunk);});stream.on('error',()=>{fail();done();});stream.on('end',()=>{if(!ended){const data=Buffer.concat(chunks);try{let text:string|null=null;if(['.txt','.md','.csv','.json'].includes(extension)){checkText(name,data);if(data.length>1024*1024)throw Error();text=new TextDecoder('utf-8',{fatal:true}).decode(data);}else if(extension==='.pdf'){if(data.subarray(0,5).toString()!=='%PDF-')throw Error();}else if(data.subarray(0,4).toString('hex')!=='504b0304')throw Error();output.push({name,mime,data,type:extension.slice(1),text});}catch{fail(415);}}done();});});pending.push(task);
+  });
+  bb.on('close',()=>{void Promise.all(pending).then(()=>{if(ended)return;if(!output.length)return fail();ended=true;cleanup();resolve(output);});});req.pipe(bb);
+ });}finally{active--;}
+}

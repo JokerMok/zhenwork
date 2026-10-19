@@ -1,0 +1,27 @@
+{
+  "selectFile": "Select File",
+  "selectDirectory": "Select Directory",
+  "pleaseSelectFile": "Please select a file",
+  "pleaseSelectDirectory": "Please select a directory",
+  "webFsPicker": {
+    "loadFailed": "Cannot open this directory",
+    "titleDirectory": "Select a folder on the server",
+    "titleFile": "Select a file on the server",
+    "selectedCount": "{{count}} selected",
+    "up": "Up",
+    "go": "Go",
+    "empty": "Nothing here"
+  },
+  "enterpriseResources": {
+    "title": "Enterprise files",
+    "failed": "Enterprise file unavailable or access revoked",
+    "connection": "Cannot reach the enterprise server. Check the network and try again.",
+    "denied": "Access was revoked or the file is disabled. Choose it again.",
+    "tooLarge": "This enterprise file exceeds the 2 MiB task limit.",
+    "sessionClosed": "The enterprise session ended. Sign in again.",
+    "attached": "File added to this task",
+    "saved": "File saved",
+    "use": "Add to task",
+    "save": "Download"
+  }
+}

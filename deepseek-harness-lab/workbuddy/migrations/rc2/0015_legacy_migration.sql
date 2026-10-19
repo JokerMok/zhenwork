@@ -1,0 +1,16 @@
+CREATE SEQUENCE rc2_legacy_native_id START WITH 6000000000000000000;
+CREATE TABLE rc2_legacy_snapshot(sha256 CHAR(64) PRIMARY KEY,source VARCHAR(40) NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),summary JSONB NOT NULL);
+CREATE TABLE rc2_legacy_record(source_table VARCHAR(60) NOT NULL,source_key TEXT NOT NULL,payload JSONB NOT NULL,sha256 CHAR(64) NOT NULL,snapshot CHAR(64) NOT NULL REFERENCES rc2_legacy_snapshot(sha256),PRIMARY KEY(source_table,source_key));
+CREATE TABLE rc2_legacy_map(entity VARCHAR(40) NOT NULL,old_id TEXT NOT NULL,new_id TEXT NOT NULL,target_table VARCHAR(60) NOT NULL,source_hash CHAR(64) NOT NULL,status VARCHAR(30) NOT NULL,reason VARCHAR(100),PRIMARY KEY(entity,old_id));
+CREATE TABLE rc2_legacy_session(session_id UUID PRIMARY KEY REFERENCES ai_session(id),snapshot JSONB NOT NULL,knowledge_blocked BOOLEAN NOT NULL DEFAULT FALSE,source_hash CHAR(64) NOT NULL);
+CREATE TABLE rc2_legacy_session_knowledge(session_id UUID NOT NULL REFERENCES ai_session(id),base_id UUID NOT NULL REFERENCES ai_resource(id),PRIMARY KEY(session_id,base_id));
+CREATE TABLE rc2_legacy_usage(id UUID PRIMARY KEY,owner_user_id BIGINT NOT NULL REFERENCES sys_user(user_id),session_id UUID REFERENCES ai_session(id),model_code VARCHAR(160) NOT NULL,input_tokens BIGINT,output_tokens BIGINT,usage_reported BOOLEAN NOT NULL,result VARCHAR(40) NOT NULL,created_at TIMESTAMPTZ NOT NULL,source_hash CHAR(64) NOT NULL);
+CREATE INDEX rc2_legacy_usage_time ON rc2_legacy_usage(created_at DESC,id);
+CREATE FUNCTION rc2_legacy_immutable() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Legacy evidence is immutable'; END $$;
+CREATE TRIGGER rc2_legacy_record_immutable BEFORE UPDATE OR DELETE ON rc2_legacy_record FOR EACH ROW EXECUTE FUNCTION rc2_legacy_immutable();
+CREATE TRIGGER rc2_legacy_session_immutable BEFORE UPDATE OR DELETE ON rc2_legacy_session FOR EACH ROW EXECUTE FUNCTION rc2_legacy_immutable();
+CREATE TRIGGER rc2_legacy_usage_immutable BEFORE UPDATE OR DELETE ON rc2_legacy_usage FOR EACH ROW EXECUTE FUNCTION rc2_legacy_immutable();
+ALTER TABLE ai_file DROP CONSTRAINT ai_file_purpose_check;
+ALTER TABLE ai_file DROP CONSTRAINT ai_file_check;
+ALTER TABLE ai_file ADD CHECK(purpose IN('KNOWLEDGE','CHAT','BRAND','PERSONAL'));
+ALTER TABLE ai_file ADD CHECK((purpose='KNOWLEDGE' AND resource_id IS NOT NULL AND session_id IS NULL) OR (purpose='CHAT' AND session_id IS NOT NULL AND resource_id IS NULL) OR (purpose IN('BRAND','PERSONAL') AND resource_id IS NULL AND session_id IS NULL));

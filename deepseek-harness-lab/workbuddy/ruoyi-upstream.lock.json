@@ -1,0 +1,36 @@
+{
+  "backendRepository": "https://github.com/dromara/RuoYi-Vue-Plus",
+  "backendVersion": "6.0.0",
+  "backendTag": "v6.0.0",
+  "backendBranch": "6.X",
+  "backendCommit": "7180b529776834fee912113b23f0bd7a387a8222",
+  "frontendRepository": "https://github.com/CrazyLionCat/plus-ui",
+  "frontendVersion": "6.0.0",
+  "frontendTag": "v6.0.0-Vue",
+  "frontendBranch": "6.X-Vue",
+  "frontendCommit": "aa3f114bf4f6a49086e43aafd00f146b0b517d19",
+  "license": {
+    "backend": "MIT",
+    "frontend": "MIT",
+    "backendSha256": "e175f7e0248508916cd20e20d1b301a7c1079efcc57fadb93ddd7bfce3a432b3",
+    "frontendSha256": "e175f7e0248508916cd20e20d1b301a7c1079efcc57fadb93ddd7bfce3a432b3"
+  },
+  "javaRequirement": "21",
+  "springBootVersion": "4.1.0",
+  "frontendNodeRequirement": ">=20.19.0",
+  "frontendPackageManager": "pnpm@10.34.5",
+  "postgresql": "PostgreSQL 17.11: official schema, native login/menu/user/role reads and department CRUD verified locally; RC2 AI migration pending",
+  "verifiedAt": "2026-09-20T06:52:09.755769+00:00",
+  "verification": {
+    "backendLatestRelease": "https://github.com/dromara/RuoYi-Vue-Plus/releases/tag/v6.0.0",
+    "frontendSelectedRelease": "https://github.com/CrazyLionCat/plus-ui/releases/tag/v6.0.0-Vue",
+    "frontendLatestReleaseIsReact": true,
+    "apiRateLimited": true,
+    "commitVerification": "git ls-remote annotated tag dereference + local checkout HEAD"
+  },
+  "layout": {
+    "backend": "platform/ruoyi",
+    "frontend": "platform/plus-ui"
+  },
+  "autoFollowUpstream": false
+}

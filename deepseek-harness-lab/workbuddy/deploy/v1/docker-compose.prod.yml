@@ -1,0 +1,163 @@
+name: ${DEPLOYMENT_ID:?required}
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: '3'}
+x-node: &node
+  <<: *hardening
+  user: '${SERVICE_UID}:${SERVICE_GID}'
+  tmpfs: ['/tmp:rw,noexec,nosuid,size=32m']
+  pids_limit: 96
+services:
+  db:
+    image: ${POSTGRES_IMAGE:?required}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: workspace_migrator
+      POSTGRES_DB: workspace
+      POSTGRES_PASSWORD_FILE: /run/secrets/db-password
+    volumes:
+      - db:/var/lib/postgresql/data
+      - ${STATE_DIR}/db-password:/run/secrets/db-password:ro
+    networks: [backend]
+    mem_limit: 512m
+    pids_limit: 128
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U workspace_migrator -d workspace']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+  init-data:
+    image: ${SERVER_IMAGE:?required}
+    profiles: [setup]
+    user: '0:0'
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: [no-new-privileges:true]
+    volumes: [data:/data]
+    command: [node, -e, 'require("fs").chownSync("/data",Number(process.env.TARGET_UID),Number(process.env.TARGET_GID))']
+    environment: {TARGET_UID: '${SERVICE_UID}', TARGET_GID: '${SERVICE_GID}'}
+  migrate:
+    <<: *node
+    image: ${SERVER_IMAGE}
+    profiles: [setup]
+    restart: 'no'
+    networks: [backend]
+    environment:
+      WORKSPACE_CONFIG_FILE: /config/server.json
+      WORKSPACE_BOOTSTRAP_FILE: /config/bootstrap.json
+    volumes:
+      - ${STATE_DIR}/server.json:/config/server.json:ro
+      - ${STATE_DIR}/bootstrap.json:/config/bootstrap.json:ro
+      - ${STATE_DIR}/migration-database-url:/run/secrets/migration-database-url:ro
+      - ${STATE_DIR}/app-database-url:/run/secrets/app-database-url:ro
+      - ${STATE_DIR}/app-db-password:/run/secrets/app-db-password:ro
+      - ${STATE_DIR}/auth-secret:/run/secrets/auth-secret:ro
+      - ${STATE_DIR}/bootstrap-password:/run/secrets/bootstrap-password:ro
+    command: [node, apps/server/src/migrate.ts]
+    depends_on: {db: {condition: service_healthy}}
+  web:
+    <<: *node
+    image: ${WEB_IMAGE:?required}
+    networks: [frontend]
+    mem_limit: 256m
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3000").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  bff:
+    <<: *node
+    image: ${SERVER_IMAGE}
+    networks: [frontend, backend]
+    environment: {WORKSPACE_CONFIG_FILE: /config/server.json}
+    volumes:
+      - data:/data
+      - ${STATE_DIR}/server.json:/config/server.json:ro
+      - ${STATE_DIR}/app-database-url:/run/secrets/app-database-url:ro
+      - ${STATE_DIR}/auth-secret:/run/secrets/auth-secret:ro
+      - ${STATE_DIR}/audit-secret:/run/secrets/audit-secret:ro
+      - ${STATE_DIR}/manager-secret:/run/secrets/manager-secret:ro
+      - ${STATE_DIR}/capability-secret:/run/secrets/capability-secret:ro
+    depends_on: {db: {condition: service_healthy}}
+    mem_limit: 384m
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3418/health/ready").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  manager:
+    <<: *node
+    image: ${MANAGER_IMAGE:?required}
+    group_add: ['${DOCKER_GID:-0}']
+    networks: [backend]
+    environment: {WORKSPACE_MANAGER_CONFIG_FILE: /config/manager.json}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${STATE_DIR}/manager.json:/config/manager.json:ro
+      - ${STATE_DIR}/app-database-url:/run/secrets/app-database-url:ro
+      - ${STATE_DIR}/manager-secret:/run/secrets/manager-secret:ro
+    depends_on: {db: {condition: service_healthy}, gateway: {condition: service_started}}
+    mem_limit: 256m
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:3419/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  gateway:
+    <<: *node
+    container_name: ${DEPLOYMENT_ID}-gateway
+    labels: {workspace.product: v1-gateway, workspace.deployment: '${DEPLOYMENT_ID}'}
+    image: ${GATEWAY_IMAGE:?required}
+    networks: [backend, outbound]
+    environment: {WORKSPACE_GATEWAY_CONFIG_FILE: /config/gateway.json}
+    volumes:
+      - ${STATE_DIR}/gateway.json:/config/gateway.json:ro
+      - ${STATE_DIR}/app-database-url:/run/secrets/app-database-url:ro
+      - ${STATE_DIR}/capability-secret:/run/secrets/capability-secret:ro
+      - ${PROVIDER_SECRET_FILE:?required}:/run/secrets/provider:ro
+    depends_on: {db: {condition: service_healthy}}
+    mem_limit: 256m
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:8081/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  entry:
+    <<: *hardening
+    image: ${CADDY_IMAGE:?required}
+    user: '${SERVICE_UID}:${SERVICE_GID}'
+    networks: [frontend, outbound]
+    ports: ['${BIND_IP:-0.0.0.0}:${HTTPS_PORT:-443}:8443','${BIND_IP:-0.0.0.0}:${HTTP_PORT:-80}:8080']
+    volumes:
+      - ${STATE_DIR}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${STATE_DIR}/caddy-data:/data
+      - ${STATE_DIR}/caddy-config:/config
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=16m']
+    mem_limit: 128m
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:8080/healthcheck']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on: {web: {condition: service_healthy}, bff: {condition: service_healthy}}
+networks:
+  frontend:
+    internal: true
+    ipam: {config: [{subnet: '${SUBNET_FRONTEND:?required}'}]}
+  backend:
+    internal: true
+    ipam: {config: [{subnet: '${SUBNET_BACKEND:?required}'}]}
+  outbound:
+    ipam: {config: [{subnet: '${SUBNET_OUTBOUND:?required}'}]}
+volumes:
+  db: {}
+  data: {}

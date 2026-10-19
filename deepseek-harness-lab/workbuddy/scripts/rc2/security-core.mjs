@@ -1,0 +1,26 @@
+import fs from 'node:fs';import path from 'node:path';import assert from 'node:assert/strict';import {execFileSync} from 'node:child_process';import {randomUUID} from 'node:crypto';import {setTimeout as delay} from 'node:timers/promises';import {WebSocket} from 'ws';
+const root=path.resolve(import.meta.dirname,'../..'),state=path.join(root,'.state/rc2'),out=path.join(root,'evidence/v1/rc2/'+(process.env.RC2_PHASE||'r4')),origin='https://localhost:3582',admin=JSON.parse(fs.readFileSync(path.join(state,'bootstrap.json'))),users=JSON.parse(fs.readFileSync(path.join(state,'employees.json')));
+const report={date:new Date().toISOString(),status:'RUNNING',checks:[],scope:'Current R4 identity/session/model/execution security subset; resources, knowledge, files and provider administration remain later gates'};
+const sql=q=>execFileSync('docker',['compose','-f',path.join(state,'compose.json'),'exec','-T','db','psql','-U','workspace_rc2','-d','workspace_rc2','-v','ON_ERROR_STOP=1','-At'],{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
+async function req(route,body,cookie){const r=await fetch(origin+'/api'+route,{method:body?'POST':'GET',headers:{Origin:origin,clientid:admin.clientId,'content-type':'application/json',...(cookie?{cookie}:{})},body:body?JSON.stringify(body):undefined});return {http:r.status,data:await r.json(),cookie:r.headers.getSetCookie().at(-1)?.split(';')[0]};}
+async function login(u){const r=await req('/auth/login',{...u,clientId:admin.clientId,grantType:'password'});assert.equal(r.data.code,200);return r.cookie;}
+try{
+ let a=await login(users[0]),b=await login(users[1]),superadmin=await login(admin);const models=(await req('/ai/models/available',null,a)).data.data;const modelId=models[0].id;assert.ok(!JSON.stringify(models).match(/secret|cipher|base_url/i));report.checks.push('employee model listing exposes no provider secret or encrypted secret');
+ const id=(await req('/ai/sessions',{modelId,title:'R4 安全边界验证',idempotencyKey:randomUUID(),ownerUserId:'untrusted-client-owner'},a)).data.data.id;
+ for(const cookie of [b,superadmin]){assert.equal((await req('/ai/sessions/'+id,null,cookie)).http,404);assert.equal((await req('/ai/sessions/'+id+'/runs',{text:'denied',idempotencyKey:randomUUID()},cookie)).http,404);assert.equal((await req('/ai/sessions/'+id+'/cancel',{},cookie)).http,404);}
+ report.checks.push('employee B and native superadmin cannot read, send into or cancel A private session; client owner field ignored');
+ assert.equal((await req('/internal/rc2/check',{executionGrant:'forged'},a)).http,403);assert.equal((await fetch('http://127.0.0.1:3584/command',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({method:'health'})})).status,403);report.checks.push('control-plane internal and execution-manager APIs reject browser identity without service authentication');
+ const run=(await req('/ai/sessions/'+id+'/runs',{text:'请逐行列出从一到五百的中文数字，每一行都完整输出，不要省略。',idempotencyKey:randomUUID()},a)).data.data.runId;
+ const ws=new WebSocket('wss://localhost:3582/ws?sessionId='+id,{headers:{cookie:a,Origin:origin}});let closed;const close=new Promise(resolve=>ws.on('close',code=>{closed=code;resolve(code);}));ws.on('error',()=>{});
+ for(let i=0;i<100;i++){const count=Number(sql(`SELECT count(*) FROM ai_event WHERE run_id='${run}' AND event_type='message.delta';`));if(count>0)break;if(i===99)throw Error('No real stream before revocation');await delay(100);}
+ assert.equal(sql(`SELECT status FROM ai_run WHERE id='${run}';`),'RUNNING','test requires an actual in-flight run');
+ const owner=sql("SELECT user_id FROM sys_user WHERE user_name='rc2-employee-a';");sql(`DELETE FROM ai_model_policy WHERE model_id='${modelId}' AND subject_type='USER' AND subject_id=${owner};`);
+ try{
+ assert.equal((await req('/ai/sessions/'+id+'/resume',{},a)).http,403);assert.equal((await req('/ai/sessions/'+id+'/runs',{text:'must be denied',idempotencyKey:randomUUID()},a)).http,403);
+ const code=await Promise.race([close,delay(5000).then(()=>-1)]);assert.equal(code,1008);
+ let status;for(let i=0;i<150;i++){status=sql(`SELECT status FROM ai_run WHERE id='${run}';`);if(!['QUEUED','RUNNING','WAITING_APPROVAL'].includes(status))break;await delay(100);}
+ assert.equal(status,'FAILED');report.checks.push('revoking model during a real stream denies resume/new run, closes WSS and terminates the active run');
+ }finally{ws.close();sql(`INSERT INTO ai_model_policy(id,model_id,subject_type,subject_id,created_by) VALUES('${randomUUID()}','${modelId}','USER',${owner},${owner}) ON CONFLICT DO NOTHING;`);}
+ sql("UPDATE sys_role SET data_scope=data_scope WHERE role_key='workspace_employee';");assert.equal((await req('/ai/me',null,a)).http,401);a=await login(users[0]);assert.equal((await req('/ai/models/available',null,a)).data.code,200);report.checks.push('native role policy change revokes existing login; fresh login regains currently granted access');report.status='PASS';
+}catch(e){report.status='FAIL';report.error=e.message;process.exitCode=1;}
+fs.writeFileSync(path.join(out,'security-core-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));

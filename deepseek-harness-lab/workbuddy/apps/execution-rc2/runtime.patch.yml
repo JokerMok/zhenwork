@@ -1,0 +1,45 @@
+- id: sdk-jsonrpc-server
+  disabled: true
+- id: session-log-deepseek
+  disabled: true
+- id: session-telemetry-otel
+  disabled: true
+- id: plugin-manager
+  disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: agent-instructions
+  disabled: true
+- id: system-prompt
+  config:
+    personaPrefix: 你是企业 AI 助手。按员工任务要求提供清晰、可核对的结果。
+    personaSuffix: 不向用户描述内部运行架构；权限由服务端决定。
+- id: llm-pi-ai
+  config:
+    providers:
+      enterprise-gateway:
+        api: openai-completions
+        baseURL: http://model-gateway:8081/v1
+        apiKeyEnv: WORKSPACE_MODEL_TOKEN
+        retryPolicy:
+          mode: normal
+          maxRetries: 0
+        models:
+          - id: workspace-selected
+            contextWindow: 2000000
+            maxTokens: 32768
+- id: mcp-resources
+  disabled: true
+- id: skill-filesystem
+  disabled: true
+- insert:
+    - id: enterprise-runtime-bridge
+      name: /opt/workspace/bridge.mjs

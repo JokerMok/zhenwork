@@ -1,0 +1,78 @@
+diff --git a/crates/aionui-runtime/src/agent_env.rs b/crates/aionui-runtime/src/agent_env.rs
+index 57c186e..e3997e6 100644
+--- a/crates/aionui-runtime/src/agent_env.rs
++++ b/crates/aionui-runtime/src/agent_env.rs
+@@ -67,6 +67,7 @@ fn clean_agent_env(env: &mut BTreeMap<OsString, OsString>) {
+         "CLAUDECODE",
+         "SSL_CERT_FILE",
+         "SSL_CERT_DIR",
++        "AION_ENTERPRISE_LOCAL_TOKEN",
+     ] {
+         remove_env_key(env, key);
+     }
+@@ -297,6 +298,7 @@ printf '%s\n' \
+                 .env("AIONUI_OVERLAY", "from-current")
+                 .env("NODE_OPTIONS", "--require parent")
+                 .env("CLAUDECODE", "1")
++                .env("AION_ENTERPRISE_LOCAL_TOKEN", "parent-secret")
+                 .env("SSL_CERT_FILE", "/tmp/current-cert.pem")
+                 .env("SSL_CERT_DIR", "/tmp/current-certs")
+                 .env("NODE_EXTRA_CA_CERTS", "/tmp/current-node-extra.pem")
+@@ -324,6 +326,7 @@ printf '%s\n' \
+         assert_eq!(value("AIONUI_OVERLAY").as_deref(), Some("from-shell"));
+         assert_eq!(value("NODE_OPTIONS"), None);
+         assert_eq!(value("CLAUDECODE"), None);
++        assert_eq!(value("AION_ENTERPRISE_LOCAL_TOKEN"), None);
+         assert_eq!(value("SSL_CERT_FILE"), None);
+         assert_eq!(value("SSL_CERT_DIR"), None);
+         assert_eq!(
+diff --git a/crates/aionui-runtime/src/shell_env.rs b/crates/aionui-runtime/src/shell_env.rs
+index b9f0c15..0258d2a 100644
+--- a/crates/aionui-runtime/src/shell_env.rs
++++ b/crates/aionui-runtime/src/shell_env.rs
+@@ -256,6 +256,8 @@ fn login_shell_path() -> (Option<String>, ShellProbeReport) {
+     }
+ 
+     let mut command = std::process::Command::new(&shell);
++    // The shell can execute user startup files; keep the Core local capability private.
++    command.env_remove("AION_ENTERPRISE_LOCAL_TOKEN");
+     command.args(["-l", "-i", "-c", "printf %s \"$PATH\""]);
+ 
+     let (path, status) = probe_path_with_command(command, LOGIN_SHELL_PROBE_BUDGET);
+diff --git a/crates/aionui-runtime/src/spawn.rs b/crates/aionui-runtime/src/spawn.rs
+index cc47642..884c31c 100644
+--- a/crates/aionui-runtime/src/spawn.rs
++++ b/crates/aionui-runtime/src/spawn.rs
+@@ -283,6 +283,7 @@ fn strip_pollution(cmd: &mut Command) {
+     cmd.env_remove("NODE_OPTIONS")
+         .env_remove("NODE_INSPECT")
+         .env_remove("NODE_DEBUG")
++        .env_remove("AION_ENTERPRISE_LOCAL_TOKEN")
+         .env_remove("CLAUDECODE");
+ }
+ 
+@@ -373,7 +374,8 @@ mod tests {
+         if !crate::test_support::run_in_env_child(
+             "spawn::tests::clean_cli_captures_stdout_and_strips_env_pollution",
+             |command| {
+-                command.env("NODE_OPTIONS", "--inspect=9229").env("CLAUDECODE", "1");
++                command.env("NODE_OPTIONS", "--inspect=9229").env("CLAUDECODE", "1")
++                    .env("AION_ENTERPRISE_LOCAL_TOKEN", "parent-secret");
+             },
+         ) {
+             return;
+@@ -383,12 +385,13 @@ mod tests {
+         // have removed them.
+         let mut b = Builder::clean_cli("sh");
+         b.arg("-c")
+-            .arg("echo \"NO:${NODE_OPTIONS:-unset} CC:${CLAUDECODE:-unset}\"");
++            .arg("echo \"NO:${NODE_OPTIONS:-unset} CC:${CLAUDECODE:-unset} ET:${AION_ENTERPRISE_LOCAL_TOKEN:-unset}\"");
+         let output = b.output().await.unwrap();
+ 
+         let stdout = String::from_utf8_lossy(&output.stdout);
+         assert!(stdout.contains("NO:unset"), "got: {stdout}");
+         assert!(stdout.contains("CC:unset"), "got: {stdout}");
++        assert!(stdout.contains("ET:unset"), "got: {stdout}");
+         assert!(output.status.success());
+     }
+ 

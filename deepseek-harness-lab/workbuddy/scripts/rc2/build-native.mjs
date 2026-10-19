@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {spawnSync,execFileSync} from 'node:child_process';
+const phase=process.env.RC2_PHASE || 'r3';if(!/^r[1-9][0-9]?$/.test(phase))throw Error('Invalid phase');
+const root=path.resolve(import.meta.dirname,'../..'),state=path.join(root,'.state/rc2'),toolchain=path.join(root,'.state/rc2-toolchain');
+const home=fs.readdirSync(toolchain).map(x=>path.join(toolchain,x,'Contents/Home')).find(x=>fs.existsSync(path.join(x,'bin/java')));
+if(!home)throw Error('Verified Java 21 installation missing');
+const javaVersion=execFileSync(path.join(home,'bin/java'),['--version'],{encoding:'utf8'}).trim();
+if(!/openjdk 21\./.test(javaVersion))throw Error('Java 21 required');
+const log=fs.openSync(path.join(state,'build.log'),'w',0o600),startedAt=new Date().toISOString();
+const build=spawnSync('sh',['mvnw','-s',path.join(state,'maven-settings.xml'),'-B','-ntp','-pl','ruoyi-admin','-am','package','-Dmaven.test.skip=true'],{cwd:path.join(root,'platform/ruoyi'),env:{...process.env,JAVA_HOME:home,MAVEN_OPTS:'-Xms128m -Xmx1536m'},stdio:['ignore',log,log]});fs.closeSync(log);
+const report={startedAt,finishedAt:new Date().toISOString(),status:build.status===0?'BUILD_PASS':'BUILD_FAIL',javaVersion,exitCode:build.status,testsRun:false,scope:'native compilation/package; integration smoke is a separate gate'};
+fs.mkdirSync(path.join(root,'evidence/v1/rc2/'+phase),{recursive:true});fs.writeFileSync(path.join(root,'evidence/v1/rc2/'+phase+'/backend-build.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));process.exitCode=build.status===0?0:1;

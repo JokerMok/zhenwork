@@ -1,0 +1,27 @@
+{
+  "selectFile": "Seleccionar archivo",
+  "selectDirectory": "Seleccionar directorio",
+  "pleaseSelectFile": "Por favor selecciona un archivo",
+  "pleaseSelectDirectory": "Por favor selecciona un directorio",
+  "webFsPicker": {
+    "loadFailed": "No se puede abrir este directorio",
+    "titleDirectory": "Selecciona una carpeta en el servidor",
+    "titleFile": "Selecciona un archivo en el servidor",
+    "selectedCount": "{{count}} seleccionado(s)",
+    "up": "Arriba",
+    "go": "Ir",
+    "empty": "No hay nada aquí"
+  },
+  "enterpriseResources": {
+    "title": "Archivos empresariales",
+    "failed": "Archivo no disponible o acceso revocado",
+    "connection": "Cannot reach the enterprise server. Check the network and try again.",
+    "denied": "Access was revoked or the file is disabled. Choose it again.",
+    "tooLarge": "This enterprise file exceeds the 2 MiB task limit.",
+    "sessionClosed": "The enterprise session ended. Sign in again.",
+    "attached": "Archivo añadido a la tarea",
+    "saved": "Archivo guardado",
+    "use": "Añadir a la tarea",
+    "save": "Descargar"
+  }
+}

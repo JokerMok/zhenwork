@@ -1,0 +1,10 @@
+ALTER TABLE files ADD COLUMN parse_status TEXT NOT NULL DEFAULT 'ready' CHECK(parse_status IN('pending','processing','ready','failed'));
+ALTER TABLE files ADD COLUMN extracted_text TEXT;
+ALTER TABLE files ADD COLUMN parser_version TEXT;
+ALTER TABLE files ADD COLUMN parse_error TEXT;
+CREATE TABLE file_jobs(id UUID PRIMARY KEY,file_id UUID NOT NULL UNIQUE REFERENCES files(id),status TEXT NOT NULL CHECK(status IN('pending','processing','completed','failed')),attempts INTEGER NOT NULL DEFAULT 0,lease_until TIMESTAMPTZ,error_code TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),finished_at TIMESTAMPTZ);
+CREATE INDEX file_jobs_pending_idx ON file_jobs(status,created_at);
+CREATE INDEX knowledge_acl_resource_idx ON knowledge_acl(knowledge_base_id,action);
+CREATE INDEX document_acl_resource_idx ON document_acl(document_id,action);
+CREATE INDEX documents_kb_idx ON documents(knowledge_base_id,status) WHERE deleted_at IS NULL;
+CREATE TABLE session_citations(session_id UUID NOT NULL REFERENCES sessions(id),run_id UUID NOT NULL REFERENCES runs(id),document_version_id UUID NOT NULL REFERENCES document_versions(id),title TEXT NOT NULL,document_version INTEGER NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(session_id,run_id,document_version_id));

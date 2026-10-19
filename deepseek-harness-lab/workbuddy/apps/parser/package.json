@@ -1,0 +1,14 @@
+{
+  "name": "@workspace/parser",
+  "version": "1.0.0-rc.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^24.0.0"
+  },
+  "dependencies": {
+    "officeparser": "8.0.0",
+    "pdfjs-dist": "6.3.289",
+    "yauzl": "3.4.0"
+  }
+}

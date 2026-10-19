@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
+  "version": "0.1.6-alpha.2",
+  "commit": "ddefc45fbc7f8e46dd73185e68295696d1297887",
+  "sourceArchiveSha256": "26d7c87b8889bd27973f5e2d7197eafd8e847710b1b8faaa34f60bbbc89b7d34",
+  "lockfileSha256": "72523ca50bd34e3e21d07c82e1cedfdb91b17e1bcd83006c645e8dc6e0786fe0",
+  "images": {
+    "linux/arm64": {
+      "historicalAlphaImageId": "sha256:01126518e290b0a61ef75f7f3b201cbc9f95341eb0e43cd57f2213de41f795b6",
+      "productionDigest": null,
+      "candidateDigest": "sha256:76bb5e65630099b538ef460c83670887cc6311b56287069ca0498188369a01bd",
+      "candidateEvidence": "evidence/v1/p8/runtime-arm64-final-smoke.json"
+    },
+    "linux/amd64": {
+      "productionDigest": null,
+      "candidateDigest": "sha256:f52869df02a0e0e22ce2458d06f7aff0047995a7fa471c77ced9547b4d69d8eb",
+      "candidateEvidence": "evidence/v1/p8/runtime-amd64-final-smoke.json"
+    }
+  },
+  "verifiedDate": "2026-09-20",
+  "compatibility": {
+    "doubao-seed-2-0-mini-260428": "historical-alpha-pass-linux-arm64",
+    "deepseek": "not-verified",
+    "production": "not-verified",
+    "candidateLocal": "ARM64 real Provider functional/security/operations; AMD64 cross-built native smoke only; real Linux gate pending"
+  },
+  "corePatches": []
+}

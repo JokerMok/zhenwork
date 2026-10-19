@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import fs from 'node:fs';
+import {project,classify,EventProjection} from '../src/projector.mjs';
+const text=(source,content)=>({type:'user/message',seq:1,data:{id:'u',source:{kind:source},content:[{type:'text',text:content}]}});
+test('plugin/catalog/unknown pseudo-user messages are excluded',()=>{const value=project([text('plugin','PRIVATE_SYSTEM'),text('skill-catalog','PRIVATE_CATALOG'),text('unknown','PRIVATE'),text('user','VISIBLE')]);assert.equal(value.messages.length,1);assert.equal(value.messages[0].content[0].text,'VISIBLE');assert(!JSON.stringify(value).includes('PRIVATE'));});
+test('idle HTTP snapshots without current turn/end never imply success',()=>assert.equal(classify([{type:'turn/start',data:{turn:1}},{type:'assistant/message',data:{message:{id:'a',content:[{type:'text',text:'Partial'}]}}}]),null));
+test('previous completed turn does not complete new turn',()=>assert.equal(classify([{type:'turn/start'},{type:'turn/end',data:{reason:{kind:'completed'}}},{type:'turn/start'}]),null));
+test('provider failures, user cancellation, unknown ends fail appropriately',()=>{for(const [reason,expected] of [[{kind:'error',error:{code:'SERVER'}},'ProviderError'],[{kind:'error',error:{code:'RATE_LIMIT'}},'RateLimit'],[{kind:'aborted',reason:{kind:'user'}},'Cancelled'],[{kind:'interrupted'},'RuntimeError']])assert.equal(classify([{type:'turn/start'},{type:'turn/end',data:{reason}}]),expected);});
+test('denied approval and tool errors survive completed transport',()=>{for(const [e,expected] of [[{type:'approval/decided',data:{outcome:'rejected'}},'ApprovalDenied'],[{type:'tool/result',data:{message:{content:[{isError:true}]}}},'ToolError']])assert.equal(classify([{type:'turn/start'},e,{type:'turn/end',data:{reason:{kind:'completed'}}}]),expected);});
+test('projection strips source replay data, tool schema and raw arguments',()=>{const value=project([{type:'assistant/message',data:{message:{id:'a',content:[{type:'text',text:'Hello'}],source:{replayState:{credential:'PRIVATE'}}}}},{type:'tool/call',data:{callId:'t',name:'read',arguments:'PRIVATE'}},{type:'request/context',data:{schema:'PRIVATE'}}]);assert(!JSON.stringify(value).includes('PRIVATE'));});
+test('incremental frames deduplicate persisted events',()=>{const p=new EventProjection();p.accept({event:'session',data:{...text('user','Hello'),seq:1}});p.accept({event:'session',data:{...text('user','Hello'),seq:1}});assert.equal(p.value().messages.length,1);});

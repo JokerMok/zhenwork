@@ -1,0 +1,2 @@
+CREATE TABLE rc2_legacy_session_document(session_id UUID NOT NULL REFERENCES ai_session(id),document_id UUID NOT NULL,version INTEGER NOT NULL,PRIMARY KEY(session_id,document_id,version),FOREIGN KEY(document_id,version) REFERENCES ai_knowledge_document_version(document_id,version));
+CREATE TABLE rc2_legacy_session_file(session_id UUID NOT NULL REFERENCES ai_session(id),file_id UUID NOT NULL REFERENCES ai_file(id),PRIMARY KEY(session_id,file_id));

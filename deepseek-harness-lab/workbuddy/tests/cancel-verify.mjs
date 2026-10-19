@@ -1,0 +1,7 @@
+import fs from 'node:fs';import {login,create,req,socket,save,root} from './helpers.mjs';
+await login();const id=await create('user_a'),frames=[];const w=socket('user_a',id);w.on('message',b=>frames.push(JSON.parse(b)));await new Promise(r=>w.once('open',r));
+const started=Date.now();const pending=req('user_a','POST',`/sessions/${id}/prompt`,{text:'Call boundary_wait exactly once before replying.'});
+let active=false;while(Date.now()-started<18000){if(frames.some(f=>f.event==='session'&&f.data?.type==='tool/call'&&f.data.data.name==='boundary_wait')){active=true;break;}await new Promise(r=>setTimeout(r,100));}
+await new Promise(r=>setTimeout(r,800));const tick=Date.now();const cancelled=await req('user_a','POST',`/sessions/${id}/cancel`,{});const response=await pending;const ms=Date.now()-tick;const end=cancelled.body.events?.filter(e=>e.type==='turn/end').at(-1);const pass=active&&cancelled.status===200&&ms<5000&&end?.data.reason.kind==='aborted'&&end?.data.reason.reason.kind==='user';
+save('cancel-focused.json',{active,ms,cancelled,response,frames,pass});console.log(JSON.stringify({active,ms,end,pass}));
+const p=root+'/evidence/harness-e2e-summary.json';const rows=JSON.parse(fs.readFileSync(p));save('harness-e2e-summary-before-cancel-assertion-fix.json',rows);rows[rows.findIndex(r=>r.name==='cancel')]={name:'cancel',status:pass?'PASS':'FAIL',actual:{http:cancelled.status,ms,end},evidence:'cancel-focused.json'};fs.writeFileSync(p,JSON.stringify(rows,null,2));w.close();
