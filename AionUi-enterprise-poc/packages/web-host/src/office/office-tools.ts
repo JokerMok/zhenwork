@@ -97,15 +97,22 @@ function evidenceCell(value: EvidenceCustomScalar): string | number | null {
   return typeof value === 'boolean' ? String(value) : value;
 }
 
+function invalidEvidenceRow(row: number, field: string, reason: string): never {
+  throw new Error(`OFFICE_EVIDENCE_ROW_INVALID row=${row} field=${field} reason=${reason}`);
+}
+
 function parseEvidenceRows(value: unknown): EvidenceRowInput[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 32) throw new Error('OFFICE_EVIDENCE_ROWS_LIMIT_1_32');
-  const rows = value.map((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('OFFICE_EVIDENCE_ROW_INVALID');
+  const rows = value.map((item, index) => {
+    const rowNumber = index + 1;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) invalidEvidenceRow(rowNumber, 'row', 'not_object');
     const row = item as Record<string, unknown>;
     for (const field of evidenceRowBusinessFields) {
-      if (typeof row[field] !== 'string' || row[field].length > 8000) throw new Error('OFFICE_EVIDENCE_ROW_INVALID');
+      if (typeof row[field] !== 'string') invalidEvidenceRow(rowNumber, field, 'not_string');
+      if (row[field].length > 8000) invalidEvidenceRow(rowNumber, field, 'too_long');
     }
-    if (typeof row.ref !== 'string' || row.ref.length === 0) throw new Error('OFFICE_EVIDENCE_ROW_INVALID');
+    if (typeof row.ref !== 'string') invalidEvidenceRow(rowNumber, 'ref', 'not_string');
+    if (row.ref.length === 0) invalidEvidenceRow(rowNumber, 'ref', 'empty');
     return row as EvidenceRowInput;
   });
   evidenceCustomColumns(rows);

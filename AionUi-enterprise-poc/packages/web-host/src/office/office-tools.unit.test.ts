@@ -263,6 +263,53 @@ test('advertises bounded custom scalar evidence columns in the tool schema', asy
   }
 });
 
+test('reports safe row and field details for invalid evidence rows through MCP', async () => {
+  const fixture = await coreFixture();
+  const root = await profileRoot();
+  fixture.core.workspaceRoot = path.join(root, 'workspace');
+  await mkdir(fixture.core.workspaceRoot, { recursive: true });
+  const office = await startOfficeTools(actor, fixture.core, root, async () => ({
+    me: async () => ({ userId: actor.userId }),
+  }) as never);
+  const registration = fixture.registered();
+  const call = async (evidenceRows: unknown) => (await (await fetch(
+    registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: { name: 'create_office_document', arguments: { path: 'report.xlsx', format: 'xlsx', evidenceRows } },
+      }),
+    }
+  )).json()) as { error: { message: string } };
+  const validRow = {
+    topic: 'Source claim', claim: 'Supplier states support', status: 'To confirm',
+    independentRequirement: 'Missing', acceptanceEvidence: 'Missing', followUp: 'Verify independently',
+    ref: 'source-1', quoteIndex: 0,
+  };
+  try {
+    const emptyRef = await call([
+      validRow,
+      { ...validRow, ref: 'source-2' },
+      { ...validRow, ref: 'source-3' },
+      { ...validRow, ref: '' },
+    ]);
+    expect(emptyRef.error.message).toBe('OFFICE_EVIDENCE_ROW_INVALID row=4 field=ref reason=empty');
+
+    const nonObject = await call([validRow, null]);
+    expect(nonObject.error.message).toBe('OFFICE_EVIDENCE_ROW_INVALID row=2 field=row reason=not_object');
+
+    const wrongType = await call([{ ...validRow, claim: 42 }]);
+    expect(wrongType.error.message).toBe('OFFICE_EVIDENCE_ROW_INVALID row=1 field=claim reason=not_string');
+
+    const tooLong = await call([{ ...validRow, followUp: 'x'.repeat(8001) }]);
+    expect(tooLong.error.message).toBe('OFFICE_EVIDENCE_ROW_INVALID row=1 field=followUp reason=too_long');
+  } finally {
+    await office.stop();
+    await fixture.close();
+  }
+});
+
 test('structured manifests use actor workspace, explicit overwrite and truthful download links', async () => {
   const fixture = await coreFixture();
   const root = await profileRoot();
