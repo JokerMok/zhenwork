@@ -292,7 +292,11 @@ export async function startOfficeTools(
               if (typeof citation.content !== 'string') continue;
               citation.sourceRef = evidence.add(conversation, { kind: 'knowledge', text: citation.content, locator: {
                 baseId: resource.id, documentId: citation.documentId, version: citation.version, sha256: citation.sha256,
-                title: citation.title, location: citation.locationLabel, sourceUrl: citation.sourceUrl,
+                title: citation.title, location: citation.locationLabel,
+                sourceUrl: typeof citation.sourceUrl === 'string' && citation.sourceUrl.startsWith('/api/ai/') ?
+                  (site ? new URL('/enterprise/control' + citation.sourceUrl.slice(4), site).href : '/enterprise/control' + citation.sourceUrl.slice(4)) : undefined,
+                downloadUrl: typeof citation.downloadUrl === 'string' && citation.downloadUrl.startsWith('/api/ai/') ?
+                  (site ? new URL('/enterprise/control' + citation.downloadUrl.slice(4), site).href : '/enterprise/control' + citation.downloadUrl.slice(4)) : undefined,
               } });
             }
           }

@@ -78,9 +78,18 @@ core_changed=0
 gateway_changed=0
 git diff --quiet "$base_sha" "$sha" -- AionUi-enterprise-poc/upstream-core AionUi-enterprise-poc/upstream-aionrs || core_changed=1
 git diff --quiet "$base_sha" "$sha" -- AionUi-enterprise-poc/packages/web-host/docker/gateway-bridge.mjs AionUi-enterprise-poc/packages/web-host/docker/egress-policy.mjs || gateway_changed=1
-target_services_sha=$(shasum -a 256 "$ops/Dockerfile.services" | awk '{print $1}')
-current_services_sha=$(python3 -c 'import json,sys;print(json.load(sys.stdin).get("maintenanceSha256",{}).get("Dockerfile.services",""))' <<<"$current_json")
-[[ -n $current_services_sha && $target_services_sha == "$current_services_sha" ]] || gateway_changed=1
+target_gateway_source_sha=$(python3 - "$app/packages/web-host/docker/gateway-bridge.mjs" "$app/packages/web-host/docker/egress-policy.mjs" "$ops/Dockerfile.services" <<'PY'
+import hashlib,pathlib,sys
+h=hashlib.sha256()
+for raw in sys.argv[1:]:
+ p=pathlib.Path(raw);h.update(p.name.encode()+b'\0');h.update(p.read_bytes()+b'\0')
+print(h.hexdigest())
+PY
+)
+# build-linux records the combined Dockerfile/bridge/policy provenance, rather
+# than Dockerfile.services in the installed maintenance-script allowlist.
+current_gateway_source_sha=$(python3 -c 'import json,sys;print(json.load(sys.stdin).get("gatewaySourceSha256",""))' <<<"$current_json")
+[[ -n $current_gateway_source_sha && $target_gateway_source_sha == "$current_gateway_source_sha" ]] || gateway_changed=1
 current_core=$(python3 -c 'import json,sys;print(json.load(sys.stdin)["images"]["core"])' <<<"$current_json")
 current_gateway=$(python3 -c 'import json,sys;print(json.load(sys.stdin)["images"]["gateway"])' <<<"$current_json")
 if [[ $core_changed == 0 ]]; then
