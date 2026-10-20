@@ -53,6 +53,7 @@ const createDeps = (): GuidSendDeps => ({
   setLoading: vi.fn(),
   loading: false,
   selectedAssistantId: 'assistant-1',
+  assistantDefaultsReady: true,
   selectedAssistantBackend: 'claude',
   selectedMode: 'bypassPermissions',
   selectedAcpModel: 'claude-opus',
@@ -337,6 +338,38 @@ describe('useGuidSend', () => {
     });
 
     expect(createConversationInvokeMock).not.toHaveBeenCalled();
+  });
+
+  it('waits for assistant defaults before creating with the full Skill and MCP bindings', async () => {
+    const deps = createDeps();
+    deps.guidEnabledSkills = undefined;
+    deps.assistantDefaultSkillIds = ['finance-reimbursement-filler'];
+    deps.selectedMcpServerIds = undefined;
+    deps.assistantDefaultMcpIds = ['mcp-user'];
+    deps.assistantDefaultsReady = false;
+
+    const { result, rerender } = renderHook((current: GuidSendDeps) => useGuidSend(current), {
+      initialProps: deps,
+    });
+
+    expect(result.current.isButtonDisabled).toBe(true);
+
+    await act(async () => {
+      await result.current.handleSend();
+    });
+
+    expect(createConversationInvokeMock).not.toHaveBeenCalled();
+
+    rerender({ ...deps, assistantDefaultsReady: true });
+    expect(result.current.isButtonDisabled).toBe(false);
+
+    await act(async () => {
+      await result.current.handleSend();
+    });
+
+    const payload = createConversationInvokeMock.mock.calls[0][0];
+    expect(payload.assistant?.conversation_overrides?.skill_ids).toEqual(['finance-reimbursement-filler']);
+    expect(payload.assistant?.conversation_overrides?.mcp_ids).toEqual(['mcp-user']);
   });
 
   it('does not start sending while selected files are still uploading', () => {

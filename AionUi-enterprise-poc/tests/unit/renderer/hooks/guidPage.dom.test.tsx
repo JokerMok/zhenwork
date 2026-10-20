@@ -581,10 +581,19 @@ describe('GuidPage', () => {
     await vi.waitFor(() => {
       const latestDeps = capturedGuidSendDeps.at(-1);
       expect(latestDeps).toMatchObject({
+        assistantDefaultsReady: false,
         guidEnabledSkills: undefined,
         guidDisabledBuiltinSkills: undefined,
       });
     });
+  });
+
+  it('enables assistant default sends after the selected assistant detail loads', () => {
+    swrMock.useSWRMock.mockReturnValue({ data: assistantDetailFixture });
+
+    render(<GuidPage />);
+
+    expect(capturedGuidSendDeps.at(-1)?.assistantDefaultsReady).toBe(true);
   });
 
   it('applies an aionrs assistant default model after provider models load', async () => {

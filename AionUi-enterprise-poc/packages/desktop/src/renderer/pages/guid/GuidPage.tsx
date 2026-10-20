@@ -290,6 +290,7 @@ const GuidPage: React.FC = () => {
 
     // Agent state
     selectedAssistantId: agentSelection.selectedAssistantId,
+    assistantDefaultsReady: selectedAssistantDetail != null,
     selectedAssistantBackend: agentSelection.selectedAssistantBackend,
     selectedMode: agentSelection.selectedMode,
     selectedAcpModel: agentSelection.selectedAcpModel,

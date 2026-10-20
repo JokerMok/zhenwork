@@ -30,6 +30,7 @@ export type GuidSendDeps = {
 
   // Assistant state
   selectedAssistantId: string | null;
+  assistantDefaultsReady: boolean;
   selectedAssistantBackend: string;
   selectedMode: string;
   selectedAcpModel: string | null;
@@ -77,6 +78,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     setLoading,
     loading,
     selectedAssistantId,
+    assistantDefaultsReady,
     selectedAssistantBackend,
     selectedMode,
     selectedAcpModel,
@@ -100,7 +102,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
   const sendingRef = useRef(false);
 
   const handleSend = useCallback(async () => {
-    if (!selectedAssistantId) {
+    if (!selectedAssistantId || !assistantDefaultsReady) {
       return;
     }
 
@@ -286,6 +288,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     files,
     dir,
     selectedAssistantId,
+    assistantDefaultsReady,
     selectedAssistantBackend,
     selectedMode,
     selectedAcpModel,
@@ -339,11 +342,10 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     t,
   ]);
 
-  // Calculate button disabled state
-  // Calculate button disabled state. Empty input is allowed once an assistant is
-  // picked — that path creates an empty conversation ("start chat") rather than
-  // sending a message, so the gate only blocks while loading or with no assistant.
-  const isButtonDisabled = loading || !selectedAssistantId;
+  // Empty input is allowed once the selected assistant and its defaults are ready.
+  // Waiting for defaults prevents a fast first send from silently dropping the
+  // assistant's fixed Skill and MCP bindings.
+  const isButtonDisabled = loading || !selectedAssistantId || !assistantDefaultsReady;
 
   return {
     handleSend,
