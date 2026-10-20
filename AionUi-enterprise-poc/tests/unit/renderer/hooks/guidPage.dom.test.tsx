@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LayoutContext } from '@/renderer/hooks/context/LayoutContext';
@@ -21,6 +21,7 @@ const {
   resolveGuidAssistantDefaultsMock,
   sendMock,
   navigateMock,
+  platformMock,
 } = vi.hoisted(() => ({
   modelSelectionMock: {
     modelList: [],
@@ -123,6 +124,7 @@ const {
     isButtonDisabled: false,
   },
   navigateMock: vi.fn(),
+  platformMock: { enterpriseWeb: false },
 }));
 
 vi.mock('react-i18next', () => ({
@@ -230,6 +232,7 @@ vi.mock('@/renderer/hooks/system/useSpeechInput', () => ({
 }));
 
 vi.mock('@/renderer/utils/platform', () => ({
+  isEnterpriseWeb: () => platformMock.enterpriseWeb,
   openExternalUrl: vi.fn(),
   resolveExtensionAssetUrl: vi.fn(),
   resolveBackendAssetUrl: vi.fn((path: string) => path),
@@ -305,6 +308,7 @@ describe('GuidPage', () => {
     locationMock.state = null;
     locationMock.key = 'guid-location';
     navigateMock.mockReset();
+    platformMock.enterpriseWeb = false;
     swrMock.useSWRMock.mockReturnValue({ data: null });
     capturedGuidActionRowProps.length = 0;
     capturedAssistantSelectionAreaProps.length = 0;
@@ -520,6 +524,31 @@ describe('GuidPage', () => {
     expect(screen.getByRole('button', { name: 'guid.defaultPrompts.understand' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'guid.defaultPrompts.cleanup' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'guid.defaultPrompts.create' })).toBeInTheDocument();
+  });
+
+  it('uses office examples as the fallback in the simplified enterprise experience', () => {
+    platformMock.enterpriseWeb = true;
+
+    render(<GuidPage />);
+
+    expect(screen.getByRole('button', { name: 'workspace.examples.reimbursement.prompt' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'workspace.examples.requirements.prompt' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'workspace.examples.data.prompt' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'workspace.examples.market.prompt' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'guid.defaultPrompts.understand' })).not.toBeInTheDocument();
+  });
+
+  it('feeds device upload busy state into the send guard', () => {
+    render(<GuidPage />);
+
+    expect(capturedGuidSendDeps.at(-1)?.loading).toBe(false);
+    const onUploadingChange = capturedGuidActionRowProps.at(-1)?.onUploadingChange as (uploading: boolean) => void;
+
+    act(() => onUploadingChange(true));
+    expect(capturedGuidSendDeps.at(-1)?.loading).toBe(true);
+
+    act(() => onUploadingChange(false));
+    expect(capturedGuidSendDeps.at(-1)?.loading).toBe(false);
   });
 
   it('does not seed skill defaults from the assistant list while detail is loading', async () => {

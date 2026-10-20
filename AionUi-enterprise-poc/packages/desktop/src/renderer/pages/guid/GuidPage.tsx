@@ -166,6 +166,7 @@ const GuidPage: React.FC = () => {
   const guidInput = useGuidInput({
     locationState: location.state as { workspace?: string } | null,
   });
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   // The `/open` builtin + attach picker browse the backend machine's filesystem
   // (native dialog / server-fs) → `local` refs, not uploads.
   const { onSlashBuiltinCommand } = useOpenFileSelector({
@@ -285,7 +286,7 @@ const GuidPage: React.FC = () => {
     dir: guidInput.dir,
     setDir: guidInput.setDir,
     setLoading: guidInput.setLoading,
-    loading: guidInput.loading,
+    loading: guidInput.loading || uploadingFiles,
 
     // Agent state
     selectedAssistantId: agentSelection.selectedAssistantId,
@@ -373,8 +374,24 @@ const GuidPage: React.FC = () => {
       return resolvedPrompts;
     }
 
+    if (simplifiedEnterpriseExperience) {
+      return [
+        t('workspace.examples.reimbursement.prompt'),
+        t('workspace.examples.requirements.prompt'),
+        t('workspace.examples.data.prompt'),
+        t('workspace.examples.market.prompt'),
+      ];
+    }
+
     return [t('guid.defaultPrompts.understand'), t('guid.defaultPrompts.cleanup'), t('guid.defaultPrompts.create')];
-  }, [localeKey, selectedAssistantDetail, selectedAssistantRecord, selectedAssistantId, t]);
+  }, [
+    localeKey,
+    selectedAssistantDetail,
+    selectedAssistantRecord,
+    selectedAssistantId,
+    simplifiedEnterpriseExperience,
+    t,
+  ]);
 
   // Sync disabledBuiltinSkills + enabledSkills from assistant detail defaults.
   useEffect(() => {
@@ -657,6 +674,7 @@ const GuidPage: React.FC = () => {
   const actionRowNode = (
     <GuidActionRow
       onFilesUploaded={guidInput.handleFilesUploaded}
+      onUploadingChange={setUploadingFiles}
       onFilesPicked={guidInput.handleFilesPicked}
       modelSelectorNode={modelSelectorNode}
       isGeminiMode={isGeminiMode}

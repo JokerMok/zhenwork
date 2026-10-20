@@ -339,6 +339,18 @@ describe('useGuidSend', () => {
     expect(createConversationInvokeMock).not.toHaveBeenCalled();
   });
 
+  it('does not start sending while selected files are still uploading', () => {
+    const deps = createDeps();
+    deps.loading = true;
+
+    const { result } = renderHook(() => useGuidSend(deps));
+
+    expect(result.current.isButtonDisabled).toBe(true);
+    act(() => result.current.sendMessageHandler());
+    expect(createConversationInvokeMock).not.toHaveBeenCalled();
+    expect(deps.setLoading).not.toHaveBeenCalled();
+  });
+
   it('allows an empty-input start: creates the conversation but stashes no initial ACP message', async () => {
     const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
     const deps = createDeps();

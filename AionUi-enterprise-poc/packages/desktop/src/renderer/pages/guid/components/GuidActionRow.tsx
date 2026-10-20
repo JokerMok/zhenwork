@@ -77,6 +77,8 @@ type GuidActionRowProps = {
   // File handling
   /** Device uploads (browser input → managed dir): sent as `upload` refs. */
   onFilesUploaded: (paths: string[]) => void;
+  /** Keeps the parent send gate closed until every selected device file finishes processing. */
+  onUploadingChange: (uploading: boolean) => void;
   /** Backend-machine picker (native dialog / server-fs browse): sent as `local` refs. */
   onFilesPicked: (paths: string[]) => void;
 
@@ -122,6 +124,7 @@ type GuidActionRowProps = {
 const GuidActionRow: React.FC<GuidActionRowProps> = ({
   onFilesPicked,
   onFilesUploaded,
+  onUploadingChange,
   modelSelectorNode,
   isGeminiMode,
   modelList,
@@ -177,6 +180,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
       const fileList = e.target.files;
       if (!fileList || fileList.length === 0) return;
       setUploading(true);
+      onUploadingChange(true);
       try {
         const processed = await FileService.processDroppedFiles(fileList);
         if (processed.length > 0) {
@@ -186,11 +190,12 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
         Message.error(t('common.fileAttach.failed'));
       } finally {
         setUploading(false);
+        onUploadingChange(false);
       }
       // Reset so the same file can be re-selected
       e.target.value = '';
     },
-    [onFilesUploaded, t]
+    [onFilesUploaded, onUploadingChange, t]
   );
 
   const getModeDisplayLabel = (mode: AgentModeOption): string =>

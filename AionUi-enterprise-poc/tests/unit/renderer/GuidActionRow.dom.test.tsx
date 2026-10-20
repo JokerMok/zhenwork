@@ -10,6 +10,8 @@ import React from 'react';
 import GuidActionRow from '@/renderer/pages/guid/components/GuidActionRow';
 import type { IMcpServer } from '@/common/config/storage';
 import { ipcBridge } from '@/common';
+import { FileService } from '@/renderer/services/FileService';
+import { Message } from '@arco-design/web-react';
 
 const environment = vi.hoisted(() => ({ isMobile: false, isDesktop: true }));
 
@@ -155,6 +157,7 @@ const renderActionRow = (overrides: Partial<React.ComponentProps<typeof GuidActi
     <GuidActionRow
       files={[]}
       onFilesUploaded={vi.fn()}
+      onUploadingChange={vi.fn()}
       modelSelectorNode={null}
       isGeminiMode={false}
       modelList={[]}
@@ -205,6 +208,52 @@ describe('GuidActionRow skill/MCP submenu search', () => {
     fireEvent.click(screen.getByTestId('attach-host-files'));
 
     await waitFor(() => expect(onFilesPicked).toHaveBeenCalledWith(['/host/project/a.txt']));
+  });
+
+  it('reports device upload busy until every selected file finishes processing', async () => {
+    environment.isDesktop = false;
+    let finishUpload: ((files: Array<{ path: string }>) => void) | undefined;
+    vi.mocked(FileService.processDroppedFiles).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishUpload = resolve;
+      }) as never
+    );
+    const onFilesUploaded = vi.fn();
+    const onUploadingChange = vi.fn();
+    const { container } = renderActionRow({
+      allSkills: [],
+      mcpServers: [],
+      onFilesUploaded,
+      onUploadingChange,
+    });
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const selectedFile = new File(['receipt'], 'receipt.pdf', { type: 'application/pdf' });
+
+    fireEvent.change(input, { target: { files: [selectedFile] } });
+
+    expect(onUploadingChange).toHaveBeenCalledWith(true);
+    expect(onFilesUploaded).not.toHaveBeenCalled();
+
+    finishUpload?.([{ path: '/managed/receipt.pdf' }]);
+
+    await waitFor(() => expect(onFilesUploaded).toHaveBeenCalledWith(['/managed/receipt.pdf']));
+    expect(onUploadingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports an upload failure and reopens the send gate', async () => {
+    environment.isDesktop = false;
+    vi.mocked(FileService.processDroppedFiles).mockRejectedValueOnce(new Error('upload failed'));
+    const onUploadingChange = vi.fn();
+    const { container } = renderActionRow({ allSkills: [], mcpServers: [], onUploadingChange });
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(input, {
+      target: { files: [new File(['receipt'], 'receipt.pdf', { type: 'application/pdf' })] },
+    });
+
+    await waitFor(() => expect(onUploadingChange).toHaveBeenLastCalledWith(false));
+    expect(onUploadingChange).toHaveBeenNthCalledWith(1, true);
+    expect(Message.error).toHaveBeenCalledWith('common.fileAttach.failed');
   });
 
   it('shows both search boxes when skills and MCP servers exceed the threshold', () => {
