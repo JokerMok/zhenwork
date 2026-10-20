@@ -1,0 +1,16 @@
+{
+  "sourceRoot": "/srv/company-share/EXPLICITLY-CONFIGURE",
+  "knowledgeId": "00000000-0000-4000-8000-000000000000",
+  "allowedExtensions": [".txt", ".md", ".csv", ".json", ".docx", ".xlsx", ".pptx", ".pdf"],
+  "maxFiles": 50,
+  "maxFileBytes": 10485760,
+  "maxTotalBytes": 524288000,
+  "maxDirectories": 200,
+  "maxDepth": 8,
+  "sourceReadonly": true,
+  "credentialFile": "/srv/apps/zhenwork/shared/config/knowledge-directory-sync-credentials.json",
+  "stateFile": "/srv/apps/zhenwork/shared/config/knowledge-directory-sync-state.json",
+  "apiBaseUrl": "https://zhenwork-admin.shizibandu.icu/api",
+  "origin": "https://zhenwork.shizibandu.icu",
+  "allowRetract": false
+}
