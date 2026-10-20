@@ -80,7 +80,7 @@ async function coreFixture(
       }
       if (req.url === '/api/assistants/rc2-11111111-1111-4111-8111-111111111111') {
         res.end(
-          JSON.stringify({ success: true, data: { defaults: { mcps: { mode: 'fixed', value: ['independent-mcp'] } } } })
+          JSON.stringify({ success: true, data: { defaults: { model: { mode: 'fixed', value: 'enterprise-model' }, skills: { mode: 'fixed', value: ['finance'] }, mcps: { mode: 'fixed', value: ['independent-mcp'] } } } })
         );
         return;
       }
@@ -341,7 +341,7 @@ test('enterprise assistants retain their tools and receive the authorized knowle
       fixture.calls.find(
         (call) => call.method === 'PUT' && call.route.endsWith('rc2-11111111-1111-4111-8111-111111111111')
       )?.body
-    ).toEqual({ defaults: { mcps: { mode: 'fixed', value: ['independent-mcp', 'office-mcp'] } } });
+    ).toEqual({ defaults: { model: { mode: 'fixed', value: 'enterprise-model' }, skills: { mode: 'fixed', value: ['finance'] }, mcps: { mode: 'fixed', value: ['independent-mcp', 'office-mcp'] } } });
   } finally {
     await office.stop();
     await fixture.close();

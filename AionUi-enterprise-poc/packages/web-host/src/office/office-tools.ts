@@ -300,12 +300,13 @@ export async function ensureOfficeAssistant(
   for (const assistant of assistants.filter((item) => /^rc2-[0-9a-f-]{36}$/i.test(item.id))) {
     try {
       const detail = (await request('/api/assistants/' + assistant.id)) as {
-        defaults: { mcps: { mode: string; value?: string[] } };
+        defaults: Record<string, unknown> & { mcps: { mode: string; value?: string[] } };
       };
       const ids = detail.defaults.mcps.value || [];
       if (!ids.includes(mcpId)) {
         await request('/api/assistants/' + assistant.id, 'PUT', {
-          defaults: { mcps: { mode: 'fixed', value: [...ids, mcpId] } },
+          // Preserve the complete default object: older Core updates replace it.
+          defaults: { ...detail.defaults, mcps: { mode: 'fixed', value: [...ids, mcpId] } },
         });
       }
     } catch {

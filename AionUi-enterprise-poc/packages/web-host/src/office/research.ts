@@ -20,7 +20,8 @@ export async function fetchPublic(url: string, signal?: AbortSignal, remaining =
   const addresses = await lookup(target.hostname, { all: true, family: 4 });
   if (!addresses.length || addresses.some((item) => !publicAddress(item.address))) throw new Error('PRIVATE_DESTINATION_DENIED');
   const result = await new Promise<{ status: number; location?: string; contentType: string; body: string }>((resolve, reject) => {
-    const req = request(target, { signal, timeout: 20_000, lookup: (_hostname, _options, callback) => callback(null, addresses[0].address, 4),
+    const req = request(target, { signal, timeout: 20_000, family: 4,
+      lookup: (_hostname, _options, callback) => callback(null, addresses[0].address, 4),
       headers: { 'User-Agent': 'ZhenWork/1.0 (user-requested research)', Accept: 'text/html, application/rss+xml, application/xml, text/plain' } }, (res) => {
       let size = 0; const chunks: Buffer[] = [];
       res.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 2 * 1024 * 1024) res.destroy(new Error('WEB_RESPONSE_LIMIT_2MB')); else chunks.push(chunk); });
@@ -57,6 +58,8 @@ export async function searchWeb(query: string, signal?: AbortSignal): Promise<Re
 export async function readWeb(url: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const page = await fetchPublic(url, signal);
   const title = tag(page.body, 'title').replace(/<[^>]*>/g, '');
+  if (/your request has been blocked|access denied|just a moment|verify (?:that )?you are human|captcha/i.test(title))
+    throw new Error('WEB_ACCESS_CHALLENGE_USE_ANOTHER_PUBLIC_SOURCE');
   const publishedAt = /<meta\s+[^>]*(?:property|name)=["'](?:article:published_time|date|datePublished)["'][^>]*content=["']([^"']+)/i.exec(page.body)?.[1] || null;
   const text = decode(page.body.replace(/<(script|style|noscript|nav|footer)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
     .replace(/<(br|p|div|h[1-6]|tr|li)\b[^>]*>/gi, '\n').replace(/<[^>]+>/g, ' '))
