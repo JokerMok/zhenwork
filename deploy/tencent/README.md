@@ -35,7 +35,7 @@ finalize 在同一发布锁内先校验发布文件、镜像、密码策略和�
 
 ```sh
 bash deploy/tencent/restage-host.sh \
-  --from 20261020-office-evidence \
+  --from 20261020-office-diagnostics \
   --ref COMMIT_SHA \
   --release NEW_RELEASE
 ```
@@ -99,3 +99,15 @@ verify-admin.mjs / verify-employee.mjs 使用独立无头 Chromium；本机设�
 受控办公 MCP 提供当前任务附件/工作区 read_document、结构化 write_workspace_json、四格式 create_office_document、validate_artifact、联网检索读取与权限知识检索。读取每次最多5页/位置（Excel最多3工作表，100行×40列），50MiB输入、30秒、OCR标记待复核；旧 .doc/.xls/.ppt 明确不支持，需用户先转为现行格式，不会伪称解析成功。研究与核查使用 sourceRef + 连续原文引用校验，生成文件自动嵌入真实定位；引用存在不代表推断成立或方案已实际验收。引用使用时重查知识授权/版本或工作区文件哈希，30分钟过期后需重读。Registry按员工Core隔离、最多128来源/2MiB文本，重启后重新检索即可恢复依据。个人/共享知识使用 PostgreSQL 轻量检索与 Office/PDF/OCR异步索引，没有增加独立向量数据库。
 
 verify-admin-usability.mjs需要环境变量及私有qa-private.json所指的专用回归账号；all包含统计与重置/首次改密的真实浏览器验证，dashboard只验证读取和布局。禁止用实际员工账号跑重置回归。原生权限拒绝可能为HTTP200/JSONcode403，应同时检查响应体与无数据，而不是要求所有业务拒绝均使用HTTP403。
+
+## 办公、研究与目录维护边界
+
+新建企业任务会等待默认助手详情及工具目录加载；目录失败时显示重试入口，并保留 Core 的助手默认配置，不用空选择覆盖默认连接。单个已撤权或缺失连接会提示，不阻止其余能力使用。
+
+网页读取优先真实结构化正文和 `article/main`，再使用明确标记的 HTML/元数据降级内容；不会执行网页脚本。语义块采用有界单遍处理，返回最多45,000字符。网络仍执行 HTTPS、公开IPv4固定解析、重定向重查、2MiB响应上限。正文和原文存在不自动证明模型推断成立，OCR和宣传性描述须分别说明。
+
+搜索使用实际 Bing RSS。普通查询请求一次；带 `site:` 或引号且未命中约束时，最多进行一次去操作符的自然化查询，保留原域名/路径筛选，并返回实际查询与降级提示。未得到符合范围的结果会明确报错，不把词典等无关页面冒充目标来源。搜索日期不能当作网页发布日期，仍需打开原文。
+
+连续引文至少2字符、最多2,000字符，候选最多16条；每条引用严格使用 `quote` 或 `quoteIndex` 二选一。引用错误指出条目序号和原因，不能重复原样提交。每个员工Core最多128个来源/2MiB文本，每个会话最多64个来源，30分钟后重新读取；来源授权、版本及文件哈希在使用时重查。Excel证据表支持最多12个额外标量列，实际文件修改仍须重新打开检查真实表头、数据行和保留内容。
+
+服务器目录同步通过 `scripts/rc2/install_knowledge_directory_sync_remote.sh tencent-main` 从本地仓库安装或更新工具。它仅写入本项目 tools 目录，不覆盖私有配置或启用真实目录/定时器；实际启用须明确源目录、知识库授权、容量边界和root私有凭据。说明见 `scripts/rc2/README-knowledge-directory-sync.md`。代码更新、应用回退和知识文档撤回分别处理，不借更新删除业务数据。

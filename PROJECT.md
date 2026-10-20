@@ -1,89 +1,94 @@
 # ZhenWork 腾讯云网页试点
 
-核对日期：2026-10-20。范围为网页试点；员工站、管理后台、必要服务和按员工启动的 Linux Core/Gateway。无桌面安装包、下载页或桌面更新服务。
+核对日期：2026-10-20。范围为员工网页、管理后台、必要服务，以及按员工启动的 Linux Core/Gateway；不含桌面安装包、下载页或桌面更新服务。
 
-## 访问与账号
+## 访问、身份与凭据边界
 
-- 员工：https://zhenwork.shizibandu.icu/
-- 管理后台/RC2：https://zhenwork-admin.shizibandu.icu/admin/ （根地址自动跳转）
-- 独立管理员 zhen-admin；普通员工 pilot-a、pilot-b；均为随机独立口令，普通员工初始改密步骤已完成。未使用仓库默认密码或搬运本机试点数据库。
-- 服务器账号凭据唯一维护副本：`/srv/apps/zhenwork/shared/config/pilot-credentials.json`（root 0600）；本轮本机 QA 私有凭据：`.codex/enterprise-delivery/qa-private.json`（0600）。`zhenwork-accounts.json` 仅是初始化输入，不再作为当前密码来源。完整凭据和加密密钥禁止提交或写入日志。
-- 一个默认办公模型 Doubao Seed 2.0 Mini（doubao-seed-2-0-mini-260428），通过已有授权 ARK 配置初始化到 RC2，三个账号均已明确授权；员工无需填写 API。真实模型探测和工具调用通过，无模拟回复。
+- 员工入口：`https://zhenwork.shizibandu.icu/`。
+- 管理后台/Native RC2：`https://zhenwork-admin.shizibandu.icu/admin/`，根地址自动跳转。
+- 独立管理员与普通员工使用彼此独立的账号；普通员工初始改密流程已完成。后台创建、重置、首次改密和个人改密的现行密码规则已做真实页面与接口验证。
+- `/srv/apps/zhenwork/shared/config/pilot-credentials.json` 是部署初始化管理员的 root 私有安全位置，不是后台改密后的自动同步副本。后续后台改密不会回写该文件，使用前必须确认用途和时效。
+- 本轮 QA 私有账号材料位于 `.codex/enterprise-delivery/qa-private.json`，权限为 `0600`。完整凭据、Cookie、令牌和加密密钥不得提交或写入日志。
+- 默认办公模型通过既有授权配置初始化到 RC2；员工无需自行填写 API。真实模型和工具链已有运行证据，但具体业务成稿仍须按下文逐项判断，不能由模型成功结束替代内容验收。
 
-## 源码和产物
+## 当前线上版本与源码边界
 
-- 仓库 https://github.com/JokerMok/zhenwork ，首次核对本机与远端 main 均为 `42d834a75722bdbe6331dba226d0febdc6179383`；以 git archive 独立冻结构建，未混入内部工程的工作树修改。本次部署修复和维护脚本保留在本仓库工作树，尚未推送 GitHub。
-- 当前已激活 release：`20261020-office-sources`，SHA `afd9cea5d80cd90cc4f1385bc8a4c50f4b8ab0d0`；平台 linux/amd64；部署位置 `/srv/apps/zhenwork/current`。`20261020-office-workflows`（SHA `68eed01330c6ee029ef3c6848d432e585511e5b6`）仅已暂存，尚未激活，不视为线上版本。
-- 远端快照未包含 Core Cargo.lock；保留兼容锁（zip2.4.2），SHA256 `6dab2a00dc751f1e2c6ad5873d24befd7bd076c26a7730b78e19a3626a1221cf`。
-- 部署所需最小 Core 修复：初始化但未提交任务的 Pending 空会话，在无运行时 claim/状态迁移、无后台子任务、无前台租约和团队活动时允许回收；Running/未知状态仍保守拒绝。补丁 `deploy/tencent/core-idle-pending.patch`，SHA256 `39d4f30b2efbbb54a38001ed26855ec63a561f0f53b8c7b31309c903ecca5fd7`；未关闭权限、身份复核或工具审批。
-- 所有镜像完整 ID、依赖锁、补丁和非敏感配置版本在 `current/RELEASE.json`；产物哈希在 SHA256SUMS；验收在 VERIFIED.json。私有配置版本位于 `shared/config/versions/`，应按当前激活 release 核对，不能用 staged 目录替代 current。
-- 网页、Node CLI、Java/Admin 在 Mac 构建；Linux Rust 在服务器原生构建，2 CPU/3GiB 限额，未上传 Mac 二进制充当 Linux Core。镜像网络不可达时采用官方归档或本机 save/load，未加未知镜像源。
+- 当前激活 release：`20261020-office-diagnostics`；source SHA：`1b601eea104668b684f1aba57a46e3fa2940a672`；平台：`linux/amd64`；入口：`/srv/apps/zhenwork/current`。本地对应记录为 `.codex/enterprise-delivery/current-release.json`。
+- 本次 release 是 Host-only 构建；Web、Admin、Java 和 control-source 字节复用自已冻结候选，复用关系及哈希记录在 `RELEASE.json`。数据库迁移链保持 `0001—0019`。
+- 当前完整镜像 ID：Core `sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway `sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`；PostgreSQL `sha256:aa90e97ee862e558111d34cfb8b2c4bec768c2b039fb791341686928560263b3`；Redis `sha256:daae2745949526529c969f121bde3e534f84e0e3dab6c10e31d5a85acd1ea162`；bridge-anchor `sha256:6eae4c12e6e88340275d16401e54ff8e6c8d0185f6796a5c952bdc320fc62cc8`。
+- 已审核 Core 二进制 SHA256 为 `a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；`Cargo.lock` SHA256 为 `6dab2a00dc751f1e2c6ad5873d24befd7bd076c26a7730b78e19a3626a1221cf`。
+- 初始快照使用的 Core Pending 空会话回收补丁为 `deploy/tencent/core-idle-pending.patch`，SHA256 `39d4f30b2efbbb54a38001ed26855ec63a561f0f53b8c7b31309c903ecca5fd7`。该补丁仅适用于精确旧快照；当前版本的修复应在 Git 源码中，不再叠加旧补丁。
+- Web、Node CLI、Java/Admin 产物由受控本地构建生成；Linux Rust/Core 使用服务器原生构建或经审核的精确 amd64 镜像，不能上传其他平台二进制冒充。源码发布由 `git archive` 冻结已提交内容，不把未提交工作树混入候选。
+- 应用代码及维护记录由本轮 Git 提交保存；应用源码SHA与后续维护文档提交SHA分别核对。线上版本只由上述 release/SHA 定义；正文优先提取和有界搜索降级修复已随本次 Host 发布；不包含未提交工作树内容。
+- 所有完整镜像 ID、依赖锁、产物哈希和配置版本以线上 `current/RELEASE.json`、`SHA256SUMS` 和 `VERIFIED.json` 为准。当前资源瞬时统计在最后一次业务检查退出后读取，见后文。
 
-## 运行结构
+## 运行架构
 
 | 组件 | 启动/端口 | 数据/配置 |
 | --- | --- | --- |
-| Web Host | 非root zhenwork-web.service；127.0.0.1:18891 | shared/config/web.env；shared/profiles |
-| RuoYi/RC2 | zhenwork-rc2.service；127.0.0.1:18890 | shared/config/application-rc2.yml；shared/logs/rc2 |
-| PostgreSQL17 | Compose zhenwork db；127.0.0.1:18432 | shared/data/postgres |
-| Redis8 | Compose zhenwork redis；127.0.0.1:18379 | shared/data/redis |
+| Web Host | 非 root `zhenwork-web.service`；`127.0.0.1:18891` | `shared/config/web.env`；`shared/profiles` |
+| RuoYi/RC2 | `zhenwork-rc2.service`；`127.0.0.1:18890` | `shared/config/application-rc2.yml`；`shared/logs/rc2` |
+| PostgreSQL 17 | Compose `zhenwork db`；`127.0.0.1:18432` | `shared/data/postgres` |
+| Redis 8 | Compose `zhenwork redis`；`127.0.0.1:18379` | `shared/data/redis` |
 | Core/Gateway | Web Host 按员工启动；无公网端口 | 每员工独立 profile/workspace/runtime-temp；加密后台状态 |
-| HTTPS | 复用宿主 caddy.service 80/443 | /etc/caddy/sites-enabled/zhenwork.caddy |
+| HTTPS | 复用宿主 `caddy.service` 的 80/443 | `/etc/caddy/sites-enabled/zhenwork.caddy` |
 
-RC2 真正使用 PostgreSQL；当前迁移已执行到 0019；不沿用 MySQL 模板或旧 Harness 演示。审计归档写权限撤销保留。Web Host 使用 Docker 组及真实宿主路径，不塞入容器，不公开 Docker 接口。
+RC2 使用 PostgreSQL，不沿用 MySQL 模板或旧 Harness 演示。最大同时 Core=1、启动并发=1，空闲阈值120秒，排队等待180秒。Core、Gateway、Java、Host、PG、Redis 的限制分别为2GiB、128MiB、1400MiB（Java堆768MiB）、768MiB、768MiB、256MiB；这些是上限，不是实际占用。
 
-最大同时 Core=1、启动并发=1，空闲阈值120秒，排队等待180秒，配置位于 shared/config/web.env。Core上限2GiB、Gateway128MiB、Java堆768MiB/服务1400MiB、Host768MiB、PG768MiB、Redis256MiB；容器上限不是实际占用。zhenwork-infra 开机拉起 db/redis/bridge-anchor，容器健康检查、失败恢复；RC2/Host独立自启/失败重启，Host启动前等待RC2。
+`zhenwork-infra` 管理 db、redis 和只读、无端口、`cap_drop ALL`、8MiB上限的 bridge-anchor。仅在 `docker0` 放行受控 `172.17.0.0/16` 到 `172.17.0.1 TCP 32768:60999`；公网未开放数据库、Redis、Core或Docker API。员工域名是 Host public origin；管理域名承载 Admin 与 Native API；RC2 public-origin 仍为员工域名。Cookie 使用 Secure/HttpOnly/Strict，外来 Origin 写请求保持拒绝。
 
-为维持 Linux Docker 默认桥 UP，使用非root只读 bridge-anchor（无端口、cap_drop ALL、8MiB上限）。只在 docker0 放行受控172.17.0.0/16到172.17.0.1 TCP32768:60999；公网保持既有22及80/443，未开放数据库、Redis、Core或Docker API。/etc/hosts 两域名127.0.0.1仅供宿主走真实HTTPS，不关闭证书校验。
+## 已实现并有定向运行证据的能力
 
-## 域名与配置边界
+- 后台密码流程和管理首页真实统计通过；统计来自当前 Core 中继事件，支持7/30/90天范围，费用缺少价格时保持未知。
+- 13语种办公流程、真实 Office 文档读写、PDF/OCR、知识检索与原文、完整能力包、个人记忆、授权 MCP 和后台任务已有实现及对应定向运行证据。
+- 同一浏览器中两个普通账号的任务、会话、文件、记忆和知识隔离通过；新增后台 job 隔离检查也通过。退出后的旧身份不可继续使用。
+- 后台任务已验证创建、编辑、停用/启用、浏览器离线后仅运行一次、运行记录保留和结果实际落盘。程序在 Core 中取得真实 UTC 时间并统计实际 workspace 文件数，证据见 `.codex/enterprise-delivery/business/cron.json`、`cron-check.json`、`cron-program-proof.json`。
+- 员工成果页已有明确预览反馈；实际浏览器下载 Excel、PDF 内嵌预览、二进制版本差异、恢复旧版和最新版、刷新后保持均通过，证据见 `.codex/enterprise-delivery/business/file-ui.json`。
+- 31页扫描 PDF 的 OCR、页码引用、授权原文预览和下载 SHA，以及资源完整包发布/版本/授权生命周期已有真实 Native API 证据。服务器目录同步工具另有合成文本的真实 RC2 上传、跳过、更新、默认保留和双开关撤回证据；工具仅静态安装，未配置真实共享目录或定时器。
 
-DNSPod仅新增 zhenwork 和 zhenwork-admin 两个A记录175.178.236.56/TTL600；主域名、www、邮箱及无关记录保留。部署前已据 SERVER.md 核对腾讯云备案接入正常。Caddy候选经 caddy-site-install 校验/reload，自动证书和两个不同 HTTPS origin 均实际验证。
+早期真实 Chromium 还验证过两个公网 HTTPS 入口、员工上传 DOCX 后生成 Excel、合计72后同会话修改为90、WebSocket完成事件、项目服务重启后的会话和文件保持，以及120秒阈值下146秒内 Core 回收。当时只重启本项目服务，没有整机重启，也未把首次发布的回滚拒绝门禁写成真正执行过回滚。这些是对应版本和路径的历史运行证据，不替代当前业务成稿或当前备份恢复验收。
 
-Host publicOrigin=员工域名、RC2 URL=管理origin根地址、RC2 public-origin=员工域名；管理前端 /admin/ + /api；稳定 serverId/clientId 保存在私有配置。Cookie均Secure/HttpOnly/Strict；仅精确管理Origin做受信改写，外来Origin仍拒绝。外部internal路径403，宿主内部通过loopback访问。
+## 业务验收现状
 
-## 数据、备份和维护
+- **报销成品内容：通过；整体任务：未通过。** 私有验收记录证明最终 XLSX 与服务器成品 SHA 一致，按业务日期的金额闭合，并保留原模板结构、公式、DISPIMG、凭证对应关系和缺失信息；OfficeCLI及工作簿定向校验通过。最新 fresh 任务正确统计了两份来源票数，但模型编写的核对脚本错误解析 `daily_amounts`，最终回复了错误金额和待确认数量。`business/finance-counts-inspection.json` 因此为 FAIL；真实 Exec 成功只证明程序运行，不能证明计算逻辑正确。最终工作簿未被改动。公司票据、金额和人员信息仅保留在私有验收材料，不进入公开源码。
+- **产品核查：失败。** `.codex/enterprise-delivery/business/product-inspection-corrected.json` 仍发现跨栏 OCR 摘录，Word 又对“无跨栏”作过度断言；独立客户需求和实际验收证据均未提供。`product-trim.json` 最新重试因 `quoteIndex` 错误未产出有效更新，继续保留 FAIL。
+- **文件修改：部分完成。** `.codex/enterprise-delivery/business/modify-content.json` 证明8条数据行新增列已写入，原10列保留；标题下空行仍残留旧值，因此不写成全部完成。
+- **研究交付：未完成。** 正文提取与查询降级修复后的 `business/research-after-reader.json` 实测完成两次搜索、三次官方网页读取，以及新DOCX生成和独立校验；但模型给部分Excel证据行提交空引用，随后又丢失路径、格式等必需字段，最终没有生成本轮对比表，整体为 FAIL。新DOCX的逐项语义未另做完整复核；旧版 `research-inspection-clean.json` 的引用问题只作为历史证据，不能据此认定新报告仍有相同问题。
 
-员工 profile/workspace、上传 runtime-temp、会话SQLite、资料和必要密钥独立于releases。shared/uploads是预留目录，实际上传在员工profile中。更新不覆盖shared，不删除旧镜像/业务数据，不运行down -v/全局prune。
+## 备份、恢复与维护
 
-已接入现有每日03:20后随机5分钟内的 server-config-backup.timer，hook为 /etc/server-ops/backup.d/zhenwork.sh。有运行Core时延后；无Core时只停止本项写入者，以pg_dump -Fc加停写profile快照，结束恢复本项服务；shared/config由主备份覆盖。Node/cache可重建内容排除，数据库不直接打包运行目录。原有拼豆备份hook保留。
+员工 profile/workspace、会话、上传和必要密钥位于 `shared`，独立于 release。更新不得覆盖 `shared`，不得运行 `down -v`、全局 prune 或删除业务数据。
 
-当前输入预算512MiB、单包上限512MiB、总压缩包上限2GiB、保留7份，运行单元 `LimitFSIZE=512M`；空闲不足2GiB或超预算时报错并保留已有备份，只在新包完整验证后轮转。备份位于 /srv/backups/config，仅root可读。同机备份不抵御整机丢失，异机副本和外部告警尚未配置。
+现有 `server-config-backup.timer` 每日北京时间03:20后随机5分钟内运行。备份有运行 Core 时延后；无 Core 时仅停止本项目写入者，执行 `pg_dump -Fc` 和停写 profile/workspace 快照。当前输入预算512MiB、单包上限512MiB、总压缩包上限2GiB、最多7份、最低空闲2GiB；轮转以2GiB总量为硬约束，因此不保证始终保留7份。
+
+最新成功备份为 `20261020T150442678681Z.tar.gz`，大小451230128 bytes，当前保留4份、总计1803929967 bytes。已对该包完成隔离恢复：PostgreSQL恢复成功（迁移19），1378个profile文件、6个SQLite完整性检查、190个Office ZIP检查通过；生产库未覆盖。恢复运行限制1 CPU/1.5GiB，实测峰值1.2GiB。异机备份和外部告警尚未配置，同机包不能抵御磁盘或整机丢失。
 
 ```sh
-# 在 Mac 本仓库更新：默认从 origin 默认分支冻结已提交源码
-bash deploy/tencent/deploy.sh
+# 第一步只暂存已提交源码，不切换 current
+bash deploy/tencent/deploy.sh --ref COMMIT_SHA --release RELEASE_ID
+
+# 审核 /srv/apps/zhenwork/releases/RELEASE_ID/RELEASE.json、产物哈希、镜像和迁移前缀后，第二步才激活
+ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/finalize-release.sh RELEASE_ID'
+
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh status'
-ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh restart'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh logs 100'
+ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh restart'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh backup'
-ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback'
+
+# 回滚必须提供位于受控目录、精确绑定当前/目标release与迁移链的审核文件
+ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/REVIEW.json'
 ```
 
-已保留原pilot1版本；它不支持8位密码，部署兼容性门禁拒绝直接退回该旧版。后续只能回退经验证且支持当前密码策略的应用与配置，数据库保持原状。新迁移或checksum变化会阻止自动激活，须先审查数据兼容性。详细脚本与恢复检查入口见 deploy/tencent/README.md。日志：journalctl -u zhenwork-web -u zhenwork-rc2；Caddy日志 /var/log/caddy/zhenwork*-access.log（5MiB×3/7天）；容器日志沿用local轮转。
+部署只允许“stage → 审核 → finalize”。数据库迁移只前进；回滚不还原数据库，也不能把旧应用接到未经审核的未来 schema。详细门禁见 `deploy/tencent/README.md`。
 
-## 实际验收（2026-10-20）
+收口实测（2026-10-20T15:07:46.919668+00:00）：系统可用内存6.00GiB、近似使用1.50GiB，系统盘空闲25.47GiB；Core计数0。拼豆仍为PID43616、自10:22:17运行，拼豆页面与ops-check均HTTP200。两个ZhenWork入口还通过Mac到服务器公网IP的直接HTTPS请求（绕过本机代理，TLS正常验证），两个A记录均为175.178.236.56。
 
-内部服务可用；**两个公网 HTTPS 入口均已在真实 Chromium 中验证**（正常DNS、有效TLS，无忽略证书或临时隧道）。Mac系统解析器曾缓存员工域名NXDOMAIN，收口时两个域名的系统解析也已恢复正常；公网结果来自真实浏览器。
+## 待完成或待输入
 
-- 后台：真实页面登录、系统管理导航、同源API、Secure/HttpOnly/Strict Cookie、外来Origin写请求403、注销后旧身份401，通过。
-- 员工：网页真实上传《试点办公样例.docx》，默认办公模型实际调用工具并保留一次性审批，生成可预览/下载且可读取的Excel，合计72；同会话继续修改数量后合计90，重新预览/下载及内容检查通过；实时WebSocket包含message.stream和turn.completed。
-- 两普通账号会话、任务确认、生成文件、上传资料越权抽查拒绝；注销后旧Cookie401。真实浏览器页面无JS错误的最终定向检查通过。
-- 仅重启本项目db/redis/bridge-anchor、RC2、Host，旧会话及合计90的Excel仍可读取。拼豆PID43616、自10:22:17运行，未被本项目重启；CaddyPID19836也保持。没有整机重启。
-- Core资源授权6项定向检查通过；空闲阈值120秒，实测在146秒内回收。未扩大到多Core或压力测试。
-- 当前备份 `20261020T123921868745Z.tar.gz` 已成功生成，大小281167825 bytes；本轮恢复验证仍待完成，不能沿用旧约2MiB、17次迁移的恢复结果作为当前恢复结论。生产库未覆盖。
-- 完成后实测总内存7.50GiB、可用6.16GiB、近似使用1.34GiB，磁盘剩35.96GiB；Core计数0。容器/进程实际用量在本机 .codex/tencent-verification/final-resources.json，未把限额当实际占用。
-- 首次发布没有可回退旧版本；rollback拒绝保护已实际确认，未声称执行过应用/数据库回滚。
+- 使用已开通且工具调用能力更强的模型复测报销业务语义，并修正产品引用定位与跨栏语义、研究对比表参数与引用等问题；任务结束、真实 Exec 和模型回复都不能替代结果复核。
+- 客户独立需求与对应实际验收资料尚未提供；未提供不等于系统未实现，只表示当前无法完成符合性结论。
+- 真实企业外部业务 API 和要同步的真实共享目录尚未指定；目录同步工具已验证链路但未启用真实目录。
+- 本轮一致性备份和隔离恢复已通过；异机备份和外部告警仍未配置。
+- 代码推送状态以本轮最终提交记录为准；线上应用 SHA 与维护文档提交 SHA 分别记录，不把文档提交误作已重建的应用。
 
-证据在本机 `.codex/tencent-verification/`，服务端 `current/VERIFIED.json`。仅执行本次相关构建、脚本语法/配置与定向验收；未运行全历史、桌面安装或大规模压测。
-
-当前文档只证明已列明的技术与定向业务结果。报销、产品、研究三类最终业务任务尚未通过；cron重启验证和当前备份恢复验证仍待完成。异机备份和外部告警未配置。
-
-
-## 当前版本与本轮验收更新（2026-10-20）
-
-- 线上仍是 `20261020-office-sources`（SHA `afd9cea5d80cd90cc4f1385bc8a4c50f4b8ab0d0`）；`20261020-office-workflows`（SHA `68eed01330c6ee029ef3c6848d432e585511e5b6`）只完成暂存，尚未激活。
-- 后台重置密码固定为临时值 `a123456`；用户首次改密、创建、编辑和个人修改均要求8—16位ASCII字母数字，且同时包含字母和数字。临时值只用于强制改密入口，不是用户长期密码。
-- 已实测后台密码流程和管理首页；真实PDF预览与下载；同一浏览器中QA1登出后切换QA2的任务、会话、文件、知识和记忆隔离；原件31页OCR；Core资源授权6项检查；120秒空闲阈值下146秒内回收。
-- 当前 PostgreSQL 迁移到0019。当前成功备份为 `20261020T123921868745Z.tar.gz`，281167825 bytes；本轮恢复仍待验证。cron重启验证仍待完成。
-- 报销、产品、研究三类最终业务任务尚未通过，不得由PDF、OCR、隔离或资源授权的局部通过替代。
+本文件只声明已列出的当前事实和证据范围。未测试项不自动认定为未实现；局部技术通过也不自动升级为整体业务通过。
