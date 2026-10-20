@@ -2,7 +2,7 @@ import http from 'node:http';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import type { EnterpriseCore } from '../enterprise-gateway.js';
 import { OfficeStore } from './office-store.js';
 import { ensureOfficeAssistant, startOfficeTools } from './office-tools.js';
@@ -129,7 +129,33 @@ async function profileRoot(): Promise<string> {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test('structured manifests use actor workspace, explicit overwrite and truthful download links', async () => {
+  const fixture = await coreFixture();
+  const root = await profileRoot();
+  fixture.core.workspaceRoot = path.join(root, 'workspace');
+  vi.spyOn(OfficeStore.prototype, 'files').mockResolvedValue({ files: [{ path: 'data.json' }] } as never);
+  const upload = vi.spyOn(OfficeStore.prototype, 'upload').mockResolvedValue();
+  const client = { me: async () => ({ userId: actor.userId }) };
+  const office = await startOfficeTools(actor, fixture.core, root, async () => client as never, 'https://workspace.example');
+  const registration = fixture.registered();
+  const call = async (args: unknown) => (await (await fetch(
+    registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'write_workspace_json', arguments: args } }),
+    })).json()) as { result?: { content: Array<{ text: string }> }; error?: { message: string } };
+  try {
+    expect((await call({ path: 'data.json', data: { amount: '12.30' } })).error?.message).toBe('OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME');
+    expect((await call({ path: 'data.xlsx', data: [] })).error?.message).toBe('WORKSPACE_JSON_OBJECT_OR_ARRAY_REQUIRED');
+    expect((await call({ path: 'data.json', data: '{"amount":12}' })).error?.message).toBe('WORKSPACE_JSON_OBJECT_OR_ARRAY_REQUIRED');
+    expect(upload).not.toHaveBeenCalled();
+    const result = await call({ path: 'data.json', data: { amount: '12.30' }, overwrite: true });
+    expect(JSON.parse(result.result!.content[0].text).downloadUrl).toBe('https://workspace.example/enterprise/files/download?path=data.json');
+    expect(upload).toHaveBeenCalledWith(fixture.core.workspaceRoot, 'data.json', Buffer.from('{\n  "amount": "12.30"\n}\n'), true);
+  } finally { await office.stop(); await fixture.close(); }
 });
 
 test('registers and enables the employee MCP, then configures the default office assistant', async () => {
@@ -354,13 +380,16 @@ test('knowledge search resolves permitted bases and output context without inven
   fixture.core.workspaceRoot = path.join(root, 'workspace');
   const baseId = '11111111-1111-4111-8111-111111111111';
   const checked: string[] = [];
+  let allowed = true;
+  const preview = vi.fn(async () => ({ response: new Response('{}'), body: { code: 200, data: { sha256: 'source-sha' } } }));
   const client = {
     me: async () => ({ userId: actor.userId }),
     resources: async () => [{ id: baseId, name: 'Company evidence', version: 3 }],
-    authorizedResource: async (id: string) => { checked.push(id); },
-    knowledgeSearch: async (id: string, query: string) => ({ citations: [{ baseId: id, version: 3, query, locationLabel: '第 4 页' }] }),
+    authorizedResource: async (id: string) => { checked.push(id); if (!allowed) throw new Error('resource revoked'); },
+    knowledgeSearch: async (id: string, query: string) => ({ citations: [{ baseId: id, documentId: baseId, sha256: 'source-sha', content: 'Original source claim only, no acceptance evidence.', version: 3, query, locationLabel: '第 4 页' }] }),
+    request: preview,
   };
-  const office = await startOfficeTools(actor, fixture.core, root, async () => client as never);
+  const office = await startOfficeTools(actor, fixture.core, root, async () => client as never, 'https://workspace.example');
   const registration = fixture.registered();
   const call = async (name: string, args: unknown) => (await (await fetch(
     registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
@@ -370,9 +399,17 @@ test('knowledge search resolves permitted bases and output context without inven
   try {
     const context = JSON.parse((await call('office_context', {})).result.content[0].text);
     expect(context.workspaceRoot).toBe(fixture.core.workspaceRoot);
+    expect(context.downloadOrigin).toBe('https://workspace.example');
     const found = JSON.parse((await call('search_knowledge', { query: 'requirements' })).result.content[0].text);
     expect(found.searchedBases).toBe(1);
     expect(found.results[0].citations[0]).toMatchObject({ baseId, version: 3 });
     expect(checked).toEqual([baseId]);
+    const ref = found.results[0].citations[0].sourceRef;
+    const evidence = JSON.parse((await call('verify_source_quotes', { citations: [{ ref, quote: 'Original source claim only' }] })).result.content[0].text);
+    expect(evidence.sources[0].locator).toMatchObject({ baseId, documentId: baseId, version: 3, location: '第 4 页' });
+    expect(preview).toHaveBeenCalledWith(`/ai/knowledge/documents/${baseId}/versions/3`);
+    allowed = false;
+    const denied = await call('verify_source_quotes', { citations: [{ ref, quote: 'Original source claim only' }] }) as unknown as { error: { message: string } };
+    expect(denied.error.message).toBe('resource revoked');
   } finally { await office.stop(); await fixture.close(); }
 });

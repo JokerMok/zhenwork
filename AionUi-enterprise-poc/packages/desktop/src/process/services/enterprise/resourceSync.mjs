@@ -156,8 +156,10 @@ function isManagedMcp(item) {
 }
 
 function assistantDefaultsMatch(actual, expected) {
-  const sameValues = (left, right) => Array.isArray(left) && Array.isArray(right) &&
-    left.length === right.length && left.every((value, index) => value === right[index]);
+  const sameValues = (left, right) => Array.isArray(right) &&
+    (right.length === 0 ? left == null || (Array.isArray(left) && left.length === 0) :
+      Array.isArray(left) && left.length === right.length &&
+      left.every((value, index) => value === right[index]));
   return actual?.model?.mode === expected.model.mode && actual.model.value === expected.model.value &&
     actual?.skills?.mode === expected.skills.mode && sameValues(actual.skills.value, expected.skills.value) &&
     actual?.mcps?.mode === expected.mcps.mode && sameValues(actual.mcps.value, expected.mcps.value);

@@ -82,6 +82,9 @@ export class OfficeStore {
     // Linux descriptor paths are required for the host/container isolation guarantee.
     if (process.platform !== 'linux') throw new Error('OFFICE_FILE_STORAGE_REQUIRES_LINUX');
     const base = await realpath(root);
+    // Attachment roots include a Core-writable conversation directory. Do not
+    // accept a replaced root symlink even when its target is otherwise readable.
+    if (base !== path.resolve(root)) throw new Error('WORKSPACE_DENIED');
     const file = await realpath(path.resolve(base, name));
     if (!name || path.isAbsolute(name) || !inside(base, file)) throw new Error('WORKSPACE_DENIED');
     const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);

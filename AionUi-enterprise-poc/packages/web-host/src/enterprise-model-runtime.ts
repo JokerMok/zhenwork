@@ -20,7 +20,7 @@ function key(actor: EnterpriseActor): string {
 export function createEnterpriseModelRuntime(
   rc2Login: (username: string, password: string) => Promise<Rc2GatewayLogin>,
   startIsolatedCore: (actor: EnterpriseActor) => Promise<EnterpriseCore>,
-  options: { profileRoot?: string; rc2Resume?: (cookie: string) => Promise<Rc2GatewayLogin>;
+  options: { profileRoot?: string; publicOrigin?: string; rc2Resume?: (cookie: string) => Promise<Rc2GatewayLogin>;
     background?: { rc2Url: string; serviceToken: string } } = {}
 ): Pick<EnterpriseGatewayOptions, 'login' | 'startCore' | 'resume' | 'authorizeBackground' | 'controlRequest' | 'backgroundDue' | 'refreshResources'> & {
   syncCronGrant: (actor: EnterpriseActor, jobId: string, enabled: boolean) => Promise<void>;
@@ -346,7 +346,7 @@ export function createEnterpriseModelRuntime(
         stopRefreshTimer = () => clearInterval(refreshTimer);
         let stopHistory = (): void => {};
         if (options.profileRoot) {
-          office = await startOfficeTools(actor, core, options.profileRoot, (conversationId) => relayClient(actor, conversationId));
+          office = await startOfficeTools(actor, core, options.profileRoot, (conversationId) => relayClient(actor, conversationId), options.publicOrigin);
           await ensureOfficeAssistant(core, office.mcpId, model);
           if (core.workspaceRoot) {
             const store = await OfficeStore.create(options.profileRoot, actor), workspace = core.workspaceRoot;

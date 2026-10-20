@@ -393,7 +393,7 @@ const WorkspaceFiles: React.FC = () => {
         width={900}
         visible={Boolean(preview)}
         title={preview?.file.name || t('workspace.files.preview')}
-        footer={null}
+        footer={preview ? <Button icon={<Download />} onClick={() => downloadWorkspaceFile(preview.file)}>{t('workspace.files.download')}</Button> : null}
         onCancel={() => setPreview(null)}
       >
         {preview?.loading ? (
@@ -414,7 +414,6 @@ const WorkspaceFiles: React.FC = () => {
           <iframe
             title={preview.file.name}
             src={preview.objectUrl}
-            sandbox='allow-downloads'
             className='h-[72vh] w-full border-0'
           />
         ) : preview ? (

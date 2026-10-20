@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ lookup: vi.fn(), request: vi.fn(), body: '', options: {} as Record<string,unknown> }));
 vi.mock('node:dns/promises', () => ({ lookup: mocks.lookup }));
 vi.mock('node:https', () => ({ request: mocks.request }));
-import { readWeb } from './research.js';
+import { readWeb, searchWeb } from './research.js';
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.lookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
@@ -34,4 +34,19 @@ test('refuses a private DNS result before opening a connection', async () => {
   mocks.lookup.mockResolvedValue([{ address: '127.0.0.1', family: 4 }]);
   await expect(readWeb('https://example.com/source')).rejects.toThrow('PRIVATE_DESTINATION_DENIED');
   expect(mocks.request).not.toHaveBeenCalled();
+});
+
+test('keeps search provider dates separate from original publication dates', async () => {
+  mocks.body = '<rss><item><title>Article</title><link>https://example.com/source</link><description>Lead</description><pubDate>20 Oct 2026</pubDate></item></rss>';
+  const found = await searchWeb('office AI');
+  expect((found.results as Array<Record<string,unknown>>)[0]).toMatchObject({ publishedAt: null, providerDate: '20 Oct 2026' });
+});
+test('reads explicitly identified article metadata without executing webpage scripts', async () => {
+  mocks.body = '<title>Source</title><meta content="Official overview" name="description"><script type="application/ld+json">{"articleBody":"Original documented capabilities", "description":"Declared summary", "datePublished":"2026-01-02"}</script><script>throw Error("never execute")</script>';
+  const source = await readWeb('https://example.com/source');
+  expect(source.publishedAt).toBe('2026-01-02');
+  expect(source.text).toContain('Original documented capabilities');
+  expect(source.text).toContain('Official overview');
+  expect(source.text).not.toContain('never execute');
+  expect(source.textSources).toMatchObject({ metadataDescription: true, structuredArticle: true });
 });

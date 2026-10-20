@@ -7,7 +7,8 @@ import { enterpriseProfilePath } from './enterprise-core.js';
 import { enterpriseManagedResourcePath, syncEnterpriseWebResources } from './enterprise-resource-runtime.js';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 
-test.each(['assistant dependencies', 'standalone authorization', 'mixed authorization'] as const)(
+test.each(['assistant dependencies', 'standalone authorization', 'mixed authorization',
+  'empty assistant MCP defaults'] as const)(
   'authorized Skills and MCPs reach only that employee Core through %s', async (mode) => {
   const root = await mkdtemp(path.join(tmpdir(), 'enterprise-resources-'));
   const actor = { serverId: 'rc2', userId: '42' };
@@ -70,7 +71,13 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     }
     else if (req.url?.startsWith('/api/assistants/') && req.method === 'GET') {
       const id = decodeURIComponent(req.url.slice('/api/assistants/'.length));
-      res.end(JSON.stringify({ success: true, data: assistantDetails.get(id) }));
+      const detail = assistantDetails.get(id);
+      const defaults = detail?.defaults as { mcps?: { value?: string[] } } | undefined;
+      if (defaults?.mcps?.value?.length === 0) {
+        const { value: _omitted, ...mcps } = defaults.mcps;
+        res.end(JSON.stringify({ success: true, data: { ...detail, defaults: { ...defaults, mcps } } }));
+      }
+      else res.end(JSON.stringify({ success: true, data: detail }));
     }
     else res.end(JSON.stringify({ success: true, data: {} }));
   });
@@ -98,7 +105,9 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     authorizedResource: async (id: string) => {
       if (id === assistantId) return { version: 2, config: {
         modelId: 'model-2', instruction: 'Use the Skills and MCPs.',
-        skillIds: [skillId, secondSkillId], mcpIds: [firstMcpId, secondMcpId], knowledgeIds: [knowledgeId],
+        skillIds: [skillId, secondSkillId],
+        mcpIds: mode === 'empty assistant MCP defaults' ? [] : [firstMcpId, secondMcpId],
+        knowledgeIds: [knowledgeId],
       } };
       if (id === brokenAssistantId) return { version: 2, config: {
         modelId: 'model-2', instruction: 'This assistant is isolated.',
@@ -154,7 +163,8 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
       const assistant = writes.find(({ route, body }) =>
         route === '/api/assistants' && body.id === `rc2-${assistantId}`)!.body;
       expect(assistant.custom_skill_names).toEqual(skillNames);
-      expect((assistant.defaults as { mcps: { value: string[] } }).mcps.value).toHaveLength(2);
+      expect((assistant.defaults as { mcps: { value: string[] } }).mcps.value)
+        .toHaveLength(mode === 'empty assistant MCP defaults' ? 0 : 2);
       expect((assistant.defaults as { model: { value: string } }).model.value).toBe('assistant-model-code');
       expect(writes).toContainEqual({
         route: `/api/assistants/rc2-${assistantId}`,

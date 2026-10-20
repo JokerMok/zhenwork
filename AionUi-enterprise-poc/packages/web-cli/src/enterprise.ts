@@ -52,7 +52,7 @@ export async function startEnterpriseWebFromEnvironment() {
     coreImage: required('AION_ENTERPRISE_WEB_DOCKER_CORE_IMAGE'), gatewayImage, upstreamProxyPort,
     authorizeCronJob: async (actor, jobId) => runtime ? runtime.authorizeCronJob(actor, jobId) : false });
   runtime = createEnterpriseModelRuntime(createRc2GatewayLogin(rc2Url, publicOrigin), startCore,
-    { profileRoot, rc2Resume: createRc2GatewayResume(rc2Url, publicOrigin),
+    { profileRoot, publicOrigin, rc2Resume: createRc2GatewayResume(rc2Url, publicOrigin),
       background: { rc2Url, serviceToken } });
   const gateway = await startEnterpriseGateway({ staticDir, publicOrigin, port,
     maxSessions: optionalLimit('AION_ENTERPRISE_WEB_MAX_SESSIONS', 1, 1000),
