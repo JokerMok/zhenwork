@@ -90,7 +90,7 @@
     "continue": "Continue working",
     "continuePrompt": "Continue working with the workspace file \"{{path}}\". Read and confirm its current content first, then apply my next instruction. Save a new file or version instead of overwriting the original unless I explicitly ask.",
     "preview": "プレビュー",
-    "officePreviewHint": "Office ファイルは実際のタスクで開き、アシスタントが構造を読み取って処理します。元のファイルをダウンロードすることもできます。",
+    "officePreviewHint": "この Office ファイルの埋め込みプレビューには現在ブラウザーが対応していません。タスクで読み取るか処理を続けることも、元のファイルをダウンロードして確認することもできます。",
     "unsupportedPreviewHint": "このファイル形式はここでは安全にプレビューできません。元のファイルをダウンロードしてください。",
     "openInTask": "タスクで開く"
   },

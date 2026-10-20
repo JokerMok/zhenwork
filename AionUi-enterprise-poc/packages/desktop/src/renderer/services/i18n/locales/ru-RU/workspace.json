@@ -90,7 +90,7 @@
     "continue": "Continue working",
     "continuePrompt": "Continue working with the workspace file \"{{path}}\". Read and confirm its current content first, then apply my next instruction. Save a new file or version instead of overwriting the original unless I explicitly ask.",
     "preview": "Предпросмотр",
-    "officePreviewHint": "Файлы Office открываются в реальной задаче, где помощник может прочитать и обработать их структуру. Также можно скачать исходный файл.",
+    "officePreviewHint": "Браузер пока не поддерживает встроенный предварительный просмотр этого файла Office. Его можно прочитать или продолжить обрабатывать в задаче, либо скачать исходный файл для просмотра.",
     "unsupportedPreviewHint": "Этот тип файла нельзя безопасно просмотреть здесь. Скачайте исходный файл.",
     "openInTask": "Открыть в задаче"
   },

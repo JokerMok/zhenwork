@@ -90,7 +90,7 @@
     "continue": "Continue working",
     "continuePrompt": "Continue working with the workspace file \"{{path}}\". Read and confirm its current content first, then apply my next instruction. Save a new file or version instead of overwriting the original unless I explicitly ask.",
     "preview": "Preview",
-    "officePreviewHint": "Office files open in a real task so the assistant can read and work with their structure. You can also download the original file.",
+    "officePreviewHint": "This browser does not currently support an inline preview of this Office file. You can read or continue working with it in a task, or download the original file to view it.",
     "unsupportedPreviewHint": "This file type cannot be safely previewed here. Download the original file instead.",
     "openInTask": "Open in task"
   },

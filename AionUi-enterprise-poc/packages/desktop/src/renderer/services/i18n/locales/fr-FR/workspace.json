@@ -90,7 +90,7 @@
     "continue": "Continue working",
     "continuePrompt": "Continue working with the workspace file \"{{path}}\". Read and confirm its current content first, then apply my next instruction. Save a new file or version instead of overwriting the original unless I explicitly ask.",
     "preview": "Aperçu",
-    "officePreviewHint": "Les fichiers Office s’ouvrent dans une tâche réelle afin que l’assistant puisse lire et traiter leur structure. Vous pouvez aussi télécharger le fichier original.",
+    "officePreviewHint": "Le navigateur ne prend pas encore en charge l’aperçu intégré de ce fichier Office. Vous pouvez le lire ou continuer à le traiter dans une tâche, ou télécharger le fichier d’origine pour le consulter.",
     "unsupportedPreviewHint": "Ce type de fichier ne peut pas être prévisualisé ici en toute sécurité. Téléchargez le fichier original.",
     "openInTask": "Ouvrir dans une tâche"
   },

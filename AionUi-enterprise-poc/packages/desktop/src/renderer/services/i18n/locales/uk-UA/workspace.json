@@ -90,7 +90,7 @@
     "continue": "Continue working",
     "continuePrompt": "Continue working with the workspace file \"{{path}}\". Read and confirm its current content first, then apply my next instruction. Save a new file or version instead of overwriting the original unless I explicitly ask.",
     "preview": "Попередній перегляд",
-    "officePreviewHint": "Файли Office відкриваються в реальному завданні, де помічник може прочитати й опрацювати їхню структуру. Також можна завантажити оригінальний файл.",
+    "officePreviewHint": "Браузер поки не підтримує вбудований попередній перегляд цього файлу Office. Його можна прочитати або продовжити опрацьовувати в завданні, чи завантажити оригінальний файл для перегляду.",
     "unsupportedPreviewHint": "Цей тип файлу не можна безпечно переглянути тут. Завантажте оригінальний файл.",
     "openInTask": "Відкрити в завданні"
   },

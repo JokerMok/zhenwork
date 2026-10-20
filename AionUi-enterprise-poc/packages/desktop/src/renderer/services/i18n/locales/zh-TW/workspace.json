@@ -90,7 +90,7 @@
     "continue": "繼續加工",
     "continuePrompt": "繼續處理工作區檔案「{{path}}」。先讀取並確認目前內容，再按我的下一步要求修改；儲存為新檔案或新版本，不覆蓋原檔案，除非我明確要求。",
     "preview": "預覽",
-    "officePreviewHint": "Office 檔案會進入真實任務，由助理讀取並處理其結構；你也可以直接下載原始檔案。",
+    "officePreviewHint": "瀏覽器目前不支援此 Office 檔案的內嵌預覽。你可以在任務中讀取或繼續處理，也可以下載原始檔案查看。",
     "unsupportedPreviewHint": "此檔案類型無法在這裡安全預覽，請下載原始檔案。",
     "openInTask": "在任務中開啟"
   },

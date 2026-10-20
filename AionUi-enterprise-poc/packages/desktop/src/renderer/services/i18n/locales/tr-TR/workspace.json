@@ -90,7 +90,7 @@
     "continue": "Continue working",
     "continuePrompt": "Continue working with the workspace file \"{{path}}\". Read and confirm its current content first, then apply my next instruction. Save a new file or version instead of overwriting the original unless I explicitly ask.",
     "preview": "Önizleme",
-    "officePreviewHint": "Office dosyaları gerçek bir görevde açılır; asistan dosya yapısını okuyup işleyebilir. Özgün dosyayı da indirebilirsiniz.",
+    "officePreviewHint": "Tarayıcı şu anda bu Office dosyası için yerleşik önizlemeyi desteklemiyor. Dosyayı bir görev içinde okuyabilir veya işlemeye devam edebilir ya da görüntülemek için özgün dosyayı indirebilirsiniz.",
     "unsupportedPreviewHint": "Bu dosya türü burada güvenli biçimde önizlenemiyor. Özgün dosyayı indirin.",
     "openInTask": "Görevde aç"
   },
