@@ -414,7 +414,7 @@ def build_manifest(documents: Iterable[dict]) -> dict:
                 "toll": _num(doc["total"]),
                 "remark": f"ETC通行费汇总单 {doc['summary_number']}（{doc['plate_number']}）",
                 "summary_remark": f"ETC通行费汇总单 {doc['summary_number']}",
-                "evidence": {"toll_invoice": [doc["source_path"]]},
+                "evidence": {"toll": [doc["source_path"]]},
                 "source_trace": {
                     "sha256": doc["sha256"],
                     "pages": sorted({trip.page for trip in doc["trips"]}),

@@ -39,6 +39,10 @@ class TollSummaryParserTest(unittest.TestCase):
         self.assertEqual(len(manifest["expenses"]), 1)  # duplicate source hash is ignored
         self.assertEqual(len(manifest["invoices"]), 2)
         self.assertEqual(manifest["expenses"][0]["daily_amounts"], [{"date": "2026-01-05", "amount": 12.3}])
+        self.assertEqual(
+            manifest["expenses"][0]["evidence"],
+            {"toll": [str(Path(tempfile.gettempdir(), "sample.pdf").resolve())]},
+        )
 
     def test_trip_index_layout_splits_multiple_business_dates(self):
         text = """
@@ -62,6 +66,10 @@ class TollSummaryParserTest(unittest.TestCase):
         expense = PARSER.build_manifest([doc])["expenses"][0]
         self.assertEqual(expense["business_dates"], ["2026-02-01", "2026-02-02"])
         self.assertEqual(sum(x["amount"] for x in expense["daily_amounts"]), 30.0)
+        self.assertEqual(
+            expense["evidence"],
+            {"toll": [str(Path(tempfile.gettempdir(), "renamed-input.pdf").resolve())]},
+        )
 
     def test_ambiguous_or_nonclosing_input_is_rejected(self):
         base = """
