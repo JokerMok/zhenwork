@@ -48,6 +48,58 @@ const MAX_QUOTE_LENGTH = 2000;
 const MAX_QUOTE_OPTIONS = 16;
 const MAX_QUOTE_OPTION_LENGTH = 500;
 
+type ReferenceFailureReason =
+  | 'missing_ref'
+  | 'invalid_ref_type'
+  | 'empty_ref'
+  | 'quote_and_quoteIndex_both_present'
+  | 'missing_quote_or_quoteIndex'
+  | 'invalid_quote_type'
+  | 'invalid_quoteIndex_type'
+  | 'invalid_quoteIndex_range'
+  | 'quote_length_out_of_range'
+  | 'quote_absent'
+  | 'ref_missing'
+  | 'cross_conversation'
+  | 'expired'
+  | 'locator_invalid'
+  | 'validation_failed';
+
+class ReferenceValidationError extends Error {
+  constructor(
+    code: string,
+    readonly reason: ReferenceFailureReason
+  ) {
+    super(code);
+  }
+}
+
+const REFERENCE_ERROR_REASONS: Readonly<Record<string, ReferenceFailureReason>> = {
+  SOURCE_EVIDENCE_REFERENCE_INVALID: 'validation_failed',
+  SOURCE_EVIDENCE_REFERENCE_AMBIGUOUS: 'quote_and_quoteIndex_both_present',
+  SOURCE_EVIDENCE_QUOTE_INDEX_INVALID: 'invalid_quoteIndex_range',
+  SOURCE_EVIDENCE_QUOTE_LENGTH_2_2000: 'quote_length_out_of_range',
+  SOURCE_EVIDENCE_QUOTE_ABSENT: 'quote_absent',
+  SOURCE_EVIDENCE_REF_MISSING: 'ref_missing',
+  SOURCE_EVIDENCE_CROSS_CONVERSATION: 'cross_conversation',
+  SOURCE_EVIDENCE_EXPIRED: 'expired',
+  SOURCE_EVIDENCE_LOCATOR_INVALID: 'locator_invalid',
+};
+
+function failReference(code: string, reason: ReferenceFailureReason): never {
+  throw new ReferenceValidationError(code, reason);
+}
+
+function indexedReferenceError(error: unknown, index: number): Error {
+  if (error instanceof ReferenceValidationError) {
+    return new Error(`${error.message} reference=${index + 1} reason=${error.reason}`);
+  }
+  if (error instanceof Error && Object.hasOwn(REFERENCE_ERROR_REASONS, error.message)) {
+    return new Error(`${error.message} reference=${index + 1} reason=${REFERENCE_ERROR_REASONS[error.message]}`);
+  }
+  return new Error(`SOURCE_EVIDENCE_REFERENCE_INVALID reference=${index + 1} reason=validation_failed`);
+}
+
 function normalizeQuote(value: string): string {
   return value.replace(/\p{White_Space}+/gu, ' ').trim();
 }
@@ -165,42 +217,66 @@ export class SourceEvidenceRegistry {
     }
 
     const currentTime = this.now();
-    return references.map((reference) => {
-      if (!reference || typeof reference.ref !== 'string') {
-        throw new Error('SOURCE_EVIDENCE_REFERENCE_INVALID');
-      }
-      const quoteProvided = Object.hasOwn(reference, 'quote');
-      const indexProvided = Object.hasOwn(reference, 'quoteIndex');
-      if (quoteProvided && indexProvided) throw new Error('SOURCE_EVIDENCE_REFERENCE_AMBIGUOUS');
-      if (!quoteProvided && !indexProvided) throw new Error('SOURCE_EVIDENCE_REFERENCE_INVALID');
+    return references.map((reference, index) => {
+      try {
+        if (!reference || typeof reference !== 'object') {
+          failReference('SOURCE_EVIDENCE_REFERENCE_INVALID', 'invalid_ref_type');
+        }
+        if (!Object.hasOwn(reference, 'ref')) {
+          failReference('SOURCE_EVIDENCE_REFERENCE_INVALID', 'missing_ref');
+        }
+        if (typeof reference.ref !== 'string') {
+          failReference('SOURCE_EVIDENCE_REFERENCE_INVALID', 'invalid_ref_type');
+        }
+        if (reference.ref.length === 0) {
+          failReference('SOURCE_EVIDENCE_REFERENCE_INVALID', 'empty_ref');
+        }
+        const quoteProvided = Object.hasOwn(reference, 'quote');
+        const indexProvided = Object.hasOwn(reference, 'quoteIndex');
+        if (quoteProvided && indexProvided) {
+          failReference('SOURCE_EVIDENCE_REFERENCE_AMBIGUOUS', 'quote_and_quoteIndex_both_present');
+        }
+        if (!quoteProvided && !indexProvided) {
+          failReference('SOURCE_EVIDENCE_REFERENCE_INVALID', 'missing_quote_or_quoteIndex');
+        }
 
-      const source = this.sourceFor(conversation, reference.ref, currentTime);
-      let quote: string;
-      if (indexProvided) {
-        const quoteIndex = reference.quoteIndex;
-        if (typeof quoteIndex !== 'number' || !Number.isInteger(quoteIndex) || quoteIndex < 0) {
-          throw new Error('SOURCE_EVIDENCE_QUOTE_INDEX_INVALID');
+        const source = this.sourceFor(conversation, reference.ref, currentTime);
+        let quote: string;
+        if (indexProvided) {
+          const quoteIndex = reference.quoteIndex;
+          if (typeof quoteIndex !== 'number' || !Number.isInteger(quoteIndex)) {
+            failReference('SOURCE_EVIDENCE_QUOTE_INDEX_INVALID', 'invalid_quoteIndex_type');
+          }
+          if (quoteIndex < 0) {
+            failReference('SOURCE_EVIDENCE_QUOTE_INDEX_INVALID', 'invalid_quoteIndex_range');
+          }
+          const option = quoteOptionsFor(source.text)[quoteIndex];
+          if (!option) {
+            failReference('SOURCE_EVIDENCE_QUOTE_INDEX_INVALID', 'invalid_quoteIndex_range');
+          }
+          quote = option.quote;
+        } else {
+          if (typeof reference.quote !== 'string') {
+            failReference('SOURCE_EVIDENCE_REFERENCE_INVALID', 'invalid_quote_type');
+          }
+          quote = normalizeQuote(reference.quote);
+          if (quote.length < MIN_QUOTE_LENGTH || quote.length > MAX_QUOTE_LENGTH) {
+            failReference('SOURCE_EVIDENCE_QUOTE_LENGTH_2_2000', 'quote_length_out_of_range');
+          }
+          if (!normalizeQuote(source.text).includes(quote)) {
+            failReference('SOURCE_EVIDENCE_QUOTE_ABSENT', 'quote_absent');
+          }
         }
-        const option = quoteOptionsFor(source.text)[quoteIndex];
-        if (!option) throw new Error('SOURCE_EVIDENCE_QUOTE_INDEX_INVALID');
-        quote = option.quote;
-      } else {
-        if (typeof reference.quote !== 'string') throw new Error('SOURCE_EVIDENCE_REFERENCE_INVALID');
-        quote = normalizeQuote(reference.quote);
-        if (quote.length < MIN_QUOTE_LENGTH || quote.length > MAX_QUOTE_LENGTH) {
-          throw new Error('SOURCE_EVIDENCE_QUOTE_LENGTH_2_2000');
-        }
-        if (!normalizeQuote(source.text).includes(quote)) {
-          throw new Error('SOURCE_EVIDENCE_QUOTE_ABSENT');
-        }
-      }
 
-      return {
-        ref: source.ref,
-        kind: source.kind,
-        locator: cloneLocator(source.locator),
-        quote,
-      };
+        return {
+          ref: source.ref,
+          kind: source.kind,
+          locator: cloneLocator(source.locator),
+          quote,
+        };
+      } catch (error) {
+        throw indexedReferenceError(error, index);
+      }
     });
   }
 

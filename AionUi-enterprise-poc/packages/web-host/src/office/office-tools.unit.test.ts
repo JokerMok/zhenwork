@@ -170,6 +170,99 @@ test('builds evidence table rows from verified source text and locator', () => {
   expect(JSON.stringify(table)).not.toContain('模型误抄的原文');
 });
 
+test('appends bounded custom evidence columns without replacing protected source cells', () => {
+  const base = {
+    topic: '标签',
+    claim: '支持识别',
+    status: '待核查',
+    independentRequirement: '未提供',
+    acceptanceEvidence: '未提供',
+    followUp: '现场核验',
+    ref: 'source-1',
+    quoteIndex: 0,
+  };
+  const sources = [
+    { ref: 'source-1', kind: 'knowledge' as const, quote: '真实原文一', locator: { location: '第 1 页' } },
+    { ref: 'source-2', kind: 'knowledge' as const, quote: '真实原文二', locator: { location: '第 2 页' } },
+  ];
+  const table = buildEvidenceTable(
+    [
+      { ...base, 后续验证责任: '需用户指定责任人', 置信度: 0.8, 已复核: true },
+      { ...base, ref: 'source-2', 备注: null },
+    ],
+    sources
+  );
+
+  expect(table.headers.slice(0, 10)).toEqual([
+    '编号', '主题', '结论/声明', '状态', '独立要求', '验收证据', '后续事项', '原文摘录', '真实来源定位', '核查边界',
+  ]);
+  expect(table.headers.slice(10)).toEqual(['后续验证责任', '置信度', '已复核', '备注']);
+  expect(table.rows[0].slice(7)).toEqual([
+    '真实原文一', '{"location":"第 1 页"}',
+    '已校验原文摘录存在且来源当前可访问；结论、独立要求和验收证据仍需独立核查。',
+    '需用户指定责任人', 0.8, 'true', '',
+  ]);
+  expect(table.rows[1].slice(7)).toEqual([
+    '真实原文二', '{"location":"第 2 页"}',
+    '已校验原文摘录存在且来源当前可访问；结论、独立要求和验收证据仍需独立核查。',
+    '', '', '', null,
+  ]);
+});
+
+test('rejects unsupported, excessive and protected custom evidence columns', () => {
+  const row = (extra: Record<string, unknown>) => ({
+    topic: '标签', claim: '声明', status: '待核查', independentRequirement: '未提供',
+    acceptanceEvidence: '未提供', followUp: '核验', ref: 'source-1', quoteIndex: 0, ...extra,
+  });
+  const source = [{ ref: 'source-1', kind: 'knowledge' as const, quote: '真实原文', locator: {} }];
+
+  expect(() => buildEvidenceTable([row({ 嵌套: { value: 1 } })] as never, source))
+    .toThrow('OFFICE_EVIDENCE_CUSTOM_VALUE_INVALID');
+  expect(() => buildEvidenceTable([row({ 列表: ['x'] })] as never, source))
+    .toThrow('OFFICE_EVIDENCE_CUSTOM_VALUE_INVALID');
+  expect(() => buildEvidenceTable([row({ [String('列').repeat(121)]: 'x' })] as never, source))
+    .toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_NAME_LIMIT_120');
+  expect(() => buildEvidenceTable([row({ 超长值: 'x'.repeat(8001) })] as never, source))
+    .toThrow('OFFICE_EVIDENCE_CUSTOM_VALUE_LIMIT_8000');
+  expect(() => buildEvidenceTable([row(Object.fromEntries(Array.from({ length: 13 }, (_, index) => [`列${index}`, index])))] as never, source))
+    .toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_LIMIT_12');
+  expect(() => buildEvidenceTable([row({ 原文摘录: '伪造覆盖' })] as never, source))
+    .toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_PROTECTED');
+  expect(() => buildEvidenceTable([row({ constructor: 'unsafe' })] as never, source))
+    .toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_FORBIDDEN');
+  expect(() => buildEvidenceTable([row(JSON.parse('{"__proto__":"unsafe"}') as Record<string, unknown>)] as never, source))
+    .toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_FORBIDDEN');
+});
+
+test('advertises bounded custom scalar evidence columns in the tool schema', async () => {
+  const fixture = await coreFixture();
+  const root = await profileRoot();
+  fixture.core.workspaceRoot = path.join(root, 'workspace');
+  const office = await startOfficeTools(actor, fixture.core, root, async () => ({ me: async () => ({ userId: actor.userId }) }) as never);
+  const registration = fixture.registered();
+  try {
+    const response = await fetch(registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    });
+    const listed = await response.json() as { result: { tools: Array<{ name: string; inputSchema: Record<string, any> }> } };
+    const createSchema = listed.result.tools.find((tool) => tool.name === 'create_office_document')?.inputSchema.properties;
+    const evidenceRowsSchema = createSchema.evidenceRows.items;
+    const exactlyOne = [
+      { required: ['quote'], not: { required: ['quoteIndex'] } },
+      { required: ['quoteIndex'], not: { required: ['quote'] } },
+    ];
+    expect(createSchema.citations.items.oneOf).toEqual(exactlyOne);
+    expect(evidenceRowsSchema.oneOf).toEqual(exactlyOne);
+    expect(evidenceRowsSchema.additionalProperties).toMatchObject({ type: ['string', 'number', 'boolean', 'null'], maxLength: 8000 });
+    expect(evidenceRowsSchema.propertyNames).toMatchObject({ minLength: 1, maxLength: 120 });
+  } finally {
+    await office.stop();
+    await fixture.close();
+  }
+});
+
 test('structured manifests use actor workspace, explicit overwrite and truthful download links', async () => {
   const fixture = await coreFixture();
   const root = await profileRoot();

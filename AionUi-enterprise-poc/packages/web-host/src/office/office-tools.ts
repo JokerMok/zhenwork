@@ -19,6 +19,10 @@ type ControlClient = Rc2GatewayClient & {
   ): Promise<{ response: Response; body: { code?: number; data?: unknown } | null }>;
 };
 const name = 'rc2-enterprise-zhenwork-office-tools';
+const evidenceReferenceExactlyOne = [
+  { required: ['quote'], not: { required: ['quoteIndex'] } },
+  { required: ['quoteIndex'], not: { required: ['quote'] } },
+];
 const evidenceReferenceSchema = {
   type: 'object',
   properties: {
@@ -27,6 +31,7 @@ const evidenceReferenceSchema = {
     quoteIndex: { type: 'integer', minimum: 0, maximum: 15 },
   },
   required: ['ref'],
+  oneOf: evidenceReferenceExactlyOne,
 };
 const evidenceRowBusinessFields = [
   'topic',
@@ -36,12 +41,65 @@ const evidenceRowBusinessFields = [
   'acceptanceEvidence',
   'followUp',
 ] as const;
-type EvidenceRowInput = Record<(typeof evidenceRowBusinessFields)[number], string> & SourceEvidenceReference;
+type EvidenceCustomScalar = string | number | boolean | null;
+type EvidenceRowInput = Record<(typeof evidenceRowBusinessFields)[number], string> & SourceEvidenceReference & Record<string, unknown>;
+const evidenceRowReferenceFields = ['ref', 'quote', 'quoteIndex'] as const;
+const evidenceRowReservedFields = new Set<string>([...evidenceRowBusinessFields, ...evidenceRowReferenceFields]);
+const evidenceProtectedHeaders = new Set([
+  '编号',
+  '主题',
+  '结论/声明',
+  '状态',
+  '独立要求',
+  '验收证据',
+  '后续事项',
+  '原文摘录',
+  '真实来源定位',
+  '核查边界',
+]);
+const evidenceForbiddenColumnNames = new Set(['__proto__', 'prototype', 'constructor']);
+const evidenceCustomValueSchema = {
+  type: ['string', 'number', 'boolean', 'null'],
+  maxLength: 8000,
+  description: 'Custom evidence-table cell. Objects and arrays are rejected.',
+};
 const evidenceBoundary = '已校验原文摘录存在且来源当前可访问；结论、独立要求和验收证据仍需独立核查。';
+
+function evidenceCustomColumns(rows: EvidenceRowInput[]): string[] {
+  const columns: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    for (const [column, value] of Object.entries(row)) {
+      if (evidenceRowReservedFields.has(column)) continue;
+      if (evidenceForbiddenColumnNames.has(column)) throw new Error('OFFICE_EVIDENCE_CUSTOM_COLUMN_FORBIDDEN');
+      if (column.length < 1 || column.length > 120) throw new Error('OFFICE_EVIDENCE_CUSTOM_COLUMN_NAME_LIMIT_120');
+      if (evidenceProtectedHeaders.has(column)) throw new Error('OFFICE_EVIDENCE_CUSTOM_COLUMN_PROTECTED');
+      if (typeof value === 'string') {
+        if (value.length > 8000) throw new Error('OFFICE_EVIDENCE_CUSTOM_VALUE_LIMIT_8000');
+      } else if (typeof value === 'number') {
+        if (!Number.isFinite(value)) throw new Error('OFFICE_EVIDENCE_CUSTOM_VALUE_INVALID');
+      } else if (typeof value !== 'boolean' && value !== null) {
+        throw new Error('OFFICE_EVIDENCE_CUSTOM_VALUE_INVALID');
+      }
+      if (!seen.has(column)) {
+        seen.add(column);
+        columns.push(column);
+        if (columns.length > 12) throw new Error('OFFICE_EVIDENCE_CUSTOM_COLUMN_LIMIT_12');
+      }
+    }
+  }
+  return columns;
+}
+
+function evidenceCell(value: EvidenceCustomScalar): string | number | null {
+  // Office artifact validation accepts text, numbers and null. Preserve
+  // boolean meaning explicitly instead of silently dropping the column.
+  return typeof value === 'boolean' ? String(value) : value;
+}
 
 function parseEvidenceRows(value: unknown): EvidenceRowInput[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 32) throw new Error('OFFICE_EVIDENCE_ROWS_LIMIT_1_32');
-  return value.map((item) => {
+  const rows = value.map((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('OFFICE_EVIDENCE_ROW_INVALID');
     const row = item as Record<string, unknown>;
     for (const field of evidenceRowBusinessFields) {
@@ -50,13 +108,16 @@ function parseEvidenceRows(value: unknown): EvidenceRowInput[] {
     if (typeof row.ref !== 'string' || row.ref.length === 0) throw new Error('OFFICE_EVIDENCE_ROW_INVALID');
     return row as EvidenceRowInput;
   });
+  evidenceCustomColumns(rows);
+  return rows;
 }
 
 export function buildEvidenceTable(rows: EvidenceRowInput[], sources: VerifiedSourceEvidence[]) {
   if (rows.length !== sources.length) throw new Error('OFFICE_EVIDENCE_SOURCE_COUNT_MISMATCH');
+  const customColumns = evidenceCustomColumns(rows);
   return {
     name: '证据核查表',
-    headers: ['编号', '主题', '结论/声明', '状态', '独立要求', '验收证据', '后续事项', '原文摘录', '真实来源定位', '核查边界'],
+    headers: ['编号', '主题', '结论/声明', '状态', '独立要求', '验收证据', '后续事项', '原文摘录', '真实来源定位', '核查边界', ...customColumns],
     rows: rows.map((row, index) => [
       index + 1,
       row.topic,
@@ -68,6 +129,7 @@ export function buildEvidenceTable(rows: EvidenceRowInput[], sources: VerifiedSo
       sources[index].quote,
       JSON.stringify(sources[index].locator) ?? 'null',
       evidenceBoundary,
+      ...customColumns.map((column) => Object.hasOwn(row, column) ? evidenceCell(row[column] as EvidenceCustomScalar) : ''),
     ]),
   };
 }
@@ -100,10 +162,10 @@ const tools = [
       overwrite: { type: 'boolean', description: 'Explicitly replace an existing output; previous versions remain available.' },
       sourceBased: { type: 'boolean', description: 'Set true for research, compliance or other source-based reports. Requires verified exact quotes.' },
       citations: { type: 'array', maxItems: 32, items: evidenceReferenceSchema, description: 'Use sourceRef plus quoteIndex from returned quoteOptions (preferred), OR an exact contiguous quote. Do not supply both. Checked sources are embedded in the real file.' },
-      evidenceRows: { type: 'array', minItems: 1, maxItems: 32, description: 'For xlsx only. Builds the main evidence table with server-verified original quotes and source locations; never copy source wording into business fields.', items: { type: 'object', properties: {
+      evidenceRows: { type: 'array', minItems: 1, maxItems: 32, description: 'For xlsx only. Builds the main evidence table with server-verified original quotes and source locations; never copy source wording into business fields. Up to 12 additional user-named columns are supported in first-seen order; values must be string, number, boolean or null.', items: { type: 'object', propertyNames: { type: 'string', minLength: 1, maxLength: 120, not: { enum: [...evidenceForbiddenColumnNames, ...evidenceProtectedHeaders] } }, properties: {
         topic: { type: 'string' }, claim: { type: 'string' }, status: { type: 'string' }, independentRequirement: { type: 'string' }, acceptanceEvidence: { type: 'string' }, followUp: { type: 'string' },
         ...evidenceReferenceSchema.properties,
-      }, required: [...evidenceRowBusinessFields, 'ref'] } },
+      }, required: [...evidenceRowBusinessFields, 'ref'], oneOf: evidenceReferenceExactlyOne, additionalProperties: evidenceCustomValueSchema } },
     }, required: ['path', 'format'] },
   },
   {

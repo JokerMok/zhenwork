@@ -71,9 +71,7 @@ test('rejects invalid reference counts and quote lengths', () => {
       Array.from({ length: 33 }, () => ({ ref, quote: 'long enough' }))
     )
   ).toThrow('SOURCE_EVIDENCE_REFS_LIMIT_1_32');
-  expect(() => registry.verify('conversation-a', [{ ref, quote: '1' }])).toThrow(
-    'SOURCE_EVIDENCE_QUOTE_LENGTH_2_2000'
-  );
+  expect(() => registry.verify('conversation-a', [{ ref, quote: '1' }])).toThrow('SOURCE_EVIDENCE_QUOTE_LENGTH_2_2000');
   expect(() => registry.verify('conversation-a', [{ ref, quote: 'x'.repeat(2001) }])).toThrow(
     'SOURCE_EVIDENCE_QUOTE_LENGTH_2_2000'
   );
@@ -277,6 +275,62 @@ test('rejects ambiguous, fractional, negative and out-of-range quote indexes', (
       'SOURCE_EVIDENCE_QUOTE_INDEX_INVALID'
     );
   }
+});
+
+test('reports the one-based position and safe reason for malformed reference entries', () => {
+  const registry = new SourceEvidenceRegistry();
+  const ref = registry.add('conversation-a', {
+    kind: 'web',
+    text: 'A valid source line for positional diagnostics.',
+    locator: {},
+  });
+  const valid = { ref, quoteIndex: 0 };
+
+  expect(() => registry.verify('conversation-a', [valid, { quoteIndex: 0 } as never])).toThrow(
+    'SOURCE_EVIDENCE_REFERENCE_INVALID reference=2 reason=missing_ref'
+  );
+  expect(() =>
+    registry.verify('conversation-a', [{ ref, quote: 'A valid source line', quoteIndex: 0 } as never])
+  ).toThrow('SOURCE_EVIDENCE_REFERENCE_AMBIGUOUS reference=1 reason=quote_and_quoteIndex_both_present');
+  expect(() => registry.verify('conversation-a', [{ ref } as never])).toThrow(
+    'SOURCE_EVIDENCE_REFERENCE_INVALID reference=1 reason=missing_quote_or_quoteIndex'
+  );
+  expect(() => registry.verify('conversation-a', [valid, { ref, quoteIndex: '0' } as never])).toThrow(
+    'SOURCE_EVIDENCE_QUOTE_INDEX_INVALID reference=2 reason=invalid_quoteIndex_type'
+  );
+});
+
+test('reports the failing position for unavailable source references', () => {
+  let now = 1_000;
+  const registry = new SourceEvidenceRegistry(() => now);
+  const expired = registry.add('conversation-a', {
+    kind: 'knowledge',
+    text: 'This source will expire before the live source.',
+    locator: {},
+  });
+  now += 30 * 60 * 1000 - 1;
+  const live = registry.add('conversation-a', {
+    kind: 'knowledge',
+    text: 'This source remains live for positional diagnostics.',
+    locator: {},
+  });
+  const otherConversation = registry.add('conversation-b', {
+    kind: 'knowledge',
+    text: 'This source belongs to another conversation.',
+    locator: {},
+  });
+  const valid = { ref: live, quoteIndex: 0 };
+
+  expect(() => registry.verify('conversation-a', [valid, { ref: 'missing', quoteIndex: 0 }])).toThrow(
+    'SOURCE_EVIDENCE_REF_MISSING reference=2 reason=ref_missing'
+  );
+  expect(() => registry.verify('conversation-a', [valid, { ref: otherConversation, quoteIndex: 0 }])).toThrow(
+    'SOURCE_EVIDENCE_CROSS_CONVERSATION reference=2 reason=cross_conversation'
+  );
+  now += 1;
+  expect(() => registry.verify('conversation-a', [valid, { ref: expired, quoteIndex: 0 }])).toThrow(
+    'SOURCE_EVIDENCE_EXPIRED reference=2 reason=expired'
+  );
 });
 
 test('keeps separate short lines as separate quote options', () => {
