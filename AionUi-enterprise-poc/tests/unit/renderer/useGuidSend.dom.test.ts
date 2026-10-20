@@ -63,6 +63,7 @@ const createDeps = (): GuidSendDeps => ({
   assistantDefaultSkillIds: undefined,
   assistantDefaultDisabledBuiltinSkillIds: undefined,
   availableMcpServers: [{ id: 'mcp-user', name: 'User MCP', enabled: true, builtin: false } as IMcpServer],
+  mcpCatalogReady: true,
   selectedMcpServerIds: ['mcp-user'],
   assistantDefaultMcpIds: undefined,
   isGoogleAuth: false,
@@ -153,6 +154,25 @@ describe('useGuidSend', () => {
     expect(payload.assistant?.conversation_overrides?.mcp_ids).toEqual(['mcp-user', 'builtin-mcp']);
     expect(payload.extra.selected_mcp_server_ids).toEqual(['mcp-user']);
     expect(payload.extra.selected_session_mcp_servers).toEqual([expect.objectContaining({ id: 'builtin-mcp' })]);
+  });
+
+  it('preserves assistant MCP defaults without overriding runtime selection when the catalog failed to load', async () => {
+    const deps = createDeps();
+    deps.mcpCatalogReady = false;
+    deps.availableMcpServers = [];
+    deps.selectedMcpServerIds = ['office-mcp'];
+    deps.assistantDefaultMcpIds = ['office-mcp'];
+
+    const { result } = renderHook(() => useGuidSend(deps));
+
+    await act(async () => {
+      await result.current.handleSend();
+    });
+
+    const payload = createConversationInvokeMock.mock.calls[0][0];
+    expect(payload.assistant?.conversation_overrides?.mcp_ids).toEqual(['office-mcp']);
+    expect(payload.extra.selected_mcp_server_ids).toBeUndefined();
+    expect(payload.extra.selected_session_mcp_servers).toBeUndefined();
   });
 
   it('does not write legacy preset_assistant_id for preset assistant sends', async () => {

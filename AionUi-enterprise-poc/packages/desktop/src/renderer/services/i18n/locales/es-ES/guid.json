@@ -1,4 +1,6 @@
 {
+  "mcpCatalogLoadFailed": "No se pudieron cargar las conexiones de herramientas. Puedes seguir usando el espacio de trabajo; la conversación restaurará las conexiones predeterminadas. Reintenta o ajústalas en Configuración avanzada.",
+  "mcpDefaultsUnavailable": "Estas conexiones de herramientas predeterminadas no están disponibles: {{names}}. El espacio de trabajo continuará con las demás funciones; ajústalas en Configuración avanzada.",
   "agentFallbackNotice": "{{original}} no está disponible, usando {{fallback}} en su lugar.",
   "noAgentAvailable": "No hay ningún agente principal disponible. Inicia sesión en Google o instala Claude/Codex CLI. ¿Ir a configuración?",
   "noAgentAvailableShort": "No hay agente principal disponible. Haz clic para configurar.",

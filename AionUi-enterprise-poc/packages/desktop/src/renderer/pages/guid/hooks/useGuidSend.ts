@@ -42,6 +42,7 @@ export type GuidSendDeps = {
   assistantDefaultSkillIds?: string[];
   assistantDefaultDisabledBuiltinSkillIds?: string[];
   availableMcpServers: IMcpServer[];
+  mcpCatalogReady: boolean;
   selectedMcpServerIds: string[] | undefined;
   assistantDefaultMcpIds?: string[];
   isGoogleAuth: boolean;
@@ -89,6 +90,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     assistantDefaultSkillIds,
     assistantDefaultDisabledBuiltinSkillIds,
     availableMcpServers,
+    mcpCatalogReady,
     selectedMcpServerIds,
     assistantDefaultMcpIds,
     setMentionOpen,
@@ -130,14 +132,21 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
       .map((server) => server.id);
     const assistantOverrideMcpIds =
       selectedMcpServerIds !== undefined ? selectedAllMcpServerIds : defaultSelectedMcpServerIds;
-    const selectedUserMcpServerIdsToSend =
-      selectedMcpServerIds !== undefined ? selectedUserMcpServerIds : defaultSelectedUserMcpServerIds;
-    const selectedSessionMcpServersToSend =
-      selectedMcpServerIds !== undefined
+    // Core treats a present runtime selection as authoritative even when it is
+    // empty. If the catalog failed, omit both fields so Core can fall back to
+    // the assistant snapshot instead of silently replacing its defaults with [].
+    const selectedUserMcpServerIdsToSend = mcpCatalogReady
+      ? selectedMcpServerIds !== undefined
+        ? selectedUserMcpServerIds
+        : defaultSelectedUserMcpServerIds
+      : undefined;
+    const selectedSessionMcpServersToSend = mcpCatalogReady
+      ? selectedMcpServerIds !== undefined
         ? selectedAllSessionMcpServers
         : availableMcpServers
             .filter((server) => (defaultSelectedMcpServerIds ?? []).includes(server.id))
-            .map((server) => toSessionMcpServer(server));
+            .map((server) => toSessionMcpServer(server))
+      : undefined;
 
     // `current_model` is the aionrs provider selection and means nothing to a
     // CLI agent, which owns its own model list. Used as a blanket fallback it
@@ -246,7 +255,9 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
           default_files: files.map(chatFileRefPath),
           selected_mcp_server_ids: selectedUserMcpServerIdsToSend,
           selected_session_mcp_servers:
-            selectedMcpServerIds !== undefined ? selectedSessionMcpServers : selectedSessionMcpServersToSend,
+            mcpCatalogReady && selectedMcpServerIds !== undefined
+              ? selectedSessionMcpServers
+              : selectedSessionMcpServersToSend,
         },
       });
       if (!conversation || !conversation.id) {
@@ -299,6 +310,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     assistantDefaultSkillIds,
     assistantDefaultDisabledBuiltinSkillIds,
     availableMcpServers,
+    mcpCatalogReady,
     selectedMcpServerIds,
     assistantDefaultMcpIds,
     navigate,

@@ -1,4 +1,6 @@
 {
+  "mcpCatalogLoadFailed": "工具連線目錄載入失敗。你仍可繼續使用工作台；預設連線將由對話復原。可重試載入或在進階設定中調整。",
+  "mcpDefaultsUnavailable": "以下預設工具連線目前無法使用：{{names}}。工作台將繼續使用其餘可用能力；可在進階設定中調整。",
   "promptExamplesHint": "試試這些指令",
   "defaultPrompts": {
     "understand": "了解一下這個專案，用白話告訴我它是做什麼的、從哪裡入手",

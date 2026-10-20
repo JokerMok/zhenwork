@@ -1,4 +1,6 @@
 {
+  "mcpCatalogLoadFailed": "Tool connections could not be loaded. You can keep using the workspace; the conversation will restore its defaults. Retry or adjust them in Advanced Settings.",
+  "mcpDefaultsUnavailable": "These default tool connections are unavailable: {{names}}. The workspace will continue with the remaining capabilities; adjust them in Advanced Settings.",
   "promptExamplesHint": "Try these instructions",
   "defaultPrompts": {
     "understand": "Get to know this project and explain in plain words what it does and where to start",

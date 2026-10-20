@@ -1,4 +1,6 @@
 {
+  "mcpCatalogLoadFailed": "Araç bağlantıları yüklenemedi. Çalışma alanını kullanmaya devam edebilirsiniz; varsayılan bağlantılar konuşma tarafından geri yüklenir. Yeniden deneyin veya Gelişmiş Ayarlar bölümünden düzenleyin.",
+  "mcpDefaultsUnavailable": "Şu varsayılan araç bağlantıları kullanılamıyor: {{names}}. Çalışma alanı kalan özelliklerle devam eder; Gelişmiş Ayarlar bölümünden düzenleyebilirsiniz.",
   "promptExamplesHint": "Bu talimatları deneyin",
   "defaultPrompts": {
     "understand": "Bu projeyi incele ve ne yaptığını, nereden başlamam gerektiğini basit bir dille anlat",

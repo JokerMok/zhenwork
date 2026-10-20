@@ -1,4 +1,6 @@
 {
+  "mcpCatalogLoadFailed": "Não foi possível carregar as conexões de ferramentas. Você pode continuar usando o espaço de trabalho; a conversa restaurará as conexões padrão. Tente novamente ou ajuste-as nas Configurações avançadas.",
+  "mcpDefaultsUnavailable": "Estas conexões de ferramentas padrão estão indisponíveis: {{names}}. O espaço de trabalho continuará com os demais recursos; ajuste-as nas Configurações avançadas.",
   "promptExamplesHint": "Experimente estas instruções",
   "defaultPrompts": {
     "understand": "Conheça este projeto e explique em palavras simples o que ele faz e por onde começar",

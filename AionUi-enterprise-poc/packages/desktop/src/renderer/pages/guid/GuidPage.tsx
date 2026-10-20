@@ -36,7 +36,7 @@ import { useOpenFileSelector } from '@/renderer/hooks/file/useOpenFileSelector';
 import { appendSpeechTranscript } from '@/renderer/hooks/system/useSpeechInput';
 import { useLiveTranscriptInsertion } from '@/renderer/hooks/system/useLiveTranscriptInsertion';
 import { ArrowRightUp } from '@icon-park/react';
-import { Button, ConfigProvider } from '@arco-design/web-react';
+import { Alert, Button, ConfigProvider, Space } from '@arco-design/web-react';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -87,6 +87,8 @@ const GuidPage: React.FC = () => {
   const [guidDisabledBuiltinSkills, setGuidDisabledBuiltinSkills] = useState<string[] | undefined>(undefined);
   const [guidEnabledSkills, setGuidEnabledSkills] = useState<string[] | undefined>(undefined);
   const [availableMcpServers, setAvailableMcpServers] = useState<IMcpServer[]>([]);
+  const [mcpCatalogStatus, setMcpCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [mcpCatalogLoadVersion, setMcpCatalogLoadVersion] = useState(0);
   const [guidSelectedMcpServerIds, setGuidSelectedMcpServerIds] = useState<string[] | undefined>(undefined);
   const displayedSkills = useMemo(
     () =>
@@ -118,15 +120,24 @@ const GuidPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    setMcpCatalogStatus('loading');
     void ensureBackendMcpCatalog()
       .then(({ allServers }) => {
+        if (cancelled) return;
         setAvailableMcpServers(allServers);
+        setMcpCatalogStatus('ready');
       })
       .catch((error) => {
+        if (cancelled) return;
         console.error('[GuidPage] Failed to load MCP catalog:', error);
         setAvailableMcpServers([]);
+        setMcpCatalogStatus('error');
       });
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [mcpCatalogLoadVersion]);
 
   const handleToggleSkill = useCallback((skillName: string, isAuto: boolean) => {
     if (isAuto) {
@@ -193,6 +204,14 @@ const GuidPage: React.FC = () => {
     () => resolveGuidAssistantDefaults(selectedAssistantDetail),
     [selectedAssistantDetail]
   );
+  const assistantDefaultsReady =
+    selectedAssistantDetail != null &&
+    (resolvedAssistantDefaults.mcpIds.length === 0 || mcpCatalogStatus !== 'loading');
+  const missingAssistantDefaultMcpIds = useMemo(() => {
+    if (mcpCatalogStatus !== 'ready') return [];
+    const availableIds = new Set(availableMcpServers.map((server) => server.id));
+    return resolvedAssistantDefaults.mcpIds.filter((id) => !availableIds.has(id));
+  }, [availableMcpServers, mcpCatalogStatus, resolvedAssistantDefaults.mcpIds]);
   const selectedSkillNames = useMemo(() => {
     const disabledBuiltinSkillSet = new Set(
       guidDisabledBuiltinSkills ?? resolvedAssistantDefaults.disabledBuiltinSkillIds
@@ -290,7 +309,7 @@ const GuidPage: React.FC = () => {
 
     // Agent state
     selectedAssistantId: agentSelection.selectedAssistantId,
-    assistantDefaultsReady: selectedAssistantDetail != null,
+    assistantDefaultsReady,
     selectedAssistantBackend: agentSelection.selectedAssistantBackend,
     selectedMode: agentSelection.selectedMode,
     selectedAcpModel: agentSelection.selectedAcpModel,
@@ -302,6 +321,7 @@ const GuidPage: React.FC = () => {
     assistantDefaultSkillIds: resolvedAssistantDefaults.skillIds,
     assistantDefaultDisabledBuiltinSkillIds: resolvedAssistantDefaults.disabledBuiltinSkillIds,
     availableMcpServers,
+    mcpCatalogReady: mcpCatalogStatus === 'ready',
     selectedMcpServerIds: guidSelectedMcpServerIds,
     assistantDefaultMcpIds: resolvedAssistantDefaults.mcpIds,
     isGoogleAuth: modelSelection.isGoogleAuth,
@@ -762,6 +782,49 @@ const GuidPage: React.FC = () => {
             >
               {showAdvancedConfiguration ? t('common.collapse') : t('settings.advancedSettings')}
             </Button>
+          ) : null}
+
+          {mcpCatalogStatus === 'error' ? (
+            <Alert
+              className='w-full'
+              type='error'
+              showIcon
+              content={
+                <Space direction='vertical' size='mini'>
+                  <span>{t('guid.mcpCatalogLoadFailed')}</span>
+                  <Space size='mini'>
+                    <Button size='mini' onClick={() => setMcpCatalogLoadVersion((version) => version + 1)}>
+                      {t('common.retry')}
+                    </Button>
+                    {hostedEnterpriseWeb && !showAdvancedConfiguration ? (
+                      <Button size='mini' onClick={() => setShowAdvancedConfiguration(true)}>
+                        {t('settings.advancedSettings')}
+                      </Button>
+                    ) : null}
+                  </Space>
+                </Space>
+              }
+            />
+          ) : missingAssistantDefaultMcpIds.length > 0 ? (
+            <Alert
+              className='w-full'
+              type='warning'
+              showIcon
+              content={
+                <Space direction='vertical' size='mini'>
+                  <span>
+                    {t('guid.mcpDefaultsUnavailable', {
+                      names: missingAssistantDefaultMcpIds.join(', '),
+                    })}
+                  </span>
+                  {hostedEnterpriseWeb && !showAdvancedConfiguration ? (
+                    <Button size='mini' onClick={() => setShowAdvancedConfiguration(true)}>
+                      {t('settings.advancedSettings')}
+                    </Button>
+                  ) : null}
+                </Space>
+              }
+            />
           ) : null}
 
           <GuidInputCard

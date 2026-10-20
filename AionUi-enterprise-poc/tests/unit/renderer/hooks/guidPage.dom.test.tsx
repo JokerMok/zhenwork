@@ -4,10 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LayoutContext } from '@/renderer/hooks/context/LayoutContext';
+import type { IMcpServer } from '@/common/config/storage';
 
 const {
   modelSelectionMock,
@@ -22,6 +23,7 @@ const {
   sendMock,
   navigateMock,
   platformMock,
+  ensureBackendMcpCatalogMock,
 } = vi.hoisted(() => ({
   modelSelectionMock: {
     modelList: [],
@@ -125,6 +127,7 @@ const {
   },
   navigateMock: vi.fn(),
   platformMock: { enterpriseWeb: false },
+  ensureBackendMcpCatalogMock: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -148,7 +151,7 @@ vi.mock('@/common', () => ({
 }));
 
 vi.mock('@/renderer/hooks/mcp/catalog', () => ({
-  ensureBackendMcpCatalog: vi.fn().mockResolvedValue({ allServers: [] }),
+  ensureBackendMcpCatalog: (...args: unknown[]) => ensureBackendMcpCatalogMock(...args),
 }));
 
 vi.mock('@/renderer/hooks/chat/useInputFocusRing', () => ({
@@ -315,6 +318,8 @@ describe('GuidPage', () => {
     capturedGuidInputCardProps.length = 0;
     capturedGuidSendDeps.length = 0;
     useGuidAssistantSelectionMock.mockClear();
+    ensureBackendMcpCatalogMock.mockReset();
+    ensureBackendMcpCatalogMock.mockResolvedValue({ allServers: [] });
     resolveGuidAssistantDefaultsMock.mockReturnValue({
       disabledBuiltinSkillIds: [],
       skillIds: [],
@@ -594,6 +599,82 @@ describe('GuidPage', () => {
     render(<GuidPage />);
 
     expect(capturedGuidSendDeps.at(-1)?.assistantDefaultsReady).toBe(true);
+  });
+
+  it('waits for the MCP catalog before enabling an assistant with default MCP bindings', async () => {
+    const officeMcp = {
+      id: 'office-mcp',
+      name: 'Office MCP',
+      builtin: true,
+    } as IMcpServer;
+    let resolveCatalog!: (value: { allServers: IMcpServer[] }) => void;
+    ensureBackendMcpCatalogMock.mockReturnValue(
+      new Promise<{ allServers: IMcpServer[] }>((resolve) => {
+        resolveCatalog = resolve;
+      })
+    );
+    swrMock.useSWRMock.mockReturnValue({ data: assistantDetailFixture });
+    resolveGuidAssistantDefaultsMock.mockReturnValue({
+      disabledBuiltinSkillIds: [],
+      skillIds: [],
+      mcpIds: ['office-mcp'],
+    });
+
+    render(<GuidPage />);
+
+    expect(capturedGuidSendDeps.at(-1)?.assistantDefaultsReady).toBe(false);
+
+    await act(async () => {
+      resolveCatalog({ allServers: [officeMcp] });
+    });
+
+    await waitFor(() => {
+      expect(capturedGuidSendDeps.at(-1)).toMatchObject({
+        assistantDefaultsReady: true,
+        availableMcpServers: [officeMcp],
+      });
+    });
+  });
+
+  it('keeps sending available when an assistant default MCP is missing from the loaded catalog', async () => {
+    swrMock.useSWRMock.mockReturnValue({ data: assistantDetailFixture });
+    resolveGuidAssistantDefaultsMock.mockReturnValue({
+      disabledBuiltinSkillIds: [],
+      skillIds: [],
+      mcpIds: ['removed-office-mcp'],
+    });
+
+    render(<GuidPage />);
+
+    await waitFor(() => {
+      expect(capturedGuidSendDeps.at(-1)?.assistantDefaultsReady).toBe(true);
+    });
+    expect(screen.getByText('guid.mcpDefaultsUnavailable')).toBeInTheDocument();
+  });
+
+  it('shows a retryable error without blocking sends when the MCP catalog request fails', async () => {
+    ensureBackendMcpCatalogMock.mockRejectedValueOnce(new Error('catalog unavailable'));
+    swrMock.useSWRMock.mockReturnValue({ data: assistantDetailFixture });
+    resolveGuidAssistantDefaultsMock.mockReturnValue({
+      disabledBuiltinSkillIds: [],
+      skillIds: [],
+      mcpIds: ['office-mcp'],
+    });
+
+    render(<GuidPage />);
+
+    await waitFor(() => {
+      expect(capturedGuidSendDeps.at(-1)).toMatchObject({
+        assistantDefaultsReady: true,
+        mcpCatalogReady: false,
+      });
+    });
+    expect(screen.getByText('guid.mcpCatalogLoadFailed')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('common.retry'));
+    await waitFor(() => {
+      expect(ensureBackendMcpCatalogMock).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('guid.mcpCatalogLoadFailed')).not.toBeInTheDocument();
+    });
   });
 
   it('applies an aionrs assistant default model after provider models load', async () => {

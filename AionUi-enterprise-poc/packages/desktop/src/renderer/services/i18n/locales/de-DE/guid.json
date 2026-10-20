@@ -1,4 +1,6 @@
 {
+  "mcpCatalogLoadFailed": "Die Tool-Verbindungen konnten nicht geladen werden. Sie können den Arbeitsbereich weiter verwenden; die Standardverbindungen werden von der Unterhaltung wiederhergestellt. Versuchen Sie es erneut oder passen Sie sie in den erweiterten Einstellungen an.",
+  "mcpDefaultsUnavailable": "Diese Standard-Tool-Verbindungen sind nicht verfügbar: {{names}}. Der Arbeitsbereich wird mit den übrigen Funktionen fortgesetzt; Sie können sie in den erweiterten Einstellungen anpassen.",
   "agentFallbackNotice": "{{original}} ist nicht verfügbar, stattdessen wird {{fallback}} verwendet.",
   "noAgentAvailable": "Kein Hauptagent verfügbar. Bitte bei Google anmelden oder Claude/Codex CLI installieren. Zu den Einstellungen?",
   "noAgentAvailableShort": "Kein Hauptagent verfügbar. Zum Konfigurieren klicken.",
