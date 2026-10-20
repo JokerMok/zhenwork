@@ -51,7 +51,7 @@ assert "schema_advancing" in activate and "Services remain stopped" in activate
 
 expected = {
     "0018_knowledge_office.sql": "7d5be1f4b8636f16bde988f0b2cfa0769345245b31eac9980eadfc1dba2d11c1",
-    "0019_office_defaults.sql": "6d441fd2263342b231734e6769edc0095e33fa78da624cd13977755721a33a70",
+    "0019_office_defaults.sql": "08ad472cb0fb5189fb1e7912f58695c55c1d2601fbc87f7695f4877def0316c1",
 }
 migrations = ROOT / "deepseek-harness-lab/workbuddy/migrations/rc2"
 for name, digest in expected.items():

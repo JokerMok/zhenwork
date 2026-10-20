@@ -27,7 +27,7 @@ ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/finalize-release.sh RELEAS
 
 finalize 在同一发布锁内先校验发布文件、镜像、密码策略和迁移前缀，再调用现有备份服务生成一致性 DB/profile 备份；备份失败或 Core 尚未退出会停止。随后停止本项目写入者，按文件名顺序用 `bootstrap.py --migrate-only` 事务执行尚未应用的迁移并写入 SHA256 台账；数据库必须在执行前是目标链的精确前缀，执行后必须与目标链完全一致。最后才切换 current、项目配置与服务。数据库迁移只前进。没有新增迁移时，切换失败可自动恢复原应用；一旦进入新增迁移阶段，失败会保持服务停止，不会未经审核把旧应用自动接到前进后的数据库，须修复新发布或按下述审核流程显式回滚。
 
-本轮新增迁移的固定摘要为：`0018_knowledge_office.sql` = `7d5be1f4b8636f16bde988f0b2cfa0769345245b31eac9980eadfc1dba2d11c1`，`0019_office_defaults.sql` = `6d441fd2263342b231734e6769edc0095e33fa78da624cd13977755721a33a70`。manifest 和数据库台账均逐文件复算，不只依赖这段文档。正式 Java 定向测试必须显式使用 `-Dmaven.test.skip=false -DskipTests=false -Dprofiles.active=...`，避免父 POM 的 local profile/tag 把结果过滤成 0 tests；`deploy.sh` 的 Maven 命令只负责生成已通过定向验证的发布 JAR。
+本轮新增迁移的固定摘要为：`0018_knowledge_office.sql` = `7d5be1f4b8636f16bde988f0b2cfa0769345245b31eac9980eadfc1dba2d11c1`，`0019_office_defaults.sql` = `08ad472cb0fb5189fb1e7912f58695c55c1d2601fbc87f7695f4877def0316c1`。manifest 和数据库台账均逐文件复算，不只依赖这段文档。正式 Java 定向测试必须显式使用 `-Dmaven.test.skip=false -DskipTests=false -Dprofiles.active=...`，避免父 POM 的 local profile/tag 把结果过滤成 0 tests；`deploy.sh` 的 Maven 命令只负责生成已通过定向验证的发布 JAR。
 
 旧 `42d834a` 补丁路径仅由显式 `--legacy-42d834a-patches` 启用，且补丁在任何构建前应用。新版提交必须在 Git 源码中包含 Core idle、密码和后台修复，不再叠加这些补丁。
 
