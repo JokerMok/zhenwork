@@ -62,7 +62,7 @@ Web Host 以 zhenwork 非 root 用户运行，docker 组授予启动本机 Docke
 
 ## 数据、资源与网络
 
-- DB `shared/data/postgres`；Redis `shared/data/redis`；实际员工资料、上传与生成文件在 `shared/profiles/profiles/<userId>`，workspace、runtime-temp 及会话数据库持久保存。`shared/uploads` 为保留目录。发布文件单独在 releases。
+- DB `shared/data/postgres`；Redis `shared/data/redis`；实际员工资料、上传与生成文件在 `shared/profiles/profiles/<userId>`，workspace、runtime-temp 及会话数据库持久保存。RC2 的 `WorkspaceFileStore` 会按 `secret-key-file` 的父目录寻找 `shared/config/uploads`；部署只允许这个入口是 root 所有、解析到 `shared/uploads` 的受控链接，新建时固定为相对链接 `../uploads`。文件实际保存在 zhenwork 所有、0700 的真实目录 `shared/uploads`，不会写入 root 只读的 `shared/config`，也不会覆盖已有上传文件。发布文件单独在 releases。
 - 私有配置与稳定 serverId/clientId、模型凭证/加密密钥在 shared/config，禁止提交或打印。模型由 RC2 集中授权，员工无需输入 API。Web 容器内置 OfficeCLI、Python 办公/PDF工具、OCR及已有技能；模型写文件仍需一次性授权。
 - `shared/config/web.env`：最大 Core=1、启动并发=1、空闲阈值120000ms，Host 定期检查后回收；前台租约、运行中任务、后台子任务、团队任务仍阻止回收。容量不足时排队/拒绝，不扩到两 Core。
 - RC2 18890、Host 18891、PG 18432、Redis 18379 全为127.0.0.1。Core 无公网映射；Gateway 受控代理保留。仅 docker0 子网172.17.0.0/16至172.17.0.1 TCP32768:60999的宿主内部路径受限放行；不公开 Docker API。
@@ -71,7 +71,7 @@ Web Host 以 zhenwork 非 root 用户运行，docker 组授予启动本机 Docke
 
 ## 备份与恢复
 
-现有 server-config-backup.timer 每日北京时间03:20后随机5分钟内运行。hook `/etc/server-ops/backup.d/zhenwork.sh` 使用本目录 backup.sh：有运行 Core 时延后并保留既有包；无 Core 时只停本项目写入者，pg_dump -Fc，加员工 profile/workspace/上传及会话的停写快照；随后恢复本项服务。系统主备份覆盖根 .env 与 shared/config。排除可重建 Node/cache、容器卷原文件、日志、镜像与构建缓存；不可排除业务 workspace。
+现有 server-config-backup.timer 每日北京时间03:20后随机5分钟内运行。hook `/etc/server-ops/backup.d/zhenwork.sh` 使用本目录 backup.sh：有运行 Core 时延后并保留既有包；无 Core 时只停本项目写入者，pg_dump -Fc，加员工 profile/workspace、真实 `shared/uploads` 及会话的停写快照；随后恢复本项服务。系统主备份覆盖根 .env 与 shared/config，记录受控链接本身而不解引用成第二份上传内容。排除可重建 Node/cache、容器卷原文件、日志、镜像与构建缓存；不可排除业务 workspace。
 
 ```sh
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh backup'

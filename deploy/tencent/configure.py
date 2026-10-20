@@ -9,6 +9,17 @@ def account_password():
 
 ROOT=pathlib.Path('/srv/apps/zhenwork'); C=ROOT/'shared/config'
 os.umask(0o077); C.mkdir(parents=True,exist_ok=True)
+def ensure_upload_storage(account):
+ target=ROOT/'shared/uploads';link=C/'uploads'
+ if os.path.lexists(target):
+  if target.is_symlink() or not target.is_dir():raise RuntimeError('shared/uploads must be a real directory')
+ else:target.mkdir(mode=0o700)
+ os.chown(target,account.pw_uid,account.pw_gid);target.chmod(0o700)
+ if os.path.lexists(link):
+  if not link.is_symlink():raise RuntimeError('shared/config/uploads exists but is not the controlled symlink')
+  if link.resolve(strict=False)!=target.resolve(strict=True):raise RuntimeError('shared/config/uploads points outside shared/uploads')
+ else:link.symlink_to('../uploads',target_is_directory=True)
+ os.lchown(link,0,0)
 def write(name,value):
  p=C/name;p.write_bytes(value if isinstance(value,bytes) else value.encode());p.chmod(0o600)
 p=C/'pilot-credentials.json'
@@ -33,5 +44,6 @@ try:
   os.chown(C/name,0,account.pw_gid);(C/name).chmod(0o640)
  os.chown(C/'background-token',account.pw_uid,account.pw_gid)
  os.chown(C/'redis.conf',10002,10002)
+ ensure_upload_storage(account)
 except KeyError:pass
 print(json.dumps({'clientId':s['clientId'],'serverId':s['serverId'],'credentials':str(p)}))

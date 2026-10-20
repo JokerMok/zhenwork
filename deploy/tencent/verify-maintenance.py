@@ -31,6 +31,7 @@ def compile_embedded_python(name: str) -> None:
 
 
 compile(text("bootstrap.py"), "bootstrap.py", "exec")
+compile(text("configure.py"), "configure.py", "exec")
 for script in ("deploy.sh", "restage-host.sh", "build-linux.sh", "activate.sh"):
     compile_embedded_python(script)
 json.loads(text("rollback-compatibility.example.json"))
@@ -39,6 +40,7 @@ stage = text("deploy.sh")
 prepare = text("build-linux.sh")
 activate = text("activate.sh")
 restage = text("restage-host.sh")
+configure = text("configure.py")
 assert "git archive" in stage and "cmp -s" in stage
 assert "coreSourceTreeSha256" in stage and "coreBinarySha256" in prepare
 assert "cargo build" not in stage.lower() + prepare.lower()
@@ -57,6 +59,13 @@ assert "packages/web-cli/src/enterprise-entry.ts" in restage and "build-web.mjs"
 assert "artifactReusedFrom" in restage and "artifactReusedFrom" in prepare
 assert "systemctl" not in restage and "activate.sh" not in restage and "current.next" not in restage
 assert "assert reuse['reusedArtifacts']==['admin','control-source','employee','rc2.jar']" in prepare
+for source in (configure,activate):
+    assert "shared/uploads" in source and "shared/config/uploads" in source
+    assert "target.is_symlink() or not target.is_dir()" in source
+    assert "link.resolve(strict=False)!=target.resolve(strict=True)" in source
+    assert "link.symlink_to('../uploads',target_is_directory=True)" in source
+    assert "os.lchown(link,0,0)" in source and "target.chmod(0o700)" in source
+assert activate.index("shared/config/uploads") < activate.index("server-config-backup.service")
 
 expected = {
     "0018_knowledge_office.sql": "7d5be1f4b8636f16bde988f0b2cfa0769345245b31eac9980eadfc1dba2d11c1",

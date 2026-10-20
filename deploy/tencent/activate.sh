@@ -20,6 +20,22 @@ target="$root/releases/$release"
 exec 9>/run/lock/zhenwork-deploy.lock
 flock -n 9 || { echo 'Another ZhenWork deployment is running' >&2; exit 1; }
 (cd "$target" && sha256sum -c SHA256SUMS >/dev/null)
+# WorkspaceFileStore derives config/uploads from secret-key-file. Keep config
+# root-owned/read-only to the app and expose only the dedicated persistent path.
+python3 - <<'PY'
+import os,pathlib,pwd
+root=pathlib.Path('/srv/apps/zhenwork');config=root/'shared/config';target=root/'shared/uploads';link=config/'uploads'
+account=pwd.getpwnam('zhenwork')
+if os.path.lexists(target):
+ if target.is_symlink() or not target.is_dir():raise RuntimeError('shared/uploads must be a real directory')
+else:target.mkdir(mode=0o700)
+os.chown(target,account.pw_uid,account.pw_gid);target.chmod(0o700)
+if os.path.lexists(link):
+ if not link.is_symlink():raise RuntimeError('shared/config/uploads exists but is not the controlled symlink')
+ if link.resolve(strict=False)!=target.resolve(strict=True):raise RuntimeError('shared/config/uploads points outside shared/uploads')
+else:link.symlink_to('../uploads',target_is_directory=True)
+os.lchown(link,0,0)
+PY
 old=$(basename "$(readlink -f "$root/current")")
 [[ "$old" != "$release" ]] || { echo 'Already active'; exit 0; }
 
