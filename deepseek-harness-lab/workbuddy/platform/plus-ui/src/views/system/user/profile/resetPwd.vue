@@ -43,14 +43,8 @@ const rules = ref({
   newPassword: [
     { required: true, message: '新密码不能为空', trigger: 'blur' },
     {
-      min: 12,
-      max: 30,
-      message: '长度在 12 到 30 个字符，且不超过 72 个 UTF-8 字节',
-      trigger: 'blur'
-    },
-    {
-      pattern: /^[^<>"'|\\]+$/,
-      message: '不能包含非法字符：< > " \' \\ |',
+      pattern: /^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/,
+      message: '密码须为8–16位，且同时包含字母和数字',
       trigger: 'blur'
     }
   ],

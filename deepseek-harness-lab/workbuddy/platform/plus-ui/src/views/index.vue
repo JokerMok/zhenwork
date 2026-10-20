@@ -1,370 +1,159 @@
 <template>
-  <div class="home">
-    <section class="hero-panel">
-      <div class="hero-copy">
-        <h1>RuoYi-Vue-Plus 控制台</h1>
-        <p>
-          企业级后台管理系统 重写 RuoYi-Vue 所有功能 集成 Sa-Token、Mybatis-Plus、WarmFlow、SpringDoc、Hutool、OSS
-          等组件
-        </p>
-        <div class="hero-actions">
-          <el-button type="primary" @click="goTarget('https://gitee.com/dromara/RuoYi-Vue-Plus')">查看源码</el-button>
-          <el-button plain @click="goTarget('https://plus-doc.dromara.org/#/ruoyi-vue-plus/changlog')">
-            更新日志
-          </el-button>
-        </div>
+  <div class="usage-home">
+    <header class="usage-heading">
+      <div><h1>用户使用统计</h1><p>查看用户的模型调用与用量</p></div>
+      <div class="usage-actions" v-if="canView">
+        <el-radio-group v-model="days" @change="load">
+          <el-radio-button :value="7">近7天</el-radio-button>
+          <el-radio-button :value="30">近30天</el-radio-button>
+          <el-radio-button :value="90">近90天</el-radio-button>
+        </el-radio-group>
+        <el-button :loading="loading" @click="load">刷新</el-button>
       </div>
-    </section>
-
-    <div class="content-grid">
-      <section class="section-card">
-        <div class="section-head">
-          <div>
-            <h2>项目矩阵</h2>
+    </header>
+    <el-empty v-if="!canView" description="当前账号无权查看使用统计" />
+    <template v-else>
+      <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
+      <el-skeleton v-if="!data && loading" :rows="8" animated />
+      <template v-if="data">
+        <section class="usage-overview" v-loading="loading" aria-label="使用概况">
+          <dl class="usage-summary">
+            <div><dt>启用用户</dt><dd>{{ number(data.summary.enabledUsers) }}<small>人</small></dd></div>
+            <div><dt>期间活跃用户</dt><dd>{{ number(data.summary.activeUsers) }}<small>人</small></dd></div>
+            <div><dt>模型调用</dt><dd>{{ number(data.summary.requests) }}<small>次</small></dd></div>
+            <div><dt>已报告 Token</dt><dd>{{ data.summary.reportedRequests ? number(data.summary.inputTokens + data.summary.outputTokens) : '—' }}</dd></div>
+          </dl>
+          <div class="usage-status">
+            <span>完成 <b>{{ number(data.summary.completed) }}</b></span>
+            <span>失败 <b>{{ number(data.summary.failed) }}</b></span>
+            <span>已取消 <b>{{ number(data.summary.cancelled) }}</b></span>
+            <span>进行中 <b>{{ number(data.summary.inflight) }}</b></span>
+            <span>回执未完成 <b>{{ number(data.summary.incomplete) }}</b></span>
           </div>
-        </div>
-        <div class="product-list">
-          <article v-for="product in products" :key="product.name" class="product-card">
-            <div class="product-top">
-              <div>
-                <h3>{{ product.name }}</h3>
-                <p>{{ product.summary }}</p>
-              </div>
-              <span class="product-version">{{ product.version }}</span>
-            </div>
-            <div class="product-tags">
-              <el-tag v-for="tag in product.tags" :key="tag" effect="plain">{{ tag }}</el-tag>
-            </div>
-            <div class="product-actions">
-              <el-button type="primary" plain @click="goTarget(product.primaryUrl)">
-                {{ product.primaryLabel }}
-              </el-button>
-              <el-button plain @click="goTarget(product.secondaryUrl)">{{ product.secondaryLabel }}</el-button>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section class="section-card capability-card">
-        <div class="section-head">
-          <div>
-            <h2>能力地图</h2>
+        </section>
+        <section class="usage-section" v-loading="loading">
+          <div class="usage-section-heading"><h2>每日模型调用</h2><span>{{ data.period.from }} — {{ data.period.to }} · 北京时间</span></div>
+          <div v-if="data.summary.requests" class="usage-chart">
+            <svg viewBox="0 0 1000 214" role="img" aria-label="每日模型调用次数趋势">
+              <g v-for="tick in [0, 1, 2]" :key="tick">
+                <line x1="45" x2="985" :y1="170 - tick * 75" :y2="170 - tick * 75" class="chart-line" />
+                <text x="35" :y="174 - tick * 75" text-anchor="end" class="chart-label">{{ number(Math.round(chartMax * tick / 2)) }}</text>
+              </g>
+              <g v-for="(day, index) in data.daily" :key="day.day">
+                <rect :x="50 + index * barStep" :y="170 - 150 * day.requests / chartMax" :width="Math.max(2, barStep * .6)" :height="150 * day.requests / chartMax" rx="2" class="chart-bar">
+                  <title>{{ day.day }}：{{ day.requests }}次调用</title>
+                </rect>
+                <text v-if="index % Math.max(1, Math.ceil(data.daily.length / 7)) === 0 || index === data.daily.length - 1" :x="50 + index * barStep + barStep * .3" y="198" text-anchor="middle" class="chart-label">{{ day.day.slice(5) }}</text>
+              </g>
+            </svg>
           </div>
-        </div>
-        <div class="capability-groups">
-          <article v-for="group in capabilityGroups" :key="group.title" class="capability-group">
-            <h3>{{ group.title }}</h3>
-            <ul>
-              <li v-for="item in group.items" :key="item">{{ item }}</li>
-            </ul>
-          </article>
-        </div>
-      </section>
-    </div>
+          <el-empty v-else description="这段时间暂无模型调用" :image-size="72" />
+          <details v-if="data.summary.requests" class="usage-details">
+            <summary>查看每日明细</summary>
+            <el-table :data="data.daily" size="small" max-height="320">
+              <el-table-column prop="day" label="日期" min-width="120" />
+              <el-table-column prop="requests" label="模型调用" align="right" />
+              <el-table-column prop="completed" label="完成" align="right" />
+              <el-table-column prop="failed" label="失败" align="right" />
+              <el-table-column prop="cancelled" label="取消" align="right" />
+            </el-table>
+          </details>
+        </section>
+        <section class="usage-section" v-loading="loading">
+          <div class="usage-section-heading"><h2>用户使用明细</h2><span>按模型调用次数排序</span></div>
+          <el-table :data="data.users" empty-text="这段时间暂无用户使用记录" table-layout="auto">
+            <el-table-column prop="nickName" label="用户" min-width="140" />
+            <el-table-column prop="requests" label="模型调用" min-width="100" align="right" />
+            <el-table-column prop="completed" label="完成" min-width="80" align="right" />
+            <el-table-column prop="failed" label="失败" min-width="80" align="right" />
+            <el-table-column label="已报告输入 Token" min-width="165" align="right"><template #default="{ row }">{{ row.requests === row.unknownTokenRequests ? '—' : number(row.inputTokens) }}</template></el-table-column>
+            <el-table-column label="已报告输出 Token" min-width="165" align="right"><template #default="{ row }">{{ row.requests === row.unknownTokenRequests ? '—' : number(row.outputTokens) }}</template></el-table-column>
+            <el-table-column prop="unknownTokenRequests" label="用量未报告" min-width="115" align="right" />
+            <el-table-column label="最近使用" min-width="175"><template #default="{ row }">{{ dateTime(row.lastUsedAt) }}</template></el-table-column>
+          </el-table>
+          <p class="usage-note">展示调用最多的前100位用户。活跃用户指期间发起过模型调用的用户；一次办公任务可能调用模型多次。</p>
+        </section>
+        <footer class="usage-notes">
+          <p>Token 仅累计供应商已返回的用量，另有 {{ number(data.summary.unknownTokenRequests) }} 次调用未报告用量，不按零计算。费用暂不可统计。</p>
+          <p>最近更新 {{ updatedAt }} · 数据范围 {{ data.period.from }} 至 {{ data.period.to }}</p>
+        </footer>
+      </template>
+      <el-button v-if="error" class="usage-retry" @click="load">重新读取</el-button>
+    </template>
   </div>
 </template>
 
 <script setup name="Index" lang="ts">
-const products = [
-  {
-    name: 'RuoYi-Vue-Plus',
-    version: 'v6.0.0',
-    summary: '面向分布式集群场景的后台管理系统，保持现有业务接口与权限逻辑，适合先完成前端壳升级。',
-    tags: ['Vue 3', 'Element Plus', 'Spring Boot', 'Sa-Token'],
-    primaryLabel: '访问 GitHub',
-    primaryUrl: 'https://github.com/dromara/RuoYi-Vue-Plus',
-    secondaryLabel: '查看更新日志',
-    secondaryUrl: 'https://plus-doc.dromara.org/#/ruoyi-vue-plus/changlog'
-  },
-  {
-    name: 'RuoYi-Cloud-Plus',
-    version: 'v6.0.0',
-    summary: '微服务通用权限管理系统，适合更复杂的服务治理场景，也可以沿用同样的前端升级思路。',
-    tags: ['Spring Cloud', 'Gateway', 'Nacos', 'Dubbo'],
-    primaryLabel: '访问 GitHub',
-    primaryUrl: 'https://github.com/dromara/RuoYi-Cloud-Plus',
-    secondaryLabel: '查看更新日志',
-    secondaryUrl: 'https://plus-doc.dromara.org/#/ruoyi-cloud-plus/changlog'
-  }
-];
+import request from '@/utils/request';
+import auth from '@/plugins/auth';
 
-const capabilityGroups = [
-  {
-    title: '后端基建',
-    items: ['Spring Boot / Spring Cloud', 'Sa-Token 认证与权限', 'MySQL / Redis', '代码生成器']
-  },
-  {
-    title: '平台能力',
-    items: ['动态菜单与按钮权限', '监控、日志、在线用户', '任务调度与工作流', '文件存储与多云适配']
-  },
-  {
-    title: '前端方向',
-    items: ['UI 卡片化', '主题与布局统一', '通用页面容器规范化', '企业化布局']
+type UsageCounts = { requests: number; completed: number; failed: number; cancelled: number; inputTokens: number; outputTokens: number };
+interface Dashboard {
+  period: { from: string; to: string; timezone: string };
+  summary: UsageCounts & { enabledUsers: number; activeUsers: number; inflight: number; incomplete: number; reportedRequests: number; unknownTokenRequests: number; unknownCostRequests: number };
+  daily: (UsageCounts & { day: string })[];
+  users: (UsageCounts & { userId: string; nickName: string; unknownTokenRequests: number; lastUsedAt: string })[];
+}
+const canView = computed(() => auth.hasPermiOr(['ai:audit:view']));
+const days = ref(7);
+const data = ref<Dashboard>();
+const loading = ref(false);
+const error = ref('');
+const updatedAt = ref('');
+let generation = 0;
+const number = (value: number) => new Intl.NumberFormat('zh-CN').format(value);
+const dateTime = (value: string) => value ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '—';
+const chartMax = computed(() => Math.max(2, Math.ceil(Math.max(0, ...(data.value?.daily.map(day => day.requests) || [])) / 2) * 2));
+const barStep = computed(() => 930 / Math.max(1, data.value?.daily.length || 1));
+async function load() {
+  if (!canView.value) return;
+  const current = ++generation;
+  loading.value = true; error.value = '';
+  try {
+    const result = await request({ url: '/ai/admin/dashboard', params: { days: days.value } });
+    if (current !== generation) return;
+    data.value = result.data as Dashboard;
+    updatedAt.value = dateTime(new Date().toISOString());
+  } catch {
+    if (current === generation) error.value = '使用统计读取失败，请重新读取。';
+  } finally {
+    if (current === generation) loading.value = false;
   }
-];
-
-const goTarget = (url: string) => {
-  window.open(url, '__blank');
-};
+}
+onMounted(load);
 </script>
 
 <style lang="scss" scoped>
-.home {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.usage-home, .usage-section, .usage-overview { min-width: 0; }
+.usage-home { display: grid; gap: 20px; color: var(--app-text-title); font-variant-numeric: tabular-nums; }
+.usage-heading, .usage-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.usage-heading h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.35; font-weight: 650; }
+.usage-heading p, .usage-notes p, .usage-note { color: var(--app-text-muted); font-size: 13px; line-height: 1.7; margin: 0; }
+.usage-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.usage-overview, .usage-section { background: var(--app-surface-bg); border: 1px solid var(--app-surface-border); border-radius: 14px; padding: 24px; }
+.usage-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin: 0; }
+.usage-summary dt { font-size: 13px; color: var(--app-text-muted); margin-bottom: 10px; }
+.usage-summary dd { margin: 0; font-size: clamp(24px, 2.5vw, 32px); font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
+.usage-summary small { font-size: 13px; font-weight: 400; color: var(--app-text-muted); margin-left: 8px; }
+.usage-status { display: flex; flex-wrap: wrap; gap: 12px 28px; border-top: 1px solid var(--app-surface-border); margin-top: 22px; padding-top: 18px; font-size: 13px; color: var(--app-text-muted); }
+.usage-status b { margin-left: 6px; color: var(--app-text-title); font-weight: 600; }
+.usage-section-heading { margin-bottom: 22px; }
+.usage-section h2 { margin: 0; font-size: 17px; font-weight: 650; }
+.usage-section-heading > span { font-size: 12px; color: var(--app-text-muted); }
+.usage-chart svg { width: 100%; min-height: 150px; display: block; }
+.chart-line { stroke: var(--app-surface-border); stroke-width: 1; }
+.chart-label { fill: var(--app-text-muted); font-size: 12px; }
+.chart-bar { fill: var(--el-color-primary); }
+.usage-details { margin-top: 12px; }
+.usage-details summary { color: var(--el-color-primary); cursor: pointer; font-size: 13px; padding: 8px 0; }
+.usage-details summary:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 3px; }
+.usage-note { margin-top: 18px; }
+.usage-notes { display: grid; gap: 6px; }
+.usage-retry { justify-self: start; }
+@media (max-width: 860px) {
+  .usage-heading, .usage-section-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .usage-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+  .usage-overview, .usage-section { padding: 18px; }
 }
-
-.hero-panel,
-.section-card {
-  border-radius: 28px;
-  border: 1px solid var(--app-surface-border);
-  background: var(--app-surface-bg);
-  box-shadow: var(--app-shadow-sm);
-  backdrop-filter: blur(18px);
-}
-
-.hero-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
-  gap: 18px;
-  padding: 30px;
-  background: radial-gradient(circle at top left, rgba(53, 109, 255, 0.16), transparent 30%), var(--app-surface-bg);
-}
-
-.hero-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-
-  h1 {
-    margin: 0;
-    font-size: clamp(30px, 4vw, 46px);
-    line-height: 1.06;
-    letter-spacing: -0.04em;
-    color: var(--app-text-title);
-  }
-
-  p {
-    margin: 0;
-    max-width: 760px;
-    color: var(--app-text-muted);
-    font-size: 15px;
-    line-height: 1.8;
-  }
-}
-
-.hero-badge {
-  display: inline-flex;
-  width: fit-content;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: rgba(53, 109, 255, 0.12);
-  color: var(--app-accent-strong);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.hero-stats {
-  display: grid;
-  gap: 12px;
-}
-
-.stat-card {
-  padding: 18px 20px;
-  border-radius: 22px;
-  background: var(--app-elevated-soft-bg);
-  border: 1px solid var(--app-surface-border);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-
-  strong {
-    color: var(--app-text-title);
-    font-size: 24px;
-    letter-spacing: -0.03em;
-  }
-
-  span {
-    color: var(--app-text-muted);
-    font-size: 13px;
-  }
-}
-
-.content-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
-  gap: 20px;
-}
-
-.section-card {
-  padding: 24px;
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
-
-  h2 {
-    margin: 6px 0 0;
-    color: var(--app-text-title);
-    font-size: 26px;
-    letter-spacing: -0.03em;
-  }
-}
-
-.section-kicker {
-  color: var(--app-text-muted);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.product-list,
-.capability-groups {
-  display: grid;
-  gap: 16px;
-}
-
-.product-card {
-  padding: 22px;
-  border-radius: 24px;
-  background: var(--app-elevated-soft-bg);
-  border: 1px solid var(--app-surface-border);
-  transition:
-    transform 0.25s ease,
-    box-shadow 0.25s ease,
-    border-color 0.25s ease;
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--app-shadow-sm);
-    border-color: rgba(53, 109, 255, 0.2);
-  }
-}
-
-.product-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-
-  h3 {
-    margin: 0 0 8px;
-    color: var(--app-text-title);
-    font-size: 22px;
-    letter-spacing: -0.03em;
-  }
-
-  p {
-    margin: 0;
-    color: var(--app-text-muted);
-    line-height: 1.8;
-  }
-}
-
-.product-version {
-  flex-shrink: 0;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(53, 109, 255, 0.12);
-  color: var(--app-accent-strong);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.product-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 18px;
-}
-
-.product-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.capability-card {
-  background: radial-gradient(circle at top right, rgba(14, 165, 233, 0.12), transparent 28%), var(--app-surface-bg);
-}
-
-.capability-group {
-  padding: 18px 18px 18px 20px;
-  border-radius: 22px;
-  background: var(--app-elevated-soft-bg);
-  border: 1px solid var(--app-surface-border);
-
-  h3 {
-    margin: 0 0 12px;
-    color: var(--app-text-title);
-    font-size: 18px;
-  }
-
-  ul {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: grid;
-    gap: 10px;
-  }
-
-  li {
-    position: relative;
-    padding-left: 16px;
-    color: var(--app-text-muted);
-    line-height: 1.7;
-
-    &::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 10px;
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--app-accent-strong);
-      box-shadow: 0 0 0 5px rgba(53, 109, 255, 0.12);
-    }
-  }
-}
-
-@media (max-width: 960px) {
-  .hero-panel,
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-  .hero-panel,
-  .section-card {
-    padding: 20px;
-    border-radius: 22px;
-  }
-
-  .product-top {
-    flex-direction: column;
-  }
-}
-
-html.dark {
-  .hero-panel {
-    background: radial-gradient(circle at top left, rgba(53, 109, 255, 0.18), transparent 30%), var(--app-surface-bg);
-  }
-}
+@media (prefers-reduced-motion: reduce) { .usage-home * { transition: none !important; } }
 </style>

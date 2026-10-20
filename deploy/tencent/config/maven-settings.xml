@@ -1,0 +1,1 @@
+<settings><mirrors><mirror><id>rc2-upstream-mirror</id><mirrorOf>*</mirrorOf><url>https://mirrors.huaweicloud.com/repository/maven/</url></mirror></mirrors></settings>

@@ -15,8 +15,8 @@ use axum::{Router, middleware};
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 use aionui_ai_agent::{
-    ActiveLeaseRegistry, IWorkerTaskManager, RuntimeTokenScope, RuntimeTokenService, TEAM_RUNTIME_TOKEN_SESSION_GENERATION, agent_routes,
-    remote_agent_routes,
+    ActiveLeaseRegistry, IWorkerTaskManager, RuntimeTokenScope, RuntimeTokenService,
+    TEAM_RUNTIME_TOKEN_SESSION_GENERATION, agent_routes, remote_agent_routes,
 };
 use aionui_api_types::{ApiResponse, ErrorResponse, WebSocketMessage};
 use aionui_assets::{AssetRouterState, asset_routes};
@@ -30,7 +30,8 @@ use aionui_channel::channel_routes;
 use aionui_channel::weixin_login_route;
 use aionui_common::{ApiErrorLogContext, ConversationStatus};
 use aionui_conversation::{
-    ConversationRuntimeRouterState, conversation_ops_routes, conversation_routes, conversation_runtime_routes,
+    ConversationRuntimeRouterState, conversation_ops_routes, conversation_routes,
+    conversation_runtime_routes, runtime_state::ConversationRuntimeStateService,
 };
 use aionui_cron::cron_routes;
 use aionui_extension::{extension_routes, hub_routes, skill_routes};
@@ -62,7 +63,10 @@ static ENTERPRISE_LOCAL_TOKEN: OnceLock<String> = OnceLock::new();
 /// it out of the environment inherited by user configured MCP subprocesses.
 pub fn install_enterprise_local_token(token: String) {
     assert!(token.len() >= 32, "enterprise local capability is too short");
-    assert!(ENTERPRISE_LOCAL_TOKEN.set(token).is_ok(), "enterprise local capability already installed");
+    assert!(
+        ENTERPRISE_LOCAL_TOKEN.set(token).is_ok(),
+        "enterprise local capability already installed"
+    );
 }
 
 pub struct RouterRuntime {
@@ -101,9 +105,24 @@ async fn enterprise_local_gate(State(expected): State<String>, request: Request,
 
 #[derive(Clone)]
 struct EnterpriseIdleState {
+    turns: Arc<ConversationRuntimeStateService>,
     tasks: Arc<dyn IWorkerTaskManager>,
     active_leases: Arc<ActiveLeaseRegistry>,
     teams: Arc<TeamSessionService>,
+}
+
+// Aionrs starts an initialized, unused session as Pending. An actual pending
+// turn is protected by its runtime claim; an unopened turn must not pin a Core.
+fn enterprise_idle_blocks_reclaim(
+    status: Option<ConversationStatus>,
+    turn_owned_or_transitioning: bool,
+    live_background_tasks: usize,
+    foreground_lease: bool,
+) -> bool {
+    !matches!(status, Some(ConversationStatus::Finished | ConversationStatus::Pending))
+        || turn_owned_or_transitioning
+        || live_background_tasks > 0
+        || foreground_lease
 }
 
 async fn enterprise_idle_ready(
@@ -119,9 +138,15 @@ async fn enterprise_idle_ready(
         let Some(agent) = state.tasks.get_task(id) else {
             return true;
         };
-        agent.status() != Some(ConversationStatus::Finished)
-            || agent.live_background_tasks() > 0
-            || state.active_leases.is_active(id)
+        enterprise_idle_blocks_reclaim(
+            agent.status(),
+            state.turns.is_claimed(id)
+                || state.turns.is_cancelling(id)
+                || state.turns.is_restarting(id)
+                || state.turns.is_deleting(id),
+            agent.live_background_tasks(),
+            state.active_leases.is_active(id),
+        )
     });
     let idle = !busy_agent && !state.teams.has_active_runs();
     Ok(Json(ApiResponse::ok(serde_json::json!({ "idle": idle }))))
@@ -414,6 +439,7 @@ pub fn create_router_with_all_state(services: &AppServices, states: ModuleStates
     let enterprise_idle_authenticated = Router::new()
         .route("/api/cron/internal/idle-ready", get(enterprise_idle_ready))
         .with_state(EnterpriseIdleState {
+            turns: services.conversation_runtime_state.clone(),
             tasks: services.worker_task_manager.clone(),
             active_leases: services.active_lease_registry.clone(),
             teams: states.team.service.clone(),
@@ -794,5 +820,42 @@ mod tests {
 
         assert_eq!(delivered["data"]["sequence"], 4);
         bridge.abort();
+    }
+}
+
+#[cfg(test)]
+mod enterprise_idle_policy_tests {
+    use super::enterprise_idle_blocks_reclaim;
+    use aionui_common::ConversationStatus::{Finished, Pending, Running};
+
+    #[test]
+    fn unused_pending_session_can_be_reclaimed() {
+        assert!(!enterprise_idle_blocks_reclaim(Some(Pending), false, 0, false));
+    }
+
+    #[test]
+    fn claimed_pending_turn_remains_protected() {
+        assert!(enterprise_idle_blocks_reclaim(Some(Pending), true, 0, false));
+    }
+
+    #[test]
+    fn finished_turn_with_background_work_remains_protected() {
+        assert!(enterprise_idle_blocks_reclaim(Some(Finished), false, 1, false));
+    }
+
+    #[test]
+    fn foreground_lease_protects_an_unused_session() {
+        assert!(enterprise_idle_blocks_reclaim(Some(Pending), false, 0, true));
+    }
+
+    #[test]
+    fn running_and_unknown_statuses_fail_closed() {
+        assert!(enterprise_idle_blocks_reclaim(Some(Running), false, 0, false));
+        assert!(enterprise_idle_blocks_reclaim(None, false, 0, false));
+    }
+
+    #[test]
+    fn finished_and_unclaimed_turn_can_be_reclaimed() {
+        assert!(!enterprise_idle_blocks_reclaim(Some(Finished), false, 0, false));
     }
 }

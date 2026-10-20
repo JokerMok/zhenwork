@@ -6,8 +6,15 @@ import { cleanupSiderTooltips, getSiderTooltipProps } from '@renderer/utils/ui/s
 import { useAuth } from '@renderer/hooks/context/AuthContext';
 import { useLayoutContext } from '@renderer/hooks/context/LayoutContext';
 import { blurActiveElement } from '@renderer/utils/ui/focus';
+import { isEnterpriseWeb } from '@renderer/utils/platform';
 import { useThemeContext } from '@renderer/hooks/context/ThemeContext';
-import { SiderToolbar, SiderSearchEntry, SiderScheduledEntry, SiderAssistantEntry } from './SiderNav';
+import {
+  SiderAssistantEntry,
+  SiderScheduledEntry,
+  SiderSearchEntry,
+  SiderToolbar,
+  SiderWorkspaceEntry,
+} from './SiderNav';
 import SiderFooter from './SiderFooter';
 import TeamSiderSection from './TeamSiderSection';
 import siderStyles from './Sider.module.css';
@@ -35,6 +42,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
   const lastNonSettingsPathRef = useRef('/guid');
   const showLogout =
     typeof window !== 'undefined' && !(window as { electronAPI?: unknown }).electronAPI && status === 'authenticated';
+  const showEnterpriseWorkspace = isEnterpriseWeb();
 
   useEffect(() => {
     if (!pathname.startsWith('/settings')) {
@@ -94,6 +102,17 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
     if (onSessionClick) {
       onSessionClick();
     }
+  };
+
+  const handleWorkspaceClick = () => {
+    cleanupSiderTooltips();
+    blurActiveElement();
+    closePreview();
+    setIsBatchMode(false);
+    Promise.resolve(navigate('/workspace')).catch((error) => {
+      console.error('Navigation failed:', error);
+    });
+    onSessionClick?.();
   };
 
   const handleAssistantClick = () => {
@@ -200,6 +219,15 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
                 onSessionClick={onSessionClick}
               />
             )}
+            {showEnterpriseWorkspace ? (
+              <SiderWorkspaceEntry
+                isMobile={isMobile}
+                isActive={pathname.startsWith('/workspace')}
+                collapsed={collapsed}
+                siderTooltipProps={siderTooltipProps}
+                onClick={handleWorkspaceClick}
+              />
+            ) : null}
             {/* Assistant nav entry - fixed above Scheduled */}
             <SiderAssistantEntry
               isMobile={isMobile}

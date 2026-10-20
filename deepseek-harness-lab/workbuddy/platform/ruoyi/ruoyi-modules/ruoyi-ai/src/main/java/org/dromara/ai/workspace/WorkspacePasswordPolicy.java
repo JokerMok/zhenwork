@@ -1,6 +1,5 @@
 package org.dromara.ai.workspace;
 
-import lombok.RequiredArgsConstructor;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -11,14 +10,14 @@ import org.springframework.beans.BeanWrapperImpl;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
+
 
 /** Password guard around native APIs keeps upstream DTOs unchanged. */
 @Aspect
 @Component
-@RequiredArgsConstructor
 public class WorkspacePasswordPolicy {
     private final JdbcTemplate jdbc;
+    public WorkspacePasswordPolicy(JdbcTemplate jdbc) { this.jdbc=jdbc; }
     @Around("execution(* org.dromara.web.controller.AuthController.login(..)) || "
         + "execution(* org.dromara.system.controller.system.SysUserController.add(..)) || "
         + "execution(* org.dromara.system.controller.system.SysUserController.edit(..)) || "
@@ -31,9 +30,15 @@ public class WorkspacePasswordPolicy {
         String password;
         if(operation.equals("login")) password=JsonUtils.parseMap((String)argument).getStr("password");
         else {bean=new BeanWrapperImpl(argument);password=(String)bean.getPropertyValue(operation.equals("updatePwd")?"newPassword":"password");}
-        if(!operation.equals("edit") || password!=null && !password.isEmpty()) {
-            if(password==null || password.length()<12 || password.length()>30 || password.getBytes(StandardCharsets.UTF_8).length>72)
-                throw new WorkspaceDenied(400,"PasswordMustBe12To30CharactersAndAtMost72Bytes");
+        // Only an administrator reset may assign the fixed temporary credential.
+        if(operation.equals("resetPwd")) {
+            password="a123456";
+            bean.setPropertyValue("password",password);
+        }
+        // Authenticate existing credentials unchanged; policy applies only when setting a new password.
+        if(!operation.equals("login") && !operation.equals("resetPwd") && (!operation.equals("edit") || password!=null && !password.isEmpty())) {
+            if(password==null || !password.matches("(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}"))
+                throw new WorkspaceDenied(400,"密码须为8–16位，且同时包含字母和数字");
         }
         Long current=operation.equals("updatePwd")?LoginHelper.getUserId():null;
         Object response=call.proceed();

@@ -1,0 +1,31 @@
+[Unit]
+Description=ZhenWork employee Web Host
+Requires=zhenwork-infra.service docker.service zhenwork-rc2.service
+After=network-online.target docker.service zhenwork-infra.service zhenwork-rc2.service
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+[Service]
+Type=simple
+User=zhenwork
+Group=zhenwork
+SupplementaryGroups=docker
+WorkingDirectory=/srv/apps/zhenwork/shared
+EnvironmentFile=/srv/apps/zhenwork/shared/config/web.env
+ExecStartPre=/bin/sh -c 'i=0; until curl -fsS --max-time 2 http://127.0.0.1:18890/ai/bootstrap >/dev/null 2>&1; do i=$((i+1)); [ "$i" -lt 90 ] || exit 1; sleep 1; done'
+TimeoutStartSec=200
+ExecStart=/srv/apps/zhenwork/runtime/node/bin/node /srv/apps/zhenwork/current/web-host.cjs
+Restart=on-failure
+RestartSec=8
+TimeoutStopSec=60
+MemoryHigh=512M
+MemoryMax=768M
+CPUQuota=100%
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/apps/zhenwork/shared /tmp
+ProtectHome=true
+# No PrivateTmp: the Core isolation canary must be visible to the Docker host.
+[Install]
+WantedBy=multi-user.target

@@ -28,13 +28,14 @@ public class WorkspaceBackgroundMcpRelayController {
                                          @RequestHeader("Authorization") String serviceAuthorization,
                                          @RequestHeader("X-Aion-Background-Secret") String secret,
                                          @RequestHeader(value = "Mcp-Session-Id", required = false) String sessionId,
-                                         @RequestHeader(value = "MCP-Protocol-Version", required = false) String protocolVersion) {
+                                         @RequestHeader(value = "MCP-Protocol-Version", required = false) String protocolVersion,
+                                         @RequestHeader(value = "X-ZhenWork-Idempotency-Key", required = false) String idempotencyKey) {
         execution.checkBackgroundService(serviceAuthorization);
         var authorized = grants.require(grantId, secret);
         Runnable recheck = () -> {
             grants.require(grantId, secret);
             permissions.require(authorized.userId(), "ai:mcp:use");
         };
-        return relay.relayAuthorized(id, body, sessionId, protocolVersion, authorized.userId(), recheck);
+        return relay.relayAuthorized(id, body, sessionId, protocolVersion,idempotencyKey,authorized.userId(), recheck);
     }
 }

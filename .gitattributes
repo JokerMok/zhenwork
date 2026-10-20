@@ -1,0 +1,2 @@
+# Retained deployment patches must keep their reviewed bytes and SHA256 values.
+deploy/tencent/*.patch -whitespace

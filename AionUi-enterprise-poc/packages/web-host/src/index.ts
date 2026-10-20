@@ -5,7 +5,7 @@ export { startStaticServer, stopStaticServer } from './static-server.js';
 export type { StaticServerOptions, StaticServerHandle } from './static-server.js';
 export { startEnterpriseGateway } from './enterprise-gateway.js';
 export type { EnterpriseActor, EnterpriseCore, EnterpriseLogin, EnterpriseGatewayOptions } from './enterprise-gateway.js';
-export { createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPublicBrand } from './enterprise-rc2-login.mjs';
+export { createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPasswordChange, createRc2GatewayPublicBrand } from './enterprise-rc2-login.mjs';
 export { createEnterpriseCoreStarter, enterpriseProfilePath } from './enterprise-core.js';
 export type { EnterpriseCoreStarterOptions } from './enterprise-core.js';
 export { createEnterpriseDockerCoreStarter } from './enterprise-docker-core.js';

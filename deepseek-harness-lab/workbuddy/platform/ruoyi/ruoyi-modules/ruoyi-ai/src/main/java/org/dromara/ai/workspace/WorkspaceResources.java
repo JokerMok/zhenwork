@@ -25,7 +25,7 @@ public class WorkspaceResources {
             if(data.containsKey("avatar")&&(!(data.get("avatar") instanceof String avatar)||avatar.length()>12))throw new WorkspaceDenied(400,"InvalidAssistantAvatar");
             for(String key:List.of("skillIds","mcpIds","toolIds","knowledgeIds")){Object value=data.get(key);if(value==null)continue;if(!(value instanceof List<?> ids)||ids.size()>(key.equals("toolIds")?16:8)||new HashSet<>(ids).size()!=ids.size())throw new WorkspaceDenied(400,"InvalidAssistantDependencies");for(Object item:ids)try{UUID.fromString(item.toString());}catch(Exception e){throw new WorkspaceDenied(400,"InvalidAssistantDependencies");}}
             try{UUID.fromString(Objects.toString(data.get("modelId")));}catch(Exception e){throw new WorkspaceDenied(400,"ModelRequired");}
-        }else if(type.equals("KNOWLEDGE")){if(!data.keySet().equals(Set.of("format"))||!"TEXT_V1".equals(data.get("format")))throw new WorkspaceDenied(400,"UnsupportedKnowledgeFormat");}else if(type.equals("TOOL")){return JsonUtils.toJsonString(WorkspaceToolAccess.configuration(data));}else if(type.equals("MCP")){return JsonUtils.toJsonString(WorkspaceMcpAccess.configuration(data));}else if(type.equals("SKILL")){return JsonUtils.toJsonString(WorkspaceSkills.parse(Objects.toString(data.get("source"),null)));}else if(!data.isEmpty())throw new WorkspaceDenied(400,"ResourceFormatNotEnabledYet");
+        }else if(type.equals("KNOWLEDGE")){if(!data.keySet().equals(Set.of("format"))||!"TEXT_V1".equals(data.get("format")))throw new WorkspaceDenied(400,"UnsupportedKnowledgeFormat");}else if(type.equals("TOOL")){return JsonUtils.toJsonString(WorkspaceToolAccess.configuration(data));}else if(type.equals("MCP")){return JsonUtils.toJsonString(WorkspaceMcpAccess.configuration(data));}else if(type.equals("SKILL")){return JsonUtils.toJsonString(WorkspaceSkills.parse(data));}else if(!data.isEmpty())throw new WorkspaceDenied(400,"ResourceFormatNotEnabledYet");
         return JsonUtils.toJsonString(new TreeMap<>(data));
     }
     private void audit(long actor,String action,UUID resource,Map<String,Object> metadata){jdbc.update("INSERT INTO ai_security_event(id,actor_user_id,action,resource_id,metadata) VALUES(?,?,?,?,?::jsonb)",UUID.randomUUID(),actor,action,resource,JsonUtils.toJsonString(metadata));}
@@ -42,6 +42,9 @@ public class WorkspaceResources {
         });return get(id,actor);
     }
     public Map<String,Object> get(UUID id,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.VIEW);int version=((Number)(guard.owner(row,actor)||guard.acl(id,actor,AiResourceGuard.Action.EDIT)?row.get("latest_version"):row.get("published_version"))).intValue();var v=guard.version(id,version,actor,AiResourceGuard.Action.VIEW);return dto(row,v,version,actor,true);}
+    public Map<String,Object> active(UUID id,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.USE);int version=((Number)row.get("published_version")).intValue();var v=guard.version(id,version,actor,AiResourceGuard.Action.USE);return dto(row,v,version,actor,true);}
+    public List<Map<String,Object>> versions(UUID id,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.VIEW);if(!guard.owner(row,actor)&&!guard.acl(id,actor,AiResourceGuard.Action.EDIT))throw new WorkspaceDenied(403,"VersionHistoryRequiresEdit");return jdbc.queryForList("SELECT version,review_state,content_hash,created_by::text,created_at::text FROM ai_resource_version WHERE resource_id=? ORDER BY version DESC LIMIT 200",id);}
+    public Map<String,Object> version(UUID id,int version,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.VIEW);if(!guard.owner(row,actor)&&!guard.acl(id,actor,AiResourceGuard.Action.EDIT))throw new WorkspaceDenied(403,"VersionHistoryRequiresEdit");return dto(row,guard.version(id,version,actor,AiResourceGuard.Action.VIEW),version,actor,true);}
     private Map<String,Object> dto(Map<String,Object> row,Map<String,Object> version,int number,long actor,boolean content){
         Map<String,Object> value=new LinkedHashMap<>();for(var field:Map.of("resource_type","resourceType","owner_type","ownerType","visibility","visibility","lifecycle_state","lifecycleState","enabled","enabled","name","name","description","description").entrySet())value.put(field.getValue(),row.get(field.getKey()));
         var metadata=JsonUtils.parseMap(version.get("metadata").toString());value.put("name",metadata.get("name"));value.put("description",metadata.get("description"));
@@ -61,12 +64,12 @@ public class WorkspaceResources {
         });return get(id,actor);
     }
     public Map<String,Object> activate(UUID id,long actor,int version){
-        tx.executeWithoutResult(status->{jdbc.queryForList("SELECT id FROM ai_resource WHERE id=? FOR UPDATE",id);var r=guard.require(id,actor,AiResourceGuard.Action.EDIT);if(!guard.owner(r,actor))throw new WorkspaceDenied(403,"OwnerActivationRequired");
+        boolean[] changed={false};tx.executeWithoutResult(status->{jdbc.queryForList("SELECT id FROM ai_resource WHERE id=? FOR UPDATE",id);var r=guard.require(id,actor,AiResourceGuard.Action.EDIT);if(!guard.owner(r,actor))throw new WorkspaceDenied(403,"OwnerActivationRequired");
             if(!Set.of("ASSISTANT","SKILL","MCP","TOOL","KNOWLEDGE").contains(r.get("resource_type")))throw new WorkspaceDenied(400,"ResourceExecutionNotEnabledYet");
-            if(((Number)r.get("latest_version")).intValue()!=version)throw new WorkspaceDenied(409,"VersionConflict");
+            if(!"SKILL".equals(r.get("resource_type"))&&((Number)r.get("latest_version")).intValue()!=version)throw new WorkspaceDenied(409,"VersionConflict");
             if(r.get("visibility").equals("ENTERPRISE_PUBLIC"))throw new WorkspaceDenied(403,"PublicationReviewRequired");
-            guard.version(id,version,actor,AiResourceGuard.Action.EDIT);jdbc.update("UPDATE ai_resource SET published_version=?,lifecycle_state='ACTIVE',updated_by=?,updated_at=NOW() WHERE id=?",version,actor,id);audit(actor,"resource.version.activated",id,Map.of("version",version));
-        });return get(id,actor);
+            guard.version(id,version,actor,AiResourceGuard.Action.EDIT);changed[0]=!Objects.equals(r.get("published_version"),version);jdbc.update("UPDATE ai_resource SET published_version=?,lifecycle_state='ACTIVE',auth_version=auth_version+CASE WHEN published_version IS DISTINCT FROM ? THEN 1 ELSE 0 END,updated_by=?,updated_at=NOW() WHERE id=?",version,version,actor,id);audit(actor,"resource.version.activated",id,Map.of("version",version));
+        });if(changed[0])conversations.revokeResource(id);return active(id,actor);
     }
     public Map<String,Object> share(UUID id,long actor,String subject,long subjectId,Set<String> actions){
         if(!Set.of("USER","ROLE","DEPARTMENT").contains(subject)||actions.isEmpty()||!Set.of("VIEW","USE","EDIT").containsAll(actions)||!actions.contains("VIEW"))throw new WorkspaceDenied(400,"InvalidShareActions");

@@ -3,4 +3,11 @@ export function syncEnterpriseResources(
   localToken: string,
   config?: NodeJS.ProcessEnv,
   fetchImpl?: typeof fetch
-): Promise<{ skillName?: string; mcpId?: string; mcpName?: string; assistantCount?: number }>;
+): Promise<{
+  skillName?: string;
+  mcpId?: string;
+  mcpName?: string;
+  assistantCount?: number;
+  assistantIds?: string[];
+  issues: Array<{ type: 'SKILL' | 'MCP' | 'ASSISTANT'; id: string; code: string }>;
+}>;

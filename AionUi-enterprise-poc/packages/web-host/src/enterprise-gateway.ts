@@ -8,6 +8,7 @@ import serveHandler from 'serve-handler';
 import enLogin from '../../desktop/src/renderer/services/i18n/locales/en-US/login.json' with { type: 'json' };
 import zhLogin from '../../desktop/src/renderer/services/i18n/locales/zh-CN/login.json' with { type: 'json' };
 import { enterpriseCoreBase, enterpriseCoreHost, enterpriseProxyHost } from './enterprise-core-address.js';
+import { OfficeStore } from './office/office-store.js';
 
 export type EnterpriseActor = { serverId: string; userId: string };
 export type EnterpriseCore = { port: number; localToken: string; stop: () => Promise<void>; invalidated?: Promise<void>;
@@ -35,6 +36,12 @@ export type EnterpriseGatewayOptions = {
   login: (username: string, password: string) => Promise<EnterpriseLogin>;
   /** Public RC2 display fields for the unauthenticated login page. */
   publicBrand?: () => Promise<unknown>;
+  /** Reauthenticate the current credential and update only that identity through RC2. */
+  changePassword?: (username: string, oldPassword: string, newPassword: string) => Promise<void>;
+  /** Only explicit employee control routes; RC2 credentials never enter the browser. */
+  controlRequest?: (actor: EnterpriseActor, route: string, init: RequestInit) => Promise<Response>;
+  profileRoot?: string;
+  refreshResources?: (actor: EnterpriseActor) => Promise<void>;
   /** Validate a desktop supervisor's existing RC2 cookie on the server. */
   resume?: (rc2Cookie: string) => Promise<EnterpriseLogin>;
   startCore: (actor: EnterpriseActor) => Promise<EnterpriseCore>;
@@ -43,6 +50,8 @@ export type EnterpriseGatewayOptions = {
   hasBackgroundJobs?: (actor: EnterpriseActor) => boolean;
   /** Recheck a stored background grant with RC2 before retaining a Core. */
   authorizeBackground?: (actor: EnterpriseActor) => Promise<boolean>;
+  /** A dormant scheduled job does not require an always-on employee worker. */
+  backgroundDue?: (actor: EnterpriseActor) => Promise<boolean>;
   reconcileCronJobs?: (actor: EnterpriseActor) => Promise<void>;
   maxSessions?: number;
   maxCores?: number;
@@ -123,7 +132,7 @@ function loginPage(brand: LoginBrand | null, english: boolean, nonce: string): s
   const language = english ? 'en' : 'zh-CN';
   const product = brand?.productName || copy.brand;
   const title = brand?.loginTitle || copy.submit;
-  const subtitle = brand?.loginSubtitle || copy.subtitle;
+  const subtitle = brand?.loginSubtitle ?? copy.subtitle;
   const color = brand?.primaryColor || '#2563eb';
   const ink = contrastingInk(color);
   const logo = brand?.logoDataUrl
@@ -135,10 +144,22 @@ function loginPage(brand: LoginBrand | null, english: boolean, nonce: string): s
     busy: copy.errors.tooManyAttempts,
     unavailable: copy.errors.serverError,
     network: copy.errors.networkError,
+    passwordRequired: english ? 'Set a new password before continuing.' : '请先设置新密码，再进入工作台。',
+    newPassword: english ? 'New password (8–16 letters and digits)' : '新密码（8–16位字母和数字）',
+    confirmPassword: english ? 'Confirm new password' : '确认新密码',
+    passwordRule: english ? 'Use 8–16 characters with both letters and digits.' : '密码须为8–16位，且同时包含字母和数字。',
+    mismatch: english ? 'The two passwords do not match.' : '两次输入的密码不一致。',
+    passwordUpdate: english ? 'Set password and sign in' : '设置密码并登录',
+    passwordFailed: english ? 'Password could not be updated. Check the current password and try again.' : '未能更新密码，请检查当前密码后重试。',
+    login: copy.submit,
   }).replace(/</g, '\\u003c');
   return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>${html(product)} · ${html(title)}</title><style nonce="${nonce}">
-:root{--brand:${color};--brand-ink:${ink};font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;color:#1a2b42;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:clamp(16px,4vw,48px)}::selection{background:var(--brand);color:var(--brand-ink)}.shell{width:min(100%,960px);min-height:560px;display:grid;grid-template-columns:minmax(300px,.92fr) minmax(380px,1fr);overflow:hidden;border-radius:20px;background:#fff;box-shadow:0 24px 70px -32px rgba(18,36,65,.36)}.brand-side{display:flex;flex-direction:column;justify-content:space-between;gap:48px;padding:clamp(30px,4vw,52px);background:var(--brand);color:var(--brand-ink)}.brand-top{display:flex;align-items:center;gap:14px;min-width:0}.brand-logo{width:56px;height:56px;flex:none;object-fit:contain;border-radius:14px;background:#fff;padding:6px}.brand-initial{display:grid;place-items:center;color:#1a2b42;font-size:30px;font-weight:700}.company{font-size:14px;font-weight:650;line-height:1.5;overflow-wrap:anywhere}.brand-name{max-width:12ch;margin:0;font-size:clamp(32px,4vw,48px);line-height:1.16;letter-spacing:-.025em;overflow-wrap:anywhere}.brand-footer{font-size:13px;line-height:1.6;opacity:.85;overflow-wrap:anywhere}.form-side{display:flex;flex-direction:column;justify-content:center;padding:clamp(30px,6vw,70px)}h1{margin:0 0 12px;font-size:clamp(27px,3vw,34px);line-height:1.25;letter-spacing:-.025em;overflow-wrap:anywhere}.subtitle{margin:0 0 38px;color:#52647c;font-size:15px;line-height:1.7;overflow-wrap:anywhere}form{display:grid;gap:20px}label{display:grid;gap:8px;font-size:14px;font-weight:650}input{width:100%;min-height:48px;padding:12px 14px;border:1px solid #b9c6d5;border-radius:10px;background:#fff;color:#1a2b42;font:inherit;font-weight:400;outline:none;transition:border-color .15s,box-shadow .15s}input:hover{border-color:#6e8098}input:focus-visible{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent)}button{min-height:48px;margin-top:8px;border:0;border-radius:10px;background:var(--brand);color:var(--brand-ink);font:inherit;font-weight:700;cursor:pointer;transition:filter .15s,transform .15s}button:hover{filter:brightness(.94)}button:active{transform:translateY(1px)}button:focus-visible{outline:3px solid #1a2b42;outline-offset:3px}button:disabled{cursor:wait;opacity:.68;transform:none}.error{min-height:22px;margin:16px 0 0;color:#a02d2d;font-size:14px;line-height:1.6}.support{margin:24px 0 0;color:#52647c;font-size:13px;line-height:1.6;overflow-wrap:anywhere}@media(max-width:760px){body{display:block;padding:0;background:#fff}.shell{display:block;min-height:100dvh;border-radius:0;box-shadow:none}.brand-side{gap:28px;padding:26px 24px 30px}.brand-name{max-width:none;font-size:29px}.brand-footer{display:none}.form-side{padding:36px 24px 48px;max-width:520px;margin:auto}.subtitle{margin-bottom:30px}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important}}
-</style></head><body><main class="shell"><section class="brand-side" aria-label="${html(product)}"><div class="brand-top">${logo}${brand?.companyName ? `<span class="company">${html(brand.companyName)}</span>` : ''}</div><p class="brand-name">${html(product)}</p>${brand?.copyright ? `<div class="brand-footer">${html(brand.copyright)}</div>` : '<div></div>'}</section><section class="form-side"><h1>${html(title)}</h1><p class="subtitle">${html(subtitle)}</p><form id="login"><label for="username">${html(copy.enterpriseAccountLabel)}<input id="username" name="username" autocomplete="username" required maxlength="100"></label><label for="password">${html(copy.password)}<input id="password" name="password" type="password" autocomplete="current-password" required></label><button id="submit" type="submit">${html(copy.submit)}</button></form><p id="error" class="error" role="alert" aria-live="polite"></p>${brand?.supportText ? `<p class="support">${html(brand.supportText)}</p>` : ''}</section></main><script nonce="${nonce}">const copy=${feedback};const form=document.getElementById('login');const button=document.getElementById('submit');const error=document.getElementById('error');form.addEventListener('submit',async(event)=>{event.preventDefault();error.textContent='';button.disabled=true;button.textContent=copy.submitting;try{const fields=new FormData(form);const response=await fetch('/enterprise/login',{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify({username:fields.get('username'),password:fields.get('password')})});if(response.ok){location.replace('/');return}error.textContent=response.status===401?copy.invalid:response.status===429?copy.busy:copy.unavailable}catch{error.textContent=copy.network}finally{button.disabled=false;button.textContent=${JSON.stringify(copy.submit)}}});</script></body></html>`;
+:root{--brand:${color};--brand-ink:${ink};font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;color:#1a2b42;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:clamp(16px,4vw,48px)}::selection{background:var(--brand);color:var(--brand-ink)}.shell{width:min(100%,960px);min-height:560px;display:grid;grid-template-columns:minmax(300px,.92fr) minmax(380px,1fr);overflow:hidden;border-radius:20px;background:#fff;box-shadow:0 24px 70px -32px rgba(18,36,65,.36)}.brand-side{display:flex;flex-direction:column;justify-content:space-between;gap:48px;padding:clamp(30px,4vw,52px);background:var(--brand);color:var(--brand-ink)}.brand-top{display:flex;align-items:center;gap:14px;min-width:0}.brand-logo{width:56px;height:56px;flex:none;object-fit:contain;border-radius:14px;background:#fff;padding:6px}.brand-initial{display:grid;place-items:center;color:#1a2b42;font-size:30px;font-weight:700}.company{font-size:14px;font-weight:650;line-height:1.5;overflow-wrap:anywhere}.brand-name{max-width:12ch;margin:0;font-size:clamp(32px,4vw,48px);line-height:1.16;letter-spacing:-.025em;overflow-wrap:anywhere}.brand-footer{font-size:13px;line-height:1.6;opacity:.85;overflow-wrap:anywhere}.form-side{display:flex;flex-direction:column;justify-content:center;padding:clamp(30px,6vw,70px)}h1{margin:0 0 12px;font-size:clamp(27px,3vw,34px);line-height:1.25;letter-spacing:-.025em;overflow-wrap:anywhere}.subtitle{margin:0 0 38px;color:#52647c;font-size:15px;line-height:1.7;overflow-wrap:anywhere}form{display:grid;gap:20px}label{display:grid;gap:8px;font-size:14px;font-weight:650}input{width:100%;min-height:48px;padding:12px 14px;border:1px solid #b9c6d5;border-radius:10px;background:#fff;color:#1a2b42;font:inherit;font-weight:400;outline:none;transition:border-color .15s,box-shadow .15s}input:hover{border-color:#6e8098}input:focus-visible{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent)}button{min-height:48px;margin-top:8px;border:0;border-radius:10px;background:var(--brand);color:var(--brand-ink);font:inherit;font-weight:700;cursor:pointer;transition:filter .15s,transform .15s}button:hover{filter:brightness(.94)}button:active{transform:translateY(1px)}button:focus-visible{outline:3px solid #1a2b42;outline-offset:3px}button:disabled{cursor:wait;opacity:.68;transform:none}[hidden]{display:none!important}.notice{color:#52647c;font-size:14px;line-height:1.6;margin:0 0 20px}.error{min-height:22px;margin:16px 0 0;color:#a02d2d;font-size:14px;line-height:1.6}.support{margin:24px 0 0;color:#52647c;font-size:13px;line-height:1.6;overflow-wrap:anywhere}@media(max-width:760px){body{display:block;padding:0;background:#fff}.shell{display:block;min-height:100dvh;border-radius:0;box-shadow:none}.brand-side{gap:28px;padding:26px 24px 30px}.brand-name{max-width:none;font-size:29px}.brand-footer{display:none}.form-side{padding:36px 24px 48px;max-width:520px;margin:auto}.subtitle{margin-bottom:30px}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important}}
+</style></head><body><main class="shell"><section class="brand-side" aria-label="${html(product)}"><div class="brand-top">${logo}${brand?.companyName ? `<span class="company">${html(brand.companyName)}</span>` : ''}</div><p class="brand-name">${html(product)}</p>${brand?.copyright ? `<div class="brand-footer">${html(brand.copyright)}</div>` : '<div></div>'}</section><section class="form-side"><h1>${html(title)}</h1>${subtitle ? `<p class="subtitle">${html(subtitle)}</p>` : ''}<p id="notice" class="notice" hidden role="status"></p><form id="login"><label for="username">${html(copy.enterpriseAccountLabel)}<input id="username" name="username" autocomplete="username" required maxlength="100"></label><label for="password">${html(copy.password)}<input id="password" name="password" type="password" autocomplete="current-password" required></label><label id="new-password-label" for="new-password" hidden>${html(english ? 'New password (8–16 letters and digits)' : '新密码（8–16位字母和数字）')}<input id="new-password" name="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="16" pattern="(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}" disabled></label><label id="confirm-password-label" for="confirm-password" hidden>${html(english ? 'Confirm new password' : '确认新密码')}<input id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="16" disabled></label><button id="submit" type="submit">${html(copy.submit)}</button></form><p id="error" class="error" role="alert" aria-live="polite"></p>${brand?.supportText ? `<p class="support">${html(brand.supportText)}</p>` : ''}</section></main><script nonce="${nonce}">const copy=${feedback};
+const form=document.getElementById('login');const button=document.getElementById('submit');const error=document.getElementById('error');const notice=document.getElementById('notice');let changing=false;
+function passwordMode(enabled){changing=enabled;notice.hidden=!enabled;notice.textContent=enabled?copy.passwordRequired:'';for(const id of ['new-password','confirm-password']){const input=document.getElementById(id);input.disabled=!enabled;input.required=enabled;document.getElementById(id+'-label').hidden=!enabled;}button.textContent=enabled?copy.passwordUpdate:copy.login;}
+async function send(route,data){return fetch(route,{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify(data)});}
+form.addEventListener('submit',async(event)=>{event.preventDefault();error.textContent='';button.disabled=true;button.textContent=copy.submitting;try{const fields=new FormData(form);const data={username:fields.get('username'),password:fields.get('password')};if(changing){const next=fields.get('newPassword');if(!/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/.test(next)){error.textContent=copy.passwordRule;return;}if(next!==fields.get('confirmPassword')){error.textContent=copy.mismatch;return;}const changed=await send('/enterprise/password',{...data,newPassword:next});if(!changed.ok){error.textContent=changed.status===429?copy.busy:copy.passwordFailed;return;}data.password=next;document.getElementById('password').value=next;document.getElementById('new-password').value='';document.getElementById('confirm-password').value='';passwordMode(false);}const response=await send('/enterprise/login',data);if(response.ok){location.replace('/');return;}const result=await response.json().catch(()=>({}));if(response.status===409&&result.error==='PASSWORD_CHANGE_REQUIRED'){passwordMode(true);document.getElementById('new-password').focus();return;}error.textContent=response.status===401?copy.invalid:response.status===429?copy.busy:copy.unavailable;}catch{error.textContent=copy.network;}finally{button.disabled=false;button.textContent=changing?copy.passwordUpdate:copy.login;}});</script></body></html>`;
 }
 
 function providerRoute(url: string): boolean {
@@ -242,7 +263,7 @@ function mergeClientSettingsSecrets(next: unknown, previous: unknown): unknown {
   const merged: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(object)) {
     if (key.endsWith('_configured') || key === 'credentials_configured' || key === 'api_key_count') continue;
-    if (['api_key', 'secret_access_key', 'access_key_id', 'proxy'].includes(key) && value === '' &&
+    if (['api_key', 'base_url', 'secret_access_key', 'access_key_id', 'proxy'].includes(key) && value === '' &&
         object[`${key}_configured`] === true && typeof old[key] === 'string') {
       merged[key] = old[key];
     } else if (key === 'transport' && value && typeof value === 'object' &&
@@ -432,7 +453,7 @@ export async function startEnterpriseGateway(
   const idleCandidate = (key: string, entry: CoreEntry, allowSockets = false): boolean => coreIdleMs > 0 &&
     cores.get(key) === entry && entry.ready && Date.now() - entry.lastUsed >= coreIdleMs &&
     !actorSessions(key).some((session) => session.responses.size > 0 ||
-      (!allowSockets && session.sockets.size > 0)) && opts.hasBackgroundJobs?.(entry.actor) !== true;
+      (!allowSockets && session.sockets.size > 0));
   const closeIdleSocket = (socket: Duplex): Promise<void> => new Promise((resolve) => {
     if (socket.destroyed) { resolve(); return; }
     const timer = setTimeout(() => { socket.destroy(); resolve(); }, 1_000);
@@ -442,6 +463,7 @@ export async function startEnterpriseGateway(
   });
   const stopIdleCore = async (key: string, entry: CoreEntry): Promise<boolean> => {
     if (!idleCandidate(key, entry, true)) return false;
+    if (opts.hasBackgroundJobs?.(entry.actor) && (!opts.backgroundDue || await opts.backgroundDue(entry.actor).catch(() => true))) return false;
     let idle = false;
     try {
       const core = await entry.started;
@@ -630,7 +652,7 @@ export async function startEnterpriseGateway(
       res.end(loginPage(brand, english, nonce));
       return;
     }
-    if (req.url === '/enterprise/login' && req.method === 'POST') {
+    if ((req.url === '/enterprise/login' || req.url === '/enterprise/password') && req.method === 'POST') {
       if (sessions.size + pendingSessions >= maxSessions) return reply(res, 503, { error: 'SESSION_CAPACITY' });
       const now = Date.now();
       while (loginAttempts.length && loginAttempts[0] < now - 60_000) loginAttempts.shift();
@@ -641,15 +663,27 @@ export async function startEnterpriseGateway(
         const input = JSON.parse((await body(req, LOGIN_BODY)).toString('utf8')) as {
           username?: string;
           password?: string;
+          newPassword?: string;
         };
         if (typeof input.username !== 'string' || typeof input.password !== 'string') throw new Error('Invalid login');
+        if (req.url === '/enterprise/password') {
+          if (!opts.changePassword) return reply(res, 404, { error: 'NOT_FOUND' });
+          if (typeof input.newPassword !== 'string' || !/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/.test(input.newPassword)) {
+            return reply(res, 400, { error: 'INVALID_NEW_PASSWORD' });
+          }
+          await opts.changePassword(input.username, input.password, input.newPassword);
+          return reply(res, 200, { ok: true });
+        }
         const login = await opts.login(input.username, input.password);
         actorKey(login.actor);
         const id = randomBytes(32).toString('hex');
         sessions.set(id, { ...login, sockets: new Set(), requests: new Set(), responses: new Set(), expiresAt: Date.now() + SESSION_MS });
         res.setHeader('set-cookie', `${cookieName}=${id}; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict`);
         return reply(res, 200, { ok: true });
-      } catch {
+      } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'PASSWORD_CHANGE_REQUIRED') {
+          return reply(res, 409, { error: 'PASSWORD_CHANGE_REQUIRED' });
+        }
         return reply(res, 401, { error: 'LOGIN_FAILED' });
       } finally { pendingSessions -= 1; }
     }
@@ -705,6 +739,81 @@ export async function startEnterpriseGateway(
     }
     auth.session.responses.add(res);
     res.once('close', () => auth.session.responses.delete(res));
+    if (req.url === '/enterprise/resources/refresh' && req.method === 'POST') {
+      if (!opts.refreshResources) return reply(res, 503, { error: 'RESOURCE_REFRESH_UNAVAILABLE' });
+      try { await getCore(auth.session.actor);await opts.refreshResources(auth.session.actor);return reply(res, 200, { ok: true }); }
+      catch (error) {
+        if ((error as Error).message === 'RESOURCE_REFRESH_TASK_ACTIVE') return reply(res, 409, { error: 'RESOURCE_REFRESH_TASK_ACTIVE' });
+        return replyCoreFailure(res, error);
+      }
+    }
+    if (req.url.startsWith('/enterprise/control/')) {
+      const route = req.url.slice('/enterprise/control'.length);
+      // No arbitrary proxy, auth reset, internal service routes or admin wildcard.
+      if (!/^\/ai\/(?:resources|knowledge|citations|files|share-targets|mcp|models|brand|me|usage)(?:[/?]|$)/.test(route) ||
+          /(?:\.\.|%2e|%2f|%5c)/i.test(route.split('?')[0]) || !opts.controlRequest) return reply(res, 404, { error: 'CONTROL_ROUTE_UNAVAILABLE' });
+      const abort = new AbortController();res.once('close', () => abort.abort());
+      try {
+        const raw = ['GET', 'HEAD'].includes(req.method || 'GET') ? undefined : await body(req, MAX_BODY);
+        const upstream = await opts.controlRequest(auth.session.actor, route, { method: req.method,
+          headers: req.headers['content-type'] ? { 'content-type': req.headers['content-type'] } : {},
+          ...(raw ? { body: raw as unknown as BodyInit } : {}), signal: abort.signal });
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const bytes = Buffer.from(await upstream.arrayBuffer());
+        if (bytes.length > MAX_BODY) return reply(res, 502, { error: 'CONTROL_RESPONSE_TOO_LARGE' });
+        res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json',
+          'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
+          ...(upstream.headers.get('content-disposition') ? { 'content-disposition': upstream.headers.get('content-disposition')! } : {}) });
+        res.end(bytes);
+      } catch { if (!res.destroyed) reply(res, 502, { error: 'CONTROL_UNAVAILABLE' }); }
+      return;
+    }
+    if (req.url.startsWith('/enterprise/memories') || req.url.startsWith('/enterprise/files')) {
+      if (!opts.profileRoot) return reply(res, 503, { error: 'OFFICE_STORAGE_UNAVAILABLE' });
+      const url = new URL(req.url, origin);
+      try {
+        const store = await OfficeStore.create(opts.profileRoot, auth.session.actor);
+        if (url.pathname === '/enterprise/memories') {
+          if (req.method === 'GET') return reply(res, 200, { items: await store.memories() });
+          if (req.method === 'PUT') return reply(res, 200, await store.remember(JSON.parse((await body(req, 16000)).toString())));
+          if (req.method === 'DELETE') { await store.forget(url.searchParams.get('id') || '');return reply(res, 200, { ok: true }); }
+          return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
+        }
+        const core = await getCore(auth.session.actor);
+        if (!core.workspaceRoot) return reply(res, 503, { error: 'WORKSPACE_UNAVAILABLE' });
+        if (url.pathname === '/enterprise/files' && req.method === 'GET') return reply(res, 200, await store.files(core.workspaceRoot));
+        const name = url.searchParams.get('path') || '';
+        if (url.pathname === '/enterprise/files/download' && req.method === 'GET') {
+          const bytes = await store.download(core.workspaceRoot, name, url.searchParams.get('version') || undefined);
+          if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+          res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store',
+            'x-content-type-options': 'nosniff', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(name))}` });res.end(bytes);return;
+        }
+        if (url.pathname === '/enterprise/files/diff' && req.method === 'GET') return reply(res, 200, await store.diff(core.workspaceRoot, name, url.searchParams.get('version') || ''));
+        if (url.pathname === '/enterprise/files/restore' && req.method === 'POST') {
+          const input = JSON.parse((await body(req, 8192)).toString()) as { path: string; version: string };
+          await store.restore(core.workspaceRoot, input.path, input.version);return reply(res, 200, { ok: true });
+        }
+        if (url.pathname === '/enterprise/files/upload' && req.method === 'POST') {
+          const raw = await body(req, MAX_BODY + 1024 * 1024);
+          const data = await new Response(raw as unknown as BodyInit, { headers: { 'content-type': req.headers['content-type'] || '' } }).formData();
+          const files = data.getAll('files').filter((item): item is File => typeof item !== 'string');
+          const paths = JSON.parse(String(data.get('paths') || '[]')) as string[];
+          if (!files.length || files.length > 100 || files.reduce((n, file) => n + file.size, 0) > MAX_BODY || (paths.length && paths.length !== files.length)) return reply(res, 400, { error: 'UPLOAD_LIMIT_100_FILES_50MB' });
+          const uploaded: string[] = [], failed: Array<{ path: string; error: string }> = [];
+          for (let i = 0; i < files.length; i += 1) {
+            const destination = '资料/' + (paths[i] || files[i].name);
+            try { await store.upload(core.workspaceRoot, destination, Buffer.from(await files[i].arrayBuffer()));uploaded.push(destination); }
+            catch (error) { failed.push({ path: destination, error: (error as Error).message }); }
+          }
+          return reply(res, 200, { uploaded, failed });
+        }
+        return reply(res, 404, { error: 'NOT_FOUND' });
+      } catch (error) {
+        if (error instanceof CoreCapacityError) return replyCoreFailure(res, error);
+        return reply(res, 400, { error: (error as Error).message.slice(0, 200) });
+      }
+    }
     if (req.url === '/api/auth/user' && req.method === 'GET') {
       return reply(res, 200, { success: true,
         user: { id: auth.session.actor.userId, username: auth.session.username || auth.session.actor.userId } });
@@ -1114,6 +1223,7 @@ export async function startEnterpriseGateway(
       starting, queuedStarts: queuedStarts.length }),
     startBackgroundCore: async (actor) => {
       if (!(await authorizedBackground(actor))) throw new Error('Background Core authorization unavailable');
+      if (opts.backgroundDue && !(await opts.backgroundDue(actor))) return;
       await getCore(actor, true);
     },
     stop: async () => {

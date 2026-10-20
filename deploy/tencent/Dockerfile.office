@@ -1,0 +1,10 @@
+# The deployment script binds this local tag to the recorded, verified amd64 Core ID.
+# The Rust binary and its security patches are unchanged; only Office Python libraries are added.
+FROM zhenwork-core:office-base
+USER root
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    python3-openpyxl python3-docx python3-lxml python3-xlsxwriter python3-typing-extensions \
+    && python3 -m pip install --no-cache-dir --no-deps --index-url https://pypi.org/simple python-pptx==1.0.2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -c "import openpyxl,docx,pptx,lxml; print('Office dependencies ready')"
+USER 10001:10001

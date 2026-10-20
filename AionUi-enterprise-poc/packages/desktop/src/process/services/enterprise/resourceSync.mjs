@@ -4,6 +4,34 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const resourceIdPattern = /^[0-9a-f-]{36}$/i;
+const RESERVED_UNMANAGED_MCP_NAMES = new Set(['zhenwork-office-tools', 'rc2-enterprise-zhenwork-office-tools']);
+
+async function validateSkillDirectory(directory, realProfile) {
+  const root = await fs.realpath(directory);
+  if (!root.startsWith(`${realProfile}${path.sep}`)) throw new Error('Enterprise Skill symlink forbidden');
+  let files = 0;
+  let bytes = 0;
+  const visit = async (current) => {
+    for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+      const candidate = path.join(current, entry.name);
+      const stat = await fs.lstat(candidate);
+      if (stat.isSymbolicLink()) throw new Error('Enterprise Skill symlink forbidden');
+      const real = await fs.realpath(candidate);
+      if (!real.startsWith(`${root}${path.sep}`)) throw new Error('Enterprise Skill symlink forbidden');
+      if (stat.isDirectory()) await visit(candidate);
+      else if (stat.isFile()) {
+        files += 1;
+        bytes += stat.size;
+        if (files > 201 || stat.size > 20 * 1024 * 1024 || bytes > 30 * 1024 * 1024 + 24_000) {
+          throw new Error('Enterprise Skill package invalid');
+        }
+      } else throw new Error('Enterprise Skill package invalid');
+    }
+  };
+  await visit(directory);
+  if (!files) throw new Error('Enterprise Skill package invalid');
+  return bytes;
+}
 
 function coreBase(target) {
   if (typeof target === 'number') return `http://127.0.0.1:${target}`;
@@ -35,6 +63,7 @@ async function resourceBundle(config) {
         port: config.AION_ENTERPRISE_MCP_PROXY_PORT, key: config.AION_ENTERPRISE_MCP_PROXY_KEY,
         host: config.AION_ENTERPRISE_MCP_PROXY_HOST,
         name: MCP_NAME }] : [],
+      issues: [],
     };
   }
   if (config.AION_ENTERPRISE_ROLE !== 'worker' || !config.AION_ENTERPRISE_PROFILE_DIR) {
@@ -48,9 +77,17 @@ async function resourceBundle(config) {
     throw new Error('Enterprise resource bundle symlink forbidden');
   }
   const parsed = JSON.parse(await fs.readFile(file, 'utf8'));
-  if (!Array.isArray(parsed.skills) || !Array.isArray(parsed.mcps) ||
+  if (!Array.isArray(parsed.skills) || !Array.isArray(parsed.mcps) || !Array.isArray(parsed.issues || []) ||
       parsed.skills.length > 20 || parsed.mcps.length > 20) throw new Error('Enterprise resource bundle invalid');
+  parsed.issues ||= [];
+  if (parsed.issues.length > 100 || parsed.issues.some((issue) =>
+    !['SKILL', 'MCP', 'ASSISTANT'].includes(issue?.type) || typeof issue.id !== 'string' || issue.id.length > 100 ||
+    typeof issue.code !== 'string' || !/^[A-Z][A-Z0-9_]{1,80}$/.test(issue.code))) {
+    throw new Error('Enterprise resource issue invalid');
+  }
   const skillNames = new Set();
+  const acceptedSkills = [];
+  let decodedSkillBytes = 0;
   for (const item of parsed.skills) {
     if (!resourceIdPattern.test(item?.id || '') ||
         typeof item.name !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.name) ||
@@ -60,8 +97,16 @@ async function resourceBundle(config) {
     const realSource = await fs.realpath(path.join(item.path, 'SKILL.md'));
     if (!realSkill.startsWith(`${realProfile}${path.sep}`) ||
         realSource !== path.join(realSkill, 'SKILL.md')) throw new Error('Enterprise Skill symlink forbidden');
+    const packageBytes = await validateSkillDirectory(item.path, realProfile);
+    if (decodedSkillBytes + packageBytes > 48 * 1024 * 1024) {
+      parsed.issues.push({ type: 'SKILL', id: item.id, code: 'PACKAGE_BUDGET_EXCEEDED' });
+      continue;
+    }
+    decodedSkillBytes += packageBytes;
     skillNames.add(item.name);
+    acceptedSkills.push(item);
   }
+  parsed.skills = acceptedSkills;
   const mcpIds = new Set();
   for (const item of parsed.mcps) {
     item.host = proxyHost(item.host);
@@ -96,8 +141,8 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
     if (!response.ok || data?.success !== true) throw new Error(`AionCore resource sync failed: ${url}`);
     return data.data;
   };
-  const result = {};
   const bundle = await resourceBundle(config);
+  const result = { issues: [...bundle.issues] };
   const currentSkills = new Map();
   const currentMcps = new Map();
   let managedPath = null;
@@ -105,6 +150,9 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
   let listedMcp = [];
   const newlyImportedSkills = [];
   const newlyRegisteredMcps = [];
+  const retainedSkillNames = new Set();
+  const retainedMcpIds = new Set();
+  const retainedAssistantIds = new Set();
   if (config.AION_ENTERPRISE_ROLE === 'worker') {
     if (!config.AION_ENTERPRISE_PROFILE_DIR) throw new Error('Enterprise profile missing');
     managedPath = config.AION_ENTERPRISE_MANAGED_PATH ||
@@ -149,33 +197,42 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
     if (!listed.ok || listBody?.success !== true || !Array.isArray(listBody.data)) {
       throw new Error('AionCore Skill list failed');
     }
-    for (const skill of bundle.skills) if (listBody.data.some((item) =>
-      item.name === skill.name && !old.skills.includes(skill.name))) {
-      throw new Error('Personal Skill name conflicts with RC2 Skill');
-    }
     for (const skill of bundle.skills) {
-      const imported = await request('/api/skills/import', { skill_path: skill.path });
-      if (imported?.skill_name !== skill.name && !imported?.skill_names?.includes(skill.name)) {
-        throw new Error('AionCore enterprise Skill import did not match RC2 manifest');
+      if (listBody.data.some((item) => item.name === skill.name && !old.skills.includes(skill.name))) {
+        result.issues.push({ type: 'SKILL', id: String(skill.id || ''), code: 'NAME_CONFLICT' });
+        continue;
       }
-      if (!listBody.data.some((item) => item.name === skill.name)) newlyImportedSkills.push(skill.name);
-      currentSkills.set(skill.id, skill.name);
+      try {
+        const imported = await request('/api/skills/import', { skill_path: skill.path });
+        if (imported?.skill_name !== skill.name && !imported?.skill_names?.includes(skill.name)) {
+          throw new Error('AionCore enterprise Skill import did not match RC2 manifest');
+        }
+        if (!listBody.data.some((item) => item.name === skill.name)) newlyImportedSkills.push(skill.name);
+        currentSkills.set(skill.id, skill.name);
+      } catch {
+        result.issues.push({ type: 'SKILL', id: String(skill.id || ''), code: 'IMPORT_FAILED' });
+      }
     }
-    result.skillName = bundle.skills[0].name;
+    result.skillName = currentSkills.values().next().value;
   }
   for (const mcp of bundle.mcps) {
-    const server = await request('/api/mcp/servers', { name: mcp.name,
-      description: MCP_DESCRIPTION,
-      transport: { type: 'http', url: `http://${proxyHost(mcp.host)}:${mcp.port}/mcp`,
-        headers: { Authorization: `Bearer ${mcp.key}` } } });
-    if (server?.name !== mcp.name || !server?.id) throw new Error('AionCore MCP registration failed');
-    if (!listedMcp.some((item) => item.name === mcp.name)) newlyRegisteredMcps.push(server.id);
-    if (!server.enabled) await request(`/api/mcp/servers/${server.id}/toggle`, {});
-    currentMcps.set(mcp.resourceId, server.id);
+    try {
+      const server = await request('/api/mcp/servers', { name: mcp.name,
+        description: MCP_DESCRIPTION,
+        transport: { type: 'http', url: `http://${proxyHost(mcp.host)}:${mcp.port}/mcp`,
+          headers: { Authorization: `Bearer ${mcp.key}` } } });
+      if (server?.name !== mcp.name || !server?.id) throw new Error('AionCore MCP registration failed');
+      if (!listedMcp.some((item) => item.name === mcp.name)) newlyRegisteredMcps.push(server.id);
+      if (!server.enabled) await request(`/api/mcp/servers/${server.id}/toggle`, {});
+      currentMcps.set(mcp.resourceId, server.id);
+    } catch {
+      result.issues.push({ type: 'MCP', id: mcp.resourceId, code: 'REGISTRATION_FAILED' });
+    }
   }
-  if (bundle.mcps.length) {
-    result.mcpName = bundle.mcps[0].name;
-    result.mcpId = currentMcps.get(bundle.mcps[0].resourceId);
+  if (currentMcps.size) {
+    const first = bundle.mcps.find((item) => currentMcps.has(item.resourceId));
+    result.mcpName = first?.name;
+    result.mcpId = first && currentMcps.get(first.resourceId);
   }
   if (config.AION_ENTERPRISE_ROLE === 'worker') {
     const listed = await fetchImpl(`${base}/api/assistants`, { headers });
@@ -186,7 +243,7 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
     const agentId = listBody.data.find((item) => item.agent?.type === 'aionrs')?.agent_id;
     const assistants = config.AION_ENTERPRISE_ASSISTANTS_PATH
       ? JSON.parse(await fs.readFile(config.AION_ENTERPRISE_ASSISTANTS_PATH, 'utf8')) : [];
-    if (!Array.isArray(assistants) || assistants.length > 20 || (assistants.length && !agentId)) {
+    if (!Array.isArray(assistants) || (assistants.length && !agentId)) {
       throw new Error('Enterprise assistant configuration invalid');
     }
     const oldAssistantIds = new Set(old.assistantIds || listBody.data.filter((item) =>
@@ -195,16 +252,20 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
       /^(企业提供|企业共享) · RC2 版本 \d+ · 当前账号 USE 权限$/.test(item.description))
       .map((item) => item.id));
     const currentAssistantIds = new Set();
-    for (const item of assistants) {
+    for (const item of assistants.slice(0, 20)) {
       if (!/^[0-9a-f-]{36}$/i.test(item.id) || !Number.isInteger(item.version) ||
-          typeof item.instruction !== 'string' || item.instruction.length > 4000) {
-        throw new Error('Enterprise assistant configuration invalid');
+          typeof item.instruction !== 'string' || item.instruction.length > 4000 ||
+          (item.modelCode !== undefined &&
+            (typeof item.modelCode !== 'string' || !item.modelCode.trim() || item.modelCode.length > 200))) {
+        result.issues.push({ type: 'ASSISTANT', id: String(item?.id || ''), code: 'INVALID_CONFIGURATION' });
+        continue;
       }
       const skillIds = Array.isArray(item.skillIds) ? item.skillIds : [];
       const mcpIds = Array.isArray(item.mcpIds) ? item.mcpIds : [];
       if (skillIds.some((resourceId) => !currentSkills.has(resourceId)) ||
           mcpIds.some((resourceId) => !currentMcps.has(resourceId))) {
-        throw new Error('Enterprise assistant dependency unavailable');
+        result.issues.push({ type: 'ASSISTANT', id: item.id, code: 'DEPENDENCY_UNAVAILABLE' });
+        continue;
       }
       const skills = skillIds.map((resourceId) => currentSkills.get(resourceId));
       const mcps = mcpIds.map((resourceId) => currentMcps.get(resourceId));
@@ -215,45 +276,63 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
         name: `[${label} v${item.version}] ${item.name}`,
         description: `${label} · RC2 版本 ${item.version} · 当前账号 USE 权限`,
         custom_skill_names: skills,
-        defaults: { model: { mode: 'fixed', value: config.AION_ENTERPRISE_MODEL_CODE },
+        defaults: { model: { mode: 'fixed', value: item.modelCode || config.AION_ENTERPRISE_MODEL_CODE },
           skills: { mode: 'fixed', value: skills }, mcps: { mode: 'fixed', value: mcps } },
       };
-      const created = oldAssistantIds.has(id)
-        ? await (async () => {
+      try {
+        const created = oldAssistantIds.has(id)
+          ? await (async () => {
           const response = await fetchImpl(`${base}/api/assistants/${encodeURIComponent(id)}`,
             { method: 'PUT', headers, body: JSON.stringify(payload) });
           const body = await response.json().catch(() => null);
           if (!response.ok || body?.success !== true) throw new Error('AionCore assistant update failed');
           return body.data;
         })()
-        : await request('/api/assistants', payload);
-      if (created?.id !== id) throw new Error('AionCore assistant registration failed');
-      await request('/api/skills/assistant-rule/write', { assistant_id: id, content: item.instruction });
+          : await request('/api/assistants', payload);
+        if (created?.id !== id) throw new Error('AionCore assistant registration failed');
+        await request('/api/skills/assistant-rule/write', { assistant_id: id, content: item.instruction });
+      } catch {
+        currentAssistantIds.delete(id);
+        result.issues.push({ type: 'ASSISTANT', id: item.id, code: 'REGISTRATION_FAILED' });
+      }
     }
     for (const id of oldAssistantIds) if (!currentAssistantIds.has(id)) {
-      const deleted = await fetchImpl(`${base}/api/assistants/${encodeURIComponent(id)}`, { method: 'DELETE', headers });
-      if (!deleted.ok) throw new Error('Stale enterprise assistant removal failed');
+      const deleted = await fetchImpl(`${base}/api/assistants/${encodeURIComponent(id)}`, { method: 'DELETE', headers })
+        .catch(() => null);
+      if (!deleted?.ok) {
+        retainedAssistantIds.add(id);
+        result.issues.push({ type: 'ASSISTANT', id, code: 'REVOCATION_FAILED' });
+      }
     }
-    result.assistantCount = assistants.length;
+    if (assistants.length > 20) result.issues.push({ type: 'ASSISTANT', id: '', code: 'LIMIT_EXCEEDED' });
+    result.assistantCount = currentAssistantIds.size;
     result.assistantIds = [...currentAssistantIds];
   }
   const currentSkillNames = new Set(currentSkills.values());
   const currentMcpIds = new Set(currentMcps.values());
   for (const name of old.skills) if (!currentSkillNames.has(name)) {
-    const deleted = await fetchImpl(`${base}/api/skills/${encodeURIComponent(name)}`, { method: 'DELETE', headers });
-    if (!deleted.ok && deleted.status !== 404) throw new Error('Stale enterprise Skill removal failed');
+    const deleted = await fetchImpl(`${base}/api/skills/${encodeURIComponent(name)}`, { method: 'DELETE', headers })
+      .catch(() => null);
+    if (!deleted || !deleted.ok && deleted.status !== 404) {
+      retainedSkillNames.add(name);
+      result.issues.push({ type: 'SKILL', id: name, code: 'REVOCATION_FAILED' });
+    }
   }
-  for (const item of listedMcp.filter((item) => isManagedMcp(item) &&
+  for (const item of listedMcp.filter((item) => !RESERVED_UNMANAGED_MCP_NAMES.has(item.name) && isManagedMcp(item) &&
     (old.mcpIds ? old.mcpIds.includes(item.id) : true))) {
     if (currentMcpIds.has(item.id)) continue;
-    const deleted = await fetchImpl(`${base}/api/mcp/servers/${encodeURIComponent(item.id)}`, { method: 'DELETE', headers });
-    if (!deleted.ok) throw new Error('Stale enterprise MCP removal failed');
+    const deleted = await fetchImpl(`${base}/api/mcp/servers/${encodeURIComponent(item.id)}`, { method: 'DELETE', headers })
+      .catch(() => null);
+    if (!deleted?.ok) {
+      retainedMcpIds.add(item.id);
+      result.issues.push({ type: 'MCP', id: item.id, code: 'REVOCATION_FAILED' });
+    }
   }
   if (managedPath) {
     const temporary = `${managedPath}.${process.pid}.tmp`;
-    await fs.writeFile(temporary, JSON.stringify({ skills: [...currentSkillNames],
-      mcpIds: [...currentMcpIds],
-      assistantIds: result.assistantIds || [] }), { mode: 0o600 });
+    await fs.writeFile(temporary, JSON.stringify({ skills: [...currentSkillNames, ...retainedSkillNames],
+      mcpIds: [...currentMcpIds, ...retainedMcpIds],
+      assistantIds: [...(result.assistantIds || []), ...retainedAssistantIds] }), { mode: 0o600 });
     await fs.rename(temporary, managedPath);
   }
   return result;

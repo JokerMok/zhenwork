@@ -1,0 +1,12 @@
+# Registry-independent amd64 runtime. Base is the official Ubuntu rootfs,
+# verified against SHA256SUMS before import; record its image ID in RELEASE.json.
+FROM zhenwork-ubuntu-base:26.04
+COPY ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates libssl3t64 libstdc++6 python3 python3-venv python3-pip git curl ripgrep unzip jq poppler-utils qpdf tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim fonts-noto-cjk python3-pypdf python3-reportlab python3-pil && rm -rf /var/lib/apt/lists/*
+RUN python3 -m venv --system-site-packages /opt/aionui/skill-python && /opt/aionui/skill-python/bin/pip install --no-cache-dir pdfplumber==0.11.10 pdf2image==1.17.0 pytesseract==0.3.13 pypdfium2==5.14.0
+ENV PATH=/opt/aionui/skill-python/bin:${PATH}
+COPY node-runtime/ /usr/local/
+COPY officecli /usr/local/bin/officecli
+RUN chmod 0755 /usr/local/bin/officecli && node --version && python3 --version && officecli --version
+ENV NODE_PATH=/usr/local/lib/node_modules
+WORKDIR /tmp

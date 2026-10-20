@@ -12,7 +12,7 @@ import java.util.*;
 @RequestMapping("/ai")
 @RequiredArgsConstructor
 public class WorkspaceOperationsController {
- private final WorkspacePrincipal principals;private final JdbcTemplate jdbc;private final AgentRuntime runtime;
+ private final WorkspacePrincipal principals;private final JdbcTemplate jdbc;private final AgentRuntime runtime;private final WorkspaceUsageDashboard usageDashboard;
  private int offset(int page){if(page<1||page>1000)throw new WorkspaceDenied(400,"InvalidPage");return (page-1)*30;}
  @GetMapping("/admin/audit") public R<?> audit(@RequestParam(defaultValue="calls") String category,@RequestParam(defaultValue="1") int page){
   principals.require("ai:audit:view");int offset=offset(page);
@@ -32,6 +32,10 @@ public class WorkspaceOperationsController {
  @GetMapping("/admin/usage") public R<?> usage(@RequestParam(defaultValue="30") int days){
   principals.require("ai:audit:view");if(days<1||days>90)throw new WorkspaceDenied(400,"InvalidPeriod");
   return R.ok(jdbc.queryForList("SELECT date_trunc('day',created_at) AS day,currency,count(*) AS calls,count(*) FILTER(WHERE status='STARTED') AS incomplete_calls,count(*) FILTER(WHERE input_tokens IS NULL OR output_tokens IS NULL) AS unknown_token_calls,count(*) FILTER(WHERE estimated_cost IS NULL) AS unknown_cost_calls,sum(input_tokens) AS known_input_tokens,sum(output_tokens) AS known_output_tokens,sum(estimated_cost) AS known_estimated_cost FROM ai_execution_call WHERE kind='MODEL' AND created_at>=NOW()-make_interval(days=>?) GROUP BY 1,2 ORDER BY 1 DESC,2",days));
+ }
+ @GetMapping("/admin/dashboard") public R<?> dashboard(@RequestParam(defaultValue="30") int days){
+  principals.require("ai:audit:view");if(days<1||days>90)throw new WorkspaceDenied(400,"InvalidPeriod");
+  return R.ok(usageDashboard.load(days));
  }
  @GetMapping("/admin/operations") public R<?> operations(@RequestParam(defaultValue="runs") String category,@RequestParam(defaultValue="1") int page){
   principals.require("ai:operations:view");int offset=offset(page);String sql=switch(category){

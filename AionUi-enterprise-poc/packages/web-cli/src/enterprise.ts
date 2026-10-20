@@ -1,7 +1,7 @@
 import { lstat, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { acquireEnterpriseDockerSupervisor, createEnterpriseDockerCoreStarter, createEnterpriseModelRuntime,
-  createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPublicBrand,
+  createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPasswordChange, createRc2GatewayPublicBrand,
   startEnterpriseGateway } from '@aionui/web-host';
 
 const required = (name: string): string => {
@@ -62,9 +62,13 @@ export async function startEnterpriseWebFromEnvironment() {
     coreStartWaitMs: optionalLimit('AION_ENTERPRISE_WEB_CORE_START_WAIT_MS', 1000, 300_000),
     coreIdleMs: optionalLimit('AION_ENTERPRISE_WEB_CORE_IDLE_MS', 0, 86_400_000),
     publicBrand: createRc2GatewayPublicBrand(rc2Url, publicOrigin),
+    changePassword: createRc2GatewayPasswordChange(rc2Url, publicOrigin),
     login: runtime.login, resume: runtime.resume, startCore: runtime.startCore,
+    profileRoot, controlRequest: runtime.controlRequest,
+    refreshResources: runtime.refreshResources,
     syncCronGrant: runtime.syncCronGrant, hasBackgroundJobs: runtime.hasBackgroundJobs,
     authorizeBackground: runtime.authorizeBackground,
+    backgroundDue: runtime.backgroundDue,
     reconcileCronJobs: runtime.reconcileCronJobs });
   try {
     for (const actor of await runtime.backgroundActors()) await gateway.startBackgroundCore(actor);

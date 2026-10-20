@@ -243,6 +243,7 @@
                     link
                     type="primary"
                     icon="Key"
+                    aria-label="重置密码"
                     @click="handleResetPwd(scope.row)"
                   ></el-button>
                 </el-tooltip>
@@ -562,14 +563,14 @@ const initData: PageData<UserForm, UserQuery> = {
     password: [
       { required: true, message: '用户密码不能为空', trigger: 'blur' },
       {
-        min: 12,
-        max: 30,
-        message: '用户密码长度必须介于 12 和 30 之间',
+        min: 8,
+        max: 16,
+        message: '密码须为8–16位，且同时包含字母和数字',
         trigger: 'blur'
       },
       {
-        pattern: /^[^<>"'|\\]+$/,
-        message: '不能包含非法字符：< > " \' \\ |',
+        pattern: /^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/,
+        message: '密码须为8–16位，且同时包含字母和数字',
         trigger: 'blur'
       }
     ],
@@ -691,24 +692,8 @@ const handleAuthRole = (row: Partial<UserVO>) => {
 
 /** 重置密码按钮操作 */
 const handleResetPwd = async (row: Partial<UserVO>) => {
-  const [err, res] = await to(
-    ElMessageBox.prompt('请输入"' + row.userName + '"的新密码', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      closeOnClickModal: false,
-      inputPattern: /^.{12,30}$/,
-      inputErrorMessage: '用户密码长度必须介于 12 和 30 之间',
-      inputValidator: value => {
-        if (/<|>|"|'|\||\\/.test(value)) {
-          return '不能包含非法字符：< > " \' \\ |';
-        }
-      }
-    })
-  );
-  if (!err && res) {
-    await api.resetUserPwd(row.userId, res.value);
-    modal.msgSuccess('修改成功，新密码是：' + res.value);
-  }
+  await api.resetUserPwd(row.userId, 'a123456');
+  modal.msgSuccess('密码已重置为临时密码 a123456，用户首次登录时需设置新密码');
 };
 
 /** 详情按钮操作 */

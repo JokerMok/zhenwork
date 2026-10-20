@@ -1,0 +1,32 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import assert from 'node:assert/strict';
+const require=createRequire(path.resolve(process.env.ZHENWORK_MODULES,'package.json'));
+const {chromium}=require('playwright');
+const secrets=JSON.parse(await fs.readFile(process.env.ZHENWORK_CREDENTIALS,'utf8'));
+const out=path.resolve(process.env.ZHENWORK_EVIDENCE);await fs.mkdir(out,{recursive:true});
+const report={time:new Date().toISOString(),checks:[],errors:[],status:'RUNNING'};
+const browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+try {
+ const context=await browser.newContext({viewport:{width:1440,height:1000}});const page=await context.newPage();
+ page.on('pageerror',e=>report.errors.push(e.message));
+ await page.goto('https://zhenwork-admin.shizibandu.icu/admin/',{waitUntil:'networkidle'});
+ await page.locator('input[type=text]').first().fill(secrets.accounts[0].username);
+ await page.locator('input[type=password]').fill(secrets.accounts[0].password);
+ await page.locator('button.submit-button').click();
+ await page.waitForURL(url=>!url.pathname.includes('login'),{timeout:30000});
+ await page.getByText('系统管理',{exact:true}).first().waitFor({timeout:30000});
+ report.checks.push('Real Chromium admin login and management navigation rendered over validated public HTTPS');
+ const state=await page.evaluate(async(client)=>({info:await fetch('/api/system/user/getInfo',{headers:{clientid:client}}).then(r=>r.json()),brand:await fetch('/api/ai/brand').then(r=>r.json())}),secrets.clientId);
+ assert.equal(state.info.code,200);assert.equal(state.brand.data.productName,'ZhenWork');
+ const cookies=await context.cookies();const cookie=cookies.find(c=>c.name==='__Host-workspace-rc2');assert(cookie?.secure&&cookie.httpOnly&&cookie.sameSite==='Strict');
+ report.checks.push('Admin same-origin API route and Secure HttpOnly Strict host cookie');
+ await page.screenshot({path:path.join(out,'admin.png'),fullPage:true});
+ const foreign=await context.request.post('https://zhenwork-admin.shizibandu.icu/api/auth/logout',{headers:{Origin:'https://attacker.invalid',clientid:secrets.clientId},data:{}});assert.equal(foreign.status(),403);
+ report.checks.push('Foreign Origin mutation rejected through the public admin proxy');
+ const logout=await page.evaluate(async(client)=>fetch('/api/auth/logout',{method:'POST',headers:{'Content-Type':'application/json',clientid:client},body:'{}'}).then(r=>r.json()),secrets.clientId);
+ assert.equal(logout.code,200);
+ const denied=await context.request.get('https://zhenwork-admin.shizibandu.icu/api/system/user/getInfo',{headers:{clientid:secrets.clientId}});assert.equal((await denied.json()).code,401);
+ report.checks.push('Admin logout revokes the previous identity');assert.deepEqual(report.errors,[]);report.status='PASS';
+} catch(e) {report.status='FAIL';report.error=e.message;process.exitCode=1;} finally {await browser.close();await fs.writeFile(path.join(out,'admin.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));}

@@ -7,6 +7,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
@@ -35,12 +36,13 @@ public class WorkspaceMcpRelayController {
     @PostMapping("/{id}/relay")
     public ResponseEntity<byte[]> relay(@PathVariable UUID id, @RequestBody byte[] body,
                                         @RequestHeader(value = "Mcp-Session-Id", required = false) String sessionId,
-                                        @RequestHeader(value = "MCP-Protocol-Version", required = false) String protocolVersion) {
+                                        @RequestHeader(value = "MCP-Protocol-Version", required = false) String protocolVersion,
+                                        @RequestHeader(value = "X-ZhenWork-Idempotency-Key", required = false) String idempotencyKey) {
         long user = principals.require("ai:mcp:use").userId();
-        return relayAuthorized(id, body, sessionId, protocolVersion, user, () -> principals.require("ai:mcp:use"));
+        return relayAuthorized(id, body, sessionId, protocolVersion, idempotencyKey,user, () -> principals.require("ai:mcp:use"));
     }
 
-    ResponseEntity<byte[]> relayAuthorized(UUID id, byte[] body, String sessionId, String protocolVersion,
+    ResponseEntity<byte[]> relayAuthorized(UUID id, byte[] body, String sessionId, String protocolVersion,String idempotencyKey,
                                            long user, Runnable recheck) {
         recheck.run();
         if (body.length == 0 || body.length > 1_048_576) throw new WorkspaceDenied(400, "InvalidMcpRequest");
@@ -61,7 +63,9 @@ public class WorkspaceMcpRelayController {
                 throw new WorkspaceDenied(403, "McpToolNotAllowed");
         }
         URI destination = destination(plan);
-        var builder = HttpRequest.newBuilder(destination).timeout(Duration.ofSeconds(60))
+        IdempotentCall idempotent = "tools/call".equals(method) ? idempotentCall(id, user, message, plan,idempotencyKey) : null;
+        if (idempotent != null && idempotent.cached() != null) return idempotent.cached();
+        var builder = HttpRequest.newBuilder(destination).timeout(Duration.ofSeconds(timeoutSeconds(plan)))
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
             .POST(HttpRequest.BodyPublishers.ofByteArray(body));
@@ -75,25 +79,26 @@ public class WorkspaceMcpRelayController {
                 .followRedirects(HttpClient.Redirect.NEVER).build()
                 .send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
             try (InputStream stream = upstream.body()) { data = stream.readNBytes(1_048_577); }
-        } catch (Exception e) { throw new WorkspaceDenied(502, "McpUpstreamUnavailable"); }
-        if (data.length > 1_048_576) throw new WorkspaceDenied(502, "McpResponseTooLarge");
-        recheck.run();
-        access.owned(id, user);
+        } catch (InterruptedException e) {Thread.currentThread().interrupt();if(idempotent!=null)markUnknown(idempotent);throw new WorkspaceDenied(502, "McpUpstreamInterrupted");
+        } catch (Exception e) {if(idempotent!=null)markUnknown(idempotent);throw new WorkspaceDenied(502, "McpUpstreamUnavailable"); }
+        if (data.length > 1_048_576) {if(idempotent!=null)markUnknown(idempotent);throw new WorkspaceDenied(502, "McpResponseTooLarge");}
+        try{recheck.run();access.owned(id, user);}catch(RuntimeException e){if(idempotent!=null)markUnknown(idempotent);throw e;}
         String contentType = upstream.headers().firstValue("content-type").orElse("application/json");
-        if (!contentType.startsWith("application/json") && !contentType.startsWith("text/event-stream"))
-            throw new WorkspaceDenied(502, "McpResponseTypeInvalid");
-        Map<String,Object> metadata = new LinkedHashMap<>();
-        metadata.put("connectionId", id.toString());
-        metadata.put("method", method);
-        metadata.put("status", upstream.statusCode());
-        if ("tools/call".equals(method)) metadata.put("toolName", ((Map<?,?>)message.get("params")).get("name"));
-        jdbc.update("INSERT INTO ai_security_event(id,actor_user_id,action,resource_id,metadata) VALUES(?,?,?,?,?::jsonb)",
-            UUID.randomUUID(), user, "mcp.relay", connection.get("resource_id"), JsonUtils.toJsonString(metadata));
+        if (!contentType.startsWith("application/json") && !contentType.startsWith("text/event-stream")){if(idempotent!=null)markUnknown(idempotent);throw new WorkspaceDenied(502, "McpResponseTypeInvalid");}
         var headers = new HttpHeaders();
         headers.set(HttpHeaders.CONTENT_TYPE, contentType);
         headers.set(HttpHeaders.CACHE_CONTROL, "no-store");
         upstream.headers().firstValue("mcp-session-id").ifPresent(value -> headers.set("Mcp-Session-Id", value));
-        return new ResponseEntity<>(data, headers, HttpStatusCode.valueOf(upstream.statusCode()));
+        var response=new ResponseEntity<>(data, headers, HttpStatusCode.valueOf(upstream.statusCode()));
+        if(idempotent!=null)complete(idempotent,response);
+        Map<String,Object> metadata = new LinkedHashMap<>();
+        metadata.put("connectionId", id.toString());
+        metadata.put("method", method);
+        metadata.put("status", upstream.statusCode());
+        if ("tools/call".equals(method)) {metadata.put("toolName", ((Map<?,?>)message.get("params")).get("name"));metadata.put("effect",idempotent==null?"READ":idempotent.effect());}
+        jdbc.update("INSERT INTO ai_security_event(id,actor_user_id,action,resource_id,metadata) VALUES(?,?,?,?,?::jsonb)",
+            UUID.randomUUID(), user, "mcp.relay", connection.get("resource_id"), JsonUtils.toJsonString(metadata));
+        return response;
     }
 
     /** Admin-approved destinations only. Do not follow redirects or accept private DNS answers. */
@@ -146,12 +151,33 @@ public class WorkspaceMcpRelayController {
             .map(tool -> Objects.toString(tool.get("name"), "")).toList();
         if (((List<?>)plan.get("allowedTools")).stream().anyMatch(name -> !names.contains(name.toString())))
             throw new WorkspaceDenied(409, "McpAllowedToolMissing");
-        return tools;
+        Map<String,String> effects=WorkspaceMcpAccess.effects(plan);List<Map<String,Object>> annotated=new ArrayList<>();for(Object value:tools){if(!(value instanceof Map<?,?> tool))continue;String name=Objects.toString(tool.get("name"),"");Map<String,Object> copy=new LinkedHashMap<>();tool.forEach((key,item)->copy.put(key.toString(),item));copy.put("effect",effects.getOrDefault(name,"APPROVAL"));annotated.add(copy);}return annotated;
+    }
+
+    private IdempotentCall idempotentCall(UUID connection,long user,Map<String,Object> message,Map<String,Object> plan,String idempotencyKey){
+        Map<?,?> params=(Map<?,?>)message.get("params");String tool=Objects.toString(params.get("name"),"");String effect=WorkspaceMcpAccess.effects(plan).getOrDefault(tool,"APPROVAL");if("READ".equals(effect))return null;
+        if(!(params.get("arguments") instanceof Map<?,?> arguments))throw new WorkspaceDenied(400,"McpToolArgumentsRequired");UUID key;try{key=UUID.fromString(idempotencyKey);}catch(Exception e){throw new WorkspaceDenied(400,"McpIdempotencyKeyRequired");}
+        Map<String,Object> canonical=new TreeMap<>();arguments.forEach((name,value)->canonical.put(name.toString(),value));String digest=WorkspaceTools.hash(connection+"\n"+tool+"\n"+JsonUtils.toJsonString(canonical));String operation="mcp.call";
+        var prior=jdbc.queryForList("SELECT input_hash,result::text FROM ai_command WHERE actor_user_id=? AND operation=? AND idempotency_key=?",user,operation,key);if(!prior.isEmpty()){if(!digest.equals(prior.getFirst().get("input_hash")))throw new WorkspaceDenied(409,"IdempotencyConflict");return existing(user,key,digest,effect,prior.getFirst().get("result").toString());}
+        try{jdbc.update("INSERT INTO ai_command(actor_user_id,operation,idempotency_key,input_hash,result) VALUES(?,?,?,?,?::jsonb)",user,operation,key,digest,"{\"state\":\"PENDING\"}");}catch(DuplicateKeyException e){var row=jdbc.queryForMap("SELECT input_hash,result::text FROM ai_command WHERE actor_user_id=? AND operation=? AND idempotency_key=?",user,operation,key);if(!digest.equals(row.get("input_hash")))throw new WorkspaceDenied(409,"IdempotencyConflict");return existing(user,key,digest,effect,row.get("result").toString());}
+        return new IdempotentCall(user,key,digest,effect,null);
+    }
+    private IdempotentCall existing(long user,UUID key,String digest,String effect,String json){Map<String,Object> value=JsonUtils.parseMap(json);String state=Objects.toString(value.get("state"),"");if("COMPLETE".equals(state))return new IdempotentCall(user,key,digest,effect,cached(value));if("PENDING".equals(state))throw new WorkspaceDenied(409,"McpCallInProgress");throw new WorkspaceDenied(409,"McpCallOutcomeUnknown");}
+    private ResponseEntity<byte[]> cached(Map<String,Object> value){byte[] body=Base64.getDecoder().decode(value.get("body").toString());var headers=new HttpHeaders();headers.set(HttpHeaders.CONTENT_TYPE,value.get("contentType").toString());headers.set(HttpHeaders.CACHE_CONTROL,"no-store");if(value.get("sessionId")!=null)headers.set("Mcp-Session-Id",value.get("sessionId").toString());return new ResponseEntity<>(body,headers,HttpStatusCode.valueOf(((Number)value.get("status")).intValue()));}
+    private void complete(IdempotentCall call,ResponseEntity<byte[]> response){Map<String,Object> value=new LinkedHashMap<>();value.put("state","COMPLETE");value.put("status",response.getStatusCode().value());value.put("contentType",Objects.toString(response.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE),"application/json"));value.put("body",Base64.getEncoder().encodeToString(Objects.requireNonNullElse(response.getBody(),new byte[0])));String session=response.getHeaders().getFirst("Mcp-Session-Id");if(session!=null)value.put("sessionId",session);jdbc.update("UPDATE ai_command SET result=?::jsonb WHERE actor_user_id=? AND operation='mcp.call' AND idempotency_key=? AND input_hash=?",JsonUtils.toJsonString(value),call.user(),call.key(),call.digest());}
+    private void markUnknown(IdempotentCall call){jdbc.update("UPDATE ai_command SET result='{\"state\":\"UNKNOWN\"}'::jsonb WHERE actor_user_id=? AND operation='mcp.call' AND idempotency_key=? AND input_hash=? AND result->>'state'='PENDING'",call.user(),call.key(),call.digest());}
+    private record IdempotentCall(long user,UUID key,String digest,String effect,ResponseEntity<byte[]> cached){}
+
+    private int timeoutSeconds(Map<String,Object> plan) {
+        Object value = plan.get("timeoutSeconds");
+        if (!(value instanceof Number number) || number.intValue() < 5 || number.intValue() > 60)
+            throw new WorkspaceDenied(400, "InvalidMcpTimeout");
+        return number.intValue();
     }
 
     private ProbeResponse probeExchange(URI uri, Map<String,Object> plan, String raw,
                                                String session, String protocol) {
-        var request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20))
+        var request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(timeoutSeconds(plan)))
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream");
         if (session != null && session.matches("[A-Za-z0-9._-]{1,128}")) request.header("Mcp-Session-Id", session);

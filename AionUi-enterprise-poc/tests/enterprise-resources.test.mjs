@@ -97,8 +97,10 @@ test('authorized RC2 assistant becomes a native AionCore assistant with executab
 
 test('MCP loopback rejects missing capability, forwards JSON-RPC and closes on logout', async () => {
   const methods = [];
-  const client = { relayMcp: async (_id, raw) => {
+  const idempotencyKeys = [];
+  const client = { relayMcp: async (_id, raw, headers) => {
     methods.push(JSON.parse(raw).method);
+    if (headers['x-zhenwork-idempotency-key']) idempotencyKeys.push(headers['x-zhenwork-idempotency-key']);
     return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [] } }),
       { status: 200, headers: { 'content-type': 'application/json' } });
   } };
@@ -112,7 +114,13 @@ test('MCP loopback rejects missing capability, forwards JSON-RPC and closes on l
       headers: { Authorization: `Bearer ${key}` } });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).jsonrpc, '2.0');
-    assert.deepEqual(methods, ['tools/list']);
+    const call = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'send_mail', arguments: { subject: 'Ready' } } });
+    await fetch(url, { method: 'POST', body: call, headers: { Authorization: `Bearer ${key}` } });
+    await fetch(url, { method: 'POST', body: call, headers: { Authorization: `Bearer ${key}` } });
+    assert.deepEqual(methods, ['tools/list', 'tools/call', 'tools/call']);
+    assert.match(idempotencyKeys[0], /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+    assert.equal(idempotencyKeys[0], idempotencyKeys[1]);
   } finally { await proxy.stop(); }
   await assert.rejects(fetch(url, { method: 'POST', body }));
 });
@@ -285,7 +293,7 @@ test('next managed login replaces v1 Skill rules with the authorized v2 source',
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 
-test('failed Skill import leaves the prior managed Skill and assistant in Core', async () => {
+test('failed Skill import is isolated and revokes the stale managed Skill without stopping Core', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'aion-sync-failure-'));
   const skillDir = path.join(dir, 'enterprise-succinct');
   await fs.mkdir(skillDir);
@@ -300,19 +308,25 @@ test('failed Skill import leaves the prior managed Skill and assistant in Core',
     if (route === '/api/skills') return new Response(JSON.stringify({ success: true, data: [] }));
     if (route === '/api/skills/import') return new Response(JSON.stringify({ success: true,
       data: { skill_name: '', skill_names: [], failed: [{ code: 'SKILL_INVALID_FRONTMATTER' }] } }));
+    if (route === '/api/assistants') return new Response(JSON.stringify({ success: true, data: [] }));
+    if (route === '/api/skills/enterprise-succinct' && options.method === 'DELETE') {
+      return new Response(JSON.stringify({ success: true }));
+    }
     throw new Error(`Unexpected route ${route}`);
   };
   try {
-    await assert.rejects(syncEnterpriseResources(32123, 'core-token', {
+    const result = await syncEnterpriseResources(32123, 'core-token', {
       AION_ENTERPRISE_ROLE: 'worker', AION_ENTERPRISE_PROFILE_DIR: dir,
       AION_ENTERPRISE_SKILL_PATH: skillDir, AION_ENTERPRISE_SKILL_NAME: 'enterprise-succinct',
-    }, fetchStub), /did not match/);
-    assert.deepEqual(mutations, []);
-    assert.deepEqual(JSON.parse(await fs.readFile(path.join(dir, 'enterprise-managed-resources.json'), 'utf8')), manifest);
+    }, fetchStub);
+    assert.deepEqual(result.issues, [{ type: 'SKILL', id: '', code: 'IMPORT_FAILED' }]);
+    assert.deepEqual(mutations, ['/api/skills/enterprise-succinct']);
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(dir, 'enterprise-managed-resources.json'), 'utf8')),
+      { skills: [], mcpIds: [], assistantIds: [] });
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 
-test('a personal Skill name is not overwritten by RC2 resource sync', async () => {
+test('a personal Skill name conflict is isolated from the remaining RC2 resource sync', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'aion-skill-collision-'));
   const mutations = [];
   const fetchStub = async (url, options) => {
@@ -321,14 +335,16 @@ test('a personal Skill name is not overwritten by RC2 resource sync', async () =
     if (route === '/api/mcp/servers') return new Response(JSON.stringify({ success: true, data: [] }));
     if (route === '/api/skills') return new Response(JSON.stringify({ success: true,
       data: [{ name: 'personal-skill', source: 'custom' }] }));
+    if (route === '/api/assistants') return new Response(JSON.stringify({ success: true, data: [] }));
     throw new Error(`Unexpected route ${route}`);
   };
   try {
-    await assert.rejects(syncEnterpriseResources(32123, 'core-token', {
+    const result = await syncEnterpriseResources(32123, 'core-token', {
       AION_ENTERPRISE_ROLE: 'worker', AION_ENTERPRISE_PROFILE_DIR: dir,
       AION_ENTERPRISE_SKILL_PATH: path.join(dir, 'stage', 'personal-skill'),
       AION_ENTERPRISE_SKILL_NAME: 'personal-skill', AION_ENTERPRISE_SKILL_ID: 'skill-id',
-    }, fetchStub), /Personal Skill name conflicts/);
+    }, fetchStub);
+    assert.deepEqual(result.issues, [{ type: 'SKILL', id: 'skill-id', code: 'NAME_CONFLICT' }]);
     assert.deepEqual(mutations, []);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
@@ -355,7 +371,7 @@ test('resource bundle rejects a Skill path that escapes the employee profile thr
   }
 });
 
-test('failed second Skill import removes the first new managed Skill', async () => {
+test('failed second Skill import keeps the first successful managed Skill', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'aion-resource-rollback-'));
   try {
     const stage = path.join(dir, 'stage');
@@ -382,15 +398,16 @@ test('failed second Skill import removes the first new managed Skill', async () 
         const name = path.basename(JSON.parse(options.body).skill_path);
         return new Response(JSON.stringify({ success: true, data: { skill_name: name === 'test-skill-0' ? name : '' } }));
       }
-      if (route === '/api/skills/test-skill-0' && options.method === 'DELETE') {
-        return new Response(JSON.stringify({ success: true }));
-      }
+      if (route === '/api/assistants') return new Response(JSON.stringify({ success: true, data: [] }));
       throw new Error(`Unexpected route ${route}`);
     };
-    await assert.rejects(syncEnterpriseResources(32123, 'core-token', {
+    const result = await syncEnterpriseResources(32123, 'core-token', {
       AION_ENTERPRISE_ROLE: 'worker', AION_ENTERPRISE_PROFILE_DIR: dir,
       AION_ENTERPRISE_RESOURCES_PATH: bundle,
-    }, fetchStub), /did not match/);
-    assert(calls.includes('DELETE /api/skills/test-skill-0'));
+    }, fetchStub);
+    assert.deepEqual(result.issues, [{ type: 'SKILL', id: ids[1], code: 'IMPORT_FAILED' }]);
+    assert(!calls.includes('DELETE /api/skills/test-skill-0'));
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(dir, 'enterprise-managed-resources.json'), 'utf8')),
+      { skills: ['test-skill-0'], mcpIds: [], assistantIds: [] });
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });

@@ -1,0 +1,12 @@
+[Unit]
+Description=ZhenWork database cache and private bridge readiness
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+RemainAfterExit=true
+ExecStart=/usr/bin/docker compose -p zhenwork -f /srv/apps/zhenwork/compose.yaml --env-file /srv/apps/zhenwork/.env up -d --wait db redis bridge-anchor
+TimeoutStartSec=120
+[Install]
+WantedBy=multi-user.target

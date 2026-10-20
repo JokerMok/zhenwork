@@ -65,9 +65,9 @@ export async function syncEnterpriseModelProvider(corePort, localToken, config =
   const exists = Boolean(provider);
   const body = {
     ...(exists ? {} : { id: PROVIDER_ID }), platform: 'custom', name,
-    base_url: `http://${host}:${proxyPort}`, api_key: proxyKey, models: [code], enabled: true,
-    model_protocols: { [code]: 'openai' },
-    model_settings: { [code]: { openai_api_mode: 'chat_completions' } },
+    base_url: `http://${host}:${proxyPort}`, api_key: proxyKey, models: config.AION_ENTERPRISE_MODELS_JSON ? JSON.parse(config.AION_ENTERPRISE_MODELS_JSON).map((item) => item.code) : [code], enabled: true,
+    model_protocols: Object.fromEntries((config.AION_ENTERPRISE_MODELS_JSON ? JSON.parse(config.AION_ENTERPRISE_MODELS_JSON) : [{code}]).map((item) => [item.code, 'openai'])),
+    model_settings: Object.fromEntries((config.AION_ENTERPRISE_MODELS_JSON ? JSON.parse(config.AION_ENTERPRISE_MODELS_JSON) : [{code}]).map((item) => [item.code, { openai_api_mode: 'chat_completions' }])),
     capabilities: [{ type: 'text' }], is_full_url: false,
   };
   const saved = await fetchImpl(`${base}/api/providers${exists ? `/${PROVIDER_ID}` : ''}`, {

@@ -28,7 +28,8 @@ public class WorkspaceBackgroundModelRelayController {
         consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<StreamingResponseBody> chat(@PathVariable UUID grantId, @PathVariable UUID modelId,
         @RequestBody String raw, @RequestHeader("Authorization") String serviceAuthorization,
-        @RequestHeader("X-Aion-Background-Secret") String secret) {
+        @RequestHeader("X-Aion-Background-Secret") String secret,
+        @RequestHeader(value="X-Aion-Conversation-Id",required=false) String conversationId) {
         execution.checkBackgroundService(serviceAuthorization);
         var authorized = grants.require(grantId, secret);
         Runnable recheck = () -> {
@@ -37,6 +38,6 @@ public class WorkspaceBackgroundModelRelayController {
                 throw new WorkspaceDenied(401, "BackgroundAuthorizationRevoked");
             access.checkIdentity(current.userId(), current.authVersion());
         };
-        return relay.relayAuthorized(modelId, raw, authorized.userId(), authorized.authVersion(), recheck);
+        return relay.relayAuthorized(modelId, raw, authorized.userId(), authorized.authVersion(), recheck,conversationId);
     }
 }

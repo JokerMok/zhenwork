@@ -20,6 +20,7 @@ public class WorkspaceModelAdminController {
     @GetMapping("/providers/{id}") public R<?> provider(@PathVariable UUID id){providerActor();return R.ok(service.provider(id));}
     @PostMapping("/providers") public R<?> createProvider(@Valid @RequestBody Provider input){return R.ok(service.saveProvider(null,providerActor(),input));}
     @PutMapping("/providers/{id}") public R<?> updateProvider(@PathVariable UUID id,@Valid @RequestBody Provider input){return R.ok(service.saveProvider(id,providerActor(),input));}
+    @DeleteMapping("/providers/{id}/secret") public R<?> clearProviderSecret(@PathVariable UUID id,@RequestParam long expectedVersion){service.clearProviderSecret(id,providerActor(),expectedVersion);return R.ok();}
     @GetMapping("/models") public R<?> models(@RequestParam(defaultValue="1") int page){modelActor();return R.ok(service.models(page));}
     @PostMapping("/models") public R<?> createModel(@Valid @RequestBody Model input){return R.ok(service.saveModel(null,modelActor(),input));}
     @PutMapping("/models/{id}") public R<?> updateModel(@PathVariable UUID id,@Valid @RequestBody Model input){return R.ok(service.saveModel(id,modelActor(),input));}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "currentRelease": "CURRENT_RELEASE_ID",
+  "targetRelease": "VERIFIED_TARGET_RELEASE_ID",
+  "targetSourceSha": "TARGET_SOURCE_SHA40",
+  "additiveSchemaCompatible": true,
+  "databaseMigrations": [
+    {"version": "0001_example.sql", "sha256": "CURRENT_DATABASE_HASH64"}
+  ],
+  "targetMigrationPrefix": [
+    {"version": "0001_example.sql", "sha256": "TARGET_PREFIX_HASH64"}
+  ],
+  "reviewedBy": "REVIEWER",
+  "reviewedAt": "ISO-8601_TIMESTAMP",
+  "rationale": "Why this older application can safely use every listed additive migration while the database is retained."
+}

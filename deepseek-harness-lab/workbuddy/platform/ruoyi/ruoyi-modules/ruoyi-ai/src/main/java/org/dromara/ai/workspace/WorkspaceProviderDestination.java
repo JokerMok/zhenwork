@@ -13,7 +13,13 @@ public final class WorkspaceProviderDestination {
             if(type.equals("ARK")&&!normalized.equals("https://ark.cn-beijing.volces.com/api/v3"))throw new IllegalArgumentException();
             if(type.equals("OPENAI")&&!normalized.equals("https://api.openai.com/v1"))throw new IllegalArgumentException();
             if(type.equals("DEEPSEEK")&&!normalized.equals("https://api.deepseek.com/v1"))throw new IllegalArgumentException();
-            if(host.matches("[0-9.]+")||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal"))throw new IllegalArgumentException();return normalized;
+            if(host.matches("[0-9.]+")||host.endsWith(".localhost")||host.endsWith(".local")||host.endsWith(".internal"))throw new IllegalArgumentException();
+            for(var address:java.net.InetAddress.getAllByName(host)) {
+                if(address.isAnyLocalAddress()||address.isLoopbackAddress()||address.isLinkLocalAddress()||address.isSiteLocalAddress()||address.isMulticastAddress())throw new IllegalArgumentException();
+                byte[] raw=address.getAddress();
+                if(raw.length==4){int a=raw[0]&255,b=raw[1]&255;if(a==0||a>=224||(a==100&&b>=64&&b<=127)||(a==198&&(b==18||b==19)))throw new IllegalArgumentException();}
+            }
+            return normalized;
         }catch(Exception e){throw new WorkspaceDenied(400,"InvalidPublicProviderEndpoint");}
     }
 }

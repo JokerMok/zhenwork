@@ -25,7 +25,9 @@ public class WorkspaceResourceController {
     private long actor(){var actor=principals.current();if(actor.mustChangePassword())throw new WorkspaceDenied(403,"PasswordChangeRequired");return actor.userId();}
     @PostMapping("/resources") public R<?> create(@Valid @RequestBody Create input){return R.ok(resources.create(actor(),input.resourceType(),input.name(),Objects.toString(input.description(),""),Boolean.TRUE.equals(input.enterprise()),input.config(),input.idempotencyKey()));}
     @GetMapping("/resources") public R<?> list(@RequestParam(defaultValue="ASSISTANT") String type,@RequestParam(defaultValue="mine") String scope,@RequestParam(defaultValue="1") int page){return R.ok(resources.list(actor(),type,scope,page));}
-    @GetMapping("/resources/{id}") public R<?> get(@PathVariable UUID id){return R.ok(resources.get(id,actor()));}
+    @GetMapping("/resources/{id}") public R<?> get(@PathVariable UUID id,@RequestParam(defaultValue="false") boolean active){return R.ok(active?resources.active(id,actor()):resources.get(id,actor()));}
+    @GetMapping("/resources/{id}/versions") public R<?> versions(@PathVariable UUID id){return R.ok(resources.versions(id,actor()));}
+    @GetMapping("/resources/{id}/versions/{version}") public R<?> version(@PathVariable UUID id,@PathVariable @Min(1) int version){return R.ok(resources.version(id,version,actor()));}
     @GetMapping("/resources/{id}/readiness") public R<?> readiness(@PathVariable UUID id){return R.ok(readiness.check(id,actor()));}
     @GetMapping("/resources/{id}/publication-check") public R<?> publicationCheck(@PathVariable UUID id,@RequestParam int version){return R.ok(publication.publicationCheck(id,version,actor()));}
     @PutMapping("/resources/{id}") public R<?> edit(@PathVariable UUID id,@Valid @RequestBody Edit input){return R.ok(resources.edit(id,actor(),input.expectedVersion(),input.name(),Objects.toString(input.description(),""),input.config()));}

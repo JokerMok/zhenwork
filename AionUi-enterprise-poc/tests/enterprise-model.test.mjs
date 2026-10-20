@@ -61,6 +61,32 @@ test('web model proxy requires a Core conversation route and forwards its ID', a
   } finally { await proxy.stop(); }
 });
 
+test('stable RC2 model aliases do not cross providers that share one vendor code', async () => {
+  const models = [
+    { id: 'provider-model-a', code: 'rc2-provider-model-a', upstreamCode: 'shared-code', name: 'Provider A' },
+    { id: 'provider-model-b', code: 'rc2-provider-model-b', upstreamCode: 'shared-code', name: 'Provider B' },
+  ];
+  const forwarded = [];
+  const proxy = new EnterpriseModelProxy({ model: models[0], models, client: {
+    relayModel: async (id, raw) => {
+      forwarded.push({ id, model: JSON.parse(raw).model });
+      return new Response('data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+    },
+  } });
+  const { port, key } = await proxy.start();
+  const request = (selected) => fetch(`http://127.0.0.1:${port}/chat/completions`, { method: 'POST',
+    headers: { Authorization: `Bearer ${key}` }, body: JSON.stringify({ model: selected, stream: true }) });
+  try {
+    assert.equal((await request('shared-code')).status, 400);
+    assert.equal((await request('rc2-provider-model-a')).status, 200);
+    assert.equal((await request('rc2-provider-model-b')).status, 200);
+    assert.deepEqual(forwarded, [
+      { id: 'provider-model-a', model: 'shared-code' },
+      { id: 'provider-model-b', model: 'shared-code' },
+    ]);
+  } finally { await proxy.stop(); }
+});
+
 test('client cancellation aborts the RC2 stream', async () => {
   let upstreamSignal;
   const client = { relayModel: async (_id, _raw, signal) => {

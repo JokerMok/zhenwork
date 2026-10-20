@@ -8,9 +8,10 @@ const MAX_BODY_BYTES = 1_048_576;
 // Aionrs speaks OpenAI Chat Completions. This per-login loopback endpoint
 // presents that wire format while RC2 retains the real provider credential.
 export class EnterpriseModelProxy {
-  constructor({ client, model, onRevoked = () => {}, requireConversationId = false }) {
+  constructor({ client, model, models = [model], onRevoked = () => {}, requireConversationId = false }) {
     this.client = client;
     this.model = model;
+    this.models = models;
     this.onRevoked = onRevoked;
     this.requireConversationId = requireConversationId;
     this.key = crypto.randomBytes(32).toString('hex');
@@ -76,11 +77,16 @@ export class EnterpriseModelProxy {
       const raw = Buffer.concat(chunks).toString('utf8');
       let payload;
       try { payload = JSON.parse(raw); } catch { response.writeHead(400).end(); return; }
-      if (payload?.model !== this.model.code || payload?.stream !== true) {
+      // Stable internal IDs disambiguate two providers exposing the same model code.
+      // Legacy conversations using a vendor code remain valid only when unambiguous.
+      const legacy = this.models.filter((item) => item.upstreamCode === payload?.model);
+      const selected = this.models.find((item) => item.code === payload?.model) || (legacy.length === 1 ? legacy[0] : undefined);
+      if (!selected || payload?.stream !== true) {
         response.writeHead(400).end();
         return;
       }
-      const upstream = await this.client.relayModel(this.model.id, raw, controller.signal, conversationId);
+      const forwarded = selected.upstreamCode ? JSON.stringify({ ...payload, model: selected.upstreamCode }) : raw;
+      const upstream = await this.client.relayModel(selected.id, forwarded, controller.signal, conversationId);
       const contentType = upstream.headers.get('content-type') || '';
       if (upstream.status === 401 || upstream.status === 403 || (upstream.ok && !contentType.includes('text/event-stream'))) {
         let errorCode;

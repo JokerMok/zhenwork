@@ -17,11 +17,19 @@ public class WorkspacePublication {
   return Map.of("ready",issues.isEmpty(),"issues",issues);
  }
  private List<Map<String,String>> dependencyIssues(UUID id,int version,String type){
-  if(!"ASSISTANT".equals(type))return List.of();
   var versions=jdbc.queryForList("SELECT config::text FROM ai_resource_version WHERE resource_id=? AND version=?",id,version);
   if(versions.size()!=1)throw new WorkspaceDenied(404,"VersionNotFound");
   var config=JsonUtils.parseMap(versions.getFirst().get("config").toString());
   List<Map<String,String>> issues=new ArrayList<>();
+  if("SKILL".equals(type)){
+   var manifest=(Map<?,?>)config.get("manifest");
+   for(var entry:Map.of("dependencies","SKILL","requiredTools","TOOL").entrySet())for(Object raw:(List<?>)(manifest.containsKey(entry.getKey())?manifest.get(entry.getKey()):List.of())){
+    UUID dependency=UUID.fromString(raw.toString());boolean active=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_resource WHERE id=? AND resource_type=? AND enabled AND NOT security_disabled AND lifecycle_state='ACTIVE' AND published_version IS NOT NULL)",Boolean.class,dependency,entry.getValue()));
+    if(!active)issues.add(Map.of("type",entry.getValue(),"id",dependency.toString(),"code","ResourceUnavailable"));
+   }
+   return issues;
+  }
+  if(!"ASSISTANT".equals(type))return List.of();
   UUID model=UUID.fromString(config.get("modelId").toString());
   boolean modelReady=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_model m JOIN ai_provider p ON p.id=m.provider_id WHERE m.id=? AND m.enabled AND m.streaming AND p.enabled)",Boolean.class,model));
   if(!modelReady)issues.add(Map.of("type","MODEL","id",model.toString(),"code","ModelUnavailable"));

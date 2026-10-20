@@ -34,6 +34,19 @@ export class EnterpriseMcpProxy {
     return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
   }
 
+  idempotencyKey(raw, headers, conversationId) {
+    let message;
+    try { message = JSON.parse(raw); } catch { return null; }
+    if (message?.method !== 'tools/call') return null;
+    const session = typeof headers['mcp-session-id'] === 'string' ? headers['mcp-session-id'] : '';
+    const hex = crypto.createHash('sha256').update([
+      this.connectionId, conversationId || '', session, raw,
+    ].join('\n')).digest('hex').slice(0, 32).split('');
+    hex[12] = '4';
+    hex[16] = '8';
+    return `${hex.slice(0, 8).join('')}-${hex.slice(8, 12).join('')}-${hex.slice(12, 16).join('')}-${hex.slice(16, 20).join('')}-${hex.slice(20).join('')}`;
+  }
+
   async handle(req, res) {
     res.setHeader('Cache-Control', 'no-store');
     const conversationId = /^\/conversations\/([A-Za-z0-9_-]{1,100})\/mcp$/.exec(req.url || '')?.[1];
@@ -54,7 +67,10 @@ export class EnterpriseMcpProxy {
       }
       const raw = Buffer.concat(chunks).toString('utf8');
       try { JSON.parse(raw); } catch { res.writeHead(400).end(); return; }
-      const upstream = await this.client.relayMcp(this.connectionId, raw, req.headers, controller.signal, conversationId);
+      const idempotencyKey = this.idempotencyKey(raw, req.headers, conversationId);
+      const relayHeaders = idempotencyKey ? { ...req.headers,
+        'x-zhenwork-idempotency-key': idempotencyKey } : req.headers;
+      const upstream = await this.client.relayMcp(this.connectionId, raw, relayHeaders, controller.signal, conversationId);
       const data = Buffer.from(await upstream.arrayBuffer());
       if (data.length > MAX_BYTES) { res.writeHead(502).end(); return; }
       let revoked = upstream.status === 401 || upstream.status === 403;

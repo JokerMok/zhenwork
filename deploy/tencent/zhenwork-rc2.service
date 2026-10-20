@@ -1,0 +1,27 @@
+[Unit]
+Description=ZhenWork RC2 identity and enterprise control plane
+Requires=zhenwork-infra.service docker.service
+After=network-online.target docker.service zhenwork-infra.service
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+[Service]
+Type=simple
+User=zhenwork
+Group=zhenwork
+WorkingDirectory=/srv/apps/zhenwork/shared
+ExecStart=/usr/bin/java -Xms128m -Xmx768m -XX:MaxMetaspaceSize=256m -XX:ActiveProcessorCount=2 -jar /srv/apps/zhenwork/current/rc2.jar --spring.profiles.active=rc2 --spring.config.additional-location=file:/srv/apps/zhenwork/shared/config/
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+MemoryHigh=1100M
+MemoryMax=1400M
+CPUQuota=150%
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/srv/apps/zhenwork/shared
+ProtectHome=true
+[Install]
+WantedBy=multi-user.target

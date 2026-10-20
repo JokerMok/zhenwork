@@ -113,12 +113,14 @@ export function pickDefaultAssistantSelectionKey(assistants: Assistant[]): strin
 type UseGuidAssistantSelectionOptions = {
   resetAssistant?: boolean;
   preselectAssistantId?: string;
+  preferredDefaultAssistantId?: string;
   locationKey?: string;
 };
 
 export const useGuidAssistantSelection = ({
   resetAssistant,
   preselectAssistantId,
+  preferredDefaultAssistantId,
   locationKey,
 }: UseGuidAssistantSelectionOptions): GuidAssistantSelectionResult => {
   const [selectedAssistantIdState, _setSelectedAssistantId] = useState<string | null>(null);
@@ -127,6 +129,13 @@ export const useGuidAssistantSelection = ({
   const [selectedThoughtLevelValue, _setSelectedThoughtLevelValue] = useState<string>('');
   const { assistants } = useCustomAgentsLoader();
   const managedAgentRuntimeCatalog = useManagedAgentRuntimeCatalog();
+  const resolveDefaultAssistantId = useCallback(
+    () =>
+      resolveAssistantSelectionKey(preferredDefaultAssistantId, assistants) ??
+      readPersistedGuidAssistantSelectionKey(assistants) ??
+      pickDefaultAssistantSelectionKey(assistants),
+    [assistants, preferredDefaultAssistantId]
+  );
 
   const setSelectedMode = useCallback(
     (mode: React.SetStateAction<string>, _options?: { persistPreference?: boolean }) => {
@@ -189,22 +198,18 @@ export const useGuidAssistantSelection = ({
 
     if (resetAssistant) {
       resetHandledRef.current = true;
-      const fallbackId =
-        readPersistedGuidAssistantSelectionKey(assistants) ?? pickDefaultAssistantSelectionKey(assistants);
-      _setSelectedAssistantId(fallbackId);
+      _setSelectedAssistantId(resolveDefaultAssistantId());
     }
-  }, [assistants, preselectAssistantId, resetAssistant]);
+  }, [assistants, preselectAssistantId, resetAssistant, resolveDefaultAssistantId]);
 
   useEffect(() => {
     if (assistants.length === 0) return;
     if (resetAssistant) return;
     if (preselectAssistantId && resolveAssistantSelectionKey(preselectAssistantId, assistants)) return;
     if (!selectedAssistantIdState || !assistants.some((assistant) => assistant.id === selectedAssistantIdState)) {
-      _setSelectedAssistantId(
-        readPersistedGuidAssistantSelectionKey(assistants) ?? pickDefaultAssistantSelectionKey(assistants)
-      );
+      _setSelectedAssistantId(resolveDefaultAssistantId());
     }
-  }, [assistants, preselectAssistantId, resetAssistant, selectedAssistantIdState]);
+  }, [assistants, preselectAssistantId, resetAssistant, resolveDefaultAssistantId, selectedAssistantIdState]);
 
   const selectedAssistant = useMemo(
     () =>

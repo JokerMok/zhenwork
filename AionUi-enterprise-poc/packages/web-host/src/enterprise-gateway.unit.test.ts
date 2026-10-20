@@ -76,6 +76,11 @@ beforeAll(async () => {
     port: 0,
     publicBrand: async () => publicBrandValue,
     login: async (username, password) => {
+      if (username === 'reset' && password === 'test') {
+        const error = new Error('Password change required');
+        Object.assign(error, { code: 'PASSWORD_CHANGE_REQUIRED' });
+        throw error;
+      }
       if (password !== 'test' || !['1', '2'].includes(username)) throw new Error('Invalid login');
       return {
         actor: { serverId: 'rc2', userId: username },
@@ -85,6 +90,9 @@ beforeAll(async () => {
         validate: async () => allowed.get(username) === true,
         close: async () => {},
       };
+    },
+    changePassword: async (username, oldPassword) => {
+      if (username !== 'reset' || oldPassword !== 'test') throw new Error('Invalid credential');
     },
     resume: async (rc2Cookie) => {
       if (rc2Cookie !== '__Host-workspace-rc2=valid-desktop-session') throw new Error('Invalid RC2 cookie');
@@ -840,4 +848,30 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
     await gateway.stop();
     await rm(staticDir, { recursive: true, force: true });
   }
+});
+
+
+test('reset password credentials require setup without granting a web identity or Core', async () => {
+  const before = started.length;
+  const result = await request('POST', '/enterprise/login', undefined, { username: 'reset', password: 'test' });
+  expect([result.status, JSON.parse(result.body).error]).toEqual([409, 'PASSWORD_CHANGE_REQUIRED']);
+  expect(result.headers['set-cookie']).toBeUndefined();
+  expect(started.length).toBe(before);
+});
+
+test('password setup reauthenticates the old password before changing it', async () => {
+  const result = await request('POST', '/enterprise/password', undefined, { username: 'reset', password: 'wrong', newPassword: 'Abcd1234' });
+  expect(result.status).toBe(401);
+});
+
+test('password setup accepts eight mixed letters and digits without issuing a web session', async () => {
+  const result = await request('POST', '/enterprise/password', undefined, { username: 'reset', password: 'test', newPassword: 'Abcd1234' });
+  expect(result.status).toBe(200);
+  expect(result.headers['set-cookie']).toBeUndefined();
+});
+
+test('password setup refuses weak format and foreign origins', async () => {
+  const payload = { username: 'reset', password: 'test', newPassword: '12345678' };
+  expect((await request('POST', '/enterprise/password', undefined, payload)).status).toBe(400);
+  expect((await request('POST', '/enterprise/password', undefined, { ...payload, newPassword: 'Abcd1234' }, 'https://foreign.invalid')).status).toBe(403);
 });

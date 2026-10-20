@@ -27,12 +27,17 @@ public class WorkspaceModelAdmin {
         String url=WorkspaceProviderDestination.validate(input.providerType(),input.baseUrl());
         if(!"OPENAI_CHAT".equals(input.protocol()))throw new WorkspaceDenied(400,"UnsupportedProtocol");
         String cipher=null;if(input.secret()!=null&&!input.secret().isBlank()){if(input.secret().contains("\n")||input.secret().contains("\r"))throw new WorkspaceDenied(400,"InvalidSecret");cipher=secrets.encrypt(input.secret());}
+        if(id!=null&&input.enabled()&&cipher==null&&!Boolean.TRUE.equals(provider(id).get("configured")))throw new WorkspaceDenied(400,"ProviderSecretRequired");
         UUID target=id==null?UUID.randomUUID():id;final String encrypted=cipher;
         tx.executeWithoutResult(status->{
             if(id==null){if(encrypted==null)throw new WorkspaceDenied(400,"ProviderSecretRequired");jdbc.update("INSERT INTO ai_provider(id,name,provider_type,base_url,protocol,secret_cipher,enabled,timeout_seconds,retry_count) VALUES(?,?,?,?,?,?,?,?,?)",target,input.name(),input.providerType(),url,input.protocol(),encrypted,input.enabled(),input.timeoutSeconds(),input.retryCount());}
             else{if(jdbc.update("UPDATE ai_provider SET name=?,provider_type=?,base_url=?,protocol=?,secret_cipher=COALESCE(?,secret_cipher),secret_updated_at=CASE WHEN ?::text IS NULL THEN secret_updated_at ELSE NOW() END,enabled=?,timeout_seconds=?,retry_count=?,version=version+1,updated_at=NOW() WHERE id=? AND version=?",input.name(),input.providerType(),url,input.protocol(),encrypted,encrypted,input.enabled(),input.timeoutSeconds(),input.retryCount(),id,input.expectedVersion())!=1)throw new WorkspaceDenied(409,"ProviderVersionConflict");jdbc.update("UPDATE ai_model SET verified_status='EXPERIMENTAL' WHERE provider_id=?",id);}
             audit(actor,"provider.saved",target);
         });if(id!=null)conversations.revokeModels(jdbc.queryForList("SELECT id FROM ai_model WHERE provider_id=?",UUID.class,id));return provider(target);
+    }
+    public void clearProviderSecret(UUID id,long actor,long version){
+        if(jdbc.update("UPDATE ai_provider SET secret_cipher='',enabled=FALSE,version=version+1,secret_updated_at=NOW(),updated_at=NOW() WHERE id=? AND version=?",id,version)!=1)throw new WorkspaceDenied(409,"ProviderVersionConflict");
+        conversations.revokeModels(jdbc.queryForList("SELECT id FROM ai_model WHERE provider_id=?",UUID.class,id));audit(actor,"provider.secret.cleared",id);
     }
     public List<Map<String,Object>> models(int page){return jdbc.queryForList("SELECT "+MODEL_COLUMNS+" FROM ai_model m JOIN ai_provider p ON p.id=m.provider_id ORDER BY m.name,m.id LIMIT 30 OFFSET ?",offset(page));}
     public Map<String,Object> model(UUID id){var rows=jdbc.queryForList("SELECT "+MODEL_COLUMNS+" FROM ai_model m JOIN ai_provider p ON p.id=m.provider_id WHERE m.id=?",id);if(rows.isEmpty())throw new WorkspaceDenied(404,"ModelNotFound");return rows.getFirst();}
@@ -64,7 +69,6 @@ public class WorkspaceModelAdmin {
         try{
             String type=m.get("provider_type").toString();
             String base=WorkspaceProviderDestination.validate(type,m.get("base_url").toString());
-            if("CUSTOM_OPENAI".equals(type))throw new WorkspaceDenied(400,"RelayProviderUnsupported");
             var payload=probePayload(m.get("code").toString(),type);
             var request=HttpRequest.newBuilder(URI.create(base+"/chat/completions"))
                 .timeout(Duration.ofSeconds(30)).header("Authorization","Bearer "+secrets.decrypt(m.get("secret_cipher").toString()))

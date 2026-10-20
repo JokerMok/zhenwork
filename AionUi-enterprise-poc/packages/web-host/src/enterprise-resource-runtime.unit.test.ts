@@ -7,7 +7,8 @@ import { enterpriseProfilePath } from './enterprise-core.js';
 import { enterpriseManagedResourcePath, syncEnterpriseWebResources } from './enterprise-resource-runtime.js';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 
-test('all authorized assistant Skill and MCP dependencies reach only that employee Core', async () => {
+test.each(['assistant dependencies', 'standalone authorization', 'mixed authorization'] as const)(
+  'authorized Skills and MCPs reach only that employee Core through %s', async (mode) => {
   const root = await mkdtemp(path.join(tmpdir(), 'enterprise-resources-'));
   const actor = { serverId: 'rc2', userId: '42' };
   const profile = enterpriseProfilePath(root, actor);
@@ -17,6 +18,8 @@ test('all authorized assistant Skill and MCP dependencies reach only that employ
   const secondSkillId = '33333333-3333-4333-8333-333333333333';
   const firstMcpId = '44444444-4444-4444-8444-444444444444';
   const secondMcpId = '55555555-5555-4555-8555-555555555555';
+  const excess = Array.from({ length: 25 }, (_, index) =>
+    `66666666-6666-4666-8666-${String(index).padStart(12, '0')}`);
   const writes: Array<{ route: string; body: Record<string, unknown> }> = [];
   const core = http.createServer(async (req, res) => {
     if (req.headers['x-aion-enterprise-local-token'] !== 'local-secret') {
@@ -34,6 +37,14 @@ test('all authorized assistant Skill and MCP dependencies reach only that employ
     else if (req.url === '/api/skills/import') {
       const source = await readFile(path.join(String(body.skill_path), 'SKILL.md'), 'utf8');
       const name = /^name: ([a-z0-9-]+)$/m.exec(source)?.[1];
+      if (source.includes('Use safely.')) {
+        expect(await readFile(path.join(String(body.skill_path), 'scripts', 'summarize.js'), 'utf8'))
+          .toBe('console.log("ready")\n');
+        expect(await readFile(path.join(String(body.skill_path), 'templates', 'report.md'), 'utf8'))
+          .toBe('# Report\n');
+        expect(await readFile(path.join(String(body.skill_path), 'assets', 'template.xlsx')))
+          .toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+      }
       res.end(JSON.stringify({ success: true, data: { skill_name: name } }));
     }
     else if (req.url === '/api/mcp/servers' && req.method === 'POST') res.end(JSON.stringify({ success: true,
@@ -45,30 +56,61 @@ test('all authorized assistant Skill and MCP dependencies reach only that employ
   await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
   const port = (core.address() as { port: number }).port;
   const client = {
-    resources: async () => [{ id: assistantId, name: 'Test assistant', source: 'enterprise', version: 2 }],
+    resources: async (type: string) => type === 'ASSISTANT'
+      ? mode === 'standalone authorization' ? []
+        : [{ id: assistantId, name: 'Test assistant', source: 'enterprise', version: 2 }]
+      : type === 'SKILL'
+        ? mode === 'assistant dependencies' ? [] : [
+          { id: skillId, name: 'Safe Skill', version: 3 },
+          { id: secondSkillId, name: 'Safe Skill copy', version: 3 },
+          ...excess.map((id) => ({ id, name: 'Invalid Skill', version: 1 })),
+        ]
+        : mode === 'assistant dependencies' ? [] : [
+          { id: firstMcpId, name: 'First MCP', version: 4 },
+          { id: secondMcpId, name: 'Second MCP', version: 4 },
+          ...excess.map((id) => ({ id, name: 'Unavailable MCP', version: 1 })),
+        ],
     authorizedResource: async (id: string) => id === assistantId
-      ? { version: 2, config: { modelId: 'model-1', instruction: 'Use the Skills and MCPs.',
+      ? { version: 2, config: { modelId: 'model-2', instruction: 'Use the Skills and MCPs.',
         skillIds: [skillId, secondSkillId], mcpIds: [firstMcpId, secondMcpId] } }
       : id === skillId || id === secondSkillId
         ? { version: 3, config: { manifest: { name: 'safe-skill' },
-          source: `---\nname: safe-skill\n---\n${id === skillId ? 'Use safely.' : 'Use differently.'}` } }
+          source: `---\nname: safe-skill\n---\n${id === skillId ? 'Use safely.' : 'Use differently.'}`,
+          files: id === skillId ? [
+            { path: 'requirements.txt', content: 'Pillow==11.3.0\n' },
+            { path: 'scripts/summarize.js', content: 'console.log("ready")\n', executable: true },
+            { path: 'templates/report.md', content: '# Report\n' },
+            { path: 'assets/template.xlsx', content: 'UEsDBA==', encoding: 'base64' },
+          ] : [] } }
         : { version: 4, config: {} },
-    readyMcpConnection: async (id: string) => ({ id: `connection-${id}` }),
+    readyMcpConnection: async (id: string) => {
+      if (![firstMcpId, secondMcpId].includes(id)) throw new Error('not ready');
+      return { id: `connection-${id}` };
+    },
     authorizedMcpConnection: async () => ({ enabled: true }),
   } as unknown as Rc2GatewayClient;
   try {
     const synced = await syncEnterpriseWebResources(actor, { port, localToken: 'local-secret', stop: async () => {} },
-      root, { id: 'model-1', code: 'model-code' }, async () => client, async () => client);
+      root, { id: 'model-1', code: 'model-code', availableModels: [
+        { id: 'model-1', code: 'model-code' }, { id: 'model-2', code: 'assistant-model-code' },
+      ] }, async () => client, async () => client);
     const manifest = JSON.parse(await readFile(await enterpriseManagedResourcePath(root, actor), 'utf8'));
     const skillNames = [skillId, secondSkillId].map((id) => `safe-skill-${id.replaceAll('-', '')}`);
     expect(manifest.skills).toEqual(skillNames);
+    expect(synced.issues).toContainEqual({ type: 'SKILL', id: skillId, code: 'DEPENDENCY_UNVERIFIED' });
     expect(manifest.mcpIds).toHaveLength(2);
-    expect(manifest.assistantIds).toEqual([`rc2-${assistantId}`]);
-    expect(writes.some(({ route, body }) => route === '/api/assistants' && body.id === `rc2-${assistantId}`)).toBe(true);
-    const assistant = writes.find(({ route, body }) => route === '/api/assistants' && body.id === `rc2-${assistantId}`)!.body;
-    expect(assistant.custom_skill_names).toEqual(skillNames);
-    expect((assistant.defaults as { mcps: { value: string[] } }).mcps.value).toHaveLength(2);
-    expect(writes.some(({ route }) => route === '/api/skills/assistant-rule/write')).toBe(true);
+    const assistantExpected = mode !== 'standalone authorization';
+    expect(manifest.assistantIds).toEqual(assistantExpected ? [`rc2-${assistantId}`] : []);
+    expect(writes.some(({ route, body }) => route === '/api/assistants' && body.id === `rc2-${assistantId}`))
+      .toBe(assistantExpected);
+    if (assistantExpected) {
+      const assistant = writes.find(({ route, body }) =>
+        route === '/api/assistants' && body.id === `rc2-${assistantId}`)!.body;
+      expect(assistant.custom_skill_names).toEqual(skillNames);
+      expect((assistant.defaults as { mcps: { value: string[] } }).mcps.value).toHaveLength(2);
+      expect((assistant.defaults as { model: { value: string } }).model.value).toBe('assistant-model-code');
+      expect(writes.some(({ route }) => route === '/api/skills/assistant-rule/write')).toBe(true);
+    }
     await synced.stop();
     expect((await readdir(profile)).some((entry) => entry.startsWith('rc2-stage-'))).toBe(false);
   } finally {

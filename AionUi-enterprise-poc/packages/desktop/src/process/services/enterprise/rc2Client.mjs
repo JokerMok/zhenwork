@@ -168,7 +168,7 @@ export class Rc2Client {
 
   async authorizedResource(id, type) {
     if (!this.cookie) throw new Error('No RC2 session');
-    const { response, body } = await this.request(`/ai/resources/${encodeURIComponent(id)}`);
+    const { response, body } = await this.request(`/ai/resources/${encodeURIComponent(id)}?active=true`);
     if (
       !response.ok ||
       body?.code !== 200 ||
@@ -211,12 +211,12 @@ export class Rc2Client {
         if (!response.ok || body?.code !== 200 || !Array.isArray(body.data))
           throw new Error('RC2 resources unavailable');
         for (const item of body.data)
-          if (item?.actions?.includes('USE') && item.publishedVersion === item.version) {
+          if (item?.actions?.includes('USE') && Number.isInteger(item.publishedVersion)) {
             items.set(item.id, {
               id: item.id,
               name: item.name,
               description: item.description,
-              version: item.version,
+              version: item.publishedVersion,
               source:
                 item.ownerType === 'ENTERPRISE'
                   ? 'enterprise'
@@ -286,23 +286,27 @@ export class Rc2Client {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(conversationId ? { 'X-Aion-Conversation-Id': conversationId } : {}),
         Origin: this.origin,
         Cookie: this.cookie,
         clientid: this.clientId,
         ...(headers['mcp-session-id'] ? { 'Mcp-Session-Id': headers['mcp-session-id'] } : {}),
         ...(headers['mcp-protocol-version'] ? { 'MCP-Protocol-Version': headers['mcp-protocol-version'] } : {}),
+        ...(headers['x-zhenwork-idempotency-key'] ?
+          { 'X-ZhenWork-Idempotency-Key': headers['x-zhenwork-idempotency-key'] } : {}),
       },
       body: raw,
       signal,
     });
   }
 
-  relayModel(modelId, raw, signal) {
+  relayModel(modelId, raw, signal, conversationId) {
     if (!this.cookie || !this.clientId) throw new Error('No RC2 session');
     return this.fetchImpl(`${this.baseUrl}/ai/model-relay/${encodeURIComponent(modelId)}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(conversationId ? { 'X-Aion-Conversation-Id': conversationId } : {}),
         Origin: this.origin,
         Cookie: this.cookie,
         clientid: this.clientId,

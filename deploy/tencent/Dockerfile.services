@@ -1,0 +1,19 @@
+FROM zhenwork-ubuntu-base:26.04 AS redis
+COPY ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends redis-server ca-certificates && rm -rf /var/lib/apt/lists/* && mkdir /data && chown 10002:10002 /data
+RUN chmod 0755 /etc/redis
+USER 10002:10002
+WORKDIR /data
+ENTRYPOINT ["redis-server", "/etc/redis/zhenwork.conf"]
+
+FROM zhenwork-runtime:42d834a-amd64 AS gateway
+COPY gateway-bridge.mjs egress-policy.mjs /opt/aionui/
+USER 10001:10001
+ENTRYPOINT ["node", "/opt/aionui/gateway-bridge.mjs"]
+
+FROM zhenwork-runtime:42d834a-amd64 AS core
+COPY bundle/ /opt/aionui/core/
+COPY read_docx.py /opt/aionui/tools/read_docx.py
+COPY uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/
+USER 10001:10001
+ENTRYPOINT ["/opt/aionui/core/aioncore"]

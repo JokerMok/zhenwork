@@ -23,6 +23,6 @@ public class WorkspaceModelAccess {
         if(rows.size()!=1)throw new WorkspaceDenied(403,"ModelPermissionDenied");return rows.getFirst();
     }
     public List<Map<String,Object>> models(long user) {
-        return jdbc.query("SELECT m.id,m.name,m.code,m.streaming,m.tools,m.context_window,m.max_output_tokens FROM ai_model m JOIN ai_provider p ON p.id=m.provider_id JOIN sys_user u ON u.user_id=? WHERE m.enabled AND p.enabled AND "+GRANTED+" ORDER BY m.name LIMIT 100",(r,n)->Map.<String,Object>of("id",r.getString(1),"name",r.getString(2),"code",r.getString(3),"streaming",r.getBoolean(4),"tools",r.getBoolean(5),"contextWindow",r.getInt(6),"maxOutputTokens",r.getInt(7)),user);
+        return jdbc.query("SELECT m.id,m.name,m.code,m.streaming,m.tools,m.context_window,m.max_output_tokens FROM ai_model m JOIN ai_provider p ON p.id=m.provider_id JOIN sys_user u ON u.user_id=? WHERE m.enabled AND p.enabled AND "+GRANTED+" ORDER BY CASE WHEN m.id=(SELECT model_id FROM ai_office_defaults WHERE singleton) THEN 0 ELSE 1 END,m.name LIMIT 100",(r,n)->Map.<String,Object>of("id",r.getString(1),"name",r.getString(2),"code",r.getString(3),"streaming",r.getBoolean(4),"tools",r.getBoolean(5),"contextWindow",r.getInt(6),"maxOutputTokens",r.getInt(7)),user);
     }
 }

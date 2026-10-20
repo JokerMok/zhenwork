@@ -1,0 +1,49 @@
+zhenwork.shizibandu.icu {
+    header X-Content-Type-Options nosniff
+    header Referrer-Policy same-origin
+    log {
+        output file /var/log/caddy/zhenwork-access.log {
+            roll_size 5MiB
+            roll_keep 3
+            roll_keep_for 168h
+        }
+    }
+    reverse_proxy 127.0.0.1:18891
+}
+zhenwork-admin.shizibandu.icu {
+    header X-Content-Type-Options nosniff
+    header Referrer-Policy same-origin
+    header Content-Security-Policy "frame-ancestors 'none'"
+    log {
+        output file /var/log/caddy/zhenwork-admin-access.log {
+            roll_size 5MiB
+            roll_keep 3
+            roll_keep_for 168h
+        }
+    }
+    # RC2 has one canonical Origin. Rewrite only the explicitly trusted admin
+    # Origin; preserve foreign/absent origins so RC2's write checks still apply.
+    @adminOrigin header Origin https://zhenwork-admin.shizibandu.icu
+    request_header @adminOrigin Origin https://zhenwork.shizibandu.icu
+    @externalInternal {
+        path /internal/* /api/internal/*
+        not remote_ip 127.0.0.1 ::1
+    }
+    respond @externalInternal 403
+    handle_path /api/* {
+        reverse_proxy 127.0.0.1:18890
+    }
+    @control path /ai/* /auth/* /system/* /internal/rc2/*
+    handle @control {
+        reverse_proxy 127.0.0.1:18890
+    }
+    handle_path /admin/* {
+        root * /srv/apps/zhenwork/current/admin
+        try_files {path} /index.html
+        file_server
+    }
+    handle / {
+        redir /admin/ 302
+    }
+    respond 404
+}

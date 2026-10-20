@@ -27,6 +27,13 @@ import java.util.TimeZone;
 @Slf4j
 @AutoConfiguration(before = JacksonAutoConfiguration.class)
 public class JacksonConfig {
+    static {
+        // Complete Skill packages may contain one 20 MiB binary template encoded as base64.
+        // Keep finite document/string limits while allowing that explicitly bounded API format.
+        tools.jackson.core.StreamReadConstraints.overrideDefaultStreamReadConstraints(
+            tools.jackson.core.StreamReadConstraints.builder()
+                .maxStringLength(32 * 1024 * 1024).maxDocumentLength(52L * 1024 * 1024).build());
+    }
 
     /**
      * 注册 Jackson 序列化与反序列化模块。

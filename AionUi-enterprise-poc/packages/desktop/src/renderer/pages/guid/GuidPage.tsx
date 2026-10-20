@@ -15,7 +15,7 @@ import type { AssistantDetail } from '@/common/types/agent/assistantTypes';
 import { useInputFocusRing } from '@/renderer/hooks/chat/useInputFocusRing';
 import { appendPromptToDraft } from '@/renderer/hooks/chat/useSendBoxDraft';
 import { getFuzzyMatchIndices, useSlashCommandController } from '@/renderer/hooks/chat/useSlashCommandController';
-import { openExternalUrl } from '@/renderer/utils/platform';
+import { isEnterpriseWeb, openExternalUrl } from '@/renderer/utils/platform';
 import SlashCommandMenu, { type SlashCommandMenuItem } from '@/renderer/components/chat/SlashCommandMenu';
 import AssistantSelectionArea from './components/AssistantSelectionArea';
 import GuidActionRow from './components/GuidActionRow';
@@ -50,6 +50,7 @@ type GuidNavigationState = {
   prefillFiles?: string[];
   preservePrefillDraft?: boolean;
   focusPrefill?: boolean;
+  selectedSkillName?: string;
   workspace?: string;
   [key: string]: unknown;
 };
@@ -63,6 +64,11 @@ const GuidPage: React.FC = () => {
 
   const localeKey = resolveLocaleKey(i18n.language);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const hostedEnterpriseWeb = isEnterpriseWeb();
+  const [showAdvancedConfiguration, setShowAdvancedConfiguration] = useState(false);
+  const simplifiedEnterpriseExperience = hostedEnterpriseWeb && !showAdvancedConfiguration;
+  const navState = location.state as GuidNavigationState | null;
+  const [requestedSkillName] = useState(() => navState?.selectedSkillName);
 
   // Open external link
   const openLink = useCallback(async (url: string) => {
@@ -148,12 +154,12 @@ const GuidPage: React.FC = () => {
   // regular ACP backend with its own model selector).
   const modelSelection = useGuidModelSelection('aionrs');
 
-  const navState = location.state as GuidNavigationState | null;
   const resetAssistantRequested = navState?.resetAssistant === true;
   const preselectAssistantId = navState?.selectedAssistantId;
   const agentSelection = useGuidAssistantSelection({
     resetAssistant: resetAssistantRequested,
     preselectAssistantId,
+    preferredDefaultAssistantId: hostedEnterpriseWeb ? 'zhenwork-general-office' : undefined,
     locationKey: location.key,
   });
 
@@ -372,16 +378,27 @@ const GuidPage: React.FC = () => {
 
   // Sync disabledBuiltinSkills + enabledSkills from assistant detail defaults.
   useEffect(() => {
+    const requestedSkill = requestedSkillName
+      ? allSkills.find((skill) => skill.name === requestedSkillName)
+      : undefined;
     if (!selectedAssistantId || !selectedAssistantDetail) {
-      setGuidDisabledBuiltinSkills(undefined);
-      setGuidEnabledSkills(undefined);
+      setGuidDisabledBuiltinSkills(requestedSkill?.isAuto ? [] : undefined);
+      setGuidEnabledSkills(requestedSkill && !requestedSkill.isAuto ? [requestedSkill.name] : undefined);
       return;
     }
 
     const resolvedDefaults = resolveGuidAssistantDefaults(selectedAssistantDetail);
-    setGuidDisabledBuiltinSkills(resolvedDefaults.disabledBuiltinSkillIds);
-    setGuidEnabledSkills(resolvedDefaults.skillIds);
-  }, [selectedAssistantDetail, selectedAssistantId]);
+    setGuidDisabledBuiltinSkills(
+      requestedSkill?.isAuto
+        ? resolvedDefaults.disabledBuiltinSkillIds.filter((name) => name !== requestedSkill.name)
+        : resolvedDefaults.disabledBuiltinSkillIds
+    );
+    setGuidEnabledSkills(
+      requestedSkill && !requestedSkill.isAuto && !resolvedDefaults.skillIds.includes(requestedSkill.name)
+        ? [...resolvedDefaults.skillIds, requestedSkill.name]
+        : resolvedDefaults.skillIds
+    );
+  }, [allSkills, requestedSkillName, selectedAssistantDetail, selectedAssistantId]);
 
   const appliedAssistantDefaultsKeyRef = useRef<string | null>(null);
   const manualModelSelectionAssistantRef = useRef<string | null>(null);
@@ -614,7 +631,7 @@ const GuidPage: React.FC = () => {
 
   // Build the mention dropdown node
   // Build the model selector node
-  const modelSelectorNode = (
+  const modelSelectorNode = simplifiedEnterpriseExperience ? null : (
     <GuidModelSelector
       isGeminiMode={isGeminiMode}
       modelList={modelSelection.modelList}
@@ -643,20 +660,24 @@ const GuidPage: React.FC = () => {
       onFilesPicked={guidInput.handleFilesPicked}
       modelSelectorNode={modelSelectorNode}
       isGeminiMode={isGeminiMode}
-      modelList={modelSelection.modelList}
+      modelList={simplifiedEnterpriseExperience ? [] : modelSelection.modelList}
       current_model={modelSelection.current_model}
       setCurrentModel={setGuidCurrentModel}
-      currentAcpCachedModelInfo={agentSelection.currentAcpCachedModelInfo}
+      currentAcpCachedModelInfo={simplifiedEnterpriseExperience ? null : agentSelection.currentAcpCachedModelInfo}
       selectedAcpModel={agentSelection.selectedAcpModel}
       setSelectedAcpModel={setGuidSelectedAcpModel}
-      thoughtLevelOption={isGeminiMode ? null : agentSelection.currentThoughtLevelOption}
+      thoughtLevelOption={
+        simplifiedEnterpriseExperience || isGeminiMode ? null : agentSelection.currentThoughtLevelOption
+      }
       onThoughtLevelSelect={setGuidSelectedThoughtLevel}
       modeBackend={agentSelection.selectedAssistantBackend}
       selectedMode={agentSelection.selectedMode}
-      dynamicModes={agentSelection.currentAgentModeOptions}
+      dynamicModes={simplifiedEnterpriseExperience ? [] : agentSelection.currentAgentModeOptions}
       onModeSelect={setGuidSelectedMode}
       allSkills={displayedSkills}
-      enterpriseManaged={selectedAssistantId?.startsWith('rc2-') ?? false}
+      enterpriseManaged={
+        selectedAssistantId === 'zhenwork-general-office' || (selectedAssistantId?.startsWith('rc2-') ?? false)
+      }
       disabledBuiltinSkills={guidDisabledBuiltinSkills ?? []}
       enabledSkills={guidEnabledSkills ?? []}
       onToggleSkill={handleToggleSkill}
@@ -704,12 +725,25 @@ const GuidPage: React.FC = () => {
             <p className='text-2xl font-semibold mb-0 text-t-primary text-center'>{t('conversation.welcome.title')}</p>
           </div>
 
-          <AssistantSelectionArea
-            selectedAssistantId={agentSelection.selectedAssistantId}
-            assistants={agentSelection.assistants}
-            localeKey={localeKey}
-            onSelectAssistant={handleSelectAssistant}
-          />
+          {!simplifiedEnterpriseExperience ? (
+            <AssistantSelectionArea
+              selectedAssistantId={agentSelection.selectedAssistantId}
+              assistants={agentSelection.assistants}
+              localeKey={localeKey}
+              onSelectAssistant={handleSelectAssistant}
+            />
+          ) : null}
+
+          {hostedEnterpriseWeb ? (
+            <Button
+              type='text'
+              size='small'
+              className='self-center text-t-secondary'
+              onClick={() => setShowAdvancedConfiguration((visible) => !visible)}
+            >
+              {showAdvancedConfiguration ? t('common.collapse') : t('settings.advancedSettings')}
+            </Button>
+          ) : null}
 
           <GuidInputCard
             focusRequestKey={navState?.focusPrefill && navState.prefillPrompt ? location.key : undefined}

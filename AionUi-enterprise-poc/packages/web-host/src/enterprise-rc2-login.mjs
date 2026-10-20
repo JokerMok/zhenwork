@@ -15,7 +15,9 @@ export function createRc2GatewayLogin(baseUrl, origin) {
     const serverId = String(actor.serverId);
     if (actor.mustChangePassword) {
       await client.logout();
-      throw new Error('Password change required');
+      const error = new Error('Password change required');
+      error.code = 'PASSWORD_CHANGE_REQUIRED';
+      throw error;
     }
     return {
       actor: { serverId, userId },
@@ -58,5 +60,22 @@ export function createRc2GatewayResume(baseUrl, origin) {
       // hosted-web session must not log out the desktop app.
       close: async () => {},
     };
+  };
+}
+
+/** Authenticate the reset credential, then use only the native self-service password API. */
+export function createRc2GatewayPasswordChange(baseUrl, origin) {
+  return async (username, oldPassword, newPassword) => {
+    if (!/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/.test(newPassword)) throw new Error('Invalid new password');
+    const client = new Rc2Client(baseUrl, origin);
+    try {
+      await client.bootstrap();
+      await client.login({ username, password: oldPassword });
+      const { response, body } = await client.request('/system/user/profile/updatePwd', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+      if (!response.ok || body?.code !== 200) throw new Error('Password update failed');
+    } finally { await client.logout().catch(() => {}); }
   };
 }

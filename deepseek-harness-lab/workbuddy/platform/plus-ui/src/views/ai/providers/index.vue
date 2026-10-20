@@ -9,7 +9,7 @@
       <el-table-column label="API Key" width="130"><template #default="{row}">{{ row.configured ? '•••••••• 已配置' : '未配置' }}</template></el-table-column>
       <el-table-column prop="secret_updated_at" label="密钥更新时间" min-width="180" />
       <el-table-column label="状态" width="80"><template #default="{row}"><el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag></template></el-table-column>
-      <el-table-column label="操作" width="100"><template #default="{row}"><el-button link type="primary" @click="edit(row as ProviderRow)">编辑</el-button></template></el-table-column>
+      <el-table-column label="操作" width="220"><template #default="{row}"><el-button link type="primary" @click="edit(row as ProviderRow)">编辑</el-button><el-button link type="danger" :disabled="!row.configured" @click="clearSecret(row as ProviderRow)">清空密钥并停用</el-button></template></el-table-column>
     </el-table>
     <div class="paging"><el-button :disabled="page === 1 || loading" @click="page--; load()">上一页</el-button><span>第 {{ page }} 页</span><el-button :disabled="rows.length < 30 || loading" @click="page++; load()">下一页</el-button></div>
     <el-dialog v-model="dialog" :title="editing ? '编辑 Provider' : '新增 Provider'" width="600px" destroy-on-close @closed="form.secret = ''">
@@ -30,6 +30,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import request from '@/utils/request';
 import {modelApi,type ProviderRow} from '@/features/workspace/models';
 const rows=ref<ProviderRow[]>([]),loading=ref(true),error=ref(''),page=ref(1),dialog=ref(false),saving=ref(false),saveError=ref(''),editing=ref<string>();
 const types={ARK:'Volcengine Ark',OPENAI:'OpenAI Compatible',DEEPSEEK:'DeepSeek Compatible',CUSTOM_OPENAI:'Custom OpenAI-Compatible'};
@@ -39,6 +40,7 @@ function setEndpoint(){const urls:Record<string,string>={ARK:'https://ark.cn-bei
 async function load(){loading.value=true;error.value='';try{rows.value=(await modelApi.providers(page.value)).data;}catch{error.value='Provider 加载失败，请重试。';}finally{loading.value=false;}}
 function edit(row?:ProviderRow){editing.value=row?.id;Object.assign(form,row?{name:row.name,providerType:row.provider_type,baseUrl:row.base_url,protocol:row.protocol,secret:'',enabled:row.enabled,timeoutSeconds:row.timeout_seconds,retryCount:row.retry_count,expectedVersion:row.version}:defaults());saveError.value='';dialog.value=true;}
 async function save(){if(!form.name.trim()||!form.baseUrl||(!editing.value&&!form.secret)){saveError.value='请填写名称、服务地址和 API Key。';return;}saving.value=true;saveError.value='';try{await modelApi.saveProvider(editing.value,{...form});form.secret='';dialog.value=false;ElMessage.success('Provider 已保存');await load();}catch{saveError.value='保存失败，请检查服务地址；若配置已被他人修改，请关闭后重新编辑。';}finally{saving.value=false;}}
+async function clearSecret(row:ProviderRow){await ElMessageBox.confirm('清空此服务的密钥并停用？重新启用时需填写新密钥。','清空密钥',{type:'warning'});try{await request({url:'/ai/admin/providers/'+row.id+'/secret',method:'delete',params:{expectedVersion:row.version}});ElMessage.success('密钥已清空，服务已停用');await load();}catch{ElMessage.error('操作失败，请重新加载后重试');}}
 onMounted(load);
 </script>
 <style scoped>.heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}.heading h2{margin:0 0 8px}.heading p,.muted{color:var(--el-text-color-secondary)}.paging{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-top:20px}</style>

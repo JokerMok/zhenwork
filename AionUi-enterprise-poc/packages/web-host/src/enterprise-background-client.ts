@@ -70,14 +70,14 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
       typeof model.name === 'string' && model.streaming === true);
   }
 
-  relayModel(modelId: string, raw: string, signal: AbortSignal): Promise<Response> {
+  relayModel(modelId: string, raw: string, signal: AbortSignal, conversationId?: string): Promise<Response> {
     return this.fetchRc2(`/models/${encodeURIComponent(modelId)}/chat/completions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: raw, signal,
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...(conversationId ? { 'X-Aion-Conversation-Id': conversationId } : {}) }, body: raw, signal,
     });
   }
 
   async resources(type: string): Promise<unknown> {
-    if (!['ASSISTANT', 'SKILL', 'MCP'].includes(type)) throw new Error('Invalid background resource type');
+    if (!['ASSISTANT', 'SKILL', 'MCP', 'KNOWLEDGE'].includes(type)) throw new Error('Invalid background resource type');
     const items = new Map<string, Record<string, unknown>>();
     for (const scope of ['mine', 'shared', 'public']) {
       for (let page = 1; page <= 10; page++) {
@@ -85,9 +85,9 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
         if (!Array.isArray(data)) throw new Error('Background resources unavailable');
         for (const item of data) {
           if (!item || typeof item.id !== 'string' || !item.actions?.includes('USE') ||
-              item.publishedVersion !== item.version) continue;
+              !Number.isInteger(item.publishedVersion)) continue;
           items.set(item.id, { id: item.id, name: item.name, description: item.description,
-            version: item.version, source: item.ownerType === 'ENTERPRISE' ? 'enterprise' :
+            version: item.publishedVersion, source: item.ownerType === 'ENTERPRISE' ? 'enterprise' :
               item.ownerUserId === this.grant.userId ? 'personal' : 'shared', type });
         }
         if (data.length < 30) break;
@@ -101,6 +101,13 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
     if (data?.resourceType !== type || !Array.isArray(data.actions) || !data.actions.includes('USE') ||
         data.publishedVersion !== data.version) throw new Error('Background resource unavailable');
     return data;
+  }
+
+  knowledgeSearch(baseId: string, query: string): Promise<unknown> {
+    if (!/^[0-9a-f-]{36}$/i.test(baseId) || !query.trim() || query.length > 500) {
+      throw new Error('Invalid background knowledge query');
+    }
+    return this.read(`/knowledge/${encodeURIComponent(baseId)}/search?query=${encodeURIComponent(query)}`);
   }
 
   private async connections(resourceId: string): Promise<Array<Record<string, unknown>>> {
@@ -129,7 +136,9 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
       method: 'POST', headers: { 'Content-Type': 'application/json',
         ...(typeof headers['mcp-session-id'] === 'string' ? { 'Mcp-Session-Id': headers['mcp-session-id'] } : {}),
         ...(typeof headers['mcp-protocol-version'] === 'string' ?
-          { 'MCP-Protocol-Version': headers['mcp-protocol-version'] } : {}) }, body: raw, signal,
+          { 'MCP-Protocol-Version': headers['mcp-protocol-version'] } : {}),
+        ...(typeof headers['x-zhenwork-idempotency-key'] === 'string' ?
+          { 'X-ZhenWork-Idempotency-Key': headers['x-zhenwork-idempotency-key'] } : {}) }, body: raw, signal,
     });
   }
 }

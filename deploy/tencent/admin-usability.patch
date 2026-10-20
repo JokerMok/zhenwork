@@ -1,0 +1,1058 @@
+diff --git a/AionUi-enterprise-poc/packages/web-cli/src/enterprise.ts b/AionUi-enterprise-poc/packages/web-cli/src/enterprise.ts
+index 0f0fdbe..2a36f41 100644
+--- a/AionUi-enterprise-poc/packages/web-cli/src/enterprise.ts
++++ b/AionUi-enterprise-poc/packages/web-cli/src/enterprise.ts
+@@ -1,7 +1,7 @@
+ import { lstat, readFile, stat } from 'node:fs/promises';
+ import path from 'node:path';
+ import { acquireEnterpriseDockerSupervisor, createEnterpriseDockerCoreStarter, createEnterpriseModelRuntime,
+-  createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPublicBrand,
++  createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPasswordChange, createRc2GatewayPublicBrand,
+   startEnterpriseGateway } from '@aionui/web-host';
+ 
+ const required = (name: string): string => {
+@@ -62,6 +62,7 @@ export async function startEnterpriseWebFromEnvironment() {
+     coreStartWaitMs: optionalLimit('AION_ENTERPRISE_WEB_CORE_START_WAIT_MS', 1000, 300_000),
+     coreIdleMs: optionalLimit('AION_ENTERPRISE_WEB_CORE_IDLE_MS', 0, 86_400_000),
+     publicBrand: createRc2GatewayPublicBrand(rc2Url, publicOrigin),
++    changePassword: createRc2GatewayPasswordChange(rc2Url, publicOrigin),
+     login: runtime.login, resume: runtime.resume, startCore: runtime.startCore,
+     syncCronGrant: runtime.syncCronGrant, hasBackgroundJobs: runtime.hasBackgroundJobs,
+     authorizeBackground: runtime.authorizeBackground,
+diff --git a/AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.ts b/AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.ts
+index 3c2a0f8..ff08a90 100644
+--- a/AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.ts
++++ b/AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.ts
+@@ -35,6 +35,8 @@ export type EnterpriseGatewayOptions = {
+   login: (username: string, password: string) => Promise<EnterpriseLogin>;
+   /** Public RC2 display fields for the unauthenticated login page. */
+   publicBrand?: () => Promise<unknown>;
++  /** Reauthenticate the current credential and update only that identity through RC2. */
++  changePassword?: (username: string, oldPassword: string, newPassword: string) => Promise<void>;
+   /** Validate a desktop supervisor's existing RC2 cookie on the server. */
+   resume?: (rc2Cookie: string) => Promise<EnterpriseLogin>;
+   startCore: (actor: EnterpriseActor) => Promise<EnterpriseCore>;
+@@ -123,7 +125,7 @@ function loginPage(brand: LoginBrand | null, english: boolean, nonce: string): s
+   const language = english ? 'en' : 'zh-CN';
+   const product = brand?.productName || copy.brand;
+   const title = brand?.loginTitle || copy.submit;
+-  const subtitle = brand?.loginSubtitle || copy.subtitle;
++  const subtitle = brand?.loginSubtitle ?? copy.subtitle;
+   const color = brand?.primaryColor || '#2563eb';
+   const ink = contrastingInk(color);
+   const logo = brand?.logoDataUrl
+@@ -135,10 +137,22 @@ function loginPage(brand: LoginBrand | null, english: boolean, nonce: string): s
+     busy: copy.errors.tooManyAttempts,
+     unavailable: copy.errors.serverError,
+     network: copy.errors.networkError,
++    passwordRequired: english ? 'Set a new password before continuing.' : '请先设置新密码，再进入工作台。',
++    newPassword: english ? 'New password (8 letters and digits)' : '新密码（8位字母和数字）',
++    confirmPassword: english ? 'Confirm new password' : '确认新密码',
++    passwordRule: english ? 'Use exactly 8 characters with both letters and digits.' : '密码须为8位，且同时包含字母和数字。',
++    mismatch: english ? 'The two passwords do not match.' : '两次输入的密码不一致。',
++    passwordUpdate: english ? 'Set password and sign in' : '设置密码并登录',
++    passwordFailed: english ? 'Password could not be updated. Check the current password and try again.' : '未能更新密码，请检查当前密码后重试。',
++    login: copy.submit,
+   }).replace(/</g, '\\u003c');
+   return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>${html(product)} · ${html(title)}</title><style nonce="${nonce}">
+-:root{--brand:${color};--brand-ink:${ink};font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;color:#1a2b42;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:clamp(16px,4vw,48px)}::selection{background:var(--brand);color:var(--brand-ink)}.shell{width:min(100%,960px);min-height:560px;display:grid;grid-template-columns:minmax(300px,.92fr) minmax(380px,1fr);overflow:hidden;border-radius:20px;background:#fff;box-shadow:0 24px 70px -32px rgba(18,36,65,.36)}.brand-side{display:flex;flex-direction:column;justify-content:space-between;gap:48px;padding:clamp(30px,4vw,52px);background:var(--brand);color:var(--brand-ink)}.brand-top{display:flex;align-items:center;gap:14px;min-width:0}.brand-logo{width:56px;height:56px;flex:none;object-fit:contain;border-radius:14px;background:#fff;padding:6px}.brand-initial{display:grid;place-items:center;color:#1a2b42;font-size:30px;font-weight:700}.company{font-size:14px;font-weight:650;line-height:1.5;overflow-wrap:anywhere}.brand-name{max-width:12ch;margin:0;font-size:clamp(32px,4vw,48px);line-height:1.16;letter-spacing:-.025em;overflow-wrap:anywhere}.brand-footer{font-size:13px;line-height:1.6;opacity:.85;overflow-wrap:anywhere}.form-side{display:flex;flex-direction:column;justify-content:center;padding:clamp(30px,6vw,70px)}h1{margin:0 0 12px;font-size:clamp(27px,3vw,34px);line-height:1.25;letter-spacing:-.025em;overflow-wrap:anywhere}.subtitle{margin:0 0 38px;color:#52647c;font-size:15px;line-height:1.7;overflow-wrap:anywhere}form{display:grid;gap:20px}label{display:grid;gap:8px;font-size:14px;font-weight:650}input{width:100%;min-height:48px;padding:12px 14px;border:1px solid #b9c6d5;border-radius:10px;background:#fff;color:#1a2b42;font:inherit;font-weight:400;outline:none;transition:border-color .15s,box-shadow .15s}input:hover{border-color:#6e8098}input:focus-visible{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent)}button{min-height:48px;margin-top:8px;border:0;border-radius:10px;background:var(--brand);color:var(--brand-ink);font:inherit;font-weight:700;cursor:pointer;transition:filter .15s,transform .15s}button:hover{filter:brightness(.94)}button:active{transform:translateY(1px)}button:focus-visible{outline:3px solid #1a2b42;outline-offset:3px}button:disabled{cursor:wait;opacity:.68;transform:none}.error{min-height:22px;margin:16px 0 0;color:#a02d2d;font-size:14px;line-height:1.6}.support{margin:24px 0 0;color:#52647c;font-size:13px;line-height:1.6;overflow-wrap:anywhere}@media(max-width:760px){body{display:block;padding:0;background:#fff}.shell{display:block;min-height:100dvh;border-radius:0;box-shadow:none}.brand-side{gap:28px;padding:26px 24px 30px}.brand-name{max-width:none;font-size:29px}.brand-footer{display:none}.form-side{padding:36px 24px 48px;max-width:520px;margin:auto}.subtitle{margin-bottom:30px}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important}}
+-</style></head><body><main class="shell"><section class="brand-side" aria-label="${html(product)}"><div class="brand-top">${logo}${brand?.companyName ? `<span class="company">${html(brand.companyName)}</span>` : ''}</div><p class="brand-name">${html(product)}</p>${brand?.copyright ? `<div class="brand-footer">${html(brand.copyright)}</div>` : '<div></div>'}</section><section class="form-side"><h1>${html(title)}</h1><p class="subtitle">${html(subtitle)}</p><form id="login"><label for="username">${html(copy.enterpriseAccountLabel)}<input id="username" name="username" autocomplete="username" required maxlength="100"></label><label for="password">${html(copy.password)}<input id="password" name="password" type="password" autocomplete="current-password" required></label><button id="submit" type="submit">${html(copy.submit)}</button></form><p id="error" class="error" role="alert" aria-live="polite"></p>${brand?.supportText ? `<p class="support">${html(brand.supportText)}</p>` : ''}</section></main><script nonce="${nonce}">const copy=${feedback};const form=document.getElementById('login');const button=document.getElementById('submit');const error=document.getElementById('error');form.addEventListener('submit',async(event)=>{event.preventDefault();error.textContent='';button.disabled=true;button.textContent=copy.submitting;try{const fields=new FormData(form);const response=await fetch('/enterprise/login',{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify({username:fields.get('username'),password:fields.get('password')})});if(response.ok){location.replace('/');return}error.textContent=response.status===401?copy.invalid:response.status===429?copy.busy:copy.unavailable}catch{error.textContent=copy.network}finally{button.disabled=false;button.textContent=${JSON.stringify(copy.submit)}}});</script></body></html>`;
++:root{--brand:${color};--brand-ink:${ink};font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;color:#1a2b42;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:clamp(16px,4vw,48px)}::selection{background:var(--brand);color:var(--brand-ink)}.shell{width:min(100%,960px);min-height:560px;display:grid;grid-template-columns:minmax(300px,.92fr) minmax(380px,1fr);overflow:hidden;border-radius:20px;background:#fff;box-shadow:0 24px 70px -32px rgba(18,36,65,.36)}.brand-side{display:flex;flex-direction:column;justify-content:space-between;gap:48px;padding:clamp(30px,4vw,52px);background:var(--brand);color:var(--brand-ink)}.brand-top{display:flex;align-items:center;gap:14px;min-width:0}.brand-logo{width:56px;height:56px;flex:none;object-fit:contain;border-radius:14px;background:#fff;padding:6px}.brand-initial{display:grid;place-items:center;color:#1a2b42;font-size:30px;font-weight:700}.company{font-size:14px;font-weight:650;line-height:1.5;overflow-wrap:anywhere}.brand-name{max-width:12ch;margin:0;font-size:clamp(32px,4vw,48px);line-height:1.16;letter-spacing:-.025em;overflow-wrap:anywhere}.brand-footer{font-size:13px;line-height:1.6;opacity:.85;overflow-wrap:anywhere}.form-side{display:flex;flex-direction:column;justify-content:center;padding:clamp(30px,6vw,70px)}h1{margin:0 0 12px;font-size:clamp(27px,3vw,34px);line-height:1.25;letter-spacing:-.025em;overflow-wrap:anywhere}.subtitle{margin:0 0 38px;color:#52647c;font-size:15px;line-height:1.7;overflow-wrap:anywhere}form{display:grid;gap:20px}label{display:grid;gap:8px;font-size:14px;font-weight:650}input{width:100%;min-height:48px;padding:12px 14px;border:1px solid #b9c6d5;border-radius:10px;background:#fff;color:#1a2b42;font:inherit;font-weight:400;outline:none;transition:border-color .15s,box-shadow .15s}input:hover{border-color:#6e8098}input:focus-visible{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent)}button{min-height:48px;margin-top:8px;border:0;border-radius:10px;background:var(--brand);color:var(--brand-ink);font:inherit;font-weight:700;cursor:pointer;transition:filter .15s,transform .15s}button:hover{filter:brightness(.94)}button:active{transform:translateY(1px)}button:focus-visible{outline:3px solid #1a2b42;outline-offset:3px}button:disabled{cursor:wait;opacity:.68;transform:none}[hidden]{display:none!important}.notice{color:#52647c;font-size:14px;line-height:1.6;margin:0 0 20px}.error{min-height:22px;margin:16px 0 0;color:#a02d2d;font-size:14px;line-height:1.6}.support{margin:24px 0 0;color:#52647c;font-size:13px;line-height:1.6;overflow-wrap:anywhere}@media(max-width:760px){body{display:block;padding:0;background:#fff}.shell{display:block;min-height:100dvh;border-radius:0;box-shadow:none}.brand-side{gap:28px;padding:26px 24px 30px}.brand-name{max-width:none;font-size:29px}.brand-footer{display:none}.form-side{padding:36px 24px 48px;max-width:520px;margin:auto}.subtitle{margin-bottom:30px}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important}}
++</style></head><body><main class="shell"><section class="brand-side" aria-label="${html(product)}"><div class="brand-top">${logo}${brand?.companyName ? `<span class="company">${html(brand.companyName)}</span>` : ''}</div><p class="brand-name">${html(product)}</p>${brand?.copyright ? `<div class="brand-footer">${html(brand.copyright)}</div>` : '<div></div>'}</section><section class="form-side"><h1>${html(title)}</h1>${subtitle ? `<p class="subtitle">${html(subtitle)}</p>` : ''}<p id="notice" class="notice" hidden role="status"></p><form id="login"><label for="username">${html(copy.enterpriseAccountLabel)}<input id="username" name="username" autocomplete="username" required maxlength="100"></label><label for="password">${html(copy.password)}<input id="password" name="password" type="password" autocomplete="current-password" required></label><label id="new-password-label" for="new-password" hidden>${html(english ? 'New password (8 letters and digits)' : '新密码（8位字母和数字）')}<input id="new-password" name="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="8" pattern="(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8}" disabled></label><label id="confirm-password-label" for="confirm-password" hidden>${html(english ? 'Confirm new password' : '确认新密码')}<input id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="8" disabled></label><button id="submit" type="submit">${html(copy.submit)}</button></form><p id="error" class="error" role="alert" aria-live="polite"></p>${brand?.supportText ? `<p class="support">${html(brand.supportText)}</p>` : ''}</section></main><script nonce="${nonce}">const copy=${feedback};
++const form=document.getElementById('login');const button=document.getElementById('submit');const error=document.getElementById('error');const notice=document.getElementById('notice');let changing=false;
++function passwordMode(enabled){changing=enabled;notice.hidden=!enabled;notice.textContent=enabled?copy.passwordRequired:'';for(const id of ['new-password','confirm-password']){const input=document.getElementById(id);input.disabled=!enabled;input.required=enabled;document.getElementById(id+'-label').hidden=!enabled;}button.textContent=enabled?copy.passwordUpdate:copy.login;}
++async function send(route,data){return fetch(route,{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify(data)});}
++form.addEventListener('submit',async(event)=>{event.preventDefault();error.textContent='';button.disabled=true;button.textContent=copy.submitting;try{const fields=new FormData(form);const data={username:fields.get('username'),password:fields.get('password')};if(changing){const next=fields.get('newPassword');if(!/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8}$/.test(next)){error.textContent=copy.passwordRule;return;}if(next!==fields.get('confirmPassword')){error.textContent=copy.mismatch;return;}const changed=await send('/enterprise/password',{...data,newPassword:next});if(!changed.ok){error.textContent=changed.status===429?copy.busy:copy.passwordFailed;return;}data.password=next;document.getElementById('password').value=next;document.getElementById('new-password').value='';document.getElementById('confirm-password').value='';passwordMode(false);}const response=await send('/enterprise/login',data);if(response.ok){location.replace('/');return;}const result=await response.json().catch(()=>({}));if(response.status===409&&result.error==='PASSWORD_CHANGE_REQUIRED'){passwordMode(true);document.getElementById('new-password').focus();return;}error.textContent=response.status===401?copy.invalid:response.status===429?copy.busy:copy.unavailable;}catch{error.textContent=copy.network;}finally{button.disabled=false;button.textContent=changing?copy.passwordUpdate:copy.login;}});</script></body></html>`;
+ }
+ 
+ function providerRoute(url: string): boolean {
+@@ -630,7 +644,7 @@ export async function startEnterpriseGateway(
+       res.end(loginPage(brand, english, nonce));
+       return;
+     }
+-    if (req.url === '/enterprise/login' && req.method === 'POST') {
++    if ((req.url === '/enterprise/login' || req.url === '/enterprise/password') && req.method === 'POST') {
+       if (sessions.size + pendingSessions >= maxSessions) return reply(res, 503, { error: 'SESSION_CAPACITY' });
+       const now = Date.now();
+       while (loginAttempts.length && loginAttempts[0] < now - 60_000) loginAttempts.shift();
+@@ -641,15 +655,27 @@ export async function startEnterpriseGateway(
+         const input = JSON.parse((await body(req, LOGIN_BODY)).toString('utf8')) as {
+           username?: string;
+           password?: string;
++          newPassword?: string;
+         };
+         if (typeof input.username !== 'string' || typeof input.password !== 'string') throw new Error('Invalid login');
++        if (req.url === '/enterprise/password') {
++          if (!opts.changePassword) return reply(res, 404, { error: 'NOT_FOUND' });
++          if (typeof input.newPassword !== 'string' || !/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8}$/.test(input.newPassword)) {
++            return reply(res, 400, { error: 'INVALID_NEW_PASSWORD' });
++          }
++          await opts.changePassword(input.username, input.password, input.newPassword);
++          return reply(res, 200, { ok: true });
++        }
+         const login = await opts.login(input.username, input.password);
+         actorKey(login.actor);
+         const id = randomBytes(32).toString('hex');
+         sessions.set(id, { ...login, sockets: new Set(), requests: new Set(), responses: new Set(), expiresAt: Date.now() + SESSION_MS });
+         res.setHeader('set-cookie', `${cookieName}=${id}; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict`);
+         return reply(res, 200, { ok: true });
+-      } catch {
++      } catch (error) {
++        if (error instanceof Error && 'code' in error && error.code === 'PASSWORD_CHANGE_REQUIRED') {
++          return reply(res, 409, { error: 'PASSWORD_CHANGE_REQUIRED' });
++        }
+         return reply(res, 401, { error: 'LOGIN_FAILED' });
+       } finally { pendingSessions -= 1; }
+     }
+diff --git a/AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.unit.test.ts b/AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.unit.test.ts
+index d1068d3..b71c95c 100644
+--- a/AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.unit.test.ts
++++ b/AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.unit.test.ts
+@@ -76,6 +76,11 @@ beforeAll(async () => {
+     port: 0,
+     publicBrand: async () => publicBrandValue,
+     login: async (username, password) => {
++      if (username === 'reset' && password === 'test') {
++        const error = new Error('Password change required');
++        Object.assign(error, { code: 'PASSWORD_CHANGE_REQUIRED' });
++        throw error;
++      }
+       if (password !== 'test' || !['1', '2'].includes(username)) throw new Error('Invalid login');
+       return {
+         actor: { serverId: 'rc2', userId: username },
+@@ -86,6 +91,9 @@ beforeAll(async () => {
+         close: async () => {},
+       };
+     },
++    changePassword: async (username, oldPassword) => {
++      if (username !== 'reset' || oldPassword !== 'test') throw new Error('Invalid credential');
++    },
+     resume: async (rc2Cookie) => {
+       if (rc2Cookie !== '__Host-workspace-rc2=valid-desktop-session') throw new Error('Invalid RC2 cookie');
+       return { actor: { serverId: 'rc2', userId: '2' }, validate: async () => allowed.get('2') === true,
+@@ -841,3 +849,29 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
+     await rm(staticDir, { recursive: true, force: true });
+   }
+ });
++
++
++test('reset password credentials require setup without granting a web identity or Core', async () => {
++  const before = started.length;
++  const result = await request('POST', '/enterprise/login', undefined, { username: 'reset', password: 'test' });
++  expect([result.status, JSON.parse(result.body).error]).toEqual([409, 'PASSWORD_CHANGE_REQUIRED']);
++  expect(result.headers['set-cookie']).toBeUndefined();
++  expect(started.length).toBe(before);
++});
++
++test('password setup reauthenticates the old password before changing it', async () => {
++  const result = await request('POST', '/enterprise/password', undefined, { username: 'reset', password: 'wrong', newPassword: 'Abcd1234' });
++  expect(result.status).toBe(401);
++});
++
++test('password setup accepts eight mixed letters and digits without issuing a web session', async () => {
++  const result = await request('POST', '/enterprise/password', undefined, { username: 'reset', password: 'test', newPassword: 'Abcd1234' });
++  expect(result.status).toBe(200);
++  expect(result.headers['set-cookie']).toBeUndefined();
++});
++
++test('password setup refuses weak format and foreign origins', async () => {
++  const payload = { username: 'reset', password: 'test', newPassword: '12345678' };
++  expect((await request('POST', '/enterprise/password', undefined, payload)).status).toBe(400);
++  expect((await request('POST', '/enterprise/password', undefined, { ...payload, newPassword: 'Abcd1234' }, 'https://foreign.invalid')).status).toBe(403);
++});
+diff --git a/AionUi-enterprise-poc/packages/web-host/src/enterprise-rc2-login.d.mts b/AionUi-enterprise-poc/packages/web-host/src/enterprise-rc2-login.d.mts
+index 946cac3..a828e0a 100644
+--- a/AionUi-enterprise-poc/packages/web-host/src/enterprise-rc2-login.d.mts
++++ b/AionUi-enterprise-poc/packages/web-host/src/enterprise-rc2-login.d.mts
+@@ -15,3 +15,6 @@ export function createRc2GatewayLogin(baseUrl: string, origin: string):
+   (username: string, password: string) => Promise<Rc2GatewayLogin>;
+ export function createRc2GatewayResume(baseUrl: string, origin: string):
+   (cookie: string) => Promise<Rc2GatewayLogin>;
++
++export function createRc2GatewayPasswordChange(baseUrl: string, origin: string):
++  (username: string, oldPassword: string, newPassword: string) => Promise<void>;
+diff --git a/AionUi-enterprise-poc/packages/web-host/src/enterprise-rc2-login.mjs b/AionUi-enterprise-poc/packages/web-host/src/enterprise-rc2-login.mjs
+index 24a9e7a..d7780a1 100644
+--- a/AionUi-enterprise-poc/packages/web-host/src/enterprise-rc2-login.mjs
++++ b/AionUi-enterprise-poc/packages/web-host/src/enterprise-rc2-login.mjs
+@@ -15,7 +15,9 @@ export function createRc2GatewayLogin(baseUrl, origin) {
+     const serverId = String(actor.serverId);
+     if (actor.mustChangePassword) {
+       await client.logout();
+-      throw new Error('Password change required');
++      const error = new Error('Password change required');
++      error.code = 'PASSWORD_CHANGE_REQUIRED';
++      throw error;
+     }
+     return {
+       actor: { serverId, userId },
+@@ -60,3 +62,20 @@ export function createRc2GatewayResume(baseUrl, origin) {
+     };
+   };
+ }
++
++/** Authenticate the reset credential, then use only the native self-service password API. */
++export function createRc2GatewayPasswordChange(baseUrl, origin) {
++  return async (username, oldPassword, newPassword) => {
++    if (!/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8}$/.test(newPassword)) throw new Error('Invalid new password');
++    const client = new Rc2Client(baseUrl, origin);
++    try {
++      await client.bootstrap();
++      await client.login({ username, password: oldPassword });
++      const { response, body } = await client.request('/system/user/profile/updatePwd', {
++        method: 'PUT', headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ oldPassword, newPassword }),
++      });
++      if (!response.ok || body?.code !== 200) throw new Error('Password update failed');
++    } finally { await client.logout().catch(() => {}); }
++  };
++}
+diff --git a/AionUi-enterprise-poc/packages/web-host/src/index.ts b/AionUi-enterprise-poc/packages/web-host/src/index.ts
+index 52dff88..3f7a057 100644
+--- a/AionUi-enterprise-poc/packages/web-host/src/index.ts
++++ b/AionUi-enterprise-poc/packages/web-host/src/index.ts
+@@ -5,7 +5,7 @@ export { startStaticServer, stopStaticServer } from './static-server.js';
+ export type { StaticServerOptions, StaticServerHandle } from './static-server.js';
+ export { startEnterpriseGateway } from './enterprise-gateway.js';
+ export type { EnterpriseActor, EnterpriseCore, EnterpriseLogin, EnterpriseGatewayOptions } from './enterprise-gateway.js';
+-export { createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPublicBrand } from './enterprise-rc2-login.mjs';
++export { createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPasswordChange, createRc2GatewayPublicBrand } from './enterprise-rc2-login.mjs';
+ export { createEnterpriseCoreStarter, enterpriseProfilePath } from './enterprise-core.js';
+ export type { EnterpriseCoreStarterOptions } from './enterprise-core.js';
+ export { createEnterpriseDockerCoreStarter } from './enterprise-docker-core.js';
+diff --git a/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/index.vue b/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/index.vue
+index 7934314..8968fdd 100644
+--- a/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/index.vue
++++ b/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/index.vue
+@@ -1,370 +1,159 @@
+ <template>
+-  <div class="home">
+-    <section class="hero-panel">
+-      <div class="hero-copy">
+-        <h1>RuoYi-Vue-Plus 控制台</h1>
+-        <p>
+-          企业级后台管理系统 重写 RuoYi-Vue 所有功能 集成 Sa-Token、Mybatis-Plus、WarmFlow、SpringDoc、Hutool、OSS
+-          等组件
+-        </p>
+-        <div class="hero-actions">
+-          <el-button type="primary" @click="goTarget('https://gitee.com/dromara/RuoYi-Vue-Plus')">查看源码</el-button>
+-          <el-button plain @click="goTarget('https://plus-doc.dromara.org/#/ruoyi-vue-plus/changlog')">
+-            更新日志
+-          </el-button>
+-        </div>
++  <div class="usage-home">
++    <header class="usage-heading">
++      <div><h1>用户使用统计</h1><p>查看用户的模型调用与用量</p></div>
++      <div class="usage-actions" v-if="canView">
++        <el-radio-group v-model="days" @change="load">
++          <el-radio-button :value="7">近7天</el-radio-button>
++          <el-radio-button :value="30">近30天</el-radio-button>
++          <el-radio-button :value="90">近90天</el-radio-button>
++        </el-radio-group>
++        <el-button :loading="loading" @click="load">刷新</el-button>
+       </div>
+-    </section>
+-
+-    <div class="content-grid">
+-      <section class="section-card">
+-        <div class="section-head">
+-          <div>
+-            <h2>项目矩阵</h2>
++    </header>
++    <el-empty v-if="!canView" description="当前账号无权查看使用统计" />
++    <template v-else>
++      <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
++      <el-skeleton v-if="!data && loading" :rows="8" animated />
++      <template v-if="data">
++        <section class="usage-overview" v-loading="loading" aria-label="使用概况">
++          <dl class="usage-summary">
++            <div><dt>启用用户</dt><dd>{{ number(data.summary.enabledUsers) }}<small>人</small></dd></div>
++            <div><dt>期间活跃用户</dt><dd>{{ number(data.summary.activeUsers) }}<small>人</small></dd></div>
++            <div><dt>模型调用</dt><dd>{{ number(data.summary.requests) }}<small>次</small></dd></div>
++            <div><dt>已报告 Token</dt><dd>{{ data.summary.reportedRequests ? number(data.summary.inputTokens + data.summary.outputTokens) : '—' }}</dd></div>
++          </dl>
++          <div class="usage-status">
++            <span>完成 <b>{{ number(data.summary.completed) }}</b></span>
++            <span>失败 <b>{{ number(data.summary.failed) }}</b></span>
++            <span>已取消 <b>{{ number(data.summary.cancelled) }}</b></span>
++            <span>进行中 <b>{{ number(data.summary.inflight) }}</b></span>
++            <span>回执未完成 <b>{{ number(data.summary.incomplete) }}</b></span>
+           </div>
+-        </div>
+-        <div class="product-list">
+-          <article v-for="product in products" :key="product.name" class="product-card">
+-            <div class="product-top">
+-              <div>
+-                <h3>{{ product.name }}</h3>
+-                <p>{{ product.summary }}</p>
+-              </div>
+-              <span class="product-version">{{ product.version }}</span>
+-            </div>
+-            <div class="product-tags">
+-              <el-tag v-for="tag in product.tags" :key="tag" effect="plain">{{ tag }}</el-tag>
+-            </div>
+-            <div class="product-actions">
+-              <el-button type="primary" plain @click="goTarget(product.primaryUrl)">
+-                {{ product.primaryLabel }}
+-              </el-button>
+-              <el-button plain @click="goTarget(product.secondaryUrl)">{{ product.secondaryLabel }}</el-button>
+-            </div>
+-          </article>
+-        </div>
+-      </section>
+-
+-      <section class="section-card capability-card">
+-        <div class="section-head">
+-          <div>
+-            <h2>能力地图</h2>
++        </section>
++        <section class="usage-section" v-loading="loading">
++          <div class="usage-section-heading"><h2>每日模型调用</h2><span>{{ data.period.from }} — {{ data.period.to }} · 北京时间</span></div>
++          <div v-if="data.summary.requests" class="usage-chart">
++            <svg viewBox="0 0 1000 214" role="img" aria-label="每日模型调用次数趋势">
++              <g v-for="tick in [0, 1, 2]" :key="tick">
++                <line x1="45" x2="985" :y1="170 - tick * 75" :y2="170 - tick * 75" class="chart-line" />
++                <text x="35" :y="174 - tick * 75" text-anchor="end" class="chart-label">{{ number(Math.round(chartMax * tick / 2)) }}</text>
++              </g>
++              <g v-for="(day, index) in data.daily" :key="day.day">
++                <rect :x="50 + index * barStep" :y="170 - 150 * day.requests / chartMax" :width="Math.max(2, barStep * .6)" :height="150 * day.requests / chartMax" rx="2" class="chart-bar">
++                  <title>{{ day.day }}：{{ day.requests }}次调用</title>
++                </rect>
++                <text v-if="index % Math.max(1, Math.ceil(data.daily.length / 7)) === 0 || index === data.daily.length - 1" :x="50 + index * barStep + barStep * .3" y="198" text-anchor="middle" class="chart-label">{{ day.day.slice(5) }}</text>
++              </g>
++            </svg>
+           </div>
+-        </div>
+-        <div class="capability-groups">
+-          <article v-for="group in capabilityGroups" :key="group.title" class="capability-group">
+-            <h3>{{ group.title }}</h3>
+-            <ul>
+-              <li v-for="item in group.items" :key="item">{{ item }}</li>
+-            </ul>
+-          </article>
+-        </div>
+-      </section>
+-    </div>
++          <el-empty v-else description="这段时间暂无模型调用" :image-size="72" />
++          <details v-if="data.summary.requests" class="usage-details">
++            <summary>查看每日明细</summary>
++            <el-table :data="data.daily" size="small" max-height="320">
++              <el-table-column prop="day" label="日期" min-width="120" />
++              <el-table-column prop="requests" label="模型调用" align="right" />
++              <el-table-column prop="completed" label="完成" align="right" />
++              <el-table-column prop="failed" label="失败" align="right" />
++              <el-table-column prop="cancelled" label="取消" align="right" />
++            </el-table>
++          </details>
++        </section>
++        <section class="usage-section" v-loading="loading">
++          <div class="usage-section-heading"><h2>用户使用明细</h2><span>按模型调用次数排序</span></div>
++          <el-table :data="data.users" empty-text="这段时间暂无用户使用记录" table-layout="auto">
++            <el-table-column prop="nickName" label="用户" min-width="140" />
++            <el-table-column prop="requests" label="模型调用" min-width="100" align="right" />
++            <el-table-column prop="completed" label="完成" min-width="80" align="right" />
++            <el-table-column prop="failed" label="失败" min-width="80" align="right" />
++            <el-table-column label="已报告输入 Token" min-width="165" align="right"><template #default="{ row }">{{ row.requests === row.unknownTokenRequests ? '—' : number(row.inputTokens) }}</template></el-table-column>
++            <el-table-column label="已报告输出 Token" min-width="165" align="right"><template #default="{ row }">{{ row.requests === row.unknownTokenRequests ? '—' : number(row.outputTokens) }}</template></el-table-column>
++            <el-table-column prop="unknownTokenRequests" label="用量未报告" min-width="115" align="right" />
++            <el-table-column label="最近使用" min-width="175"><template #default="{ row }">{{ dateTime(row.lastUsedAt) }}</template></el-table-column>
++          </el-table>
++          <p class="usage-note">展示调用最多的前100位用户。活跃用户指期间发起过模型调用的用户；一次办公任务可能调用模型多次。</p>
++        </section>
++        <footer class="usage-notes">
++          <p>Token 仅累计供应商已返回的用量，另有 {{ number(data.summary.unknownTokenRequests) }} 次调用未报告用量，不按零计算。费用暂不可统计。</p>
++          <p>最近更新 {{ updatedAt }} · 数据范围 {{ data.period.from }} 至 {{ data.period.to }}</p>
++        </footer>
++      </template>
++      <el-button v-if="error" class="usage-retry" @click="load">重新读取</el-button>
++    </template>
+   </div>
+ </template>
+ 
+ <script setup name="Index" lang="ts">
+-const products = [
+-  {
+-    name: 'RuoYi-Vue-Plus',
+-    version: 'v6.0.0',
+-    summary: '面向分布式集群场景的后台管理系统，保持现有业务接口与权限逻辑，适合先完成前端壳升级。',
+-    tags: ['Vue 3', 'Element Plus', 'Spring Boot', 'Sa-Token'],
+-    primaryLabel: '访问 GitHub',
+-    primaryUrl: 'https://github.com/dromara/RuoYi-Vue-Plus',
+-    secondaryLabel: '查看更新日志',
+-    secondaryUrl: 'https://plus-doc.dromara.org/#/ruoyi-vue-plus/changlog'
+-  },
+-  {
+-    name: 'RuoYi-Cloud-Plus',
+-    version: 'v6.0.0',
+-    summary: '微服务通用权限管理系统，适合更复杂的服务治理场景，也可以沿用同样的前端升级思路。',
+-    tags: ['Spring Cloud', 'Gateway', 'Nacos', 'Dubbo'],
+-    primaryLabel: '访问 GitHub',
+-    primaryUrl: 'https://github.com/dromara/RuoYi-Cloud-Plus',
+-    secondaryLabel: '查看更新日志',
+-    secondaryUrl: 'https://plus-doc.dromara.org/#/ruoyi-cloud-plus/changlog'
+-  }
+-];
+-
+-const capabilityGroups = [
+-  {
+-    title: '后端基建',
+-    items: ['Spring Boot / Spring Cloud', 'Sa-Token 认证与权限', 'MySQL / Redis', '代码生成器']
+-  },
+-  {
+-    title: '平台能力',
+-    items: ['动态菜单与按钮权限', '监控、日志、在线用户', '任务调度与工作流', '文件存储与多云适配']
+-  },
+-  {
+-    title: '前端方向',
+-    items: ['UI 卡片化', '主题与布局统一', '通用页面容器规范化', '企业化布局']
+-  }
+-];
+-
+-const goTarget = (url: string) => {
+-  window.open(url, '__blank');
+-};
++import request from '@/utils/request';
++import auth from '@/plugins/auth';
++
++type UsageCounts = { requests: number; completed: number; failed: number; cancelled: number; inputTokens: number; outputTokens: number };
++interface Dashboard {
++  period: { from: string; to: string; timezone: string };
++  summary: UsageCounts & { enabledUsers: number; activeUsers: number; inflight: number; incomplete: number; reportedRequests: number; unknownTokenRequests: number; unknownCostRequests: number };
++  daily: (UsageCounts & { day: string })[];
++  users: (UsageCounts & { userId: string; nickName: string; unknownTokenRequests: number; lastUsedAt: string })[];
++}
++const canView = computed(() => auth.hasPermiOr(['ai:audit:view']));
++const days = ref(7);
++const data = ref<Dashboard>();
++const loading = ref(false);
++const error = ref('');
++const updatedAt = ref('');
++let generation = 0;
++const number = (value: number) => new Intl.NumberFormat('zh-CN').format(value);
++const dateTime = (value: string) => value ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '—';
++const chartMax = computed(() => Math.max(2, Math.ceil(Math.max(0, ...(data.value?.daily.map(day => day.requests) || [])) / 2) * 2));
++const barStep = computed(() => 930 / Math.max(1, data.value?.daily.length || 1));
++async function load() {
++  if (!canView.value) return;
++  const current = ++generation;
++  loading.value = true; error.value = '';
++  try {
++    const result = await request({ url: '/ai/admin/dashboard', params: { days: days.value } });
++    if (current !== generation) return;
++    data.value = result.data as Dashboard;
++    updatedAt.value = dateTime(new Date().toISOString());
++  } catch {
++    if (current === generation) error.value = '使用统计读取失败，请重新读取。';
++  } finally {
++    if (current === generation) loading.value = false;
++  }
++}
++onMounted(load);
+ </script>
+ 
+ <style lang="scss" scoped>
+-.home {
+-  display: flex;
+-  flex-direction: column;
+-  gap: 20px;
+-}
+-
+-.hero-panel,
+-.section-card {
+-  border-radius: 28px;
+-  border: 1px solid var(--app-surface-border);
+-  background: var(--app-surface-bg);
+-  box-shadow: var(--app-shadow-sm);
+-  backdrop-filter: blur(18px);
+-}
+-
+-.hero-panel {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+-  gap: 18px;
+-  padding: 30px;
+-  background: radial-gradient(circle at top left, rgba(53, 109, 255, 0.16), transparent 30%), var(--app-surface-bg);
+-}
+-
+-.hero-copy {
+-  display: flex;
+-  flex-direction: column;
+-  gap: 14px;
+-
+-  h1 {
+-    margin: 0;
+-    font-size: clamp(30px, 4vw, 46px);
+-    line-height: 1.06;
+-    letter-spacing: -0.04em;
+-    color: var(--app-text-title);
+-  }
+-
+-  p {
+-    margin: 0;
+-    max-width: 760px;
+-    color: var(--app-text-muted);
+-    font-size: 15px;
+-    line-height: 1.8;
+-  }
+-}
+-
+-.hero-badge {
+-  display: inline-flex;
+-  width: fit-content;
+-  padding: 8px 14px;
+-  border-radius: 999px;
+-  background: rgba(53, 109, 255, 0.12);
+-  color: var(--app-accent-strong);
+-  font-size: 12px;
+-  font-weight: 700;
+-  letter-spacing: 0.08em;
+-  text-transform: uppercase;
+-}
+-
+-.hero-actions {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 12px;
+-  margin-top: 8px;
+-}
+-
+-.hero-stats {
+-  display: grid;
+-  gap: 12px;
+-}
+-
+-.stat-card {
+-  padding: 18px 20px;
+-  border-radius: 22px;
+-  background: var(--app-elevated-soft-bg);
+-  border: 1px solid var(--app-surface-border);
+-  display: flex;
+-  flex-direction: column;
+-  gap: 6px;
+-
+-  strong {
+-    color: var(--app-text-title);
+-    font-size: 24px;
+-    letter-spacing: -0.03em;
+-  }
+-
+-  span {
+-    color: var(--app-text-muted);
+-    font-size: 13px;
+-  }
+-}
+-
+-.content-grid {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+-  gap: 20px;
+-}
+-
+-.section-card {
+-  padding: 24px;
+-}
+-
+-.section-head {
+-  display: flex;
+-  align-items: center;
+-  justify-content: space-between;
+-  margin-bottom: 18px;
+-
+-  h2 {
+-    margin: 6px 0 0;
+-    color: var(--app-text-title);
+-    font-size: 26px;
+-    letter-spacing: -0.03em;
+-  }
+-}
+-
+-.section-kicker {
+-  color: var(--app-text-muted);
+-  font-size: 12px;
+-  font-weight: 700;
+-  letter-spacing: 0.08em;
+-  text-transform: uppercase;
+-}
+-
+-.product-list,
+-.capability-groups {
+-  display: grid;
+-  gap: 16px;
+-}
+-
+-.product-card {
+-  padding: 22px;
+-  border-radius: 24px;
+-  background: var(--app-elevated-soft-bg);
+-  border: 1px solid var(--app-surface-border);
+-  transition:
+-    transform 0.25s ease,
+-    box-shadow 0.25s ease,
+-    border-color 0.25s ease;
+-
+-  &:hover {
+-    transform: translateY(-2px);
+-    box-shadow: var(--app-shadow-sm);
+-    border-color: rgba(53, 109, 255, 0.2);
+-  }
+-}
+-
+-.product-top {
+-  display: flex;
+-  align-items: flex-start;
+-  justify-content: space-between;
+-  gap: 16px;
+-
+-  h3 {
+-    margin: 0 0 8px;
+-    color: var(--app-text-title);
+-    font-size: 22px;
+-    letter-spacing: -0.03em;
+-  }
+-
+-  p {
+-    margin: 0;
+-    color: var(--app-text-muted);
+-    line-height: 1.8;
+-  }
+-}
+-
+-.product-version {
+-  flex-shrink: 0;
+-  padding: 8px 12px;
+-  border-radius: 999px;
+-  background: rgba(53, 109, 255, 0.12);
+-  color: var(--app-accent-strong);
+-  font-size: 12px;
+-  font-weight: 700;
+-}
+-
+-.product-tags {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 8px;
+-  margin-top: 18px;
+-}
+-
+-.product-actions {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 10px;
+-  margin-top: 18px;
+-}
+-
+-.capability-card {
+-  background: radial-gradient(circle at top right, rgba(14, 165, 233, 0.12), transparent 28%), var(--app-surface-bg);
+-}
+-
+-.capability-group {
+-  padding: 18px 18px 18px 20px;
+-  border-radius: 22px;
+-  background: var(--app-elevated-soft-bg);
+-  border: 1px solid var(--app-surface-border);
+-
+-  h3 {
+-    margin: 0 0 12px;
+-    color: var(--app-text-title);
+-    font-size: 18px;
+-  }
+-
+-  ul {
+-    margin: 0;
+-    padding: 0;
+-    list-style: none;
+-    display: grid;
+-    gap: 10px;
+-  }
+-
+-  li {
+-    position: relative;
+-    padding-left: 16px;
+-    color: var(--app-text-muted);
+-    line-height: 1.7;
+-
+-    &::before {
+-      content: '';
+-      position: absolute;
+-      left: 0;
+-      top: 10px;
+-      width: 7px;
+-      height: 7px;
+-      border-radius: 50%;
+-      background: var(--app-accent-strong);
+-      box-shadow: 0 0 0 5px rgba(53, 109, 255, 0.12);
+-    }
+-  }
+-}
+-
+-@media (max-width: 960px) {
+-  .hero-panel,
+-  .content-grid {
+-    grid-template-columns: 1fr;
+-  }
+-}
+-
+-@media (max-width: 640px) {
+-  .hero-panel,
+-  .section-card {
+-    padding: 20px;
+-    border-radius: 22px;
+-  }
+-
+-  .product-top {
+-    flex-direction: column;
+-  }
+-}
+-
+-html.dark {
+-  .hero-panel {
+-    background: radial-gradient(circle at top left, rgba(53, 109, 255, 0.18), transparent 30%), var(--app-surface-bg);
+-  }
+-}
++.usage-home, .usage-section, .usage-overview { min-width: 0; }
++.usage-home { display: grid; gap: 20px; color: var(--app-text-title); font-variant-numeric: tabular-nums; }
++.usage-heading, .usage-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
++.usage-heading h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.35; font-weight: 650; }
++.usage-heading p, .usage-notes p, .usage-note { color: var(--app-text-muted); font-size: 13px; line-height: 1.7; margin: 0; }
++.usage-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
++.usage-overview, .usage-section { background: var(--app-surface-bg); border: 1px solid var(--app-surface-border); border-radius: 14px; padding: 24px; }
++.usage-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin: 0; }
++.usage-summary dt { font-size: 13px; color: var(--app-text-muted); margin-bottom: 10px; }
++.usage-summary dd { margin: 0; font-size: clamp(24px, 2.5vw, 32px); font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
++.usage-summary small { font-size: 13px; font-weight: 400; color: var(--app-text-muted); margin-left: 8px; }
++.usage-status { display: flex; flex-wrap: wrap; gap: 12px 28px; border-top: 1px solid var(--app-surface-border); margin-top: 22px; padding-top: 18px; font-size: 13px; color: var(--app-text-muted); }
++.usage-status b { margin-left: 6px; color: var(--app-text-title); font-weight: 600; }
++.usage-section-heading { margin-bottom: 22px; }
++.usage-section h2 { margin: 0; font-size: 17px; font-weight: 650; }
++.usage-section-heading > span { font-size: 12px; color: var(--app-text-muted); }
++.usage-chart svg { width: 100%; min-height: 150px; display: block; }
++.chart-line { stroke: var(--app-surface-border); stroke-width: 1; }
++.chart-label { fill: var(--app-text-muted); font-size: 12px; }
++.chart-bar { fill: var(--el-color-primary); }
++.usage-details { margin-top: 12px; }
++.usage-details summary { color: var(--el-color-primary); cursor: pointer; font-size: 13px; padding: 8px 0; }
++.usage-details summary:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 3px; }
++.usage-note { margin-top: 18px; }
++.usage-notes { display: grid; gap: 6px; }
++.usage-retry { justify-self: start; }
++@media (max-width: 860px) {
++  .usage-heading, .usage-section-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
++  .usage-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
++  .usage-overview, .usage-section { padding: 18px; }
++}
++@media (prefers-reduced-motion: reduce) { .usage-home * { transition: none !important; } }
+ </style>
+diff --git a/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/system/user/index.vue b/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/system/user/index.vue
+index 23a09e1..5f23e92 100644
+--- a/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/system/user/index.vue
++++ b/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/system/user/index.vue
+@@ -243,6 +243,7 @@
+                     link
+                     type="primary"
+                     icon="Key"
++                    aria-label="重置密码"
+                     @click="handleResetPwd(scope.row)"
+                   ></el-button>
+                 </el-tooltip>
+@@ -562,14 +563,14 @@ const initData: PageData<UserForm, UserQuery> = {
+     password: [
+       { required: true, message: '用户密码不能为空', trigger: 'blur' },
+       {
+-        min: 12,
+-        max: 30,
+-        message: '用户密码长度必须介于 12 和 30 之间',
++        min: 8,
++        max: 8,
++        message: '密码须为8位，且同时包含字母和数字',
+         trigger: 'blur'
+       },
+       {
+-        pattern: /^[^<>"'|\\]+$/,
+-        message: '不能包含非法字符：< > " \' \\ |',
++        pattern: /^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8}$/,
++        message: '密码须为8位，且同时包含字母和数字',
+         trigger: 'blur'
+       }
+     ],
+@@ -696,18 +697,14 @@ const handleResetPwd = async (row: Partial<UserVO>) => {
+       confirmButtonText: '确定',
+       cancelButtonText: '取消',
+       closeOnClickModal: false,
+-      inputPattern: /^.{12,30}$/,
+-      inputErrorMessage: '用户密码长度必须介于 12 和 30 之间',
+-      inputValidator: value => {
+-        if (/<|>|"|'|\||\\/.test(value)) {
+-          return '不能包含非法字符：< > " \' \\ |';
+-        }
+-      }
++      inputType: 'password',
++      inputPattern: /^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8}$/,
++      inputErrorMessage: '密码须为8位，且同时包含字母和数字'
+     })
+   );
+   if (!err && res) {
+     await api.resetUserPwd(row.userId, res.value);
+-    modal.msgSuccess('修改成功，新密码是：' + res.value);
++    modal.msgSuccess('密码已重置，用户首次登录时需设置新密码');
+   }
+ };
+ 
+diff --git a/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/system/user/profile/resetPwd.vue b/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/system/user/profile/resetPwd.vue
+index 74a861a..85eb08a 100644
+--- a/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/system/user/profile/resetPwd.vue
++++ b/deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/system/user/profile/resetPwd.vue
+@@ -43,14 +43,8 @@ const rules = ref({
+   newPassword: [
+     { required: true, message: '新密码不能为空', trigger: 'blur' },
+     {
+-      min: 12,
+-      max: 30,
+-      message: '长度在 12 到 30 个字符，且不超过 72 个 UTF-8 字节',
+-      trigger: 'blur'
+-    },
+-    {
+-      pattern: /^[^<>"'|\\]+$/,
+-      message: '不能包含非法字符：< > " \' \\ |',
++      pattern: /^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8}$/,
++      message: '密码须为8位，且同时包含字母和数字',
+       trigger: 'blur'
+     }
+   ],
+diff --git a/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceOperationsController.java b/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceOperationsController.java
+index 9bbbaac..dd4573a 100644
+--- a/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceOperationsController.java
++++ b/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceOperationsController.java
+@@ -12,7 +12,7 @@ import java.util.*;
+ @RequestMapping("/ai")
+ @RequiredArgsConstructor
+ public class WorkspaceOperationsController {
+- private final WorkspacePrincipal principals;private final JdbcTemplate jdbc;private final AgentRuntime runtime;
++ private final WorkspacePrincipal principals;private final JdbcTemplate jdbc;private final AgentRuntime runtime;private final WorkspaceUsageDashboard usageDashboard;
+  private int offset(int page){if(page<1||page>1000)throw new WorkspaceDenied(400,"InvalidPage");return (page-1)*30;}
+  @GetMapping("/admin/audit") public R<?> audit(@RequestParam(defaultValue="calls") String category,@RequestParam(defaultValue="1") int page){
+   principals.require("ai:audit:view");int offset=offset(page);
+@@ -33,6 +33,10 @@ public class WorkspaceOperationsController {
+   principals.require("ai:audit:view");if(days<1||days>90)throw new WorkspaceDenied(400,"InvalidPeriod");
+   return R.ok(jdbc.queryForList("SELECT date_trunc('day',created_at) AS day,currency,count(*) AS calls,count(*) FILTER(WHERE status='STARTED') AS incomplete_calls,count(*) FILTER(WHERE input_tokens IS NULL OR output_tokens IS NULL) AS unknown_token_calls,count(*) FILTER(WHERE estimated_cost IS NULL) AS unknown_cost_calls,sum(input_tokens) AS known_input_tokens,sum(output_tokens) AS known_output_tokens,sum(estimated_cost) AS known_estimated_cost FROM ai_execution_call WHERE kind='MODEL' AND created_at>=NOW()-make_interval(days=>?) GROUP BY 1,2 ORDER BY 1 DESC,2",days));
+  }
++ @GetMapping("/admin/dashboard") public R<?> dashboard(@RequestParam(defaultValue="30") int days){
++  principals.require("ai:audit:view");if(days<1||days>90)throw new WorkspaceDenied(400,"InvalidPeriod");
++  return R.ok(usageDashboard.load(days));
++ }
+  @GetMapping("/admin/operations") public R<?> operations(@RequestParam(defaultValue="runs") String category,@RequestParam(defaultValue="1") int page){
+   principals.require("ai:operations:view");int offset=offset(page);String sql=switch(category){
+    case "runs" -> "SELECT id,session_id,owner_user_id::text,status,error_code,created_at,finished_at FROM ai_run ORDER BY created_at DESC,id DESC";
+diff --git a/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspacePasswordPolicy.java b/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspacePasswordPolicy.java
+index 97984f8..75dc161 100644
+--- a/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspacePasswordPolicy.java
++++ b/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspacePasswordPolicy.java
+@@ -11,7 +11,7 @@ import org.springframework.beans.BeanWrapperImpl;
+ import org.springframework.jdbc.core.JdbcTemplate;
+ import org.springframework.stereotype.Component;
+ 
+-import java.nio.charset.StandardCharsets;
++
+ 
+ /** Password guard around native APIs keeps upstream DTOs unchanged. */
+ @Aspect
+@@ -31,9 +31,10 @@ public class WorkspacePasswordPolicy {
+         String password;
+         if(operation.equals("login")) password=JsonUtils.parseMap((String)argument).getStr("password");
+         else {bean=new BeanWrapperImpl(argument);password=(String)bean.getPropertyValue(operation.equals("updatePwd")?"newPassword":"password");}
+-        if(!operation.equals("edit") || password!=null && !password.isEmpty()) {
+-            if(password==null || password.length()<12 || password.length()>30 || password.getBytes(StandardCharsets.UTF_8).length>72)
+-                throw new WorkspaceDenied(400,"PasswordMustBe12To30CharactersAndAtMost72Bytes");
++        // Authenticate existing credentials unchanged; policy applies only when setting a new password.
++        if(!operation.equals("login") && (!operation.equals("edit") || password!=null && !password.isEmpty())) {
++            if(password==null || !password.matches("(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8}"))
++                throw new WorkspaceDenied(400,"密码须为8位，且同时包含字母和数字");
+         }
+         Long current=operation.equals("updatePwd")?LoginHelper.getUserId():null;
+         Object response=call.proceed();
+diff --git a/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceUsageDashboard.java b/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceUsageDashboard.java
+new file mode 100644
+index 0000000..3c40dc5
+--- /dev/null
++++ b/deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceUsageDashboard.java
+@@ -0,0 +1,181 @@
++package org.dromara.ai.workspace;
++
++import lombok.RequiredArgsConstructor;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Component;
++import org.springframework.transaction.annotation.Isolation;
++import org.springframework.transaction.annotation.Transactional;
++
++import java.sql.ResultSet;
++import java.sql.SQLException;
++import java.time.LocalDate;
++import java.time.ZoneId;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++
++/** Aggregates employee Core relay events without exposing prompts or raw audit metadata. */
++@Component
++@RequiredArgsConstructor
++public class WorkspaceUsageDashboard {
++    private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
++    private static final String SOURCE = "CORE_MODEL_RELAY";
++    /** The response intentionally caps the ranked user table; summary and daily totals remain uncapped. */
++    private static final int USER_LIMIT = 100;
++
++    private static final String CALLS = """
++        WITH params AS (
++            SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date AS to_day,
++                   (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date
++                       - (CAST(? AS integer) - 1) AS from_day
++        ), starts AS (
++            SELECT DISTINCT ON (event.actor_user_id, event.metadata->>'callId')
++                   event.actor_user_id AS user_id,
++                   event.metadata->>'callId' AS call_id,
++                   event.metadata->>'costStatus' AS cost_status,
++                   event.created_at AS started_at,
++                   (event.created_at AT TIME ZONE 'Asia/Shanghai')::date AS day
++            FROM ai_security_event event CROSS JOIN params
++            WHERE event.action = 'model.relay.started'
++              AND event.metadata->>'callId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
++              AND event.created_at >= (params.from_day::timestamp AT TIME ZONE 'Asia/Shanghai')
++              AND event.created_at < ((params.to_day + 1)::timestamp AT TIME ZONE 'Asia/Shanghai')
++            ORDER BY event.actor_user_id, event.metadata->>'callId', event.created_at, event.id
++        ), finishes AS (
++            SELECT DISTINCT ON (event.actor_user_id, event.metadata->>'callId')
++                   event.actor_user_id AS user_id,
++                   event.metadata->>'callId' AS call_id,
++                   event.metadata->>'status' AS status,
++                   event.metadata->>'costStatus' AS cost_status,
++                   event.metadata->>'usageReported' = 'true' AS usage_reported,
++                   CASE WHEN event.metadata->>'inputTokens' ~ '^[0-9]{1,18}$'
++                        THEN (event.metadata->>'inputTokens')::bigint END AS input_tokens,
++                   CASE WHEN event.metadata->>'outputTokens' ~ '^[0-9]{1,18}$'
++                        THEN (event.metadata->>'outputTokens')::bigint END AS output_tokens
++            FROM ai_security_event event
++            JOIN starts ON starts.user_id = event.actor_user_id
++                       AND starts.call_id = event.metadata->>'callId'
++                       AND event.created_at >= starts.started_at
++            WHERE event.action = 'model.relay.finished'
++              AND event.metadata->>'status' IN ('COMPLETED', 'FAILED', 'CANCELLED')
++              AND event.created_at <= CURRENT_TIMESTAMP
++            ORDER BY event.actor_user_id, event.metadata->>'callId', event.created_at DESC, event.id DESC
++        ), calls AS (
++            SELECT starts.user_id, starts.call_id, starts.started_at, starts.day,
++                   finishes.status, finishes.usage_reported,
++                   finishes.input_tokens, finishes.output_tokens,
++                   COALESCE(finishes.usage_reported, false)
++                       AND finishes.input_tokens IS NOT NULL
++                       AND finishes.output_tokens IS NOT NULL AS tokens_known,
++                   COALESCE(finishes.cost_status, starts.cost_status) AS cost_status,
++                   CASE WHEN finishes.call_id IS NOT NULL THEN finishes.status
++                        WHEN starts.started_at > CURRENT_TIMESTAMP - INTERVAL '10 minutes' THEN 'INFLIGHT'
++                        ELSE 'INCOMPLETE' END AS effective_status
++            FROM starts LEFT JOIN finishes
++              ON finishes.user_id = starts.user_id AND finishes.call_id = starts.call_id
++        )
++        """;
++
++    private final JdbcTemplate jdbc;
++
++    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
++    public Dashboard load(int days) {
++        if (days < 1 || days > 90) throw new WorkspaceDenied(400, "InvalidPeriod");
++        LocalDate to = LocalDate.now(ZONE);
++        LocalDate from = to.minusDays(days - 1L);
++
++        Summary summary = jdbc.queryForObject(CALLS + """
++            SELECT (SELECT count(*) FROM sys_user WHERE status='0' AND del_flag='0') AS enabled_users,
++                   count(DISTINCT user_id) AS active_users,
++                   count(*) AS requests,
++                   count(*) FILTER (WHERE effective_status='COMPLETED') AS completed,
++                   count(*) FILTER (WHERE effective_status='FAILED') AS failed,
++                   count(*) FILTER (WHERE effective_status='CANCELLED') AS cancelled,
++                   count(*) FILTER (WHERE effective_status='INFLIGHT') AS inflight,
++                   count(*) FILTER (WHERE effective_status='INCOMPLETE') AS incomplete,
++                   count(*) FILTER (WHERE tokens_known) AS reported_requests,
++                   count(*) FILTER (WHERE NOT tokens_known) AS unknown_token_requests,
++                   COALESCE(sum(input_tokens) FILTER (WHERE tokens_known), 0) AS input_tokens,
++                   COALESCE(sum(output_tokens) FILTER (WHERE tokens_known), 0) AS output_tokens,
++                   count(*) FILTER (WHERE cost_status IS NULL OR cost_status='UNKNOWN') AS unknown_cost_requests
++            FROM calls
++            """, this::summary, days);
++
++        Map<LocalDate, Daily> populatedDays = new LinkedHashMap<>();
++        jdbc.query(CALLS + """
++            SELECT day, count(*) AS requests,
++                   count(*) FILTER (WHERE effective_status='COMPLETED') AS completed,
++                   count(*) FILTER (WHERE effective_status='FAILED') AS failed,
++                   count(*) FILTER (WHERE effective_status='CANCELLED') AS cancelled,
++                   COALESCE(sum(input_tokens) FILTER (WHERE tokens_known), 0) AS input_tokens,
++                   COALESCE(sum(output_tokens) FILTER (WHERE tokens_known), 0) AS output_tokens
++            FROM calls GROUP BY day ORDER BY day
++            """, rs -> {
++                LocalDate day = rs.getObject("day", LocalDate.class);
++                populatedDays.put(day, daily(rs, day));
++            }, days);
++        List<Daily> daily = new ArrayList<>(days);
++        for (LocalDate day = from; !day.isAfter(to); day = day.plusDays(1)) {
++            daily.add(populatedDays.getOrDefault(day, new Daily(day.toString(), 0, 0, 0, 0, 0, 0)));
++        }
++
++        List<UserUsage> users = jdbc.query(CALLS + """
++            SELECT calls.user_id::text AS user_id, users.nick_name,
++                   count(*) AS requests,
++                   count(*) FILTER (WHERE effective_status='COMPLETED') AS completed,
++                   count(*) FILTER (WHERE effective_status='FAILED') AS failed,
++                   count(*) FILTER (WHERE effective_status='CANCELLED') AS cancelled,
++                   COALESCE(sum(input_tokens) FILTER (WHERE tokens_known), 0) AS input_tokens,
++                   COALESCE(sum(output_tokens) FILTER (WHERE tokens_known), 0) AS output_tokens,
++                   count(*) FILTER (WHERE NOT tokens_known) AS unknown_token_requests,
++                   max(started_at) AS last_used_at
++            FROM calls JOIN sys_user users ON users.user_id = calls.user_id
++            GROUP BY calls.user_id, users.nick_name
++            ORDER BY requests DESC, last_used_at DESC, calls.user_id
++            LIMIT ?
++            """, this::user, days, USER_LIMIT);
++        return new Dashboard(new Period(from.toString(), to.toString(), ZONE.getId()), SOURCE,
++            summary, daily, users);
++    }
++
++    private Summary summary(ResultSet rs, int row) throws SQLException {
++        return new Summary(number(rs, "enabled_users"), number(rs, "active_users"),
++            number(rs, "requests"), number(rs, "completed"), number(rs, "failed"),
++            number(rs, "cancelled"), number(rs, "inflight"), number(rs, "incomplete"),
++            number(rs, "reported_requests"), number(rs, "unknown_token_requests"),
++            number(rs, "input_tokens"), number(rs, "output_tokens"),
++            number(rs, "unknown_cost_requests"));
++    }
++
++    private Daily daily(ResultSet rs, LocalDate day) throws SQLException {
++        return new Daily(day.toString(), number(rs, "requests"), number(rs, "completed"),
++            number(rs, "failed"), number(rs, "cancelled"), number(rs, "input_tokens"),
++            number(rs, "output_tokens"));
++    }
++
++    private UserUsage user(ResultSet rs, int row) throws SQLException {
++        return new UserUsage(rs.getString("user_id"), rs.getString("nick_name"),
++            number(rs, "requests"), number(rs, "completed"), number(rs, "failed"),
++            number(rs, "cancelled"), number(rs, "input_tokens"), number(rs, "output_tokens"),
++            number(rs, "unknown_token_requests"), rs.getTimestamp("last_used_at").toInstant().toString());
++    }
++
++    private long number(ResultSet rs, String column) throws SQLException {
++        Number value = (Number) rs.getObject(column);
++        return value == null ? 0L : value.longValue();
++    }
++
++    public record Dashboard(Period period, String source, Summary summary,
++                            List<Daily> daily, List<UserUsage> users) { }
++    public record Period(String from, String to, String timezone) { }
++    public record Summary(long enabledUsers, long activeUsers, long requests, long completed,
++                          long failed, long cancelled, long inflight, long incomplete,
++                          long reportedRequests, long unknownTokenRequests, long inputTokens,
++                          long outputTokens, long unknownCostRequests) { }
++    public record Daily(String day, long requests, long completed, long failed, long cancelled,
++                        long inputTokens, long outputTokens) { }
++    public record UserUsage(String userId, String nickName, long requests, long completed,
++                            long failed, long cancelled, long inputTokens, long outputTokens,
++                            long unknownTokenRequests, String lastUsedAt) { }
++}

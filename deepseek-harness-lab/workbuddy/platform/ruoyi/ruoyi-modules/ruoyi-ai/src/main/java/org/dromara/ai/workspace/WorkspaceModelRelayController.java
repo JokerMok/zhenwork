@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
@@ -25,6 +26,8 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /** Employee-authorized Chat Completions relay; provider credentials stay in RC2. */
@@ -42,24 +45,34 @@ public class WorkspaceModelRelayController {
     private final JdbcTemplate jdbc;
 
     @PostMapping(value = "/{modelId}/chat/completions", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<StreamingResponseBody> chat(@PathVariable UUID modelId, @RequestBody String raw) {
+    public ResponseEntity<StreamingResponseBody> chat(@PathVariable UUID modelId, @RequestBody String raw, @RequestHeader(value="X-Aion-Conversation-Id", required=false) String conversationId) {
         var actor = principals.require("ai:model:use");
         var token = StpUtil.getTokenValue();
         return relayAuthorized(modelId, raw, actor.userId(), actor.authVersion(), () -> {
             principals.fromToken(token);
             access.checkIdentity(actor.userId(), actor.authVersion());
-        });
+        }, conversationId);
     }
 
     ResponseEntity<StreamingResponseBody> relayAuthorized(UUID modelId, String raw, long userId,
         long authVersion, Runnable recheck) {
+        return relayAuthorized(modelId,raw,userId,authVersion,recheck,null);
+    }
+
+    ResponseEntity<StreamingResponseBody> relayAuthorized(UUID modelId, String raw, long userId,
+        long authVersion, Runnable recheck, String conversationId) {
         access.checkIdentity(userId, authVersion);
-        var model = access.model(userId, modelId);
+        var model = new LinkedHashMap<String,Object>(access.model(userId, modelId));
+        if(conversationId!=null && conversationId.matches("[A-Za-z0-9_-]{1,100}"))model.put("conversation_id",conversationId);
         if (raw.length() > MAX_REQUEST_CHARS) throw new WorkspaceDenied(413, "ModelRequestTooLarge");
         var payload = normalize(raw, model.get("code").toString());
         payload.put("stream_options", Map.of("include_usage", true));
+        var defaults=JsonUtils.parseMap(Objects.toString(model.get("default_parameters"),"{}"));
+        defaults.forEach(payload::putIfAbsent);
+        payload.putIfAbsent("max_tokens",model.get("max_output_tokens"));
+        for(String limit:List.of("max_tokens","max_completion_tokens"))if(payload.get(limit) instanceof Number n && n.longValue()>((Number)model.get("max_output_tokens")).longValue())payload.put(limit,model.get("max_output_tokens"));
+        if(payload.containsKey("tools")&&!Boolean.TRUE.equals(model.get("tools")))throw new WorkspaceDenied(400,"ModelToolCallingDisabled");
         String providerType = model.get("provider_type").toString();
-        if ("CUSTOM_OPENAI".equals(providerType)) throw new WorkspaceDenied(400, "RelayProviderUnsupported");
         if ("ARK".equals(providerType)) payload.put("thinking", Map.of("type", "disabled"));
         var baseUrl = WorkspaceProviderDestination.validate(providerType, model.get("base_url").toString());
         var cipher = jdbc.queryForObject(
@@ -70,7 +83,7 @@ public class WorkspaceModelRelayController {
         UUID callId = UUID.randomUUID();
         audit(callId, userId, modelId, "model.relay.started", model, "STARTED", null);
         var request = HttpRequest.newBuilder(URI.create(baseUrl + "/chat/completions"))
-            .timeout(Duration.ofSeconds(45))
+            .timeout(Duration.ofSeconds(((Number)model.get("timeout_seconds")).longValue()))
             .header("Authorization", "Bearer " + secrets.decrypt(cipher))
             .header("Content-Type", "application/json")
             .header("Accept", "text/event-stream")
@@ -89,7 +102,7 @@ public class WorkspaceModelRelayController {
         if (upstream.statusCode() != 200) {
             try { upstream.body().close(); } catch (IOException ignored) { }
             audit(callId, userId, modelId, "model.relay.finished", model, "FAILED", null);
-            throw new WorkspaceDenied(502, "ProviderUnavailable");
+            throw new WorkspaceDenied(502, "ProviderHttp"+upstream.statusCode());
         }
         StreamingResponseBody stream = output -> {
             var usage = new SseUsage();
@@ -129,7 +142,17 @@ public class WorkspaceModelRelayController {
         metadata.put("usageReported", usage != null && usage.reported);
         metadata.put("inputTokens", usage == null ? null : usage.inputTokens);
         metadata.put("outputTokens", usage == null ? null : usage.outputTokens);
+        metadata.put("conversationId",model.get("conversation_id"));
         metadata.put("costStatus", "UNKNOWN");
+        if(usage!=null && usage.reported) {
+            var rates=JsonUtils.parseMap(Objects.toString(model.get("cost_config"),"{}"));
+            if(rates.get("inputPerMillion") instanceof Number && rates.get("outputPerMillion") instanceof Number && Set.of("USD","CNY").contains(Objects.toString(rates.get("currency"),""))) {
+                var cost=new java.math.BigDecimal(rates.get("inputPerMillion").toString()).multiply(java.math.BigDecimal.valueOf(usage.inputTokens))
+                  .add(new java.math.BigDecimal(rates.get("outputPerMillion").toString()).multiply(java.math.BigDecimal.valueOf(usage.outputTokens)))
+                  .divide(java.math.BigDecimal.valueOf(1000000),10,java.math.RoundingMode.HALF_UP);
+                metadata.put("estimatedCost",cost);metadata.put("currency",rates.get("currency"));metadata.put("costStatus","ESTIMATED");
+            }
+        }
         jdbc.update("INSERT INTO ai_security_event(id,actor_user_id,action,resource_id,metadata) VALUES(?,?,?,?,?::jsonb)",
             UUID.randomUUID(), userId, action, modelId, JsonUtils.toJsonString(metadata));
     }

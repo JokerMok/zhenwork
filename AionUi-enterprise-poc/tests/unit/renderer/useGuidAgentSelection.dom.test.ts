@@ -115,6 +115,42 @@ describe('useGuidAssistantSelection', () => {
     });
   });
 
+  it('uses a web preferred default without replacing an explicit assistant after navigation state is cleared', async () => {
+    mockAssistants = [
+      assistantFixture({ id: 'zhenwork-general-office', runtimeKey: 'aionrs', source: 'generated', sortOrder: 1 }),
+      assistantFixture({ id: 'rc2-shared-assistant', runtimeKey: 'aionrs', source: 'generated', sortOrder: 2 }),
+      assistantFixture({ id: 'assistant-claude', runtimeKey: 'claude', source: 'builtin', sortOrder: 3 }),
+    ];
+    configGetMock.mockImplementation((key: string) =>
+      key === 'guid.lastAssistantId' ? 'assistant-claude' : undefined
+    );
+
+    const { result, rerender } = renderHook(
+      ({ preselectAssistantId, locationKey }) =>
+        useGuidAssistantSelection({
+          resetAssistant: false,
+          preselectAssistantId,
+          preferredDefaultAssistantId: 'zhenwork-general-office',
+          locationKey,
+        }),
+      { initialProps: { preselectAssistantId: undefined as string | undefined, locationKey: 'initial' } }
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedAssistantId).toBe('zhenwork-general-office');
+    });
+
+    rerender({ preselectAssistantId: 'rc2-shared-assistant', locationKey: 'explicit' });
+    await waitFor(() => {
+      expect(result.current.selectedAssistantId).toBe('rc2-shared-assistant');
+    });
+
+    rerender({ preselectAssistantId: undefined, locationKey: 'cleared' });
+    await waitFor(() => {
+      expect(result.current.selectedAssistantId).toBe('rc2-shared-assistant');
+    });
+  });
+
   it('restores the last selected guid assistant when the guid page resets for a new chat', async () => {
     mockAssistants = [
       assistantFixture({ id: 'bare-aionrs', runtimeKey: 'aionrs', source: 'generated', sortOrder: 1 }),
