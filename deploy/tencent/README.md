@@ -1,6 +1,6 @@
 # 腾讯云网页试点维护
 
-本部署只提供员工网页、管理后台、RC2、Web Host 和按需启动的 Linux Core/Gateway。默认源码取 origin 的已提交版本，保留工作树修改；不调用桌面打包、签名、下载页或更新服务。
+本部署只提供员工网页、管理后台、RC2、Web Host 和按需启动的 Linux Core/Gateway。源码由 --ref 指定的已提交版本冻结（省略时为本机 HEAD）；更新前先核对 origin 默认分支和本机提交，保留工作树修改；不调用桌面打包、签名、下载页或更新服务。
 
 ## 当前主机与入口
 
@@ -12,7 +12,7 @@
 
 `deploy.sh` 只暂存，不激活。它从指定提交执行 `git archive`，只构建 Web、后台和 Java；Bun/pnpm 缓存必须与归档 lockfile 完全一致，Maven 仓库按全部 POM 与 wrapper 输入摘要隔离。它不会运行 Cargo。Core/Gateway 源码与当前发布比较：未变化就强制复用当前完整镜像 ID；发生变化就必须显式给出已审核的 amd64 镜像 ID，不能盲用旧镜像。manifest 同时记录 Core 源树、Cargo lock、容器内 binary SHA256。`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0` 的已审核 binary SHA256 为 `a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`，并包含 system-site-packages 下的 openpyxl 3.1.5、python-docx 1.2.0、python-pptx 1.0.2。
 
-当前办公版本的 Core 源码相对线上提交有变化，暂存命令为：
+当前 Core 已采用下述完整办公镜像。源码与当前发布未变时脚本自动复用它；首次切到该镜像或源变化时显式指定并核对来源：
 
 ```sh
 bash deploy/tencent/deploy.sh --ref COMMIT_SHA \
@@ -35,7 +35,7 @@ finalize 在同一发布锁内先校验发布文件、镜像、密码策略和�
 
 ```sh
 bash deploy/tencent/restage-host.sh \
-  --from 20261020-5f3a7ca-office \
+  --from 20261020-office-evidence \
   --ref COMMIT_SHA \
   --release NEW_RELEASE
 ```
@@ -62,8 +62,8 @@ Web Host 以 zhenwork 非 root 用户运行，docker 组授予启动本机 Docke
 
 ## 数据、资源与网络
 
-- DB `shared/data/postgres`；Redis `shared/data/redis`；实际员工资料、上传与生成文件在 `shared/profiles/profiles/<userId>`，workspace、runtime-temp 及会话数据库持久保存。RC2 的 `WorkspaceFileStore` 会按 `secret-key-file` 的父目录寻找 `shared/config/uploads`；部署只允许这个入口是 root 所有、解析到 `shared/uploads` 的受控链接，新建时固定为相对链接 `../uploads`。文件实际保存在 zhenwork 所有、0700 的真实目录 `shared/uploads`，不会写入 root 只读的 `shared/config`，也不会覆盖已有上传文件。发布文件单独在 releases。
-- 私有配置与稳定 serverId/clientId、模型凭证/加密密钥在 shared/config，禁止提交或打印。模型由 RC2 集中授权，员工无需输入 API。Web 容器内置 OfficeCLI、Python 办公/PDF工具、OCR及已有技能；模型写文件仍需一次性授权。
+- DB `shared/data/postgres`；Redis `shared/data/redis`；实际员工资料、上传与生成文件在 `shared/profiles/profiles/<serverHash>/<userId>`，workspace、runtime-temp 及会话数据库持久保存。RC2 的 `WorkspaceFileStore` 会按 `secret-key-file` 的父目录寻找 `shared/config/uploads`；部署只允许这个入口是 root 所有、解析到 `shared/uploads` 的受控链接，新建时固定为相对链接 `../uploads`。文件实际保存在 zhenwork 所有、0700 的真实目录 `shared/uploads`，不会写入 root 只读的 `shared/config`，也不会覆盖已有上传文件。发布文件单独在 releases。
+- 私有配置与稳定 serverId/clientId、模型凭证/加密密钥在 shared/config，禁止提交或打印。模型由 RC2 集中授权，员工无需输入 API。Core 容器内置 OfficeCLI、Python 办公/PDF工具、OCR及已有技能；Web Host 另用 /opt/zhenwork-office 受控解释器读写四格式文件和按页OCR。prepare-office-host.sh 只用官方 Ubuntu/PyPI 补齐固定依赖。普通文档生成不运行用户代码，复杂模板通过已授权 Skill 执行，仍保留工具一次性授权。
 - `shared/config/web.env`：最大 Core=1、启动并发=1、空闲阈值120000ms，Host 定期检查后回收；前台租约、运行中任务、后台子任务、团队任务仍阻止回收。容量不足时排队/拒绝，不扩到两 Core。
 - RC2 18890、Host 18891、PG 18432、Redis 18379 全为127.0.0.1。Core 无公网映射；Gateway 受控代理保留。仅 docker0 子网172.17.0.0/16至172.17.0.1 TCP32768:60999的宿主内部路径受限放行；不公开 Docker API。
 - 公网复用现有 Caddy80/443，配置 zhenwork.caddy 用 caddy-site-install 安装并 reload。仅新增本项目两个 DNSPod A 记录；HTTPS origin 分离、Secure/HttpOnly/Strict Cookie、外部 internal 路由阻断。管理同 origin 请求仅对精确管理 Origin 改写，外来 Origin 原样交给后端拒绝。
@@ -81,7 +81,7 @@ ssh tencent-main 'sudo python3 /srv/apps/zhenwork/deploy/restore-check.py ARCHIV
 
 restore-check 只新建随机命名的隔离数据库，实际 pg_restore/计数比对、恢复 profile、SQLite integrity_check 和 Office ZIP 检查，结束仅删除自己的检查库，不覆盖生产。结果 root 私有 shared/config/restore-check.json。
 
-沿用输入128MiB/单包256MiB/总1GiB/7份预算，超预算停止并保留旧包。须随员工资料增长重新核定；当前同机备份不抵御磁盘或整机丢失。未配置异机备份/外部通知；没有运行 down -v、全局 prune 或删除业务数据。
+本轮为真实办公资料将输入预算由128MiB调整为256MiB，单包仍256MiB、总量1GiB、最多7份；旧主脚本在 /srv/ops/config-history/20261020-zhenwork-office/server-config-backup.before 留存。预算并非承诺能保留7份大包，轮转以总量限制为准，超预算停止并保留旧包。须随员工资料增长重新核定；当前同机备份不抵御磁盘或整机丢失。未配置异机备份/外部通知；没有运行 down -v、全局 prune 或删除业务数据。
 
 ## 定向验收
 
@@ -92,8 +92,10 @@ verify-admin.mjs / verify-employee.mjs 使用独立无头 Chromium；本机设�
 
 ## 后台与密码更新
 
-20261020-42d834a-admin3包含admin-usability.patch；42d834a的默认更新脚本同时应用Core空闲补丁及该补丁。管理首页使用/ai/admin/dashboard的真实Core中继事件，不复用旧Harness用量接口。未采集费用不显示0元。
+当前源码已包含网页密码与后台统计修复，不再为当前版本叠加旧 admin-usability.patch。管理首页使用 /ai/admin/dashboard 的真实 Core 中继事件，按北京时间和7/30/90天展示用户活跃、请求、Token与状态；费用未获取或未配置价格时明确未知，不混入旧Harness用量。
 
-密码新设为8位字母数字（两者必需），已有密码仍可登录。管理员重置后员工首次登录需设置自己的新密码；Web Host重新验证旧凭据并调用原生个人改密，改密前不启动Core。初始账号凭据文件不会随后台改密自动更新，不应把旧文件中的口令当作用户当前密码。初始化脚本已使用8位随机字母数字，不旋转已存在账号。
+后台一键重置固定临时密码 a123456，不提供自选重置口令。员工正确登录后必须设置8–16位、同时含ASCII字母和数字的新密码；临时值是7位的专门例外。改密前不发员工身份、不启动Core，原凭据由RC2复核，第二次重置会撤销旧身份。初始账号文件不自动同步管理员后续改密，不应将其中旧口令当作当前密码。不得用真实员工账号跑重置回归。
+
+受控办公 MCP 提供当前任务附件/工作区 read_document、结构化 write_workspace_json、四格式 create_office_document、validate_artifact、联网检索读取与权限知识检索。读取每次最多5页/位置（Excel最多3工作表，100行×40列），50MiB输入、30秒、OCR标记待复核；旧 .doc/.xls/.ppt 明确不支持，需用户先转为现行格式，不会伪称解析成功。研究与核查使用 sourceRef + 连续原文引用校验，生成文件自动嵌入真实定位；引用存在不代表推断成立或方案已实际验收。引用使用时重查知识授权/版本或工作区文件哈希，30分钟过期后需重读。Registry按员工Core隔离、最多128来源/2MiB文本，重启后重新检索即可恢复依据。个人/共享知识使用 PostgreSQL 轻量检索与 Office/PDF/OCR异步索引，没有增加独立向量数据库。
 
 verify-admin-usability.mjs需要环境变量及私有qa-private.json所指的专用回归账号；all包含统计与重置/首次改密的真实浏览器验证，dashboard只验证读取和布局。禁止用实际员工账号跑重置回归。原生权限拒绝可能为HTTP200/JSONcode403，应同时检查响应体与无数据，而不是要求所有业务拒绝均使用HTTP403。

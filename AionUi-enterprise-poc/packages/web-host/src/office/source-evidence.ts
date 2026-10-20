@@ -8,8 +8,12 @@ export type SourceEvidenceInput = {
   locator: unknown;
 };
 
-export type SourceEvidenceReference = {
-  ref: string;
+export type SourceEvidenceReference =
+  | { ref: string; quote: string; quoteIndex?: never }
+  | { ref: string; quote?: never; quoteIndex: number };
+
+export type SourceEvidenceQuoteOption = {
+  index: number;
   quote: string;
 };
 
@@ -41,6 +45,8 @@ const SOURCE_TTL_MS = 30 * 60 * 1000;
 const MAX_REFERENCES = 32;
 const MIN_QUOTE_LENGTH = 8;
 const MAX_QUOTE_LENGTH = 2000;
+const MAX_QUOTE_OPTIONS = 16;
+const MAX_QUOTE_OPTION_LENGTH = 500;
 
 function normalizeQuote(value: string): string {
   return value.replace(/\p{White_Space}+/gu, ' ').trim();
@@ -56,6 +62,23 @@ function cloneLocator(locator: unknown): unknown {
 
 function validConversation(conversation: unknown): conversation is string {
   return typeof conversation === 'string' && conversation.length > 0;
+}
+
+function quoteOptionsFor(text: string): SourceEvidenceQuoteOption[] {
+  const seen = new Set<string>();
+  const quotes: string[] = [];
+  for (const rawLine of text.split(/\r\n|\n|\r/)) {
+    const line = rawLine.trim();
+    if (line.length < MIN_QUOTE_LENGTH) continue;
+    for (let start = 0; start < line.length && quotes.length < MAX_QUOTE_OPTIONS; start += MAX_QUOTE_OPTION_LENGTH) {
+      const quote = line.slice(start, start + MAX_QUOTE_OPTION_LENGTH);
+      if (quote.length < MIN_QUOTE_LENGTH || seen.has(quote)) continue;
+      seen.add(quote);
+      quotes.push(quote);
+    }
+    if (quotes.length >= MAX_QUOTE_OPTIONS) break;
+  }
+  return quotes.map((quote, index) => ({ index, quote }));
 }
 
 /**
@@ -122,6 +145,19 @@ export class SourceEvidenceRegistry {
     return ref;
   }
 
+  hasSources(conversation: string): boolean {
+    if (!validConversation(conversation)) throw new Error('SOURCE_EVIDENCE_CONVERSATION_INVALID');
+    this.pruneExpired(this.now());
+    return Boolean(this.conversations.get(conversation)?.entries.size);
+  }
+
+  /** Returns exact source substrings; callers still own ACL and relevance checks. */
+  quoteOptions(conversation: string, ref: string): SourceEvidenceQuoteOption[] {
+    if (!validConversation(conversation)) throw new Error('SOURCE_EVIDENCE_CONVERSATION_INVALID');
+    if (typeof ref !== 'string' || ref.length === 0) throw new Error('SOURCE_EVIDENCE_REFERENCE_INVALID');
+    return quoteOptionsFor(this.sourceFor(conversation, ref, this.now()).text);
+  }
+
   verify(conversation: string, references: SourceEvidenceReference[]): VerifiedSourceEvidence[] {
     if (!validConversation(conversation)) throw new Error('SOURCE_EVIDENCE_CONVERSATION_INVALID');
     if (!Array.isArray(references) || references.length < 1 || references.length > MAX_REFERENCES) {
@@ -130,30 +166,33 @@ export class SourceEvidenceRegistry {
 
     const currentTime = this.now();
     return references.map((reference) => {
-      if (!reference || typeof reference.ref !== 'string' || typeof reference.quote !== 'string') {
+      if (!reference || typeof reference.ref !== 'string') {
         throw new Error('SOURCE_EVIDENCE_REFERENCE_INVALID');
       }
-      const owner = this.owners.get(reference.ref);
-      if (!owner) throw new Error('SOURCE_EVIDENCE_REF_MISSING');
-      if (owner !== conversation) throw new Error('SOURCE_EVIDENCE_CROSS_CONVERSATION');
+      const quoteProvided = Object.hasOwn(reference, 'quote');
+      const indexProvided = Object.hasOwn(reference, 'quoteIndex');
+      if (quoteProvided && indexProvided) throw new Error('SOURCE_EVIDENCE_REFERENCE_AMBIGUOUS');
+      if (!quoteProvided && !indexProvided) throw new Error('SOURCE_EVIDENCE_REFERENCE_INVALID');
 
-      const bucket = this.conversations.get(conversation);
-      const source = bucket?.entries.get(reference.ref);
-      if (!bucket || !source) {
-        this.owners.delete(reference.ref);
-        throw new Error('SOURCE_EVIDENCE_REF_MISSING');
-      }
-      if (currentTime >= source.expiresAt) {
-        this.remove(conversation, reference.ref, bucket);
-        throw new Error('SOURCE_EVIDENCE_EXPIRED');
-      }
-
-      const quote = normalizeQuote(reference.quote);
-      if (quote.length < MIN_QUOTE_LENGTH || quote.length > MAX_QUOTE_LENGTH) {
-        throw new Error('SOURCE_EVIDENCE_QUOTE_LENGTH_8_2000');
-      }
-      if (!normalizeQuote(source.text).includes(quote)) {
-        throw new Error('SOURCE_EVIDENCE_QUOTE_ABSENT');
+      const source = this.sourceFor(conversation, reference.ref, currentTime);
+      let quote: string;
+      if (indexProvided) {
+        const quoteIndex = reference.quoteIndex;
+        if (typeof quoteIndex !== 'number' || !Number.isInteger(quoteIndex) || quoteIndex < 0) {
+          throw new Error('SOURCE_EVIDENCE_QUOTE_INDEX_INVALID');
+        }
+        const option = quoteOptionsFor(source.text)[quoteIndex];
+        if (!option) throw new Error('SOURCE_EVIDENCE_QUOTE_INDEX_INVALID');
+        quote = option.quote;
+      } else {
+        if (typeof reference.quote !== 'string') throw new Error('SOURCE_EVIDENCE_REFERENCE_INVALID');
+        quote = normalizeQuote(reference.quote);
+        if (quote.length < MIN_QUOTE_LENGTH || quote.length > MAX_QUOTE_LENGTH) {
+          throw new Error('SOURCE_EVIDENCE_QUOTE_LENGTH_8_2000');
+        }
+        if (!normalizeQuote(source.text).includes(quote)) {
+          throw new Error('SOURCE_EVIDENCE_QUOTE_ABSENT');
+        }
       }
 
       return {
@@ -163,6 +202,24 @@ export class SourceEvidenceRegistry {
         quote,
       };
     });
+  }
+
+  private sourceFor(conversation: string, ref: string, currentTime: number): StoredSourceEvidence {
+    const owner = this.owners.get(ref);
+    if (!owner) throw new Error('SOURCE_EVIDENCE_REF_MISSING');
+    if (owner !== conversation) throw new Error('SOURCE_EVIDENCE_CROSS_CONVERSATION');
+
+    const bucket = this.conversations.get(conversation);
+    const source = bucket?.entries.get(ref);
+    if (!bucket || !source) {
+      this.owners.delete(ref);
+      throw new Error('SOURCE_EVIDENCE_REF_MISSING');
+    }
+    if (currentTime >= source.expiresAt) {
+      this.remove(conversation, ref, bucket);
+      throw new Error('SOURCE_EVIDENCE_EXPIRED');
+    }
+    return source;
   }
 
   private pruneExpired(currentTime: number): void {

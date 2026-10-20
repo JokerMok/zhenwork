@@ -201,3 +201,104 @@ test('rejects one oversized source without evicting existing evidence', () => {
   ).toThrow('SOURCE_EVIDENCE_SOURCE_LIMIT_2MB');
   expect(registry.verify('conversation-a', [{ ref: first, quote: 'Existing evidence remains' }])).toHaveLength(1);
 });
+
+test('offers at most 16 deterministic exact line segments and removes duplicates', () => {
+  const registry = new SourceEvidenceRegistry();
+  const longLine = 'L'.repeat(520);
+  const repeated = 'Repeated candidate line, with punctuation.';
+  const text = [
+    longLine,
+    repeated,
+    repeated,
+    ...Array.from({ length: 20 }, (_, index) => `Unique line ${index}.`),
+  ].join('\n');
+  const ref = registry.add('conversation-a', { kind: 'knowledge', text, locator: {} });
+
+  const options = registry.quoteOptions('conversation-a', ref);
+
+  expect(options).toHaveLength(16);
+  expect(options.slice(0, 3)).toEqual([
+    { index: 0, quote: 'L'.repeat(500) },
+    { index: 1, quote: 'L'.repeat(20) },
+    { index: 2, quote: repeated },
+  ]);
+  expect(new Set(options.map((option) => option.quote)).size).toBe(16);
+});
+
+test('verifies a zero-based quote index and returns the exact source substring', () => {
+  const registry = new SourceEvidenceRegistry();
+  const ref = registry.add('conversation-a', {
+    kind: 'workspace',
+    text: 'First available source line.\nExact,\tindexed quote!',
+    locator: { paragraph: 2 },
+  });
+
+  expect(registry.verify('conversation-a', [{ ref, quoteIndex: 1 }])).toEqual([
+    {
+      ref,
+      kind: 'workspace',
+      locator: { paragraph: 2 },
+      quote: 'Exact,\tindexed quote!',
+    },
+  ]);
+});
+
+test('rejects ambiguous, fractional, negative and out-of-range quote indexes', () => {
+  const registry = new SourceEvidenceRegistry();
+  const ref = registry.add('conversation-a', {
+    kind: 'web',
+    text: 'Only one candidate source line.',
+    locator: {},
+  });
+
+  expect(() =>
+    registry.verify('conversation-a', [{ ref, quote: 'Only one candidate', quoteIndex: 0 } as never])
+  ).toThrow('SOURCE_EVIDENCE_REFERENCE_AMBIGUOUS');
+  for (const quoteIndex of [-1, 0.5, 1]) {
+    expect(() => registry.verify('conversation-a', [{ ref, quoteIndex }])).toThrow(
+      'SOURCE_EVIDENCE_QUOTE_INDEX_INVALID'
+    );
+  }
+});
+
+test('does not join separate short lines into a quote option', () => {
+  const registry = new SourceEvidenceRegistry();
+  const ref = registry.add('conversation-a', {
+    kind: 'knowledge',
+    text: 'short\nlines\nonly',
+    locator: {},
+  });
+
+  expect(registry.quoteOptions('conversation-a', ref)).toEqual([]);
+});
+
+test('applies missing and cross-conversation checks to quote options', () => {
+  const registry = new SourceEvidenceRegistry();
+  const ref = registry.add('conversation-a', {
+    kind: 'web',
+    text: 'Conversation ownership remains enforced.',
+    locator: {},
+  });
+
+  expect(() => registry.quoteOptions('conversation-a', 'missing')).toThrow('SOURCE_EVIDENCE_REF_MISSING');
+  expect(() => registry.quoteOptions('conversation-b', ref)).toThrow('SOURCE_EVIDENCE_CROSS_CONVERSATION');
+});
+
+test('rejects expired quote options and globally prunes before reporting sources', () => {
+  let now = 7_000;
+  const registry = new SourceEvidenceRegistry(() => now);
+  const first = registry.add('conversation-a', {
+    kind: 'web',
+    text: 'Expired source line for direct lookup.',
+    locator: {},
+  });
+  registry.add('conversation-b', {
+    kind: 'knowledge',
+    text: 'Expired source line in an abandoned conversation.',
+    locator: {},
+  });
+  now += 30 * 60 * 1000;
+
+  expect(() => registry.quoteOptions('conversation-a', first)).toThrow('SOURCE_EVIDENCE_EXPIRED');
+  expect(registry.hasSources('conversation-b')).toBe(false);
+});
