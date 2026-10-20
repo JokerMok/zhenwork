@@ -69,6 +69,16 @@ test('authorized RC2 assistant becomes a native AionCore assistant with executab
     if (route === '/api/mcp/servers') return new Response(JSON.stringify({ success: true,
       data: { id: 'mcp-created', name: 'rc2-enterprise-catalog', enabled: true } }), { status: 201 });
     if (route === `/api/assistants/rc2-${oldId}`) return new Response(JSON.stringify({ success: true }));
+    if (route === `/api/assistants/rc2-${id}` && options.method === 'PUT') {
+      return new Response(JSON.stringify({ success: true, data: { id: `rc2-${id}` } }));
+    }
+    if (route === `/api/assistants/rc2-${id}` && !options.method) {
+      return new Response(JSON.stringify({ success: true, data: { id: `rc2-${id}`, defaults: {
+        model: { mode: 'fixed', value: 'fixed-model' },
+        skills: { mode: 'fixed', value: ['enterprise-succinct'] },
+        mcps: { mode: 'fixed', value: ['mcp-created'] },
+      } } }));
+    }
     if (route === '/api/assistants') return new Response(JSON.stringify({ success: true,
       data: { id: `rc2-${id}` } }), { status: 201 });
     if (route === '/api/skills/assistant-rule/write') return new Response(JSON.stringify({ success: true, data: true }));

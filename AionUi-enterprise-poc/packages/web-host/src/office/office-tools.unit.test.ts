@@ -347,3 +347,32 @@ test('enterprise assistants retain their tools and receive the authorized knowle
     await fixture.close();
   }
 });
+
+test('knowledge search resolves permitted bases and output context without invented identifiers', async () => {
+  const fixture = await coreFixture();
+  const root = await profileRoot();
+  fixture.core.workspaceRoot = path.join(root, 'workspace');
+  const baseId = '11111111-1111-4111-8111-111111111111';
+  const checked: string[] = [];
+  const client = {
+    me: async () => ({ userId: actor.userId }),
+    resources: async () => [{ id: baseId, name: 'Company evidence', version: 3 }],
+    authorizedResource: async (id: string) => { checked.push(id); },
+    knowledgeSearch: async (id: string, query: string) => ({ citations: [{ baseId: id, version: 3, query, locationLabel: '第 4 页' }] }),
+  };
+  const office = await startOfficeTools(actor, fixture.core, root, async () => client as never);
+  const registration = fixture.registered();
+  const call = async (name: string, args: unknown) => (await (await fetch(
+    registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+    })).json()) as { result: { content: Array<{text: string}> } };
+  try {
+    const context = JSON.parse((await call('office_context', {})).result.content[0].text);
+    expect(context.workspaceRoot).toBe(fixture.core.workspaceRoot);
+    const found = JSON.parse((await call('search_knowledge', { query: 'requirements' })).result.content[0].text);
+    expect(found.searchedBases).toBe(1);
+    expect(found.results[0].citations[0]).toMatchObject({ baseId, version: 3 });
+    expect(checked).toEqual([baseId]);
+  } finally { await office.stop(); await fixture.close(); }
+});

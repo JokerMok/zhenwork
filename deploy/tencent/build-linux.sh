@@ -71,7 +71,7 @@ if reuse is not None:
                           'reusedArtifacts':reuse['reusedArtifacts'],'artifactSha256':hashes}
  m['buildLocation']='macOS Host-only rebuild; Web/Admin/Java/control source reused from immutable release'
 ops=pathlib.Path('/srv/apps/zhenwork/deploy')
-m['maintenanceSha256']={n:hashlib.sha256((ops/n).read_bytes()).hexdigest() for n in ('activate.sh','bootstrap.py','build-linux.sh','finalize-release.sh','manage.sh')}
+m['maintenanceSha256']={n:hashlib.sha256((ops/n).read_bytes()).hexdigest() for n in ('activate.sh','bootstrap.py','build-linux.sh','finalize-release.sh','manage.sh','prepare-office-host.sh')}
 migrations=[]
 for f in sorted((p/'control-source/migrations/rc2').glob('[0-9][0-9][0-9][0-9]_*.sql')):
  migrations.append({'version':f.name,'sha256':hashlib.sha256(f.read_bytes()).hexdigest()})

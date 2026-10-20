@@ -111,7 +111,10 @@ ssh tencent-main "set -eu; \
   sudo chown -R ubuntu:ubuntu '$remote_root/incoming/$release'; \
   sudo rm -f '$remote_root/incoming/$release/RELEASE.json' '$remote_root/incoming/$release/SHA256SUMS' '$remote_root/incoming/$release/VERIFIED.json'"
 rsync -az "$work/stage/web-host.cjs" "$work/stage/SOURCE_SHA" "$work/stage/IMAGE_IDS.json" "tencent-main:$remote_root/incoming/$release/"
-rsync -az deploy/tencent/build-linux.sh "tencent-main:/tmp/zhenwork-$release-build-linux.sh"
-ssh tencent-main "sudo install -o root -g root -m 0755 '/tmp/zhenwork-$release-build-linux.sh' '$remote_root/deploy/build-linux.sh'; rm -f '/tmp/zhenwork-$release-build-linux.sh'; sudo bash '$remote_root/deploy/build-linux.sh' '$release' '$remote_root/incoming/$release'"
+for name in activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh; do
+  rsync -az "$work/source/deploy/tencent/$name" "tencent-main:/tmp/zhenwork-$release-$name"
+  ssh tencent-main "sudo install -o root -g root -m 0755 '/tmp/zhenwork-$release-$name' '$remote_root/deploy/$name'; rm -f '/tmp/zhenwork-$release-$name'"
+done
+ssh tencent-main "sudo bash '$remote_root/deploy/build-linux.sh' '$release' '$remote_root/incoming/$release'"
 echo "Staged Host-only release $release / $sha; reused immutable artifacts from $from."
 echo "No current/shared/service change was performed. Review RELEASE.json before finalize."

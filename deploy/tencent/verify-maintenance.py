@@ -41,6 +41,10 @@ prepare = text("build-linux.sh")
 activate = text("activate.sh")
 restage = text("restage-host.sh")
 configure = text("configure.py")
+office_dependencies = text("prepare-office-host.sh")
+assert 'bash "$root/deploy/prepare-office-host.sh"' in activate
+assert "--index-url https://pypi.org/simple python-pptx==1.0.2" in office_dependencies
+assert "--system-site-packages /opt/zhenwork-office" in office_dependencies
 assert "git archive" in stage and "cmp -s" in stage
 assert "coreSourceTreeSha256" in stage and "coreBinarySha256" in prepare
 assert "cargo build" not in stage.lower() + prepare.lower()
@@ -57,7 +61,7 @@ assert "packages/desktop" in restage and "full reviewed stage" in restage
 assert "Host-only restage refused changed path" in restage and "*)" in restage
 assert "packages/web-cli/src/enterprise-entry.ts" in restage and "build-web.mjs" not in restage
 assert "artifactReusedFrom" in restage and "artifactReusedFrom" in prepare
-assert "systemctl" not in restage and "activate.sh" not in restage and "current.next" not in restage
+assert "systemctl" not in restage and "sudo bash '$remote_root/deploy/activate.sh'" not in restage and "current.next" not in restage
 assert "assert reuse['reusedArtifacts']==['admin','control-source','employee','rc2.jar']" in prepare
 for source in (configure,activate):
     assert "shared/uploads" in source and "shared/config/uploads" in source

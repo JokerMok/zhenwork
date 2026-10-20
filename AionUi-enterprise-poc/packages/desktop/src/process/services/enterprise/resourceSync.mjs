@@ -155,6 +155,14 @@ function isManagedMcp(item) {
   } catch { return false; }
 }
 
+function assistantDefaultsMatch(actual, expected) {
+  const sameValues = (left, right) => Array.isArray(left) && Array.isArray(right) &&
+    left.length === right.length && left.every((value, index) => value === right[index]);
+  return actual?.model?.mode === expected.model.mode && actual.model.value === expected.model.value &&
+    actual?.skills?.mode === expected.skills.mode && sameValues(actual.skills.value, expected.skills.value) &&
+    actual?.mcps?.mode === expected.mcps.mode && sameValues(actual.mcps.value, expected.mcps.value);
+}
+
 // Register RC2-authorized resources in AionCore's existing Skill/MCP stores.
 // They remain selectable through AionUi's native conversation controls.
 export async function syncEnterpriseResources(corePort, localToken, config = process.env, fetchImpl = fetch) {
@@ -311,7 +319,8 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
           skills: { mode: 'fixed', value: skills }, mcps: { mode: 'fixed', value: mcps } },
       };
       try {
-        const created = oldAssistantIds.has(id)
+        const existed = oldAssistantIds.has(id);
+        const created = existed
           ? await (async () => {
           const response = await fetchImpl(`${base}/api/assistants/${encodeURIComponent(id)}`,
             { method: 'PUT', headers, body: JSON.stringify(payload) });
@@ -321,6 +330,23 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
         })()
           : await request('/api/assistants', payload);
         if (created?.id !== id) throw new Error('AionCore assistant registration failed');
+        // Some deployed Core builds accept defaults on PUT but silently leave a newly-created
+        // assistant's POST defaults as `auto`. Re-apply only the governance defaults after POST;
+        // this is idempotent on current Core and avoids a first-login window with the wrong model,
+        // Skill or MCP selection.
+        if (!existed) {
+          const response = await fetchImpl(`${base}/api/assistants/${encodeURIComponent(id)}`, {
+            method: 'PUT', headers, body: JSON.stringify({ defaults: payload.defaults }),
+          });
+          const body = await response.json().catch(() => null);
+          if (!response.ok || body?.success !== true) throw new Error('AionCore assistant defaults update failed');
+        }
+        const verified = await fetchImpl(`${base}/api/assistants/${encodeURIComponent(id)}`, { headers });
+        const verifiedBody = await verified.json().catch(() => null);
+        if (!verified.ok || verifiedBody?.success !== true ||
+            !assistantDefaultsMatch(verifiedBody.data?.defaults, payload.defaults)) {
+          throw new Error('AionCore assistant defaults verification failed');
+        }
         await request('/api/skills/assistant-rule/write', {
           assistant_id: id, content: item.instruction + knowledgeContext,
         });

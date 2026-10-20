@@ -49,7 +49,7 @@ if [[ $legacy == 1 && ! -f "$ops/build-linux.sh" ]]; then ops="$repo/deploy/tenc
   echo 'The committed tree is missing application locks or deploy/tencent scripts.' >&2; exit 1;
 }
 if [[ $legacy == 0 ]]; then
-  for committed_file in deploy.sh restage-host.sh activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh verify-maintenance.py README.md rollback-compatibility.example.json; do
+  for committed_file in deploy.sh restage-host.sh activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh verify-maintenance.py prepare-office-host.sh README.md rollback-compatibility.example.json; do
     cmp -s "$repo/deploy/tencent/$committed_file" "$ops/$committed_file" || {
       echo "deploy/tencent/$committed_file differs from $sha; commit the maintenance flow before staging." >&2; exit 1;
     }
@@ -201,7 +201,7 @@ PY
 remote_root=/srv/apps/zhenwork
 ssh tencent-main "set -eu; sudo rm -rf '$remote_root/incoming/$release'; sudo install -d -o ubuntu -g ubuntu '$remote_root/incoming/$release'"
 rsync -az --delete "$stage/" "tencent-main:$remote_root/incoming/$release/"
-for name in activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh; do
+for name in activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh; do
   rsync -az "$ops/$name" "tencent-main:/tmp/zhenwork-$release-$name"
   ssh tencent-main "sudo install -o root -g root -m 0755 '/tmp/zhenwork-$release-$name' '$remote_root/deploy/$name'; rm -f '/tmp/zhenwork-$release-$name'"
 done

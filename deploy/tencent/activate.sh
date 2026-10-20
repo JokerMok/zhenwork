@@ -39,6 +39,8 @@ PY
 old=$(basename "$(readlink -f "$root/current")")
 [[ "$old" != "$release" ]] || { echo 'Already active'; exit 0; }
 
+bash "$root/deploy/prepare-office-host.sh"
+
 # Validate immutable files, exact images, password compatibility, and the
 # database chain before any backup or service change.
 python3 - "$target" "$old" "$mode" "$review" <<'PY'

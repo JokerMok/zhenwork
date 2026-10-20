@@ -26,6 +26,7 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     `66666666-6666-4666-8666-${String(index).padStart(12, '0')}`);
   let knowledgeVersion = 5;
   const writes: Array<{ route: string; body: Record<string, unknown> }> = [];
+  const assistantDetails = new Map<string, Record<string, unknown>>();
   const core = http.createServer(async (req, res) => {
     if (req.headers['x-aion-enterprise-local-token'] !== 'local-secret') {
       res.writeHead(401).end(); return;
@@ -55,7 +56,22 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     else if (req.url === '/api/mcp/servers' && req.method === 'POST') res.end(JSON.stringify({ success: true,
       data: { id: `mcp-${body.name}`, name: body.name, enabled: true } }));
     else if (req.url === '/api/assistants' && req.method === 'POST')
-      res.end(JSON.stringify({ success: true, data: { id: body.id } }));
+      {
+        const id = String(body.id);
+        assistantDetails.set(id, { ...body, defaults: {
+          model: { mode: 'auto' }, skills: { mode: 'auto' }, mcps: { mode: 'auto' },
+        } });
+        res.end(JSON.stringify({ success: true, data: { id } }));
+      }
+    else if (req.url?.startsWith('/api/assistants/') && req.method === 'PUT') {
+      const id = decodeURIComponent(req.url.slice('/api/assistants/'.length));
+      assistantDetails.set(id, { ...assistantDetails.get(id), ...body });
+      res.end(JSON.stringify({ success: true, data: { id } }));
+    }
+    else if (req.url?.startsWith('/api/assistants/') && req.method === 'GET') {
+      const id = decodeURIComponent(req.url.slice('/api/assistants/'.length));
+      res.end(JSON.stringify({ success: true, data: assistantDetails.get(id) }));
+    }
     else res.end(JSON.stringify({ success: true, data: {} }));
   });
   await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
@@ -140,6 +156,10 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
       expect(assistant.custom_skill_names).toEqual(skillNames);
       expect((assistant.defaults as { mcps: { value: string[] } }).mcps.value).toHaveLength(2);
       expect((assistant.defaults as { model: { value: string } }).model.value).toBe('assistant-model-code');
+      expect(writes).toContainEqual({
+        route: `/api/assistants/rc2-${assistantId}`,
+        body: { defaults: assistant.defaults },
+      });
       const rule = writes.find(({ route }) => route === '/api/skills/assistant-rule/write')?.body as {
         content: string;
       };
