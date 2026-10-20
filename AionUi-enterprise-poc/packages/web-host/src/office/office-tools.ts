@@ -72,8 +72,7 @@ export async function startOfficeTools(actor: EnterpriseActor, core: EnterpriseC
   try {
     await core.registerProxyPort?.(port);
     const base = enterpriseCoreBase(core), headers = { 'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken };
-    const listed = await fetch(base + '/api/mcp/servers', { headers }).then((r) => r.json()) as { data?: Array<{ id: string; name: string }> };
-    for (const old of listed.data || []) if (old.name === name) await fetch(base + '/api/mcp/servers/' + old.id, { method: 'DELETE', headers });
+    // Core upserts by name, preserving IDs referenced by saved conversations and jobs.
     const r = await fetch(base + '/api/mcp/servers', { method: 'POST', headers, body: JSON.stringify({ name, description: 'Personal-authorized research, knowledge and preferences', transport: { type: 'http', url: `http://${enterpriseProxyHost(core)}:${port}/mcp`, headers: { Authorization: 'Bearer ' + key } } }) });
     const body = await r.json() as { success?: boolean; data?: { id?: string; enabled?: boolean } };
     if (!r.ok || !body.success || !body.data?.id) throw new Error('OFFICE_TOOLS_REGISTRATION_FAILED');

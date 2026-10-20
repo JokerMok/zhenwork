@@ -200,3 +200,16 @@ test('refuses to configure the default assistant when its Office MCP is absent',
       .rejects.toThrow('OFFICE_MCP_UNAVAILABLE');
   } finally { await fixture.close(); }
 });
+
+test('refreshes MCP transport without deleting saved conversation and job bindings', async () => {
+  const fixture = await coreFixture();const root = await profileRoot();
+  try {
+    const first = await startOfficeTools(actor, fixture.core, root, async () => { throw new Error('unused'); });
+    await first.stop();
+    const next = await startOfficeTools(actor, fixture.core, root, async () => { throw new Error('unused'); });
+    try {
+      expect(next.mcpId).toBe(first.mcpId);
+      expect(fixture.calls.some((call) => call.method === 'DELETE')).toBe(false);
+    } finally { await next.stop(); }
+  } finally { await fixture.close(); }
+});
