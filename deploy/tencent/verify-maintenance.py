@@ -31,13 +31,14 @@ def compile_embedded_python(name: str) -> None:
 
 
 compile(text("bootstrap.py"), "bootstrap.py", "exec")
-for script in ("deploy.sh", "build-linux.sh", "activate.sh"):
+for script in ("deploy.sh", "restage-host.sh", "build-linux.sh", "activate.sh"):
     compile_embedded_python(script)
 json.loads(text("rollback-compatibility.example.json"))
 
 stage = text("deploy.sh")
 prepare = text("build-linux.sh")
 activate = text("activate.sh")
+restage = text("restage-host.sh")
 assert "git archive" in stage and "cmp -s" in stage
 assert "coreSourceTreeSha256" in stage and "coreBinarySha256" in prepare
 assert "cargo build" not in stage.lower() + prepare.lower()
@@ -48,6 +49,14 @@ assert activate.index("systemctl start server-config-backup.service") < activate
 for token in ("databaseMigrations", "targetMigrationPrefix", "additiveSchemaCompatible", "Future schema is never implicitly accepted"):
     assert token in activate
 assert "schema_advancing" in activate and "Services remain stopped" in activate
+assert "git diff --name-only --no-renames -z" in restage
+assert "packages/web-host/src/*|AionUi-enterprise-poc/packages/web-cli/src/*" in restage
+assert "packages/desktop" in restage and "full reviewed stage" in restage
+assert "Host-only restage refused changed path" in restage and "*)" in restage
+assert "packages/web-cli/src/enterprise-entry.ts" in restage and "build-web.mjs" not in restage
+assert "artifactReusedFrom" in restage and "artifactReusedFrom" in prepare
+assert "systemctl" not in restage and "activate.sh" not in restage and "current.next" not in restage
+assert "assert reuse['reusedArtifacts']==['admin','control-source','employee','rc2.jar']" in prepare
 
 expected = {
     "0018_knowledge_office.sql": "7d5be1f4b8636f16bde988f0b2cfa0769345245b31eac9980eadfc1dba2d11c1",

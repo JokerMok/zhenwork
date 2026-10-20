@@ -31,6 +31,17 @@ finalize 在同一发布锁内先校验发布文件、镜像、密码策略和�
 
 旧 `42d834a` 补丁路径仅由显式 `--legacy-42d834a-patches` 启用，且补丁在任何构建前应用。新版提交必须在 Git 源码中包含 Core idle、密码和后台修复，不再叠加这些补丁。
 
+若完整候选已经成功构建，此后提交严格只改 Web Host/Web CLI 源码及其测试或部署文档，可复用候选中的 employee/admin/Java/control-source/native image，只重新生成 Host bundle：
+
+```sh
+bash deploy/tencent/restage-host.sh \
+  --from 20261020-5f3a7ca-office \
+  --ref COMMIT_SHA \
+  --release NEW_RELEASE
+```
+
+helper 以来源发布的 `SOURCE_SHA` 做无 rename 的逐路径 Git diff。只允许 `packages/web-host/src`、`packages/web-cli/src`、测试、deploy、文档、PROJECT 和 justfile；renderer、common、desktop process、Rust、control、依赖或 lock 变化均拒绝，必须改走完整 stage。新源码仍由 `git archive` 冻结，bun.lock 必须与来源提交及本机依赖缓存同时完全一致，并仅用 esbuild 生成 `web-host.cjs`。服务器先验证来源发布完整哈希，再复制到新的 incoming，仅替换 Host、SOURCE_SHA、IMAGE_IDS；`build-linux.sh` 会逐项验证 employee/admin/rc2.jar/control-source 与来源发布字节摘要一致，并把 `artifactReusedFrom` 写入新 manifest。该 helper 不切 current、不读写 shared、不启动或停止服务。
+
 `configure.py` 仅用于初始化/有意重建私有配置；凭证存在时沿用，但会重写受控配置文件。`bootstrap.py` 首次先 PostgreSQL 企业基表、独立账号/客户端、DML app 角色及员工角色，然后执行完整 checksum 迁移链；0009 审计归档写权限撤销必须保留。日常更新只由 finalize 使用 `--migrate-only`。`provision.py` 只初始化本试点账号与一个已授权模型，需先放置 root 私有 model-bootstrap.json；日常更新不运行初始化或 provision 路径。
 
 ## 运行与回滚

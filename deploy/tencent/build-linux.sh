@@ -43,6 +43,33 @@ m={'sourceSha':source,'release':release,'platform':'linux/amd64','images':images
    'builtAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),
    'buildLocation':'macOS web/admin/java; retained tencent-main linux/amd64 images by exact ID',
    'privateConfigurationVersion':release}
+reuse=request.get('artifactReusedFrom')
+if reuse is not None:
+ assert set(reuse)=={'release','sourceSha','reusedArtifacts'}
+ assert re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._-]{5,100}',reuse['release'])
+ assert re.fullmatch(r'[a-f0-9]{40}',reuse['sourceSha'])
+ assert reuse['release']!=release
+ assert reuse['reusedArtifacts']==['admin','control-source','employee','rc2.jar']
+ base=pathlib.Path('/srv/apps/zhenwork/releases')/reuse['release']
+ assert (base/'SOURCE_SHA').read_text().strip()==reuse['sourceSha']
+ subprocess.run(['sha256sum','-c','SHA256SUMS'],cwd=base,stdout=subprocess.DEVNULL,check=True)
+ def artifact_hash(path):
+  h=hashlib.sha256()
+  if path.is_file():
+   h.update(path.name.encode()+b'\0'+path.read_bytes())
+  else:
+   for f in sorted(x for x in path.rglob('*') if x.is_file()):
+    h.update(str(f.relative_to(path)).encode()+b'\0'+f.read_bytes()+b'\0')
+  return h.hexdigest()
+ hashes={}
+ for name in reuse['reusedArtifacts']:
+  before=base/name; after=p/name
+  assert before.exists() and after.exists(),name
+  hashes[name]=artifact_hash(before)
+  assert artifact_hash(after)==hashes[name],name
+ m['artifactReusedFrom']={'release':reuse['release'],'sourceSha':reuse['sourceSha'],
+                          'reusedArtifacts':reuse['reusedArtifacts'],'artifactSha256':hashes}
+ m['buildLocation']='macOS Host-only rebuild; Web/Admin/Java/control source reused from immutable release'
 ops=pathlib.Path('/srv/apps/zhenwork/deploy')
 m['maintenanceSha256']={n:hashlib.sha256((ops/n).read_bytes()).hexdigest() for n in ('activate.sh','bootstrap.py','build-linux.sh','finalize-release.sh','manage.sh')}
 migrations=[]

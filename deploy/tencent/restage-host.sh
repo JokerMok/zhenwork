@@ -1,0 +1,114 @@
+#!/bin/bash
+# Re-stage an immutable candidate after a Host/CLI-only source fix. Reuses the
+# source candidate's Web/Admin/Java/control/native artifacts byte-for-byte.
+set -euo pipefail
+repo=$(cd "$(dirname "$0")/../.." && pwd)
+cd "$repo"
+from=
+ref=
+release=
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --from) from=${2:?--from requires a release ID}; shift 2 ;;
+    --ref) ref=${2:?--ref requires a commit}; shift 2 ;;
+    --release) release=${2:?--release requires a new release ID}; shift 2 ;;
+    -h|--help) echo 'Usage: restage-host.sh --from RELEASE --ref COMMIT --release NEW_RELEASE'; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+for value in "$from" "$release"; do
+  [[ $value =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{5,100}$ ]] || { echo 'Invalid release ID' >&2; exit 2; }
+done
+[[ -n $ref && $from != "$release" ]] || exit 2
+sha=$(git rev-parse "$ref^{commit}")
+[[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 2
+
+remote_root=/srv/apps/zhenwork
+from_sha=$(ssh tencent-main "sudo cat '$remote_root/releases/$from/SOURCE_SHA'")
+[[ $from_sha =~ ^[a-f0-9]{40}$ ]] || { echo 'Invalid source release SOURCE_SHA' >&2; exit 1; }
+git cat-file -e "$from_sha^{commit}" 2>/dev/null || { echo "Source release commit $from_sha is absent locally." >&2; exit 1; }
+[[ $sha != "$from_sha" ]] || { echo 'Host restage requires a newer source commit.' >&2; exit 1; }
+
+host_change=0
+changed=0
+while IFS= read -r -d '' path; do
+  changed=1
+  case "$path" in
+    AionUi-enterprise-poc/packages/web-host/src/*|AionUi-enterprise-poc/packages/web-cli/src/*)
+      host_change=1 ;;
+    AionUi-enterprise-poc/tests/*|AionUi-enterprise-poc/docs/*|deploy/tencent/*|docs/*|PROJECT.md|README.md|justfile)
+      ;;
+    *)
+      echo "Host-only restage refused changed path: $path" >&2
+      echo 'Renderer/common/packages/desktop/process/Rust/control/dependency changes require a full reviewed stage.' >&2
+      exit 1 ;;
+  esac
+done < <(git diff --name-only --no-renames -z "$from_sha" "$sha")
+[[ $changed == 1 && $host_change == 1 ]] || { echo 'No Host/CLI source change found.' >&2; exit 1; }
+
+# The helper may be newer than the product ref, but the executed maintenance
+# files themselves must be committed and clean in the current checkout.
+for maintenance in deploy/tencent/restage-host.sh deploy/tencent/build-linux.sh; do
+  git ls-files --error-unmatch "$maintenance" >/dev/null 2>&1 || { echo "$maintenance is not committed." >&2; exit 1; }
+  git diff --quiet HEAD -- "$maintenance" || { echo "$maintenance has uncommitted changes." >&2; exit 1; }
+done
+
+existing_sha=$(ssh tencent-main "sudo sh -c 'test -f $remote_root/releases/$release/SOURCE_SHA && cat $remote_root/releases/$release/SOURCE_SHA'" 2>/dev/null || true)
+if [[ -n $existing_sha ]]; then
+  [[ $existing_sha == "$sha" ]] || { echo "Release ID $release belongs to another source SHA." >&2; exit 1; }
+  echo "Release $release is already staged from $sha; immutable content was left unchanged."
+  exit 0
+fi
+
+work="$repo/.codex/tencent-host-restage/$release"
+rm -rf "$work"
+mkdir -p "$work/source" "$work/stage"
+git archive "$sha" | tar -x -C "$work/source"
+app="$work/source/AionUi-enterprise-poc"
+git show "$from_sha:AionUi-enterprise-poc/bun.lock" > "$work/from.bun.lock"
+cmp -s "$work/from.bun.lock" "$app/bun.lock" || { echo 'bun.lock changed; Host-only dependency reuse is unsafe.' >&2; exit 1; }
+web_cache=${ZHENWORK_DEPENDENCY_CACHE:-$repo/AionUi-enterprise-poc}
+[[ -d "$web_cache/node_modules" && -d "$web_cache/packages/web-host/node_modules" ]] || { echo 'Lock-matched Web dependency cache is missing.' >&2; exit 1; }
+cmp -s "$web_cache/bun.lock" "$app/bun.lock" || { echo 'Web dependency cache lock does not match the frozen source.' >&2; exit 1; }
+ln -s "$(cd "$web_cache/node_modules" && pwd)" "$app/node_modules"
+ln -s "$(cd "$web_cache/packages/web-host/node_modules" && pwd)" "$app/packages/web-host/node_modules"
+(cd "$app" && node node_modules/esbuild/bin/esbuild packages/web-cli/src/enterprise-entry.ts \
+  --bundle --platform=node --format=cjs --target=node22 \
+  --alias:@aionui/web-host=./packages/web-host/src/index.ts \
+  --outfile="$work/stage/web-host.cjs")
+[[ -s "$work/stage/web-host.cjs" ]] || { echo 'Host-only bundle was not produced.' >&2; exit 1; }
+printf '%s\n' "$sha" > "$work/stage/SOURCE_SHA"
+
+from_images=$(ssh tencent-main "sudo cat '$remote_root/releases/$from/IMAGE_IDS.json'")
+current_release=$(ssh tencent-main "basename \"\$(readlink -f '$remote_root/current')\"")
+[[ $current_release =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{5,100}$ ]] || exit 1
+python3 - "$work/stage/IMAGE_IDS.json" "$from_images" "$release" "$current_release" "$from" "$from_sha" <<'PY'
+import json,pathlib,sys
+out,raw,release,current,source_release,source_sha=sys.argv[1:]
+m=json.loads(raw)
+assert m['release']==source_release
+m['release']=release
+m['baseRelease']=current
+m['artifactReusedFrom']={
+    'release':source_release,
+    'sourceSha':source_sha,
+    'reusedArtifacts':['admin','control-source','employee','rc2.jar'],
+}
+pathlib.Path(out).write_text(json.dumps(m,indent=2)+'\n')
+PY
+
+# Mutate only a fresh incoming directory and the named new release. The source
+# release, current/shared links/data, and services are never changed here.
+ssh tencent-main "set -eu; \
+  sudo sh -c 'cd $remote_root/releases/$from && sha256sum -c SHA256SUMS >/dev/null'; \
+  sudo test ! -e '$remote_root/releases/$release'; \
+  sudo rm -rf '$remote_root/incoming/$release'; \
+  sudo cp -a '$remote_root/releases/$from' '$remote_root/incoming/$release'; \
+  sudo chmod -R u+w '$remote_root/incoming/$release'; \
+  sudo chown -R ubuntu:ubuntu '$remote_root/incoming/$release'; \
+  sudo rm -f '$remote_root/incoming/$release/RELEASE.json' '$remote_root/incoming/$release/SHA256SUMS' '$remote_root/incoming/$release/VERIFIED.json'"
+rsync -az "$work/stage/web-host.cjs" "$work/stage/SOURCE_SHA" "$work/stage/IMAGE_IDS.json" "tencent-main:$remote_root/incoming/$release/"
+rsync -az deploy/tencent/build-linux.sh "tencent-main:/tmp/zhenwork-$release-build-linux.sh"
+ssh tencent-main "sudo install -o root -g root -m 0755 '/tmp/zhenwork-$release-build-linux.sh' '$remote_root/deploy/build-linux.sh'; rm -f '/tmp/zhenwork-$release-build-linux.sh'; sudo bash '$remote_root/deploy/build-linux.sh' '$release' '$remote_root/incoming/$release'"
+echo "Staged Host-only release $release / $sha; reused immutable artifacts from $from."
+echo "No current/shared/service change was performed. Review RELEASE.json before finalize."

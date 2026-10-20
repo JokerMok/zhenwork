@@ -49,7 +49,7 @@ if [[ $legacy == 1 && ! -f "$ops/build-linux.sh" ]]; then ops="$repo/deploy/tenc
   echo 'The committed tree is missing application locks or deploy/tencent scripts.' >&2; exit 1;
 }
 if [[ $legacy == 0 ]]; then
-  for committed_file in deploy.sh activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh README.md rollback-compatibility.example.json; do
+  for committed_file in deploy.sh restage-host.sh activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh verify-maintenance.py README.md rollback-compatibility.example.json; do
     cmp -s "$repo/deploy/tencent/$committed_file" "$ops/$committed_file" || {
       echo "deploy/tencent/$committed_file differs from $sha; commit the maintenance flow before staging." >&2; exit 1;
     }
