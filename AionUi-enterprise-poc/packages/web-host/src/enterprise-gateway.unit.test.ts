@@ -182,7 +182,8 @@ beforeAll(async () => {
           res.setHeader('content-type', 'application/json');
           res.end(JSON.stringify({ success: true, data: { items: req.url.includes('cursor=') ? [] : [
             { id: conversationId, name: conversationNames.get(actor.userId) || `Chat ${actor.userId}`,
-              modified_at: 1234, status: 'finished', extra: { workspace: '/private/path' } },
+              modified_at: 1234, status: 'finished', extra: { workspace: '/private/path' },
+              runtime: { state: 'waiting_confirmation', pending_confirmations: 2, is_processing: false, private_path: '/private/runtime' } },
           ], has_more: !req.url.includes('cursor=') } }));
           return;
         }
@@ -476,11 +477,12 @@ test('conversation catalog derives origin and key from the authenticated actor a
   expect(response.status).toBe(200);
   expect(JSON.parse(response.body).items).toEqual([{ key: 'enterprise_web:rc2:1:a1b2c3d4',
     id: 'a1b2c3d4', source: 'enterprise_web', name: 'Chat 1',
-    modified_at: 1234, status: 'finished', pinned: true }]);
+    modified_at: 1234, status: 'finished', runtime: { state: 'waiting_confirmation', pending_confirmations: 2, is_processing: false }, pinned: true }]);
   expect(JSON.parse(response.body).next_cursor).toBe('a1b2c3d4');
   const next = await request('GET', '/enterprise/conversations?cursor=a1b2c3d4', cookie);
   expect(JSON.parse(next.body)).toEqual({ items: [], next_cursor: null });
   expect(response.body).not.toContain('/private/path');
+  expect(response.body).not.toContain('/private/runtime');
 });
 
 test('web conversation changes stay in the authenticated actor Core and update catalog state', async () => {

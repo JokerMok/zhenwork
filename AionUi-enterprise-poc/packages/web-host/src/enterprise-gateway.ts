@@ -889,6 +889,16 @@ export async function startEnterpriseGateway(
           name: item.name,
           modified_at: typeof item.modified_at === 'number' ? item.modified_at : null,
           status: typeof item.status === 'string' ? item.status : null,
+          ...(item.runtime && typeof item.runtime === 'object' && !Array.isArray(item.runtime) ? {
+            runtime: (() => {
+              const runtime = item.runtime as Record<string, unknown>;
+              return {
+                ...(typeof runtime.state === 'string' && ['idle', 'starting', 'running', 'cancelling', 'restarting', 'waiting_confirmation'].includes(runtime.state) ? { state: runtime.state } : {}),
+                ...(typeof runtime.is_processing === 'boolean' ? { is_processing: runtime.is_processing } : {}),
+                ...(Number.isSafeInteger(runtime.pending_confirmations) && Number(runtime.pending_confirmations) >= 0 ? { pending_confirmations: Number(runtime.pending_confirmations) } : {}),
+              };
+            })(),
+          } : {}),
           pinned: pinnedIds.has(item.id),
         }));
         const lastId = data.items.at(-1)?.id;

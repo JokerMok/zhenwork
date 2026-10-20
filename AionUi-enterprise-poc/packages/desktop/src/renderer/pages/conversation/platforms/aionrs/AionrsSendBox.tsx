@@ -32,6 +32,7 @@ import {
   type ConversationCommandQueueItem,
 } from '@/renderer/pages/conversation/platforms/useConversationCommandQueue';
 import { useConversationRuntimeView } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
+import { runtimeDisplayStatus } from '@/renderer/utils/ui/runtimeDisplayStatus';
 import { getConversationRuntimeWorkspaceErrorMessage } from '@/renderer/pages/conversation/utils/conversationCreateError';
 import { getChatSurfaceWidthClass } from '@/renderer/pages/conversation/utils/chatSurfaceWidth';
 import { ensureConversationRuntime } from '@/renderer/pages/conversation/utils/ensureConversationRuntime';
@@ -169,6 +170,7 @@ const AionrsSendBox: React.FC<{
   );
 
   const [agentWarmed, setAgentWarmed] = useState(false);
+  const [agentWarmupFailed, setAgentWarmupFailed] = useState(false);
   const prepareRuntimeConfig = useCallback(async () => {
     if (teamPermission) return;
   }, [teamPermission]);
@@ -197,11 +199,13 @@ const AionrsSendBox: React.FC<{
   useEffect(() => {
     if (!conversation_id) return;
     setAgentWarmed(false);
+    setAgentWarmupFailed(false);
     void prepareRuntimeSync()
       .then(() => {
         setAgentWarmed(true);
       })
       .catch((error) => {
+        setAgentWarmupFailed(true);
         Message.error(getConversationRuntimeWorkspaceErrorMessage(error, t));
       });
   }, [conversation_id, prepareRuntimeSync, t]);
@@ -220,6 +224,19 @@ const AionrsSendBox: React.FC<{
   };
   const isCancelling = runtimeView.state === 'cancelling';
   const isBusy = isCancelling || commandQueueRuntimeGate.isProcessing || !commandQueueRuntimeGate.canSendMessage;
+  const ordinaryRuntimeStatus = runtimeDisplayStatus(
+    {
+      state: runtimeView.state,
+      is_processing: runtimeView.isProcessing,
+      pending_confirmations: runtimeView.view.pendingConfirmations,
+    },
+    { warming: !agentWarmed, preparationFailed: agentWarmupFailed }
+  );
+  const ordinaryRuntimeStatusText = ordinaryRuntimeStatus
+    ? t(`workspace.status.${ordinaryRuntimeStatus}`, { defaultValue: ordinaryRuntimeStatus })
+    : undefined;
+  const ordinaryRuntimeRunning =
+    running || ordinaryRuntimeStatus === 'preparing' || ordinaryRuntimeStatus === 'processing';
 
   const setContentRef = useLatestRef(setContent);
   const contentRef = useLatestRef(content);
@@ -760,8 +777,8 @@ const AionrsSendBox: React.FC<{
       />
       <ThoughtDisplay
         thought={thought}
-        running={teamRuntime?.loading ?? running}
-        statusText={teamRuntime?.statusText}
+        running={teamRuntime ? (teamRuntime.loading ?? running) : ordinaryRuntimeRunning}
+        statusText={teamRuntime ? teamRuntime.statusText : ordinaryRuntimeStatusText}
         externalElapsedSource={Boolean(teamRuntime) || turnStartedAtMs != null}
         startedAtMs={teamRuntime ? (teamRuntime.startedAtMs ?? null) : turnStartedAtMs}
         onStop={effectiveHandleStop}

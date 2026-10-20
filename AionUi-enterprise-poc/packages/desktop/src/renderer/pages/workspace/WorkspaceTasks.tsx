@@ -3,6 +3,7 @@ import { Refresh, Right } from '@icon-park/react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { workspaceTaskDisplayStatus } from '@/renderer/utils/ui/runtimeDisplayStatus';
 import { enterpriseRequest, workspaceErrorCode } from './workspaceApi';
 import type { WebConversationTask } from './workspaceTypes';
 
@@ -33,14 +34,11 @@ const WorkspaceTasks: React.FC = () => {
   }, [loadTasks]);
 
   const visibleTasks = useMemo(
-    () => tasks.filter((task) => status === 'all' || (task.status || 'idle').toLowerCase() === status),
+    () => tasks.filter((task) => status === 'all' || workspaceTaskDisplayStatus(task.status, task.runtime) === status),
     [status, tasks]
   );
   const statusValues = useMemo(
-    () =>
-      Array.from(
-        new Set(tasks.map((task) => task.status?.toLowerCase()).filter((value): value is string => Boolean(value)))
-      ),
+    () => Array.from(new Set(tasks.map((task) => workspaceTaskDisplayStatus(task.status, task.runtime)))),
     [tasks]
   );
   const dateFormatter = useMemo(
@@ -90,9 +88,11 @@ const WorkspaceTasks: React.FC = () => {
                   title={
                     <div className='flex items-center gap-8px'>
                       <span>{task.name}</span>
-                      {task.status ? (
-                        <Tag>{t(`workspace.status.${task.status.toLowerCase()}`, { defaultValue: task.status })}</Tag>
-                      ) : null}
+                      <Tag>
+                        {t(`workspace.status.${workspaceTaskDisplayStatus(task.status, task.runtime)}`, {
+                          defaultValue: workspaceTaskDisplayStatus(task.status, task.runtime),
+                        })}
+                      </Tag>
                     </div>
                   }
                   description={

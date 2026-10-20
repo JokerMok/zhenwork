@@ -81,7 +81,7 @@ ssh tencent-main 'sudo python3 /srv/apps/zhenwork/deploy/restore-check.py ARCHIV
 
 restore-check 只新建随机命名的隔离数据库，实际 pg_restore/计数比对、恢复 profile、SQLite integrity_check 和 Office ZIP 检查，结束仅删除自己的检查库，不覆盖生产。结果 root 私有 shared/config/restore-check.json。
 
-本轮为真实办公资料将输入预算由128MiB调整为256MiB，单包仍256MiB、总量1GiB、最多7份；旧主脚本在 /srv/ops/config-history/20261020-zhenwork-office/server-config-backup.before 留存。预算并非承诺能保留7份大包，轮转以总量限制为准，超预算停止并保留旧包。须随员工资料增长重新核定；当前同机备份不抵御磁盘或整机丢失。未配置异机备份/外部通知；没有运行 down -v、全局 prune 或删除业务数据。
+本轮真实模板、Skill完整版本、上传和成果历史使256MiB输入门禁实际拒绝新备份；旧包仍保留、应用未切换。按当前30GiB空闲容量审查后，输入/单包预算改为512MiB、总量2GiB、最多7份，最低剩余2GiB要求不变；校验改为流式SHA256以免大包占满服务内存。旧主脚本在 /srv/ops/config-history/20261020-zhenwork-office/server-config-backup.before 和 server-config-backup.input256.before 留存。轮转以总量限制为准，容量增长必须重新核定，超预算停止并保留旧包。须随员工资料增长重新核定；当前同机备份不抵御磁盘或整机丢失。未配置异机备份/外部通知；没有运行 down -v、全局 prune 或删除业务数据。
 
 ## 定向验收
 

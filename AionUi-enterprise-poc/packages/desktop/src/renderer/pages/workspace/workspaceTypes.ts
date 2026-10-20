@@ -5,6 +5,11 @@ export type WebConversationTask = {
   name: string;
   modified_at: number | null;
   status: string | null;
+  runtime?: {
+    state: 'idle' | 'starting' | 'running' | 'cancelling' | 'restarting' | 'waiting_confirmation';
+    is_processing: boolean;
+    pending_confirmations: number;
+  } | null;
   pinned: boolean;
 };
 
