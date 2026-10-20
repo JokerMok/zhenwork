@@ -71,11 +71,29 @@ test('rejects invalid reference counts and quote lengths', () => {
       Array.from({ length: 33 }, () => ({ ref, quote: 'long enough' }))
     )
   ).toThrow('SOURCE_EVIDENCE_REFS_LIMIT_1_32');
-  expect(() => registry.verify('conversation-a', [{ ref, quote: '1234567' }])).toThrow(
-    'SOURCE_EVIDENCE_QUOTE_LENGTH_8_2000'
+  expect(() => registry.verify('conversation-a', [{ ref, quote: '1' }])).toThrow(
+    'SOURCE_EVIDENCE_QUOTE_LENGTH_2_2000'
   );
   expect(() => registry.verify('conversation-a', [{ ref, quote: 'x'.repeat(2001) }])).toThrow(
-    'SOURCE_EVIDENCE_QUOTE_LENGTH_8_2000'
+    'SOURCE_EVIDENCE_QUOTE_LENGTH_2_2000'
+  );
+});
+
+test('offers and verifies short Chinese labels without weakening continuous matching', () => {
+  const registry = new SourceEvidenceRegistry();
+  const ref = registry.add('conversation-a', {
+    kind: 'knowledge',
+    text: '扫码\n二维码',
+    locator: { page: 1 },
+  });
+
+  expect(registry.quoteOptions('conversation-a', ref)).toEqual([
+    { index: 0, quote: '扫码' },
+    { index: 1, quote: '二维码' },
+  ]);
+  expect(registry.verify('conversation-a', [{ ref, quoteIndex: 0 }])[0].quote).toBe('扫码');
+  expect(() => registry.verify('conversation-a', [{ ref, quote: '扫码二维码' }])).toThrow(
+    'SOURCE_EVIDENCE_QUOTE_ABSENT'
   );
 });
 
@@ -261,7 +279,7 @@ test('rejects ambiguous, fractional, negative and out-of-range quote indexes', (
   }
 });
 
-test('does not join separate short lines into a quote option', () => {
+test('keeps separate short lines as separate quote options', () => {
   const registry = new SourceEvidenceRegistry();
   const ref = registry.add('conversation-a', {
     kind: 'knowledge',
@@ -269,7 +287,11 @@ test('does not join separate short lines into a quote option', () => {
     locator: {},
   });
 
-  expect(registry.quoteOptions('conversation-a', ref)).toEqual([]);
+  expect(registry.quoteOptions('conversation-a', ref)).toEqual([
+    { index: 0, quote: 'short' },
+    { index: 1, quote: 'lines' },
+    { index: 2, quote: 'only' },
+  ]);
 });
 
 test('applies missing and cross-conversation checks to quote options', () => {

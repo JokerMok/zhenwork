@@ -43,7 +43,7 @@ const MAX_SOURCES_TOTAL = 128;
 const MAX_SOURCE_BYTES_TOTAL = 2 * 1024 * 1024;
 const SOURCE_TTL_MS = 30 * 60 * 1000;
 const MAX_REFERENCES = 32;
-const MIN_QUOTE_LENGTH = 8;
+const MIN_QUOTE_LENGTH = 2;
 const MAX_QUOTE_LENGTH = 2000;
 const MAX_QUOTE_OPTIONS = 16;
 const MAX_QUOTE_OPTION_LENGTH = 500;
@@ -188,7 +188,7 @@ export class SourceEvidenceRegistry {
         if (typeof reference.quote !== 'string') throw new Error('SOURCE_EVIDENCE_REFERENCE_INVALID');
         quote = normalizeQuote(reference.quote);
         if (quote.length < MIN_QUOTE_LENGTH || quote.length > MAX_QUOTE_LENGTH) {
-          throw new Error('SOURCE_EVIDENCE_QUOTE_LENGTH_8_2000');
+          throw new Error('SOURCE_EVIDENCE_QUOTE_LENGTH_2_2000');
         }
         if (!normalizeQuote(source.text).includes(quote)) {
           throw new Error('SOURCE_EVIDENCE_QUOTE_ABSENT');

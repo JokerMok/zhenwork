@@ -6,7 +6,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import type { EnterpriseCore } from '../enterprise-gateway.js';
 import { OfficeStore } from './office-store.js';
 import { enterpriseProfilePath } from '../enterprise-core.js';
-import { ensureOfficeAssistant, startOfficeTools } from './office-tools.js';
+import { buildEvidenceTable, ensureOfficeAssistant, startOfficeTools } from './office-tools.js';
 
 const roots: string[] = [];
 const actor = { serverId: 'rc2', userId: '17' };
@@ -132,6 +132,42 @@ async function profileRoot(): Promise<string> {
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test('builds evidence table rows from verified source text and locator', () => {
+  const table = buildEvidenceTable(
+    [{
+      topic: '标签',
+      claim: '支持识别',
+      status: '待核查',
+      independentRequirement: '未提供',
+      acceptanceEvidence: '未提供',
+      followUp: '现场核验',
+      ref: 'source-1',
+      quote: '模型误抄的原文',
+    }],
+    [{
+      ref: 'source-1',
+      kind: 'knowledge',
+      quote: '扫码',
+      locator: { documentId: 'doc-1', version: 3, location: '第 4 页' },
+    }]
+  );
+
+  expect(table.name).toBe('证据核查表');
+  expect(table.rows[0]).toEqual([
+    1,
+    '标签',
+    '支持识别',
+    '待核查',
+    '未提供',
+    '未提供',
+    '现场核验',
+    '扫码',
+    '{"documentId":"doc-1","version":3,"location":"第 4 页"}',
+    '已校验原文摘录存在且来源当前可访问；结论、独立要求和验收证据仍需独立核查。',
+  ]);
+  expect(JSON.stringify(table)).not.toContain('模型误抄的原文');
 });
 
 test('structured manifests use actor workspace, explicit overwrite and truthful download links', async () => {
@@ -441,8 +477,17 @@ test('knowledge search resolves permitted bases and output context without inven
     const evidence = JSON.parse((await call('verify_source_quotes', { citations: [{ ref, quote: 'Original source claim only' }] })).result.content[0].text);
     expect(evidence.sources[0].locator).toMatchObject({ baseId, documentId: baseId, version: 3, location: '第 4 页' });
     expect(preview).toHaveBeenCalledWith(`/ai/knowledge/documents/${baseId}/versions/3`);
+    const evidenceRow = {
+      topic: 'Source claim', claim: 'Supplier states support', status: 'To confirm',
+      independentRequirement: 'Missing', acceptanceEvidence: 'Missing', followUp: 'Verify independently',
+      ref, quoteIndex: 0,
+    };
+    const wrongFormat = await call('create_office_document', { path: 'report.docx', format: 'docx', evidenceRows: [evidenceRow] }) as unknown as { error: { message: string } };
+    expect(wrongFormat.error.message).toBe('OFFICE_EVIDENCE_ROWS_XLSX_ONLY');
     allowed = false;
     const denied = await call('verify_source_quotes', { citations: [{ ref, quote: 'Original source claim only' }] }) as unknown as { error: { message: string } };
     expect(denied.error.message).toBe('resource revoked');
+    const deniedCreate = await call('create_office_document', { path: 'report.xlsx', format: 'xlsx', evidenceRows: [evidenceRow] }) as unknown as { error: { message: string } };
+    expect(deniedCreate.error.message).toBe('resource revoked');
   } finally { await office.stop(); await fixture.close(); }
 });
