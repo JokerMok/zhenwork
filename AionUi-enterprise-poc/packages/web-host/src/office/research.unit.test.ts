@@ -42,11 +42,46 @@ test('keeps search provider dates separate from original publication dates', asy
   expect((found.results as Array<Record<string,unknown>>)[0]).toMatchObject({ publishedAt: null, providerDate: '20 Oct 2026' });
 });
 test('reads explicitly identified article metadata without executing webpage scripts', async () => {
-  mocks.body = '<title>Source</title><meta content="Official overview" name="description"><script type="application/ld+json">{"articleBody":"Original documented capabilities", "description":"Declared summary", "datePublished":"2026-01-02"}</script><script>throw Error("never execute")</script>';
+  mocks.body = '<title>Source</title><meta content="Official overview" name="description"><main>Semantic HTML body</main><script type="application/ld+json">{"articleBody":"Original documented capabilities", "description":"Declared summary", "datePublished":"2026-01-02"}</script><script>throw Error("never execute")</script>';
   const source = await readWeb('https://example.com/source');
   expect(source.publishedAt).toBe('2026-01-02');
-  expect(source.text).toContain('Original documented capabilities');
+  expect(source.text).toMatch(/^Original documented capabilities\nSemantic HTML body/);
   expect(source.text).toContain('Official overview');
   expect(source.text).not.toContain('never execute');
   expect(source.textSources).toMatchObject({ metadataDescription: true, structuredArticle: true });
+});
+
+test('places semantic main content before long navigation and removes page chrome', async () => {
+  const navigation = Array.from({ length: 24 }, (_, index) => `<li>Navigation item ${index}</li>`).join('');
+  mocks.body = `<html><head><title>Official product</title></head><body><header>Global promotion</header><nav><ul>${navigation}</ul></nav><div role="main"><section><div><h1>Documented capability</h1><p>The product supports a continuous, source-backed workflow.</p></div></section></div><aside>Related promotion</aside><footer>Legal links</footer></body></html>`;
+  const source = await readWeb('https://example.com/source');
+  expect(source.text).toBe('Documented capability\nThe product supports a continuous, source-backed workflow.');
+  expect(source.contentSelection).toBe('semantic_html');
+  expect(source.textSources).toMatchObject({ semanticHtml: true, htmlFallback: false });
+});
+
+test('uses cleaned HTML as an explicit fallback when no semantic body exists', async () => {
+  mocks.body = '<html><head><title>Fallback page</title></head><body><nav>Menu noise</nav><div><h2>Fallback heading</h2><p>Original fallback content remains available.</p></div><footer>Footer noise</footer></body></html>';
+  const source = await readWeb('https://example.com/source');
+  expect(source.text).toBe('Fallback heading\nOriginal fallback content remains available.');
+  expect(source.contentSelection).toBe('html_fallback');
+  expect(source.evidence).toContain('No semantic article/main body was available');
+});
+
+test('does not treat a JSON-LD description as structured article body', async () => {
+  mocks.body = '<script type="application/ld+json">{"@type":"Product","description":"Promotional metadata summary only"}</script>';
+  const source = await readWeb('https://example.com/source');
+  expect(source.text).toBe('Promotional metadata summary only');
+  expect(source.contentSelection).toBe('metadata_only');
+  expect(source.textSources).toMatchObject({ structuredArticle: false, structuredDescription: true });
+  expect(source.limitedText).toBe(true);
+});
+
+test('bounds malformed repeated semantic blocks and falls back without rescanning', async () => {
+  mocks.body = Array.from({ length: 5_000 }, () => '<main>Unclosed semantic content').join('');
+  const source = await readWeb('https://example.com/source');
+  expect(source.contentSelection).toBe('html_fallback');
+  expect((source.text as string).length).toBe(45_000);
+  expect(source.truncated).toBe(true);
+  expect(source.evidence).toContain('No semantic article/main body was available');
 });
