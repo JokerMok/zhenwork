@@ -13,9 +13,10 @@ type Model = { id: string; code: string; name?: string;
 type CatalogItem = { id: string; name: string; description?: string; source?: string; version: number };
 type SkillFile = { path: string; content: string; encoding: 'utf8' | 'base64';
   executable?: boolean; sha256?: string };
-type Resource = { version: number; config?: Record<string, unknown> & { files?: unknown } };
+type Resource = { version: number; name?: unknown; config?: Record<string, unknown> & { files?: unknown } };
+type KnowledgeBinding = { baseId: string; version: number; name: string };
 type Assistant = CatalogItem & { instruction: string; modelId: string; modelCode: string;
-  skillIds: string[]; mcpIds: string[] };
+  skillIds: string[]; mcpIds: string[]; knowledgeBases: KnowledgeBinding[] };
 type SkillResource = { id: string; name: string; source: string; version: number;
   files: SkillFile[]; dependencyIds: string[] };
 export type RuntimeResourceIssue = { type: 'SKILL' | 'MCP' | 'ASSISTANT'; id: string; code: string };
@@ -56,6 +57,21 @@ function stringIds(value: unknown): string[] {
     throw new Error('RC2 assistant dependencies invalid');
   }
   return [...new Set(value)];
+}
+
+function assistantKnowledgeIds(value: unknown): string[] {
+  const ids = stringIds(value);
+  if (ids.length > 8) throw new Error('RC2 assistant knowledge limit exceeded');
+  return ids;
+}
+
+function knowledgeBinding(id: string, resource: Resource): KnowledgeBinding {
+  if (!Number.isInteger(resource.version) || typeof resource.name !== 'string' ||
+      !resource.name.trim() || resource.name !== resource.name.trim() || resource.name.length > 200 ||
+      /[\r\n\0]/.test(resource.name)) {
+    throw new Error('RC2 assistant knowledge invalid');
+  }
+  return { baseId: id, version: resource.version, name: resource.name };
 }
 
 function catalog(value: unknown): CatalogItem[] {
@@ -161,6 +177,7 @@ export async function syncEnterpriseWebResources(
   try {
     const client = await activeClient();
     const assistants: Assistant[] = [];
+    const issues: RuntimeResourceIssue[] = [];
     const catalogs = { skills: [] as CatalogItem[], mcps: [] as CatalogItem[] };
     if (model) {
       const availableModels = model.availableModels?.length ? model.availableModels : [model];
@@ -177,9 +194,29 @@ export async function syncEnterpriseWebResources(
           if (!selectedModel || typeof resourceConfig.instruction !== 'string' ||
               !resourceConfig.instruction.trim() || resourceConfig.instruction.length > 4000 ||
               detail.version !== item.version) continue;
+          let knowledgeIds: string[];
+          try { knowledgeIds = assistantKnowledgeIds(resourceConfig.knowledgeIds); }
+          catch {
+            issues.push({ type: 'ASSISTANT', id: item.id, code: 'INVALID_CONFIGURATION' });
+            continue;
+          }
+          const knowledgeBases: KnowledgeBinding[] = [];
+          let knowledgeUnavailable = false;
+          for (const knowledgeId of knowledgeIds) {
+            try {
+              knowledgeBases.push(knowledgeBinding(knowledgeId,
+                await client.authorizedResource(knowledgeId, 'KNOWLEDGE') as Resource));
+            } catch {
+              issues.push({ type: 'ASSISTANT', id: item.id, code: 'KNOWLEDGE_UNAVAILABLE' });
+              knowledgeUnavailable = true;
+              break;
+            }
+          }
+          if (knowledgeUnavailable) continue;
           assistants.push({ ...item, modelId: selectedModel.id, modelCode: selectedModel.code,
             instruction: resourceConfig.instruction,
-            skillIds: stringIds(resourceConfig.skillIds), mcpIds: stringIds(resourceConfig.mcpIds) });
+            skillIds: stringIds(resourceConfig.skillIds), mcpIds: stringIds(resourceConfig.mcpIds),
+            knowledgeBases });
         } catch { /* A malformed or revoked assistant must not prevent employee Core startup. */ }
       }
     }
@@ -195,7 +232,6 @@ export async function syncEnterpriseWebResources(
         version: number; connectionId: string }> } =
       { skills: [], mcps: [] };
     const skillResources: SkillResource[] = [];
-    const issues: RuntimeResourceIssue[] = [];
     const pendingSkillIds = [...skillIds];
     const visitedSkillIds = new Set<string>();
     let decodedSkillBytes = 0;
@@ -323,6 +359,10 @@ export async function syncEnterpriseWebResources(
         for (const item of runnable) {
           const latest = await current.authorizedResource(item.id, 'ASSISTANT') as Resource;
           if (latest.version !== item.version) throw new Error('Assistant changed');
+          for (const knowledge of item.knowledgeBases) {
+            const currentKnowledge = await current.authorizedResource(knowledge.baseId, 'KNOWLEDGE') as Resource;
+            if (currentKnowledge.version !== knowledge.version) throw new Error('Knowledge changed');
+          }
         }
         for (const item of bundle.skills) {
           const latest = await current.authorizedResource(item.id, 'SKILL') as Resource;

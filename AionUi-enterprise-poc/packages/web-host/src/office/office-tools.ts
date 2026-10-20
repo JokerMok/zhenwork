@@ -256,6 +256,21 @@ export async function ensureOfficeAssistant(
   const mcps = (await request('/api/mcp/servers')) as Array<{ id: string; enabled: boolean }>;
   if (!mcps.some((item) => item.id === mcpId && item.enabled)) throw new Error('OFFICE_MCP_UNAVAILABLE');
   const skills = (await request('/api/skills')) as Array<{ name: string }>;
+  for (const assistant of assistants.filter((item) => /^rc2-[0-9a-f-]{36}$/i.test(item.id))) {
+    try {
+      const detail = (await request('/api/assistants/' + assistant.id)) as {
+        defaults: { mcps: { mode: string; value?: string[] } };
+      };
+      const ids = detail.defaults.mcps.value || [];
+      if (!ids.includes(mcpId)) {
+        await request('/api/assistants/' + assistant.id, 'PUT', {
+          defaults: { mcps: { mode: 'fixed', value: [...ids, mcpId] } },
+        });
+      }
+    } catch {
+      console.warn('[Enterprise Web] Office tool binding unavailable for assistant', assistant.id);
+    }
+  }
   await request('/api/assistants' + (exists ? '/' + id : ''), exists ? 'PUT' : 'POST', {
     id,
     agent_id: agent.agent_id,

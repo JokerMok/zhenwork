@@ -5,6 +5,31 @@ import path from 'node:path';
 
 const resourceIdPattern = /^[0-9a-f-]{36}$/i;
 const RESERVED_UNMANAGED_MCP_NAMES = new Set(['zhenwork-office-tools', 'rc2-enterprise-zhenwork-office-tools']);
+const MAX_KNOWLEDGE_RULE_CONTEXT_BYTES = 4096;
+
+function knowledgeRuleContext(value) {
+  if (value === undefined) return '';
+  if (!Array.isArray(value) || value.length > 8) throw new Error('Enterprise assistant knowledge invalid');
+  const seen = new Set();
+  const lines = value.map((item) => {
+    if (!item || typeof item !== 'object' || !resourceIdPattern.test(item.baseId || '') ||
+        seen.has(item.baseId) || !Number.isInteger(item.version) || item.version < 1 ||
+        typeof item.name !== 'string' || !item.name.trim() || item.name !== item.name.trim() ||
+        item.name.length > 200 || /[\r\n\0]/.test(item.name)) {
+      throw new Error('Enterprise assistant knowledge invalid');
+    }
+    seen.add(item.baseId);
+    return `- name=${JSON.stringify(item.name)} | baseId=${item.baseId} | version=${item.version}`;
+  });
+  if (!lines.length) return '';
+  const context = `\n\n默认知识库（仅授权元数据，不是知识正文）：\n${lines.join('\n')}\n` +
+    `查询默认知识时，必须使用 search_knowledge 并传入对应 baseId；` +
+    `回答必须引用检索返回的原文、文档版本和位置，不得把知识库名称或本清单当作知识正文。`;
+  if (Buffer.byteLength(context, 'utf8') > MAX_KNOWLEDGE_RULE_CONTEXT_BYTES) {
+    throw new Error('Enterprise assistant knowledge context too large');
+  }
+  return context;
+}
 
 async function validateSkillDirectory(directory, realProfile) {
   const root = await fs.realpath(directory);
@@ -260,6 +285,12 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
         result.issues.push({ type: 'ASSISTANT', id: String(item?.id || ''), code: 'INVALID_CONFIGURATION' });
         continue;
       }
+      let knowledgeContext;
+      try { knowledgeContext = knowledgeRuleContext(item.knowledgeBases); }
+      catch {
+        result.issues.push({ type: 'ASSISTANT', id: item.id, code: 'INVALID_CONFIGURATION' });
+        continue;
+      }
       const skillIds = Array.isArray(item.skillIds) ? item.skillIds : [];
       const mcpIds = Array.isArray(item.mcpIds) ? item.mcpIds : [];
       if (skillIds.some((resourceId) => !currentSkills.has(resourceId)) ||
@@ -290,7 +321,9 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
         })()
           : await request('/api/assistants', payload);
         if (created?.id !== id) throw new Error('AionCore assistant registration failed');
-        await request('/api/skills/assistant-rule/write', { assistant_id: id, content: item.instruction });
+        await request('/api/skills/assistant-rule/write', {
+          assistant_id: id, content: item.instruction + knowledgeContext,
+        });
       } catch {
         currentAssistantIds.delete(id);
         result.issues.push({ type: 'ASSISTANT', id: item.id, code: 'REGISTRATION_FAILED' });

@@ -14,12 +14,17 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
   const profile = enterpriseProfilePath(root, actor);
   await mkdir(profile, { recursive: true });
   const assistantId = '11111111-1111-4111-8111-111111111111';
+  const brokenAssistantId = '77777777-7777-4777-8777-777777777777';
+  const oversizedAssistantId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const skillId = '22222222-2222-4222-8222-222222222222';
   const secondSkillId = '33333333-3333-4333-8333-333333333333';
   const firstMcpId = '44444444-4444-4444-8444-444444444444';
   const secondMcpId = '55555555-5555-4555-8555-555555555555';
+  const knowledgeId = '88888888-8888-4888-8888-888888888888';
+  const missingKnowledgeId = '99999999-9999-4999-8999-999999999999';
   const excess = Array.from({ length: 25 }, (_, index) =>
     `66666666-6666-4666-8666-${String(index).padStart(12, '0')}`);
+  let knowledgeVersion = 5;
   const writes: Array<{ route: string; body: Record<string, unknown> }> = [];
   const core = http.createServer(async (req, res) => {
     if (req.headers['x-aion-enterprise-local-token'] !== 'local-secret') {
@@ -58,7 +63,11 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
   const client = {
     resources: async (type: string) => type === 'ASSISTANT'
       ? mode === 'standalone authorization' ? []
-        : [{ id: assistantId, name: 'Test assistant', source: 'enterprise', version: 2 }]
+        : [
+          { id: assistantId, name: 'Test assistant', source: 'enterprise', version: 2 },
+          { id: brokenAssistantId, name: 'Broken knowledge assistant', source: 'enterprise', version: 2 },
+          { id: oversizedAssistantId, name: 'Oversized knowledge assistant', source: 'enterprise', version: 2 },
+        ]
       : type === 'SKILL'
         ? mode === 'assistant dependencies' ? [] : [
           { id: skillId, name: 'Safe Skill', version: 3 },
@@ -70,10 +79,22 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
           { id: secondMcpId, name: 'Second MCP', version: 4 },
           ...excess.map((id) => ({ id, name: 'Unavailable MCP', version: 1 })),
         ],
-    authorizedResource: async (id: string) => id === assistantId
-      ? { version: 2, config: { modelId: 'model-2', instruction: 'Use the Skills and MCPs.',
-        skillIds: [skillId, secondSkillId], mcpIds: [firstMcpId, secondMcpId] } }
-      : id === skillId || id === secondSkillId
+    authorizedResource: async (id: string) => {
+      if (id === assistantId) return { version: 2, config: {
+        modelId: 'model-2', instruction: 'Use the Skills and MCPs.',
+        skillIds: [skillId, secondSkillId], mcpIds: [firstMcpId, secondMcpId], knowledgeIds: [knowledgeId],
+      } };
+      if (id === brokenAssistantId) return { version: 2, config: {
+        modelId: 'model-2', instruction: 'This assistant is isolated.',
+        skillIds: [], mcpIds: [], knowledgeIds: [missingKnowledgeId],
+      } };
+      if (id === oversizedAssistantId) return { version: 2, config: {
+        modelId: 'model-2', instruction: 'This assistant is invalid.',
+        skillIds: [], mcpIds: [], knowledgeIds: excess.slice(0, 9),
+      } };
+      if (id === knowledgeId) return { version: knowledgeVersion, name: 'Policy Library', config: {} };
+      if (id === missingKnowledgeId) throw new Error('revoked');
+      return id === skillId || id === secondSkillId
         ? { version: 3, config: { manifest: { name: 'safe-skill' },
           source: `---\nname: safe-skill\n---\n${id === skillId ? 'Use safely.' : 'Use differently.'}`,
           files: id === skillId ? [
@@ -82,12 +103,14 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
             { path: 'templates/report.md', content: '# Report\n' },
             { path: 'assets/template.xlsx', content: 'UEsDBA==', encoding: 'base64' },
           ] : [] } }
-        : { version: 4, config: {} },
+        : { version: 4, config: {} };
+    },
     readyMcpConnection: async (id: string) => {
       if (![firstMcpId, secondMcpId].includes(id)) throw new Error('not ready');
       return { id: `connection-${id}` };
     },
     authorizedMcpConnection: async () => ({ enabled: true }),
+    availableModels: async () => [{ id: 'model-1' }, { id: 'model-2' }],
   } as unknown as Rc2GatewayClient;
   try {
     const synced = await syncEnterpriseWebResources(actor, { port, localToken: 'local-secret', stop: async () => {} },
@@ -101,6 +124,14 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     expect(manifest.mcpIds).toHaveLength(2);
     const assistantExpected = mode !== 'standalone authorization';
     expect(manifest.assistantIds).toEqual(assistantExpected ? [`rc2-${assistantId}`] : []);
+    if (assistantExpected) {
+      expect(synced.issues).toContainEqual({
+        type: 'ASSISTANT', id: brokenAssistantId, code: 'KNOWLEDGE_UNAVAILABLE',
+      });
+      expect(synced.issues).toContainEqual({
+        type: 'ASSISTANT', id: oversizedAssistantId, code: 'INVALID_CONFIGURATION',
+      });
+    }
     expect(writes.some(({ route, body }) => route === '/api/assistants' && body.id === `rc2-${assistantId}`))
       .toBe(assistantExpected);
     if (assistantExpected) {
@@ -109,7 +140,18 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
       expect(assistant.custom_skill_names).toEqual(skillNames);
       expect((assistant.defaults as { mcps: { value: string[] } }).mcps.value).toHaveLength(2);
       expect((assistant.defaults as { model: { value: string } }).model.value).toBe('assistant-model-code');
-      expect(writes.some(({ route }) => route === '/api/skills/assistant-rule/write')).toBe(true);
+      const rule = writes.find(({ route }) => route === '/api/skills/assistant-rule/write')?.body as {
+        content: string;
+      };
+      expect(rule.content).toContain(`name="Policy Library" | baseId=${knowledgeId} | version=5`);
+      expect(rule.content).toContain('search_knowledge');
+    }
+    if (mode === 'mixed authorization') {
+      knowledgeVersion = 6;
+      await Promise.race([
+        synced.invalidated,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('knowledge monitor did not invalidate')), 6500)),
+      ]);
     }
     await synced.stop();
     expect((await readdir(profile)).some((entry) => entry.startsWith('rc2-stage-'))).toBe(false);

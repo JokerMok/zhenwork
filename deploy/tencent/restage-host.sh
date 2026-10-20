@@ -36,6 +36,9 @@ while IFS= read -r -d '' path; do
   case "$path" in
     AionUi-enterprise-poc/packages/web-host/src/*|AionUi-enterprise-poc/packages/web-cli/src/*)
       host_change=1 ;;
+    AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.mjs)
+      # This shared Node adapter is bundled into Host; it is never imported by renderer code.
+      host_change=1 ;;
     AionUi-enterprise-poc/tests/*|AionUi-enterprise-poc/docs/*|deploy/tencent/*|docs/*|PROJECT.md|README.md|justfile)
       ;;
     *)

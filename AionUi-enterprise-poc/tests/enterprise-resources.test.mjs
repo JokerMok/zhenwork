@@ -46,9 +46,11 @@ test('authorized RC2 assistant becomes a native AionCore assistant with executab
     '---\nname: enterprise-succinct\nversion: 1.0.1\n---\n读取所选资料并写 Markdown，第一行必须是有内容的一级标题。\n');
   const id = '11111111-1111-4111-8111-111111111111';
   const oldId = '22222222-2222-4222-8222-222222222222';
+  const knowledgeId = '33333333-3333-4333-8333-333333333333';
   await fs.writeFile(stage, JSON.stringify([{ id, name: '固定办公助手', source: 'enterprise',
     version: 3, instruction: '只依据所选资料整理清单。',
-    skillIds: ['skill-resource'], mcpIds: ['mcp-resource'] }]));
+    skillIds: ['skill-resource'], mcpIds: ['mcp-resource'],
+    knowledgeBases: [{ baseId: knowledgeId, version: 7, name: '珠海固废制度' }] }]));
   const calls = [];
   const fetchStub = async (url, options) => {
     const route = new URL(url).pathname;
@@ -90,8 +92,11 @@ test('authorized RC2 assistant becomes a native AionCore assistant with executab
       ['enterprise-succinct']);
     assert.deepEqual(calls.find((item) => item.route === '/api/assistants' && item.method === 'POST').body.defaults.mcps.value,
       ['mcp-created']);
-    assert.equal(calls.find((item) => item.route === '/api/skills/assistant-rule/write').body.content,
-      '只依据所选资料整理清单。');
+    const rule = calls.find((item) => item.route === '/api/skills/assistant-rule/write').body.content;
+    assert(rule.startsWith('只依据所选资料整理清单。'));
+    assert.match(rule, new RegExp(`name="珠海固废制度" \\| baseId=${knowledgeId} \\| version=7`));
+    assert.match(rule, /search_knowledge/);
+    assert.match(rule, /原文、文档版本和位置/);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
 
