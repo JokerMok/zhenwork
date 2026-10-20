@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { beforeEach, expect, test, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ lookup: vi.fn(), request: vi.fn(), body: '', options: {} as Record<string,unknown> }));
+const mocks = vi.hoisted(() => ({ lookup: vi.fn(), request: vi.fn(), body: '', bodies: [] as string[], options: {} as Record<string,unknown> }));
 vi.mock('node:dns/promises', () => ({ lookup: mocks.lookup }));
 vi.mock('node:https', () => ({ request: mocks.request }));
 import { readWeb, searchWeb } from './research.js';
@@ -8,13 +8,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.lookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
   mocks.body = '<html><title>Official facts</title><p>Original source description and evidence.</p></html>';
+  mocks.bodies = [];
   mocks.request.mockImplementation((_url, options, callback) => {
     mocks.options = options;
     const req = new EventEmitter() as EventEmitter & { end: () => void; destroy: () => void };
     req.destroy = () => {};
     req.end = () => queueMicrotask(() => {
       const res = Object.assign(new EventEmitter(), { statusCode: 200, headers: { 'content-type': 'text/html' }, destroy() {} });
-      callback(res); res.emit('data', Buffer.from(mocks.body)); res.emit('end');
+      callback(res); res.emit('data', Buffer.from(mocks.bodies.shift() ?? mocks.body)); res.emit('end');
     });
     return req;
   });
@@ -40,6 +41,26 @@ test('keeps search provider dates separate from original publication dates', asy
   mocks.body = '<rss><item><title>Article</title><link>https://example.com/source</link><description>Lead</description><pubDate>20 Oct 2026</pubDate></item></rss>';
   const found = await searchWeb('office AI');
   expect((found.results as Array<Record<string,unknown>>)[0]).toMatchObject({ publishedAt: null, providerDate: '20 Oct 2026' });
+});
+
+test('uses one naturalized fallback and preserves the original site constraint', async () => {
+  mocks.bodies = [
+    '<rss><item><title>Knowledge dictionary</title><link>https://dictionary.example/knowledge</link><description>Knowledge definition</description></item></rss>',
+    '<rss><item><title>Dify Knowledge Pipeline</title><link>https://docs.dify.ai/knowledge/pipeline</link><description>Official guide</description></item><item><title>Unrelated copy</title><link>https://example.com/dify</link><description>Knowledge Pipeline</description></item></rss>',
+  ];
+  const found = await searchWeb('site:dify.ai "Knowledge Pipeline"');
+  expect(found).toMatchObject({ fallbackUsed: true, fallbackQuery: 'dify.ai Knowledge Pipeline' });
+  expect((found.results as Array<Record<string,unknown>>).map(item => item.url)).toEqual([
+    'https://docs.dify.ai/knowledge/pipeline',
+  ]);
+  expect(mocks.request).toHaveBeenCalledTimes(2);
+});
+
+test('does not add a fallback request for a query without operators', async () => {
+  mocks.body = '<rss><item><title>Dify Knowledge Pipeline</title><link>https://dify.ai/</link><description>Official page</description></item></rss>';
+  const found = await searchWeb('Dify Knowledge Pipeline');
+  expect(found).toMatchObject({ fallbackUsed: false, executedQueries: ['Dify Knowledge Pipeline'] });
+  expect(mocks.request).toHaveBeenCalledTimes(1);
 });
 test('reads explicitly identified article metadata without executing webpage scripts', async () => {
   mocks.body = '<title>Source</title><meta content="Official overview" name="description"><main>Semantic HTML body</main><script type="application/ld+json">{"articleBody":"Original documented capabilities", "description":"Declared summary", "datePublished":"2026-01-02"}</script><script>throw Error("never execute")</script>';

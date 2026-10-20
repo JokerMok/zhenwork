@@ -83,16 +83,91 @@ const semanticBodies = (value: string): string[] => {
   return [...new Set(candidates.map(plain).filter(Boolean))];
 };
 
-export async function searchWeb(query: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
-  if (!query.trim() || query.length > 500) throw new Error('SEARCH_QUERY_REQUIRED_MAX_500');
+type SearchResult = { title: string; url: string; snippet: string; publishedAt: null; providerDate: string | null };
+
+function searchSite(query: string): { host: string; path: string } | undefined {
+  const raw = /(?:^|\s)site:([^\s"']+)/i.exec(query)?.[1];
+  if (!raw) return undefined;
+  try {
+    const parsed = new URL(`https://${raw.replace(/^https?:\/\//i, '')}`);
+    return { host: parsed.hostname.toLowerCase(), path: parsed.pathname === '/' ? '' : parsed.pathname };
+  } catch {
+    return undefined;
+  }
+}
+
+function matchesSite(item: SearchResult, site?: { host: string; path: string }): boolean {
+  if (!site) return true;
+  try {
+    const found = new URL(item.url);
+    const host = found.hostname.toLowerCase();
+    return (host === site.host || host.endsWith(`.${site.host}`)) && (!site.path || found.pathname.startsWith(site.path));
+  } catch {
+    return false;
+  }
+}
+
+const normalizedSearchText = (value: string): string => value.normalize('NFKC').toLocaleLowerCase()
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+function quotedPhrases(query: string): string[] {
+  return [...query.matchAll(/["“”]([^"“”]+)["“”]/g)].map(match => normalizedSearchText(match[1])).filter(Boolean);
+}
+
+function matchesExactPhrases(item: SearchResult, phrases: string[]): boolean {
+  const found = normalizedSearchText(`${item.title} ${item.url} ${item.snippet}`);
+  return phrases.every(phrase => found.includes(phrase));
+}
+
+function matchesPhraseTerms(item: SearchResult, phrases: string[]): boolean {
+  const found = normalizedSearchText(`${item.title} ${item.url} ${item.snippet}`);
+  const terms = phrases.flatMap(phrase => phrase.split(' ')).filter(term => term.length >= 2);
+  return terms.length > 0 && terms.every(term => found.includes(term));
+}
+
+function naturalizeQuery(query: string): string {
+  return query.replace(/(?:^|\s)site:([^\s"']+)/gi, ' $1 ').replace(/["“”]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+async function bingResults(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
   const page = await fetchPublic(`https://www.bing.com/search?format=rss&q=${encodeURIComponent(query)}`, signal);
-  const items = [...page.body.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 8).map((match) => {
+  return [...page.body.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 8).map((match) => {
     const source = tag(match[1], 'link');
     return { title: tag(match[1], 'title'), url: source, snippet: tag(match[1], 'description').replace(/<[^>]+>/g, ''),
-      publishedAt: null as string | null, providerDate: tag(match[1], 'pubDate') || null };
+      publishedAt: null, providerDate: tag(match[1], 'pubDate') || null };
   }).filter((item) => /^https:\/\//.test(item.url));
-  if (!items.length) throw new Error('SEARCH_NO_RESULTS_OR_PROVIDER_UNAVAILABLE');
-  return { query, provider: 'Bing RSS', retrievedAt: new Date().toISOString(), results: items,
+}
+
+export async function searchWeb(query: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  if (!query.trim() || query.length > 500) throw new Error('SEARCH_QUERY_REQUIRED_MAX_500');
+  const site = searchSite(query), phrases = quotedPhrases(query), operatorQuery = Boolean(site || phrases.length);
+  const initial = await bingResults(query, signal);
+  const constrainedInitial = initial.filter(item => matchesSite(item, site));
+  const acceptedInitial = phrases.length
+    ? constrainedInitial.filter(item => matchesExactPhrases(item, phrases))
+    : constrainedInitial;
+  let items = acceptedInitial, fallbackUsed = false, fallbackQuery: string | null = null;
+  if (operatorQuery && acceptedInitial.length === 0) {
+    fallbackUsed = true;
+    fallbackQuery = naturalizeQuery(query);
+    const fallback = fallbackQuery && fallbackQuery !== query ? await bingResults(fallbackQuery, signal) : [];
+    const acceptedFallback = fallback.filter(item => matchesSite(item, site))
+      .filter(item => site ? true : matchesPhraseTerms(item, phrases));
+    items = [...new Map([...acceptedInitial, ...acceptedFallback].map(item => [item.url, item])).values()];
+  }
+  items = [...new Map(items.map(item => [item.url, item])).values()];
+  if (!items.length) {
+    if (site) throw new Error('SEARCH_SITE_NO_MATCHING_RESULTS_AFTER_FALLBACK');
+    if (fallbackUsed) throw new Error('SEARCH_NO_RELEVANT_RESULTS_AFTER_FALLBACK');
+    throw new Error('SEARCH_NO_RESULTS_OR_PROVIDER_UNAVAILABLE');
+  }
+  return { query, originalQuery: query, executedQueries: fallbackUsed ? [query, fallbackQuery] : [query],
+    fallbackUsed, fallbackQuery, provider: 'Bing RSS', retrievedAt: new Date().toISOString(), results: items,
+    warning: fallbackUsed
+      ? site
+        ? 'Operator-heavy query had no matching result. Results came from one naturalized fallback and still enforce the original site constraint.'
+        : 'Quoted query had no exact-phrase result. Results came from one naturalized fallback and match all quoted terms; open original pages before asserting facts.'
+      : null,
     note: 'Search snippets are leads. Provider dates are NOT original publication dates. Read original pages before asserting facts; missing original dates remain unknown.' };
 }
 
