@@ -940,6 +940,46 @@ export async function startEnterpriseGateway(
         return;
       }
     }
+    if (req.url === '/api/mcp/test-connection' && req.method === 'POST') {
+      // Browser reads omit saved credentials; resolve the unchanged transport
+      // only from this authenticated actor's Core, never another profile.
+      auth.session.responses.add(res);
+      const abort = new AbortController();
+      res.once('close', () => { auth.session.responses.delete(res); abort.abort(); });
+      try {
+        const input = JSON.parse((await body(req, 65536)).toString('utf8')) as Record<string, unknown>;
+        const transport = input.transport as Record<string, unknown> | undefined;
+        const core = await getCore(auth.session.actor);
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const base = enterpriseCoreBase(core);
+        const headers = { 'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken };
+        if (transport?.credentials_configured === true && !transport.url && !transport.command) {
+          if (typeof input.id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(input.id))
+            return reply(res, 400, { error: 'MCP_SERVER_REQUIRED' });
+          const stored = await fetch(`${base}/api/mcp/servers/${encodeURIComponent(input.id)}`, {
+            headers, signal: abort.signal,
+          });
+          if (!stored.ok) return reply(res, stored.status, { error: 'MCP_SERVER_UNAVAILABLE' });
+          const raw = await stored.text();
+          if (raw.length > MAX_PROVIDER_RESPONSE) throw new Error('Invalid Core response');
+          const server = (JSON.parse(raw) as { success?: boolean; data?: Record<string, unknown> });
+          if (!server.success || !server.data?.transport) throw new Error('Invalid Core response');
+          input.name = server.data.name;
+          input.transport = server.data.transport;
+        }
+        const tested = await fetch(`${base}/api/mcp/test-connection`, {
+          method: 'POST', headers, body: JSON.stringify(input), signal: abort.signal,
+        });
+        const raw = await tested.text();
+        if (raw.length > MAX_PROVIDER_RESPONSE) throw new Error('Invalid Core response');
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        reply(res, tested.status, scrubMcpServerSecrets(JSON.parse(raw)));
+      } catch (error) {
+        if (error instanceof CoreCapacityError && !res.destroyed) return replyCoreFailure(res, error);
+        if (!res.destroyed) reply(res, 502, { error: 'MCP_CONNECTION_UNAVAILABLE' });
+      }
+      return;
+    }
     if (clientSettingsRoute(req.url) && req.method === 'PUT') {
       auth.session.responses.add(res);
       const abort = new AbortController();

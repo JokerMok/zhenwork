@@ -202,6 +202,26 @@ beforeAll(async () => {
               url: 'https://example.test/mcp?key=hidden', headers: { Authorization: 'Bearer hidden' } } }] }));
           return;
         }
+        if (req.url?.startsWith('/api/mcp/servers/')) {
+          res.setHeader('content-type', 'application/json');
+          if (req.url !== '/api/mcp/servers/mcp-a') { res.writeHead(404); res.end('{}'); return; }
+          res.end(JSON.stringify({ success: true, data: { id: 'mcp-a', name: 'Private MCP', transport: {
+            type: 'http', url: 'https://example.test/mcp?key=hidden', headers: { Authorization: 'Bearer hidden' },
+          } } }));
+          return;
+        }
+        if (req.url === '/api/mcp/test-connection') {
+          const chunks: Buffer[] = [];
+          req.on('data', (chunk: Buffer) => chunks.push(chunk));
+          req.on('end', () => {
+            const tested = JSON.parse(Buffer.concat(chunks).toString());
+            const success = tested.transport.url === 'https://example.test/mcp?key=hidden' &&
+              tested.transport.headers.Authorization === 'Bearer hidden';
+            res.setHeader('content-type', 'application/json');
+            res.end(JSON.stringify({ success: true, data: { success, tools: [{ name: 'read' }] } }));
+          });
+          return;
+        }
         if (req.url === '/api/hold') {
           res.writeHead(200, { 'content-type': 'text/plain' });
           res.write('open');
@@ -380,6 +400,23 @@ test('MCP server responses never return stored transport credentials', async () 
   expect(response.body).not.toContain('hidden');
   expect(JSON.parse(response.body).data[0]).toMatchObject({ id: 'mcp-a', original_json: '',
     transport: { type: 'http', url: '', headers: {}, credentials_configured: true } });
+});
+
+test('MCP probe resolves redacted credentials only within this actor Core', async () => {
+  allowed.set('1', true);
+  const login = await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' });
+  const cookie = login.headers['set-cookie']?.[0].split(';')[0];
+  const servers = JSON.parse((await request('GET', '/api/mcp/servers', cookie)).body).data;
+  const tested = await request('POST', '/api/mcp/test-connection', cookie, servers[0]);
+  expect(tested.status).toBe(200);
+  expect(JSON.parse(tested.body).data.success).toBe(true);
+  expect(tested.body).not.toContain('hidden');
+  expect((await request('POST', '/api/mcp/test-connection', cookie, {
+    ...servers[0], id: 'other-profile-server',
+  })).status).toBe(404);
+  expect((await request('POST', '/api/mcp/test-connection', cookie, {
+    ...servers[0], id: '../mcp-a',
+  })).status).toBe(400);
 });
 
 test('client preferences withhold saved keys and preserve them through ordinary web edits', async () => {
@@ -781,6 +818,26 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
     startCore: async () => {
       starts += 1;
       const core = http.createServer((req, res) => {
+        if (req.url?.startsWith('/api/mcp/servers/')) {
+          res.setHeader('content-type', 'application/json');
+          if (req.url !== '/api/mcp/servers/mcp-a') { res.writeHead(404); res.end('{}'); return; }
+          res.end(JSON.stringify({ success: true, data: { id: 'mcp-a', name: 'Private MCP', transport: {
+            type: 'http', url: 'https://example.test/mcp?key=hidden', headers: { Authorization: 'Bearer hidden' },
+          } } }));
+          return;
+        }
+        if (req.url === '/api/mcp/test-connection') {
+          const chunks: Buffer[] = [];
+          req.on('data', (chunk: Buffer) => chunks.push(chunk));
+          req.on('end', () => {
+            const tested = JSON.parse(Buffer.concat(chunks).toString());
+            const success = tested.transport.url === 'https://example.test/mcp?key=hidden' &&
+              tested.transport.headers.Authorization === 'Bearer hidden';
+            res.setHeader('content-type', 'application/json');
+            res.end(JSON.stringify({ success: true, data: { success, tools: [{ name: 'read' }] } }));
+          });
+          return;
+        }
         if (req.url === '/api/hold') {
           markHeld();
           void heldGate.then(() => res.end(JSON.stringify({ success: true })));
