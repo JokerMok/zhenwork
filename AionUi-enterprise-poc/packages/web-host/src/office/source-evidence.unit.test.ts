@@ -378,3 +378,20 @@ test('rejects expired quote options and globally prunes before reporting sources
   expect(() => registry.quoteOptions('conversation-a', first)).toThrow('SOURCE_EVIDENCE_EXPIRED');
   expect(registry.hasSources('conversation-b')).toBe(false);
 });
+
+test("separates wide-space PDF columns without inventing a joined source sentence", () => {
+  const registry = new SourceEvidenceRegistry();
+  const ref = registry.add("c", {
+    kind: "workspace",
+    text: "实现产废数据全过程的收集、存储与管理。                                      质量管理/数据分析",
+    locator: { path: "proposal.pdf", version: 1, physicalPage: 5 },
+  });
+  const options = registry.quoteOptions("c", ref);
+  expect(options.map((item) => item.quote)).toEqual([
+    "实现产废数据全过程的收集、存储与管理。",
+    "质量管理/数据分析",
+  ]);
+  expect(registry.verify("c", [{ ref, quoteIndex: 0 }])[0].quote).toBe(
+    "实现产废数据全过程的收集、存储与管理。",
+  );
+});

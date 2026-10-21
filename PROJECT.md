@@ -1,5 +1,12 @@
 # ZhenWork 腾讯云网页试点
 
+## 2026-10-21 四项业务修复（进行中）
+
+- 基线已核实：`1b601eea104668b684f1aba57a46e3fa2940a672` 是 `20261020-office-diagnostics` 应用源码；`3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 仅补充 PROJECT.md 与 deploy/tencent/README.md，两者不冲突。
+- 已复现成品与追问不一致、跨栏摘录/过度解释、研究表格参数失败，以及标题列旧值残留；原始输入/会话/工具/文件证据保留于私有 `.codex/enterprise-delivery/business/`。
+- 新工具与约束见 `docs/office-reconciliation.md`。代码定向检查通过不代表网页业务验收已通过；本轮集中网页回归与部署尚在进行。
+
+
 核对日期：2026-10-20。范围为员工网页、管理后台、必要服务，以及按员工启动的 Linux Core/Gateway；不含桌面安装包、下载页或桌面更新服务。
 
 ## 访问、身份与凭据边界

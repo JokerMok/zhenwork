@@ -119,7 +119,8 @@ function validConversation(conversation: unknown): conversation is string {
 function quoteOptionsFor(text: string): SourceEvidenceQuoteOption[] {
   const seen = new Set<string>();
   const quotes: string[] = [];
-  for (const rawLine of text.split(/\r\n|\n|\r/)) {
+  // Keep PDF columns as separate contiguous excerpts, rather than joined claims.
+  for (const rawLine of text.split(/\r\n|\n|\r|\t{2,}| {3,}/)) {
     const line = rawLine.trim();
     if (line.length < MIN_QUOTE_LENGTH) continue;
     for (let start = 0; start < line.length && quotes.length < MAX_QUOTE_OPTIONS; start += MAX_QUOTE_OPTION_LENGTH) {

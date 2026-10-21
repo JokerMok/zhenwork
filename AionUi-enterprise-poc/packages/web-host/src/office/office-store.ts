@@ -149,7 +149,7 @@ export class OfficeStore {
     return bytes;
   }
 
-  async upload(root: string, name: string, bytes: Buffer, overwrite = false): Promise<void> {
+  async upload(root: string, name: string, bytes: Buffer, overwrite = false, expectedCurrentSha256?: string): Promise<void> {
     if (process.platform !== 'linux') throw new Error('OFFICE_FILE_STORAGE_REQUIRES_LINUX');
     if (!name || path.isAbsolute(name) || name.split(/[\\/]/).some((part) => !part || part === '.' || part === '..' || part.startsWith('.')) || bytes.length > MAX_FILE) throw new Error('INVALID_FILE_PATH_OR_SIZE');
     const base = await realpath(root), parent = path.dirname(path.resolve(base, name));
@@ -173,6 +173,7 @@ export class OfficeStore {
         if (overwrite) {
           previous = await this.readWorkspace(root, name);
           expectedHash = digest(previous);
+          if (expectedCurrentSha256 && expectedHash !== expectedCurrentSha256) throw new Error('FILE_CHANGED_RETRY');
           if (prior !== digest(previous)) required += previous.length;
         }
         if (used + required > HISTORY_BUDGET) throw new Error('VERSION_STORAGE_LIMIT_256MB');

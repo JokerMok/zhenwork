@@ -297,10 +297,10 @@ test('reports safe row and field details for invalid evidence rows through MCP',
     expect(emptyRef.error.message).toBe('OFFICE_EVIDENCE_ROW_INVALID row=4 field=ref reason=empty');
 
     const nonObject = await call([validRow, null]);
-    expect(nonObject.error.message).toBe('OFFICE_EVIDENCE_ROW_INVALID row=2 field=row reason=not_object');
+    expect(nonObject.error.message).toBe('OFFICE_ARGUMENT_INVALID arguments.evidenceRows[1]: expected object');
 
     const wrongType = await call([{ ...validRow, claim: 42 }]);
-    expect(wrongType.error.message).toBe('OFFICE_EVIDENCE_ROW_INVALID row=1 field=claim reason=not_string');
+    expect(wrongType.error.message).toBe('OFFICE_ARGUMENT_INVALID arguments.evidenceRows[0].claim: expected string');
 
     const tooLong = await call([{ ...validRow, followUp: 'x'.repeat(8001) }]);
     expect(tooLong.error.message).toBe('OFFICE_EVIDENCE_ROW_INVALID row=1 field=followUp reason=too_long');
@@ -327,7 +327,7 @@ test('structured manifests use actor workspace, explicit overwrite and truthful 
   try {
     expect((await call({ path: 'data.json', data: { amount: '12.30' } })).error?.message).toBe('OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME');
     expect((await call({ path: 'data.xlsx', data: [] })).error?.message).toBe('WORKSPACE_JSON_OBJECT_OR_ARRAY_REQUIRED');
-    expect((await call({ path: 'data.json', data: '{"amount":12}' })).error?.message).toBe('WORKSPACE_JSON_OBJECT_OR_ARRAY_REQUIRED');
+    expect((await call({ path: 'data.json', data: '{"amount":12}' })).error?.message).toBe('OFFICE_ARGUMENT_INVALID arguments.data: expected object|array');
     expect(upload).not.toHaveBeenCalled();
     expect((await call({ path: 'data.json', data: {}, overwrite: 'yes' })).error?.message).toBe('OFFICE_BOOLEAN_ARGUMENT_INVALID');
     const result = await call({ path: 'data.json', data: { amount: '12.30' }, overwrite: 'True' });
