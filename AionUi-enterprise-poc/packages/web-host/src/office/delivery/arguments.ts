@@ -58,7 +58,7 @@ export function validateToolArguments(schema: unknown, value: unknown, at = 'arg
     for (const [key, item] of Object.entries(object)) {
       if (Object.hasOwn(properties, key)) validateToolArguments(properties[key], item, `${at}.${key}`);
       else if (s.additionalProperties === false)
-        fail(`unknown ${key}; use documented nested fields (table.headers/table.rows)`);
+        fail(`unknown ${key}; allowed fields here: ${Object.keys(properties).join(', ')}`);
       else if (s.additionalProperties && typeof s.additionalProperties === 'object')
         validateToolArguments(s.additionalProperties, item, `${at}.${key}`);
     }

@@ -29,7 +29,8 @@ const input = z
     basePath: z.string().min(1).max(240),
     title: z.string().min(1).max(300),
     scope: z.string().min(1).max(2000),
-    rows: z.array(row).min(1).max(16),
+    purpose: z.enum(['research', 'compliance']).default('compliance'),
+    rows: z.array(row).min(1).max(32),
     overwrite: z.boolean().optional(),
   })
   .strict();
@@ -46,6 +47,8 @@ export function parseEvidenceDelivery(value: unknown): EvidenceDeliveryInput {
     );
   if (/\.(xlsx|docx|pdf|pptx)$/i.test(result.data.basePath))
     throw new Error('OFFICE_DELIVERY_BASE_PATH_WITHOUT_EXTENSION_REQUIRED');
+  if (result.data.rows.reduce((count, item) => count + (item.requirement ? 2 : 1), 0) > 32)
+    throw new Error('OFFICE_DELIVERY_REFERENCE_LIMIT_32: at most 32 source-only rows or 16 rows with paired requirements; select the findings needed for this scope.');
   return result.data;
 }
 export function deliveryReferences(value: EvidenceDeliveryInput) {
@@ -56,14 +59,15 @@ export function buildEvidenceDeliverables(
   sources: VerifiedSourceEvidence[]
 ): { dataSha256: string; files: Array<{ path: string; content: GenerateOfficeArtifactInput }> } {
   if (sources.length !== deliveryReferences(value).length) throw new Error('OFFICE_DELIVERY_SOURCE_COUNT_MISMATCH');
+  const research = value.purpose === 'research';
   let cursor = 0;
   const table = {
     headers: [
       '编号',
       '主题',
       '原文事实（非独立验收）',
-      '核查状态',
-      '独立要求原文',
+      research ? '原文核验状态' : '核查状态',
+      research ? '比较要求原文（如有）' : '独立要求原文',
       '解释与判断（分析）',
       '缺失信息/下一步',
       '事实来源及版本定位',
@@ -76,11 +80,11 @@ export function buildEvidenceDeliverables(
         index + 1,
         item.topic,
         source.quote,
-        requirement ? item.assessment : '证据不足',
-        requirement?.quote ?? '未提供独立要求；不得据此判定符合',
+        research ? '原文已定位；内容真实性未获独立验证' : requirement ? item.assessment : '证据不足',
+        requirement?.quote ?? (research ? '研究任务不作客户符合性结论' : '未提供独立要求；不得据此判定符合'),
         item.analysis,
         item.missing ||
-          (requirement ? '仍需核对单位、范围、条件、日期、版本及实际验收。' : '待提供独立需求与验收依据。'),
+          (research ? '仅以所引原文及研究范围为限；效果仍需独立验证。' : requirement ? '仍需核对单位、范围、条件、日期、版本及实际验收。' : '待提供独立需求与验收依据。'),
         JSON.stringify(source.locator),
         requirement ? JSON.stringify(requirement.locator) : '未提供',
       ];
@@ -91,7 +95,9 @@ export function buildEvidenceDeliverables(
     .digest('hex');
   const paragraphs = [
     value.scope,
-    '原文由服务器从当前有权访问的版本中插入。解释栏为分析；原文存在不等于推断正确或实际验收通过。未提供独立要求时，状态强制为证据不足。',
+    research
+      ? '原文由服务器从当前有权访问的版本中插入。解释栏为分析；已定位原文不代表宣传、推断或效果经过独立验证。'
+      : '原文由服务器从当前有权访问的版本中插入。解释栏为分析；原文存在不等于推断正确或实际验收通过。未提供独立要求时，状态强制为证据不足。',
     '共同数据版本 SHA256: ' + dataSha256,
   ];
   return {
@@ -126,7 +132,7 @@ const referenceSchema = {
 export const evidenceDeliveryTool = {
   name: 'create_evidence_deliverables',
   description:
-    'Create BOTH a real Word report and Excel comparison from ONE shared evidence dataset. Preferred for research/compliance multi-deliverable tasks. Each row needs a valid source reference. The server inserts the actual original quote and version/location in both files. analysis is explicitly labelled inference; never put unsourced facts in it. Requirement references are optional; without independent requirements the status is forced to insufficient evidence. Read files with read_document (not native Read) or read_web/search_knowledge first, then copy returned sourceRef and quoteIndex. File paths are not sourceRefs. This creates a NEW evidence report/table, never fills or edits a company template. Returns per-file validation and downloads; partial means an output failed, never claim completion. Use basePath WITHOUT extension. All rows require source; put data gaps in missing, not an empty ref. Max 16 rows. Check units/conditions/date/version before choosing assessment.',
+    'Create BOTH a real Word report and Excel comparison from ONE shared evidence dataset. Preferred for research/compliance multi-deliverable tasks. Each row needs a valid source reference. The server inserts the actual original quote and version/location in both files. analysis is explicitly labelled inference; never put unsourced facts in it. Requirement references are optional; without independent requirements the status is forced to insufficient evidence. Read files with read_document (not native Read) or read_web/search_knowledge first, then copy returned sourceRef and quoteIndex. File paths are not sourceRefs. This creates a NEW evidence report/table, never fills or edits a company template. Returns per-file validation and downloads; partial means an output failed, never claim completion. Use basePath WITHOUT extension. All rows require source; put data gaps in missing, not an empty ref. Set purpose:"research" for factual research (source-location status, not customer conformity); default compliance enforces independent requirements. Max 32 total references: 32 source-only rows or 16 source/requirement pairs. Minimal shape: {basePath:"report",title:"title",scope:"scope",purpose:"research",rows:[{topic:"finding",source:{ref:"returned sourceRef",quoteIndex:0},analysis:"inference",missing:"gaps"}]}. Check units/conditions/date/version before choosing assessment.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -134,11 +140,12 @@ export const evidenceDeliveryTool = {
       basePath: { type: 'string' },
       title: { type: 'string' },
       scope: { type: 'string' },
+      purpose: { type: 'string', enum: ['research', 'compliance'] },
       overwrite: { type: 'boolean' },
       rows: {
         type: 'array',
         minItems: 1,
-        maxItems: 16,
+        maxItems: 32,
         items: {
           type: 'object',
           additionalProperties: false,

@@ -731,6 +731,7 @@ export async function startOfficeTools(
 
 const instructions = `Execution contract (applies before choosing tools):
 - First call office_context. For company-template reimbursement FIRST load Skill finance-reimbursement-filler, read its SKILL.md, and execute its bundled scripts with ExecCommand. It preserves template formulas/images/sheets. A new evidence table is NEVER a filled reimbursement template. Script failure means incomplete, not permission to replace the template.
+- For a short research comparison, read 3–6 substantive original sources, then deliver scoped findings. Mark inaccessible sources and missing facts; do not keep chasing navigation or optional details instead of creating the requested files. Use create_evidence_deliverables with purpose="research" and one shared dataset; compliance uses purpose="compliance".
 - For evidence tasks read each file with read_document, NOT native Read, to obtain sourceRef/quoteOptions. References are opaque IDs returned by the tool, never file paths or guessed IDs. If a report and table are required, use create_evidence_deliverables with one shared dataset.
 - For existing files preserve the requested path unless the user asks for a new copy. A failed edit has changed NOTHING. validate_artifact on an old file does not prove an edit. Copy the exact current SHA from inspect_workbook for same-file edits.
 - For amounts only report audit_workbook results for the CURRENT delivered file; never turn source-file count into business detail count, infer an empty value as zero, or claim a failure was successful.

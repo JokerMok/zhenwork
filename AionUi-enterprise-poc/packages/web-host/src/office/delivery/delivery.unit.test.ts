@@ -67,3 +67,13 @@ test('bounded correction rejects a fourth identical bad call but permits correct
   now = 300_001;
   expect(() => budget.check('c', 't', {})).not.toThrow();
 });
+
+test('research preserves source-location status while compliance still needs requirements; reference work stays bounded', () => {
+  const parsed = parseEvidenceDelivery({ ...input, purpose: 'research', rows: Array.from({ length: 32 }, () => input.rows[0]) });
+  const source = { ref: 'source', kind: 'web' as const, quote: 'A vendor claim, not independent acceptance.', locator: { url: 'https://example.com', sha256: 'v1' } };
+  const result = buildEvidenceDeliverables(parsed, Array.from({ length: 32 }, () => source));
+  expect(result.files[0].content.table!.rows[0][3]).toContain('原文已定位');
+  expect(result.files[0].content.table).toEqual(result.files[1].content.table);
+  expect(() => parseEvidenceDelivery({ ...input, rows: Array.from({ length: 17 }, () => ({ ...input.rows[0], requirement: { ref: 'r', quoteIndex: 0 } })) })).toThrow('REFERENCE_LIMIT_32');
+  expect(() => validateToolArguments(evidenceDeliveryTool.inputSchema, { ...input, evidenceRows: [] })).toThrow('allowed fields here:');
+});
