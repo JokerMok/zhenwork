@@ -168,7 +168,7 @@ const tools = [
   {
     name: 'audit_workbook',
     description:
-      'REQUIRED for financial follow-up. Re-read current XLSX and sum explicit amount ranges using exact Decimal, currency CNY by default, 2 decimal ROUND_HALF_UP. Pass totalCell to compare the actual workbook total with details; expectedTotal optional. Returns actual detail count, cell values, totals, differences and current SHA. Formula caches are NEVER trusted: supported SUM and same-sheet arithmetic/reference chains are freshly evaluated, other formulas fail explicitly. Inspect workbook to locate correct ranges first. Never claim verified on nonzero difference/error. Ranges cannot overlap or depend on each other. Prefer a matching inspect_workbook auditSuggestions entry; do not combine a formula total and its contributing cells. Empty detail selections fail instead of becoming verified zero. Results verify only the selected scope, never all business data. Do not sum detail rows and total rows together.',
+      'REQUIRED for financial follow-up. Re-read current XLSX and sum explicit amount ranges using exact Decimal, currency CNY by default, 2 decimal ROUND_HALF_UP. Pass totalCell to compare the actual workbook total with details; expectedTotal optional. Returns actual detail count, cell values, totals, differences and current SHA. Formula caches are NEVER trusted: supported SUM and same-sheet arithmetic/reference chains are freshly evaluated, other formulas fail explicitly. Inspect workbook to locate correct ranges first. Never claim verified on nonzero difference/error. Ranges cannot overlap or depend on each other. Prefer a matching inspect_workbook auditSuggestions entry; do not combine a formula total and its contributing cells. Empty detail selections fail instead of becoming verified zero. Results verify only the selected scope, never all business data. Returns grouping for an unambiguous Date/业务日期 header automatically; use grouping.groupCount and per-date totals, not another sheet event-row count. detailCount is numeric CELL count, never an inferred invoice/trip/day count. Optional groupByColumn and groupFormat=value|excel-date explicitly group current row labels. Different summary/event row counts are not proof of a date error. Do not sum detail rows and total rows together.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -180,6 +180,8 @@ const tools = [
         totalCell: { type: 'string' },
         expectedTotal: { type: ['string', 'number'] },
         currency: { type: 'string' },
+        groupByColumn: { type: 'string' },
+        groupFormat: { type: 'string', enum: ['value', 'excel-date'] },
       },
       required: ['path', 'sheet'],
     },
@@ -734,6 +736,7 @@ const instructions = `Execution contract (applies before choosing tools):
 - For a short research comparison, read 3–6 substantive original sources, then deliver scoped findings. Mark inaccessible sources and missing facts; do not keep chasing navigation or optional details instead of creating the requested files. Use create_evidence_deliverables with purpose="research" and one shared dataset; compliance uses purpose="compliance".
 - For evidence tasks read each file with read_document, NOT native Read, to obtain sourceRef/quoteOptions. References are opaque IDs returned by the tool, never file paths or guessed IDs. If a report and table are required, use create_evidence_deliverables with one shared dataset.
 - For existing files preserve the requested path unless the user asks for a new copy. A failed edit has changed NOTHING. validate_artifact on an old file does not prove an edit. Copy the exact current SHA from inspect_workbook for same-file edits.
+- For business dates, audit the actual primary summary and use its grouping.groupCount, date keys and per-group totals. Event rows can cover multiple dates; never replace the summary date count with event-row count or declare the summary dates wrong without independently reading the source evidence. detailCount means numeric cells, not business dates or invoices.
 - For amounts only report audit_workbook results for the CURRENT delivered file; never turn source-file count into business detail count, infer an empty value as zero, or claim a failure was successful.
 You are the enterprise general office assistant. Use the user's language automatically. Employees need no API or engine configuration.
 Before working, call office_context for the ACTUAL output directory and authorized knowledge IDs; never guess a default ID or use the profile root as the output directory. Read user-confirmed preferences and relevant project context with read_preferences. Personal chat is never an enterprise rule. Ask before saving or sharing knowledge.

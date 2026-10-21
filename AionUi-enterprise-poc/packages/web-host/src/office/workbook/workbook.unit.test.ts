@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import yauzl from 'yauzl';
 import { auditWorkbook, editWorkbookColumn, inspectWorkbook } from './index.js';
@@ -225,4 +226,26 @@ describe('workbook column edit', () => {
       })
     ).rejects.toThrow('EDIT_MERGED_CELL_UNSAFE');
   });
+});
+
+test('current summary date labels are programmatically grouped; event-row count cannot replace date count', async () => {
+  const dated = execFileSync('/usr/bin/python3', ['-c', String.raw`import io,sys,zipfile,xml.etree.ElementTree as E
+z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read()));parts={n:z.read(n) for n in z.namelist()};ns="http://schemas.openxmlformats.org/spreadsheetml/2006/main";q=lambda n:"{"+ns+"}"+n
+r=E.fromstring(parts["xl/worksheets/sheet1.xml"]);data=r.find(q("sheetData"))
+for ref,value in [("A2","日期"),("A3","46273"),("A4","46279"),("A5","46282")]:
+ rownum=ref[1:];row=next((x for x in data if x.get("r")==rownum),None)
+ if row is None:row=E.SubElement(data,q("row"),{"r":rownum})
+ old=next((c for c in row if c.get("r")==ref),None)
+ if old is not None:row.remove(old)
+ cell=E.SubElement(row,q("c"),{"r":ref})
+ if ref=="A2":cell.set("t","inlineStr");E.SubElement(E.SubElement(cell,q("is")),q("t")).text=value
+ else:E.SubElement(cell,q("v")).text=value
+parts["xl/worksheets/sheet1.xml"]=E.tostring(r);out=io.BytesIO()
+with zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED) as target:
+ for n,b in parts.items():target.writestr(n,b)
+sys.stdout.buffer.write(out.getvalue())`], { input: formulaFixture });
+  const result = await auditWorkbook(dated, { sheet: '报销总表', amountRange: 'F3:F5', totalCell: 'F7' });
+  expect(result.grouping).toMatchObject({ groupCount: 3, column: 'A', displayedTotalDifference: '0.00', groups: [{key:'2026-09-08',total:'37.88'}, {key:'2026-09-14',total:'41.80'}, {key:'2026-09-17',total:'38.95'}] });
+  expect(result.detailCountMeaning).toContain('not automatically invoices');
+  await expect(auditWorkbook(dated, { sheet:'报销总表',amountRange:'F3:F5',groupByColumn:'Z' })).rejects.toThrow('GROUP_KEY_MISSING');
 });

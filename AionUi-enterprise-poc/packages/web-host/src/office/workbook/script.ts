@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import datetime
 import hashlib
 import html
 import io
@@ -472,6 +473,65 @@ class DecimalEvaluator:
         ]
 
 
+
+def date_header_column(cells, shared_strings, before_row):
+    aliases = {"日期", "业务日期", "费用日期", "date", "businessdate", "transactiondate"}
+    matches = set()
+    for reference, cell in cells.items():
+        column, row = parse_cell(reference)
+        if row >= min(before_row, 11): continue
+        raw = read_cell(cell, shared_strings)
+        if raw["kind"] == "text" and re.sub(r"\s+", "", str(raw.get("value", ""))).casefold() in aliases:
+            matches.add(column)
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
+def group_details(package, cells, details, args):
+    explicit = args.get("groupByColumn")
+    first_row = min(parse_cell(str(item["cell"]))[1] for item in details)
+    column = column_number(str(explicit)) if explicit is not None else date_header_column(cells, package.shared_strings, first_row)
+    if column is None: return None
+    keys = []
+    for detail in details:
+        row = parse_cell(str(detail["cell"]))[1]
+        reference = cell_reference(column, row)
+        raw = read_cell(cells.get(reference), package.shared_strings)
+        if raw["kind"] not in ("number", "text") or raw.get("value") in (None, ""):
+            require(explicit is None, "GROUP_KEY_MISSING_OR_UNSUPPORTED", reference)
+            return None
+        keys.append((reference, raw))
+    fmt = args.get("groupFormat", "value" if explicit is not None else "excel-date")
+    require(fmt in ("value", "excel-date"), "GROUP_FORMAT_INVALID")
+    properties = package.workbook_root.find("x:workbookPr", NS)
+    epoch1904 = properties is not None and properties.attrib.get("date1904") in ("1", "true")
+    grouped = {}
+    for detail, (reference, raw) in zip(details, keys):
+        label = str(raw["value"])
+        if fmt == "excel-date":
+            try:
+                if raw["kind"] == "number":
+                    serial = Decimal(label)
+                    require(serial.is_finite() and 61 <= serial <= 2950000, "GROUP_EXCEL_DATE_UNSUPPORTED", reference)
+                    base = datetime.date(1904, 1, 1) if epoch1904 else datetime.date(1899, 12, 30)
+                    label = (base + datetime.timedelta(days=int(serial))).isoformat()
+                else:
+                    match = re.fullmatch(r"(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?", label.strip())
+                    require(bool(match), "GROUP_DATE_LABEL_UNSUPPORTED", reference)
+                    label = datetime.date(*map(int, match.groups())).isoformat()
+            except (WorkbookError, ValueError, OverflowError):
+                require(explicit is None, "GROUP_DATE_LABEL_UNSUPPORTED", reference)
+                return {"status": "unavailable", "groupCount": None, "column": column_label(column), "reason": "Date labels cannot be safely normalized; amount arithmetic remains valid, business date count is NOT verified."}
+        group = grouped.setdefault(label, {"key": label, "keyCells": [], "amountCells": [], "sum": Decimal(0)})
+        if reference not in group["keyCells"]: group["keyCells"].append(reference)
+        group["amountCells"].append(detail["cell"])
+        group["sum"] += Decimal(str(detail["value"]))
+    return {"status": "verified-label-groups", "column": column_label(column), "format": fmt, "groupCount": len(grouped),
+            "sumOfDisplayedTotals": money_text(sum((Decimal(money_text(item["sum"])) for item in grouped.values()), Decimal(0))),
+            "displayedTotalDifference": money_text(sum((Decimal(money_text(item["sum"])) for item in grouped.values()), Decimal(0)) - Decimal(money_text(sum((item["sum"] for item in grouped.values()), Decimal(0))))),
+            "groups": [{"key": item["key"], "keyCells": item["keyCells"], "amountCells": item["amountCells"], "exactTotal": decimal_text(item["sum"]), "total": money_text(item["sum"])} for item in grouped.values()],
+            "countMeaning": "Distinct labels in the selected CURRENT worksheet. This is not invoice or trip count. Different row counts on another event/summary sheet do not prove these dates are wrong; re-read original evidence before claiming a discrepancy."}
+
+
 def audit(content: bytes, args: dict[str, object]) -> dict[str, object]:
     package = WorkbookPackage(content)
     sheet = package.sheet(args.get("sheet") if isinstance(args.get("sheet"), str) else "")
@@ -554,6 +614,8 @@ def audit(content: bytes, args: dict[str, object]) -> dict[str, object]:
             "rounding": "ROUND_HALF_UP",
             "scale": 2,
             "detailCount": len(details),
+            "detailCountMeaning": "Nonblank numeric cells selected; not automatically invoices, events or business dates. Use grouping.groupCount for distinct current worksheet dates/labels.",
+            "grouping": group_details(package, cells, details, args),
             "values": details,
             "exactTotal": decimal_text(total),
             "total": money_text(total),

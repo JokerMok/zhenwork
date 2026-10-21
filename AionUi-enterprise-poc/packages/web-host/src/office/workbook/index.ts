@@ -19,6 +19,8 @@ export type WorkbookAuditArgs = {
   amountRanges?: string[];
   totalCell?: string;
   expectedTotal?: string | number;
+  groupByColumn?: string;
+  groupFormat?: 'value' | 'excel-date';
   currency?: string;
 };
 
