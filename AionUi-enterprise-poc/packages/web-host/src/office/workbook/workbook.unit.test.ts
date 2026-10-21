@@ -106,6 +106,15 @@ describe('workbook inspection and audit', () => {
     expect(result.detailCount).toBe(3);
   });
 
+  test('rejects adding formula totals to their own details and offers inspected subtotal ranges', async () => {
+    await expect(auditWorkbook(formulaFixture, { sheet: '报销总表', amountRanges: ['B3:B5', 'F3:F5'], totalCell: 'F7' })).rejects.toThrow('AMOUNT_DEPENDENCY_OVERLAP');
+    const inspected = await inspectWorkbook(formulaFixture, { sheet: '报销总表' });
+    expect((inspected.sheets as Array<Record<string, unknown>>)[0].auditSuggestions).toContainEqual(expect.objectContaining({ amountRange: 'F3:F5', totalCell: 'F7' }));
+    const audited = await auditWorkbook(formulaFixture, { sheet: '报销总表', amountRange: 'F3:F5', totalCell: 'F7' });
+    expect(audited.status).toBe('matched');
+    expect(audited.detailCount).toBe(3);
+  });
+
   test('rejects a missing workbook total cell and non-finite expected totals', async () => {
     await expect(
       auditWorkbook(formulaFixture, { sheet: '报销总表', amountRange: 'B3:E5', totalCell: 'G9' })

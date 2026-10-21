@@ -271,7 +271,7 @@ def inspect(content: bytes, args: dict[str, object]) -> dict[str, object]:
         rows: list[dict[str, object]] = []
         header_candidates: list[dict[str, object]] = []
         formulas: list[dict[str, str]] = []
-        for row_number in range(1, max_rows + 1):
+        for row_number in range(1, (max_rows if requested_sheet or sheet["state"] == "visible" else 0) + 1):
             values: list[dict[str, object]] = []
             text_count = 0
             for column in range(1, max_columns + 1):
@@ -299,6 +299,15 @@ def inspect(content: bytes, args: dict[str, object]) -> dict[str, object]:
                 "merges": merge_references(root),
                 "printArea": package.print_area(int(sheet["index"])),
                 "formulas": formulas,
+                "auditSuggestions": [
+                    {"sheet": sheet["name"], "amountRange": match.group(1).replace("$", "").upper(), "totalCell": reference,
+                     "note": "Single-column subtotal candidate; verify this matches the requested business amount. Do not add this total to its own details."}
+                    for reference, cell in cells.items()
+                    if (formula := cell.find("x:f", NS)) is not None and (match := re.fullmatch(r"SUM\((\$?[A-Z]{1,3}\$?[1-9][0-9]*:\$?[A-Z]{1,3}\$?[1-9][0-9]*)\)", (formula.text or "").upper()))
+                    and parse_range(match.group(1))[0] == parse_range(match.group(1))[2] == parse_cell(reference)[0]
+                    and parse_cell(reference)[1] > parse_range(match.group(1))[3]
+                ][:8] if sheet["state"] == "visible" else [],
+                "hiddenDataOmitted": not requested_sheet and sheet["state"] != "visible",
                 "rows": rows,
                 "boundedAt": {"maxRows": max_rows, "maxColumns": max_columns},
             }
@@ -422,9 +431,12 @@ class DecimalEvaluator:
         self.shared_strings = shared_strings
         self.cache: dict[str, Decimal] = {}
         self.stack: list[str] = []
+        self.dependencies: dict[str, set[str]] = {}
 
     def cell(self, reference: str) -> Decimal:
         reference = reference.replace("$", "").upper()
+        if self.stack:
+            self.dependencies.setdefault(self.stack[-1], set()).add(reference)
         if reference in self.cache:
             return self.cache[reference]
         require(len(self.stack) < MAX_FORMULA_DEPTH and reference not in self.stack, "FORMULA_CIRCULAR_OR_TOO_DEEP", reference)
@@ -500,6 +512,17 @@ def audit(content: bytes, args: dict[str, object]) -> dict[str, object]:
                             **({"formula": raw["formula"]} if raw["kind"] == "formula" else {}),
                         }
                     )
+        def selected_dependency(reference, visited):
+            for child in evaluator.dependencies.get(reference, set()):
+                if child in seen: return child
+                if child not in visited:
+                    visited.add(child)
+                    nested = selected_dependency(child, visited)
+                    if nested: return nested
+            return None
+        for reference in seen:
+            duplicate = selected_dependency(reference, set())
+            require(not duplicate, "AMOUNT_DEPENDENCY_OVERLAP", str(reference)+" includes selected "+str(duplicate)+"; choose detail cells OR their formula totals, not both")
         expected = args.get("expectedTotal")
         expected_decimal: Decimal | None = None
         if "expectedTotal" in args:
@@ -518,6 +541,7 @@ def audit(content: bytes, args: dict[str, object]) -> dict[str, object]:
             require(total_raw["kind"] in ("number", "formula"), "TOTAL_CELL_VALUE_INVALID", total_cell)
             workbook_total = evaluator.cell(total_cell)
         return {
+            "status": "mismatch" if (expected_decimal is not None and money_text(total) != money_text(expected_decimal)) or (workbook_total is not None and money_text(total) != money_text(workbook_total)) else "matched" if workbook_total is not None or expected_decimal is not None else "calculated_only",
             "sheet": sheet["name"],
             "amountRanges": ranges,
             "currency": currency,
