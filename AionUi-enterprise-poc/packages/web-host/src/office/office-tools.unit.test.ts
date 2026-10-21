@@ -602,6 +602,12 @@ test('knowledge search resolves permitted bases and output context without inven
     const context = JSON.parse((await call('office_context', {})).result.content[0].text);
     expect(context.workspaceRoot).toBe(fixture.core.workspaceRoot);
     expect(context.downloadOrigin).toBe('https://workspace.example');
+    // A native Read may have happened outside MCP. A failed attempt to cite
+    // its filename must still prevent silently dropping all citations.
+    const invented = await call('verify_source_quotes', { citations: [{ ref: 'uploaded-file.txt', quoteIndex: 0 }] }) as unknown as { error: { message: string } };
+    expect(invented.error.message).toContain('read_document');
+    const noSources = await call('create_office_document', { path: 'unsourced.docx', format: 'docx', paragraphs: ['Not verified'] }) as unknown as { error: { message: string } };
+    expect(noSources.error.message).toContain('SOURCE_BASED_REPORT_REQUIRES_CITATIONS');
     const found = JSON.parse((await call('search_knowledge', { query: 'requirements' })).result.content[0].text);
     expect(found.searchedBases).toBe(1);
     expect(found.results[0].citations[0]).toMatchObject({ baseId, version: 3 });
@@ -609,7 +615,7 @@ test('knowledge search resolves permitted bases and output context without inven
     const ref = found.results[0].citations[0].sourceRef;
     expect(found.results[0].citations[0].quoteOptions[0]).toEqual({ index: 0, quote: 'Original source claim only, no acceptance evidence.' });
     const bypass = await call('create_office_document', { path: 'report.docx', format: 'docx', sourceBased: 'True', paragraphs: ['No source should be fabricated.'] }) as unknown as { error: { message: string } };
-    expect(bypass.error.message).toBe('SOURCE_BASED_REPORT_REQUIRES_CITATIONS_USE_SOURCE_REF_AND_QUOTE_INDEX');
+    expect(bypass.error.message).toContain('SOURCE_BASED_REPORT_REQUIRES_CITATIONS_USE_SOURCE_REF_AND_QUOTE_INDEX');
     const omitted = await call('create_office_document', { path: 'report.docx', format: 'docx', paragraphs: ['No source should be fabricated.'] }) as unknown as { error: { message: string } };
     expect(omitted.error.message).toBe(bypass.error.message);
     const indexed = JSON.parse((await call('verify_source_quotes', { citations: [{ ref, quoteIndex: '0' }] })).result.content[0].text);

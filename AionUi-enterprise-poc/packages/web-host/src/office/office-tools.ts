@@ -214,7 +214,7 @@ const tools = [
 
   {
     name: 'read_document',
-    description: 'Read an uploaded/workspace Office, PDF, image or UTF-8 text file with physical page/worksheet/slide locations and OCR when needed. Use nextStart to read further pages. Use the absolute attachment path from this conversation, or a relative workspace path. Formulas are returned as formulas, not computed values.',
+    description: 'REQUIRED before citing uploaded files: unlike native Read this returns sourceRef and quoteOptions for evidence tools. Read an uploaded/workspace Office, PDF, image or UTF-8 text file with physical page/worksheet/slide locations and OCR when needed. Use nextStart to read further pages. Use the absolute attachment path from this conversation, or a relative workspace path. Formulas are returned as formulas, not computed values.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' }, start: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 5 } }, required: ['path'] },
   },
   {
@@ -317,6 +317,14 @@ export async function startOfficeTools(
     store = await OfficeStore.create(profileRoot, actor);
   const evidence = new SourceEvidenceRegistry();
   const invalidCalls = new InvalidCallBudget();
+  // Once a task attempts evidence verification, a failed reference must not
+  // permit falling back to a report without any verified sources.
+  const evidenceTasks = new Set<string>();
+  const requireEvidence = (conversation: string) => {
+    evidenceTasks.delete(conversation);
+    evidenceTasks.add(conversation);
+    if (evidenceTasks.size > 256) evidenceTasks.delete(evidenceTasks.values().next().value!);
+  };
   const bindEvidence = (conversation: string, source: SourceEvidenceInput) => {
     const sourceRef = evidence.add(conversation, source);
     return { sourceRef, quoteOptions: evidence.quoteOptions(conversation, sourceRef) };
@@ -339,7 +347,13 @@ export async function startOfficeTools(
       if (typeof value.quoteIndex === 'string' && /^\d{1,2}$/.test(value.quoteIndex)) value.quoteIndex = Number(value.quoteIndex);
       return value;
     }) : citations;
-    const checked = evidence.verify(conversation, normalized as SourceEvidenceReference[]);
+    requireEvidence(conversation);
+    let checked: VerifiedSourceEvidence[];
+    try {
+      checked = evidence.verify(conversation, normalized as SourceEvidenceReference[]);
+    } catch (error) {
+      throw new Error((error as Error).message + '; Read files with read_document (not native Read) or use search_knowledge/read_web. Copy the returned sourceRef and one quoteIndex; filenames are not sourceRefs. Retry the failed output with actual references, never drop citations.');
+    }
     for (const source of checked) {
       const locator = record(source.locator);
       if (source.kind === 'knowledge') {
@@ -471,7 +485,9 @@ export async function startOfficeTools(
             const relative = path.isAbsolute(requested) ? path.relative(core.workspaceRoot, requested) : requested;
             if (path.extname(relative).toLowerCase() !== '.xlsx') throw new Error('WORKBOOK_XLSX_OUTPUT_REQUIRED');
             const same = input.root === core.workspaceRoot && relative === input.relative;
-            if (same && args.expectedSha256 !== sha256) throw new Error('FILE_CHANGED_READ_CURRENT_SHA256');
+            if (same && args.expectedSha256 !== sha256) throw new Error('FILE_CHANGED_READ_CURRENT_SHA256: inspect_workbook again and copy the complete sha256 exactly; do not invent or truncate it.');
+            if (!same && (await store.files(core.workspaceRoot)).files.some(item => item.path === relative))
+              throw new Error('OUTPUT_EXISTS: no changes saved. Edit the requested original in place by omitting outputPath and copying its current inspect_workbook sha256, or choose a genuinely unused outputPath. Never validate an old file as this edit result.');
             const output = await editWorkbookColumn(input.bytes, args as WorkbookColumnEditArgs);
             const { workbook: bytes, ...verification } = output;
             if (!bytes) throw new Error('WORKBOOK_OUTPUT_MISSING');
@@ -564,8 +580,8 @@ export async function startOfficeTools(
           if (evidenceRows && args.format !== 'xlsx') throw new Error('OFFICE_EVIDENCE_ROWS_XLSX_ONLY');
           const content = { ...args }; delete content.path; delete content.overwrite;
           delete content.citations; delete content.sourceBased; delete content.evidenceRows;
-          if ((args.sourceBased === true || evidence.hasSources(conversation)) && !args.citations && !evidenceRows)
-            throw new Error('SOURCE_BASED_REPORT_REQUIRES_CITATIONS_USE_SOURCE_REF_AND_QUOTE_INDEX');
+          if ((args.sourceBased === true || evidence.hasSources(conversation) || evidenceTasks.has(conversation)) && !args.citations && !evidenceRows)
+            throw new Error('SOURCE_BASED_REPORT_REQUIRES_CITATIONS_USE_SOURCE_REF_AND_QUOTE_INDEX: read_document/search_knowledge/read_web first; native Read does not issue sourceRef. Do not remove citations to bypass a failed reference.');
           if (evidenceRows) {
             const sources = await verified(conversation, evidenceRows, client);
             const table = record(content.table);
@@ -713,7 +729,12 @@ export async function startOfficeTools(
   }
 }
 
-const instructions = `You are the enterprise general office assistant. Use the user's language automatically. Employees need no API or engine configuration.
+const instructions = `Execution contract (applies before choosing tools):
+- First call office_context. For company-template reimbursement FIRST load Skill finance-reimbursement-filler, read its SKILL.md, and execute its bundled scripts with ExecCommand. It preserves template formulas/images/sheets. A new evidence table is NEVER a filled reimbursement template. Script failure means incomplete, not permission to replace the template.
+- For evidence tasks read each file with read_document, NOT native Read, to obtain sourceRef/quoteOptions. References are opaque IDs returned by the tool, never file paths or guessed IDs. If a report and table are required, use create_evidence_deliverables with one shared dataset.
+- For existing files preserve the requested path unless the user asks for a new copy. A failed edit has changed NOTHING. validate_artifact on an old file does not prove an edit. Copy the exact current SHA from inspect_workbook for same-file edits.
+- For amounts only report audit_workbook results for the CURRENT delivered file; never turn source-file count into business detail count, infer an empty value as zero, or claim a failure was successful.
+You are the enterprise general office assistant. Use the user's language automatically. Employees need no API or engine configuration.
 Before working, call office_context for the ACTUAL output directory and authorized knowledge IDs; never guess a default ID or use the profile root as the output directory. Read user-confirmed preferences and relevant project context with read_preferences. Personal chat is never an enterprise rule. Ask before saving or sharing knowledge.
 Read Word, Excel, PPT, PDF, image and text inputs first with read_document (follow nextStart for more pages), or available OfficeCLI/Python tools and installed skills. Scan-based inputs need OCR; state uncertainty. Save structured skill manifests with write_workspace_json; data is an object/array, not a string. Respect original templates, formulas, styles and company constraints; preserve originals, write outputs as real workspace files. Use audit_workbook on the CURRENT actual XLSX for every final amount or reconciliation answer: inspect_workbook first to find the real sheet and detail/total ranges, then pass explicit ranges and totalCell. It recalculates supported formulas with exact Decimal and reports unsupported formulas instead of using stale caches. Keep currency, rounding, detail count, total and difference identical to the tool result; any mismatch or unsupported formula means verification has NOT passed. Use summarize_json_data for source manifests: inspect the actual fields first; nested daily_amounts arrays require flatten, never treat a list as an amount. Source manifest summaries never replace rereading the current delivered workbook. Never mental-arithmetic final evidence. For complex WPS embedded pictures use the reimbursement skill's OOXML-safe engine instead of ordinary openpyxl save.
 Prefer already authorized independent Skills and MCPs when appropriate; do not require a user to build an assistant. A missing optional resource must produce a specific error and a next step, not fabricated success.

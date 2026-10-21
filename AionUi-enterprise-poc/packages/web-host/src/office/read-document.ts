@@ -140,7 +140,7 @@ def xlsx_read(raw,start,limit):
             total_rows=max(0,int(worksheet.max_row or 0));total_columns=max(0,int(worksheet.max_column or 0))
             returned_rows=min(total_rows,ROW_LIMIT);returned_columns=min(total_columns,COLUMN_LIMIT)
             rows=[];formula_count=0;cell_truncated=False
-            if returned_rows and returned_columns:
+            if returned_rows and returned_columns and worksheet.sheet_state == 'visible':
                 for row in worksheet.iter_rows(min_row=1,max_row=returned_rows,min_col=1,max_col=returned_columns):
                     values=[]
                     for cell in row:
@@ -152,7 +152,8 @@ def xlsx_read(raw,start,limit):
             locations.append({
                 'location':{'kind':'worksheet','worksheet':sheet_index+1,'name':names[sheet_index]},
                 'rows':rows,'rowCount':total_rows,'columnCount':total_columns,
-                'returnedRows':returned_rows,'returnedColumns':returned_columns,
+                'state':worksheet.sheet_state,'hiddenDataOmitted':worksheet.sheet_state != 'visible',
+                'returnedRows':len(rows),'returnedColumns':returned_columns,
                 'truncatedRows':total_rows>ROW_LIMIT,'truncatedColumns':total_columns>COLUMN_LIMIT,
                 'omittedRowRange':{'start':ROW_LIMIT+1,'end':total_rows} if total_rows>ROW_LIMIT else None,
                 'omittedColumnRange':{'start':get_column_letter(COLUMN_LIMIT+1),'end':get_column_letter(total_columns)} if total_columns>COLUMN_LIMIT else None,
