@@ -395,37 +395,41 @@ def build_manifest(documents: Iterable[dict]) -> dict:
             )
         dates = sorted(doc["daily"])
         expense_id = "toll-" + doc["summary_number"]
-        expenses.append(
-            {
-                "id": expense_id,
-                "expense_type": "self_drive",
-                "date": dates[0],
-                "summary_date": dates[0],
-                "business_dates": dates,
-                "daily_amounts": [
-                    {"date": date, "amount": _num(doc["daily"][date])} for date in dates
-                ],
-                "purpose": "",
-                "company": doc["buyer_name"],
-                "origin": "",
-                "destination": "",
-                "distance_km": "",
-                "parking": 0.0,
-                "toll": _num(doc["total"]),
-                "remark": f"ETC通行费汇总单 {doc['summary_number']}（{doc['plate_number']}）",
-                "summary_remark": f"ETC通行费汇总单 {doc['summary_number']}",
-                "evidence": {"toll": [doc["source_path"]]},
-                "source_trace": {
-                    "sha256": doc["sha256"],
-                    "pages": sorted({trip.page for trip in doc["trips"]}),
-                    "summary_number": doc["summary_number"],
-                    "application_date": doc["application_date"],
-                    "transaction_references": [
-                        f"{doc['summary_number']}:{trip.sequence}" for trip in doc["trips"]
+        # One reimbursement row per evidenced business day; a summary PDF is not a single dated trip.
+        for date in dates:
+            expenses.append(
+                {
+                    "id": expense_id + "-" + date,
+                    "expense_type": "self_drive",
+                    "date": date,
+                    "summary_date": date,
+                    "business_dates": [date],
+                    "daily_amounts": [
+                        {"date": date, "amount": _num(doc["daily"][date])}
                     ],
-                },
-            }
-        )
+                    "purpose": "",
+                    "company": doc["buyer_name"],
+                    "origin": "",
+                    "destination": "",
+                    "distance_km": "",
+                    "parking": "",
+                    "toll": _num(doc["daily"][date]),
+                    "remark": f"ETC通行费汇总单 {doc['summary_number']}（{doc['plate_number']}）；业务日 {date}，同单按日分摊",
+                    "summary_remark": f"ETC通行费汇总单 {doc['summary_number']}",
+                    "evidence": {"toll": [doc["source_path"]]},
+                    "source_trace": {
+                        "sha256": doc["sha256"],
+                        "pages": sorted({trip.page for trip in doc["trips"] if trip.date == date}),
+                        "summary_number": doc["summary_number"],
+                        "application_date": doc["application_date"],
+                        "summary_total": _num(doc["total"]),
+                        "allocation_rule": "source_trip_business_date",
+                        "transaction_references": [
+                            f"{doc['summary_number']}:{trip.sequence}" for trip in doc["trips"] if trip.date == date
+                        ],
+                    },
+                }
+            )
         issues = [
             "未核实该汇总单与审批单或报销申请的关联",
             "未核实票据及行程是否已在历史报销中使用，提交前须查重",

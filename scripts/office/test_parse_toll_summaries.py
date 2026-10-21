@@ -63,13 +63,20 @@ class TollSummaryParserTest(unittest.TestCase):
             doc["daily"],
             {"2026-02-01": PARSER.Decimal("8.00"), "2026-02-02": PARSER.Decimal("22.00")},
         )
-        expense = PARSER.build_manifest([doc])["expenses"][0]
-        self.assertEqual(expense["business_dates"], ["2026-02-01", "2026-02-02"])
-        self.assertEqual(sum(x["amount"] for x in expense["daily_amounts"]), 30.0)
-        self.assertEqual(
-            expense["evidence"],
-            {"toll": [str(Path(tempfile.gettempdir(), "renamed-input.pdf").resolve())]},
-        )
+        manifest = PARSER.build_manifest([doc])
+        expenses = manifest["expenses"]
+        self.assertEqual(len(expenses), 2)
+        self.assertEqual([x["date"] for x in expenses], ["2026-02-01", "2026-02-02"])
+        self.assertEqual([x["toll"] for x in expenses], [8.0, 22.0])
+        self.assertEqual(sum(x["toll"] for x in expenses), 30.0)
+        self.assertEqual(len(manifest["invoices"]), 1)  # allocation never duplicates invoices
+        self.assertEqual(len(manifest["receipt_attachments"]), 1)
+        for expense in expenses:
+            self.assertEqual(expense["business_dates"], [expense["date"]])
+            self.assertEqual(sum(x["amount"] for x in expense["daily_amounts"]), expense["toll"])
+            self.assertEqual(expense["parking"], "")  # no parking evidence is not proof of zero
+            self.assertEqual(expense["evidence"], {"toll": [str(Path(tempfile.gettempdir(), "renamed-input.pdf").resolve())]})
+        self.assertNotEqual(expenses[0]["id"], expenses[1]["id"])
 
     def test_ambiguous_or_nonclosing_input_is_rejected(self):
         base = """

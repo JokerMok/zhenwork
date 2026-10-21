@@ -475,7 +475,7 @@ class DecimalEvaluator:
 
 
 def date_header_column(cells, shared_strings, before_row):
-    aliases = {"日期", "业务日期", "费用日期", "date", "businessdate", "transactiondate"}
+    aliases = {"日期", "业务日期", "费用日期", "外出日期", "出差日期", "date", "businessdate", "transactiondate"}
     matches = set()
     for reference, cell in cells.items():
         column, row = parse_cell(reference)
@@ -550,6 +550,7 @@ def audit(content: bytes, args: dict[str, object]) -> dict[str, object]:
     root = package.xml(str(sheet["path"]))
     evaluator = DecimalEvaluator(root, package.shared_strings)
     cells = evaluator.cells
+    date_column = date_header_column(cells, package.shared_strings, min(parse_range(item)[1] for item in ranges))
     details: list[dict[str, object]] = []
     total = Decimal(0)
     seen: set[str] = set()
@@ -566,6 +567,7 @@ def audit(content: bytes, args: dict[str, object]) -> dict[str, object]:
                     if raw["kind"] == "blank":
                         continue
                     require(raw["kind"] in ("number", "formula"), "AUDIT_NON_NUMERIC_CELL", reference)
+                    require(column != date_column, "AMOUNT_COLUMN_IS_DATE", reference + "; select money cells, not Excel date serials; groupByColumn groups dates alongside an actual amount range")
                     value = evaluator.cell(reference)
                     total += value
                     details.append(

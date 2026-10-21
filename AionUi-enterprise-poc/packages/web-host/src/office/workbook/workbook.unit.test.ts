@@ -247,5 +247,6 @@ sys.stdout.buffer.write(out.getvalue())`], { input: formulaFixture });
   const result = await auditWorkbook(dated, { sheet: '报销总表', amountRange: 'F3:F5', totalCell: 'F7' });
   expect(result.grouping).toMatchObject({ groupCount: 3, column: 'A', displayedTotalDifference: '0.00', groups: [{key:'2026-09-08',total:'37.88'}, {key:'2026-09-14',total:'41.80'}, {key:'2026-09-17',total:'38.95'}] });
   expect(result.detailCountMeaning).toContain('not automatically invoices');
+  await expect(auditWorkbook(dated, {sheet:'报销总表',amountRange:'A3:A5'})).rejects.toThrow('AMOUNT_COLUMN_IS_DATE');
   await expect(auditWorkbook(dated, { sheet:'报销总表',amountRange:'F3:F5',groupByColumn:'Z' })).rejects.toThrow('GROUP_KEY_MISSING');
 });
