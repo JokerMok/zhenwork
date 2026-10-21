@@ -152,7 +152,7 @@ const tools = [
   {
     name: 'inspect_workbook',
     description:
-      'Read the CURRENT real XLSX structure before editing or auditing. Returns SHA256, actual sheets, rows/cells, header candidates, merges, formulas, auditSuggestions and print areas. Use auditSuggestions to choose ONE actual subtotal/detail range; hidden history data is omitted unless explicitly requested. Use real sheet/header/data positions, not row 1 assumptions. Bounded to requested maxRows (default 40) and maxColumns. Does not modify the file.',
+      'Read the CURRENT real XLSX structure before editing or auditing. Returns SHA256, actual sheets, rows/cells, header candidates, merges, formulas, auditSuggestions and print areas. Use recommendedAudit when its actual sheet title/headers match the requested summary, otherwise choose ONE matching auditSuggestions subtotal/detail range; hidden history data is omitted unless explicitly requested. Use real sheet/header/data positions, not row 1 assumptions. Bounded to requested maxRows (default 40) and maxColumns. Does not modify the file.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -168,7 +168,7 @@ const tools = [
   {
     name: 'audit_workbook',
     description:
-      'REQUIRED for financial follow-up. Re-read current XLSX and sum explicit amount ranges using exact Decimal, currency CNY by default, 2 decimal ROUND_HALF_UP. Pass totalCell to compare the actual workbook total with details; expectedTotal optional. Returns actual detail count, cell values, totals, differences and current SHA. Formula caches are NEVER trusted: supported SUM and same-sheet arithmetic/reference chains are freshly evaluated, other formulas fail explicitly. Inspect workbook to locate correct ranges first. Never claim verified on nonzero difference/error. Ranges cannot overlap or depend on each other. Prefer a matching inspect_workbook auditSuggestions entry; do not combine a formula total and its contributing cells. Do not sum detail rows and total rows together.',
+      'REQUIRED for financial follow-up. Re-read current XLSX and sum explicit amount ranges using exact Decimal, currency CNY by default, 2 decimal ROUND_HALF_UP. Pass totalCell to compare the actual workbook total with details; expectedTotal optional. Returns actual detail count, cell values, totals, differences and current SHA. Formula caches are NEVER trusted: supported SUM and same-sheet arithmetic/reference chains are freshly evaluated, other formulas fail explicitly. Inspect workbook to locate correct ranges first. Never claim verified on nonzero difference/error. Ranges cannot overlap or depend on each other. Prefer a matching inspect_workbook auditSuggestions entry; do not combine a formula total and its contributing cells. Empty detail selections fail instead of becoming verified zero. Results verify only the selected scope, never all business data. Do not sum detail rows and total rows together.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,

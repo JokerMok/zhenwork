@@ -312,7 +312,11 @@ def inspect(content: bytes, args: dict[str, object]) -> dict[str, object]:
                 "boundedAt": {"maxRows": max_rows, "maxColumns": max_columns},
             }
         )
-    return {"sheets": result_sheets, "sheetCount": len(package.sheets)}
+    visible = [item for item in result_sheets if item["state"] == "visible"]
+    primary = visible[0] if visible else None
+    recommended = primary["auditSuggestions"][0] if primary and len(primary["auditSuggestions"]) == 1 else None
+    return {"sheets": result_sheets, "sheetCount": len(package.sheets), "recommendedAudit": recommended,
+            "recommendationBoundary": "A unique subtotal on the first visible sheet is a summary candidate, not proof of business scope; verify the sheet title/headers match the task."}
 
 
 class FormulaParser:
@@ -512,6 +516,7 @@ def audit(content: bytes, args: dict[str, object]) -> dict[str, object]:
                             **({"formula": raw["formula"]} if raw["kind"] == "formula" else {}),
                         }
                     )
+        require(bool(details), "NO_NUMERIC_DETAILS_SELECTED", "The selected ranges are empty. Inspect the current workbook and choose actual numeric detail cells; blank is not a verified zero amount.")
         def selected_dependency(reference, visited):
             for child in evaluator.dependencies.get(reference, set()):
                 if child in seen: return child
@@ -541,6 +546,7 @@ def audit(content: bytes, args: dict[str, object]) -> dict[str, object]:
             require(total_raw["kind"] in ("number", "formula"), "TOTAL_CELL_VALUE_INVALID", total_cell)
             workbook_total = evaluator.cell(total_cell)
         return {
+            "verificationScope": "Only the explicitly selected sheet and amount ranges; never a whole-workbook business pass.",
             "status": "mismatch" if (expected_decimal is not None and money_text(total) != money_text(expected_decimal)) or (workbook_total is not None and money_text(total) != money_text(workbook_total)) else "matched" if workbook_total is not None or expected_decimal is not None else "calculated_only",
             "sheet": sheet["name"],
             "amountRanges": ranges,

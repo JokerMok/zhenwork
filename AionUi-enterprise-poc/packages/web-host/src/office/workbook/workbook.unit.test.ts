@@ -111,6 +111,8 @@ describe('workbook inspection and audit', () => {
     const inspected = await inspectWorkbook(formulaFixture, { sheet: '报销总表' });
     expect((inspected.sheets as Array<Record<string, unknown>>)[0].auditSuggestions).toContainEqual(expect.objectContaining({ amountRange: 'F3:F5', totalCell: 'F7' }));
     const audited = await auditWorkbook(formulaFixture, { sheet: '报销总表', amountRange: 'F3:F5', totalCell: 'F7' });
+    expect(inspected.recommendedAudit).toMatchObject({ amountRange: 'F3:F5', totalCell: 'F7' });
+    await expect(auditWorkbook(formulaFixture, { sheet: '报销总表', amountRange: 'Z100' })).rejects.toThrow('NO_NUMERIC_DETAILS_SELECTED');
     expect(audited.status).toBe('matched');
     expect(audited.detailCount).toBe(3);
   });
