@@ -8,6 +8,14 @@
 
 应用版本看 `current/RELEASE.json`、实际验收看 `current/VERIFIED.json`。初次源码 SHA 为 `42d834a75722bdbe6331dba226d0febdc6179383`，额外保留 Core 依赖锁及空会话回收补丁，各自 SHA256 在 manifest 中。补丁只用于该准确源码版本；不关闭身份复核、目录隔离、后台授权或单次工具审批。
 
+## 2026-10-21 当前部署记录
+
+当前激活 `20261021-office-reconciliation-v8`，应用源码 `619c3d9272018a519d5f385f1f86d115aa3dbcf6`。后续纯维护文档提交与应用SHA分别核对。Host-only更新、19条迁移及Web/Admin/Java/native镜像复用；四项真实办公回归和边界见PROJECT.md及私有验收记录。
+
+RC2默认配置版本2，默认通用助手/DeepSeek Flash；沿用既有凭据与有效授权，费用无价格时未知。报销完整包packageVersion6 / Skill2.2.6，来源与解析器哈希在 `shared/config/office-publication-20261021.json`，变更前后模型记录在 `shared/config/office-model-change-20261021.json`，均root0600；应用回滚不会撤销数据库配置。
+
+当前可用回滚审核：`shared/config/rollback-reviews/20261021-office-reconciliation-v8-to-office-diagnostics.json`，只绑定当前v8和上一已验证基础版本office-diagnostics及实际迁移链；旧版仍有四项业务缺陷，回滚用于基础可用性恢复。本轮未实际执行回滚。新发布/迁移必须重新审核。
+
 ## 分阶段更新
 
 `deploy.sh` 只暂存，不激活。它从指定提交执行 `git archive`，只构建 Web、后台和 Java；Bun/pnpm 缓存必须与归档 lockfile 完全一致，Maven 仓库按全部 POM 与 wrapper 输入摘要隔离。它不会运行 Cargo。Core/Gateway 源码与当前发布比较：未变化就强制复用当前完整镜像 ID；发生变化就必须显式给出已审核的 amd64 镜像 ID，不能盲用旧镜像。manifest 同时记录 Core 源树、Cargo lock、容器内 binary SHA256。`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0` 的已审核 binary SHA256 为 `a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`，并包含 system-site-packages 下的 openpyxl 3.1.5、python-docx 1.2.0、python-pptx 1.0.2。
@@ -81,7 +89,7 @@ ssh tencent-main 'sudo python3 /srv/apps/zhenwork/deploy/restore-check.py ARCHIV
 
 restore-check 只新建随机命名的隔离数据库，实际 pg_restore/计数比对、恢复 profile、SQLite integrity_check 和 Office ZIP 检查，结束仅删除自己的检查库，不覆盖生产。结果 root 私有 shared/config/restore-check.json。
 
-本轮真实模板、Skill完整版本、上传和成果历史使256MiB输入门禁实际拒绝新备份；旧包仍保留、应用未切换。按当前30GiB空闲容量审查后，输入/单包预算改为512MiB、总量2GiB、最多7份，最低剩余2GiB要求不变；校验改为流式SHA256以免大包占满服务内存。旧主脚本在 /srv/ops/config-history/20261020-zhenwork-office/server-config-backup.before 和 server-config-backup.input256.before 留存。轮转以总量限制为准，容量增长必须重新核定，超预算停止并保留旧包。须随员工资料增长重新核定；当前同机备份不抵御磁盘或整机丢失。未配置异机备份/外部通知；没有运行 down -v、全局 prune 或删除业务数据。
+本轮真实模板、Skill完整版本、上传和成果历史使256MiB输入门禁实际拒绝新备份；旧包仍保留、应用未切换。按当前30GiB空闲容量审查后，先改为512MiB；2026-10-21完整能力包及员工历史使实际新包超过512MiB，经磁盘与总量复核后，仅把输入/单包和systemd LimitFSIZE改为768MiB（MemoryMax仍384MiB）。当前包20261021T032755541854Z.tar.gz为542803963字节，完整读取/校验通过。总量仍2GiB、最多7份，最低剩余2GiB要求不变；校验改为流式SHA256以免大包占满服务内存。旧主脚本在 /srv/ops/config-history/20261020-zhenwork-office/server-config-backup.before 和 server-config-backup.input256.before 留存；本次512→768MiB的脚本/单元副本在 /srv/ops/history/backup-budget-20261021/，Mac运维镜像同步。轮转以总量限制为准，容量增长必须重新核定，超预算停止并保留旧包。须随员工资料增长重新核定；当前同机备份不抵御磁盘或整机丢失。未配置异机备份/外部通知；没有运行 down -v、全局 prune 或删除业务数据。
 
 ## 定向验收
 
