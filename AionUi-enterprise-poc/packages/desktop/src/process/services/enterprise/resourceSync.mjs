@@ -397,6 +397,7 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
   if (managedPath) {
     const temporary = `${managedPath}.${process.pid}.tmp`;
     await fs.writeFile(temporary, JSON.stringify({ skills: [...currentSkillNames, ...retainedSkillNames],
+      ...(hooks.removeRevokedSkill ? { skillResources: [...currentSkills].map(([id, name]) => ({ id, name, version: bundle.skills.find(item => item.id === id)?.version })) } : {}),
       mcpIds: [...currentMcpIds, ...retainedMcpIds],
       assistantIds: [...(result.assistantIds || []), ...retainedAssistantIds] }), { mode: 0o600 });
     await fs.rename(temporary, managedPath);

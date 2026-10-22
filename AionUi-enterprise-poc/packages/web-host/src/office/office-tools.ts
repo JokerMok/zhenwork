@@ -1,10 +1,13 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { EnterpriseActor, EnterpriseCore } from '../enterprise-gateway.js';
 import type { Rc2GatewayClient } from '../enterprise-rc2-login.mjs';
 import { enterpriseCoreBase, enterpriseProxyBindHost, enterpriseProxyHost } from '../enterprise-core-address.js';
 import { OfficeStore } from './office-store.js';
+import { enterpriseManagedResourcePath } from '../enterprise-resource-runtime.js';
+import { checkEnterpriseSkill } from './skill-status.js';
 import { readWeb, searchWeb } from './research.js';
 import { inspectArtifact } from './artifact.js';
 import { generateOfficeArtifact } from './generate.js';
@@ -225,6 +228,16 @@ const tools = [
     inputSchema: { type: 'object', properties: { path: { type: 'string' }, data: { type: ['object', 'array'] }, overwrite: { type: 'boolean' } }, required: ['path', 'data'] },
   },
   {
+    name: 'check_enterprise_skill',
+    description: 'Check CURRENT enterprise Skill USE authorization and actual loaded runtime version by resource ID, display name or runtime Skill name. Read-only. Use this instead of guessing a CLI or scanning old cache paths. available:false means stop trying that package; do not run old paths, reconstruct its scripts, or claim success. Builtin/personal Core Skills are outside this catalog.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: { query: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['query'] },
+  },
+  {
+    name: 'write_text_file',
+    description: 'Write a real UTF-8 TXT, Markdown, CSV/TSV, JSON or YAML result directly to the current employee workspace, with checked SHA, version history and download. No Office/PDF conversion is needed. Never add unrequested formats. Existing file updates require explicit overwrite and the complete expectedSha256 from reading its current bytes.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: { path: { type: 'string' }, content: { type: 'string', maxLength: 2097152 }, overwrite: { type: 'boolean' }, expectedSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' } }, required: ['path', 'content'] },
+  },
+  {
     name: 'office_context',
     description: 'Get the actual writable output workspace and current authorized knowledge IDs before a task. Never guess paths or knowledge identifiers.',
     inputSchema: { type: 'object', properties: {} },
@@ -442,6 +455,31 @@ export async function startOfficeTools(
         if (tool === 'office_context') {
           value = { workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
             python: '/opt/aionui/skill-python/bin/python', knowledge: await client.resources('KNOWLEDGE') };
+        } else if (tool === 'check_enterprise_skill') {
+          const metadata = JSON.parse(await readFile(await enterpriseManagedResourcePath(profileRoot, actor), 'utf8'));
+          const response = await fetch(enterpriseCoreBase(core) + '/api/skills', {
+            headers: { 'x-aion-enterprise-local-token': core.localToken }, signal: abort.signal,
+          });
+          const registry = await response.json() as { success?: boolean; data?: Array<{ name: string }> };
+          if (!response.ok || !registry.success || !Array.isArray(registry.data)) throw new Error('SKILL_RUNTIME_CATALOG_UNAVAILABLE');
+          value = await checkEnterpriseSkill(client, String(args.query), Array.isArray(metadata.skillResources) ? metadata.skillResources : [], registry.data.map(item => item.name));
+        } else if (tool === 'write_text_file') {
+          if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
+          const file = String(args.path || '');
+          const relative = path.isAbsolute(file) ? path.relative(core.workspaceRoot, file) : file;
+          if (!/\.(txt|md|csv|tsv|json|yaml|yml)$/i.test(relative)) throw new Error('TEXT_OUTPUT_FORMAT_UNSUPPORTED');
+          const text = String(args.content);
+          const bytes = Buffer.from(text, 'utf8');
+          if (bytes.length > 2 * 1024 * 1024 || text.includes('\0')) throw new Error('TEXT_OUTPUT_LIMIT_2MB_OR_INVALID_TEXT');
+          if (path.extname(relative).toLowerCase() === '.json') { try { JSON.parse(text); } catch { throw new Error('TEXT_OUTPUT_JSON_INVALID'); } }
+          const existing = (await store.files(core.workspaceRoot)).files.find(item => item.path === relative);
+          if (existing && args.overwrite !== true) throw new Error('OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME');
+          if (existing && (!/^[a-f0-9]{64}$/.test(String(args.expectedSha256 || '')) || createHash('sha256').update(await store.download(core.workspaceRoot, relative)).digest('hex') !== args.expectedSha256)) throw new Error('FILE_CHANGED_READ_CURRENT_SHA256');
+          await client.me();abort.signal.throwIfAborted();
+          await store.upload(core.workspaceRoot, relative, bytes, !!existing, existing ? String(args.expectedSha256) : undefined);
+          const saved = await store.download(core.workspaceRoot, relative);
+          if (!saved.equals(bytes)) throw new Error('FILE_CHANGED_RETRY');
+          value = { path: relative, byteSize: saved.length, sha256: createHash('sha256').update(saved).digest('hex'), validation: { valid: true, format: 'utf8-text' }, downloadUrl: downloadUrl(relative) };
         } else if (tool === 'read_document' || tool === 'write_workspace_json') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
           const file = String(args.path || '');
@@ -753,6 +791,8 @@ export async function startOfficeTools(
 }
 
 const instructions = `Execution contract (applies before choosing tools):
+- Match the requested scope and file extension exactly. Do not add unrequested PDFs, slides, reports, font renderers or other deliverables. Plain TXT/Markdown/CSV uses write_text_file directly; it does not need Office/PDF conversion or validate_artifact. For Office/PDF use the existing generators and installed dependencies, never reimplement a font/renderer to work around an unrelated optional step.
+- For a requested enterprise Skill availability check, use check_enterprise_skill once with its name/ID. If unavailable, state that result and continue only with still-authorized capabilities; do not probe helper CLI syntax, scan old profile caches, or reconstruct a revoked package.
 - First call office_context. For company-template reimbursement FIRST load Skill finance-reimbursement-filler, read its SKILL.md, and execute its bundled scripts with ExecCommand. It preserves template formulas/images/sheets. A new evidence table is NEVER a filled reimbursement template. Script failure means incomplete, not permission to replace the template.
 - For a short research comparison, read 3–6 substantive original sources, then deliver scoped findings. Mark inaccessible sources and missing facts; do not keep chasing navigation or optional details instead of creating the requested files. Use create_evidence_deliverables with purpose="research" and one shared dataset; compliance uses purpose="compliance".
 - For evidence tasks read each file with read_document, NOT native Read, to obtain sourceRef/quoteOptions. References are opaque IDs returned by the tool, never file paths or guessed IDs. If a report and table are required, use create_evidence_deliverables with one shared dataset.
