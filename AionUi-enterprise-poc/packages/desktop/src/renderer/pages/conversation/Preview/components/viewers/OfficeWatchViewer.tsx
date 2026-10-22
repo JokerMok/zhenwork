@@ -9,7 +9,8 @@ import type { ChatFileRef } from '@/common/types/chatFile';
 import { getBaseUrl, isBackendHttpError } from '@/common/adapter/httpBridge';
 import WebviewHost from '@/renderer/components/media/WebviewHost';
 import { openExternalUrl } from '@/renderer/utils/platform';
-import { isElectronDesktop } from '@/renderer/utils/platform';
+import { isElectronDesktop, isEnterpriseWeb } from '@/renderer/utils/platform';
+import OfficePreview from '@/renderer/components/media/OfficePreview';
 import { Button, Spin } from '@arco-design/web-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -158,7 +159,7 @@ export function resolveOfficeErrorActions(
  * Used by PptViewer, OfficeDocViewer, and ExcelViewer — each passes its
  * docType to select the correct IPC bridge, proxy path, and i18n keys.
  */
-const OfficeWatchViewer: React.FC<OfficeWatchViewerProps> = ({ docType, fileRef, file_path, workspace }) => {
+const LegacyOfficeWatchViewer: React.FC<OfficeWatchViewerProps> = ({ docType, fileRef, file_path, workspace }) => {
   const { t } = useTranslation();
   const keys = I18N_KEYS[docType];
 
@@ -311,4 +312,12 @@ const OfficeWatchViewer: React.FC<OfficeWatchViewerProps> = ({ docType, fileRef,
   return <iframe src={watchUrl} className='w-full h-full border-0 bg-bg-1' title={IFRAME_TITLE[docType]} />;
 };
 
+const OfficeWatchViewer: React.FC<OfficeWatchViewerProps> = (props) => {
+  if (isEnterpriseWeb()) {
+    const file =
+      props.file_path || (props.fileRef?.kind === 'project' ? props.fileRef.relative_path : props.fileRef?.path);
+    return <OfficePreview path={file || ''} />;
+  }
+  return <LegacyOfficeWatchViewer {...props} />;
+};
 export default OfficeWatchViewer;

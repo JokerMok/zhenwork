@@ -1,3 +1,5 @@
+import { WORKBOOK_PREVIEW_SCRIPT } from './preview-script.js';
+
 export const WORKBOOK_PYTHON_SCRIPT = String.raw`#!/usr/bin/env python3
 """Bounded OOXML workbook inspection, decimal audit, and surgical column edit."""
 
@@ -978,6 +980,8 @@ def edit_column(content: bytes, args: dict[str, object]) -> tuple[dict[str, obje
     )
 
 
+${WORKBOOK_PREVIEW_SCRIPT}
+
 def main() -> None:
     try:
         request = json.load(sys.stdin)
@@ -991,7 +995,9 @@ def main() -> None:
             content = base64.b64decode(encoded, validate=True)
         except ValueError as error:
             raise WorkbookError("WORKBOOK_BASE64_INVALID") from error
-        if operation == "inspect":
+        if operation == "preview":
+            response = {"ok": True, "result": preview(content, args)}
+        elif operation == "inspect":
             response = {"ok": True, "result": inspect(content, args)}
         elif operation == "audit":
             response = {"ok": True, "result": audit(content, args)}

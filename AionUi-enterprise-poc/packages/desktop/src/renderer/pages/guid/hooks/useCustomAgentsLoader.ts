@@ -5,8 +5,9 @@
  */
 
 import { ipcBridge } from '@/common';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import type { Assistant } from '@/common/types/agent/assistantTypes';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import useSWR, { mutate as swrMutate } from 'swr';
 
 type UseCustomAgentsLoaderResult = {
@@ -16,6 +17,9 @@ type UseCustomAgentsLoaderResult = {
    * Settings list render.
    */
   assistants: Assistant[];
+  catalogError?: string;
+  catalogLoading: boolean;
+  catalogRevision: number;
 };
 
 /**
@@ -26,11 +30,26 @@ type UseCustomAgentsLoaderResult = {
 export const useCustomAgentsLoader = (): UseCustomAgentsLoaderResult => {
   // Preset assistants share their own cache so settings / guid / conversation
   // all see the same list without duplicate HTTP calls.
-  const { data: assistantList } = useSWR('assistants.list', async () => {
+  const [catalogRevision, setCatalogRevision] = useState(0);
+  const { data: assistantList, error: catalogLoadError, isValidating } = useSWR('assistants.list', async () => {
     try {
-      return await ipcBridge.assistants.list.invoke();
+      if (isEnterpriseWeb()) {
+        const response = await fetch('/enterprise/resources/refresh', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+          signal: AbortSignal.timeout(45000),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'RESOURCE_REFRESH_FAILED');
+      }
+      const assistants = await ipcBridge.assistants.list.invoke();
+      setCatalogRevision(Date.now());
+      return assistants;
     } catch (error) {
       console.error('Failed to load assistants:', error);
+      if (isEnterpriseWeb()) throw error;
       return [] as Assistant[];
     }
   });
@@ -42,5 +61,8 @@ export const useCustomAgentsLoader = (): UseCustomAgentsLoaderResult => {
 
   return {
     assistants,
+    catalogLoading: isValidating,
+    catalogRevision,
+    catalogError: catalogLoadError instanceof Error ? catalogLoadError.message : undefined,
   };
 };

@@ -1,3 +1,4 @@
+import OfficePreview from '@/renderer/components/media/OfficePreview';
 import { formatFileSize } from '@/renderer/services/FileService';
 import {
   Alert,
@@ -18,7 +19,7 @@ import type { UploadRequest } from '@arco-design/web-react/es/Upload/interface';
 import { Download, PreviewOpen, Refresh, Undo, UploadOne } from '@icon-park/react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { enterpriseRequest, uploadWorkspaceFiles, workspaceErrorCode } from './workspaceApi';
 import type { EnterpriseFile, EnterpriseFileVersion } from './workspaceTypes';
 
@@ -41,6 +42,8 @@ type FilePreview = {
   objectUrl?: string;
   text?: string;
   errorCode?: string;
+  version?: EnterpriseFileVersion;
+  retry?: number;
 };
 
 const IMAGE_MIME: Record<string, string> = {
@@ -100,6 +103,7 @@ const downloadWorkspaceFile = (file: EnterpriseFile, version?: EnterpriseFileVer
 const WorkspaceFiles: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const [message, messageContext] = Message.useMessage();
   const [files, setFiles] = useState<EnterpriseFile[]>([]);
   const [kind, setKind] = useState('all');
@@ -117,7 +121,14 @@ const WorkspaceFiles: React.FC = () => {
       const result = await enterpriseRequest<{ files: EnterpriseFile[]; workspaceRoot?: string; warnings?: string[] }>(
         '/enterprise/files'
       );
-      setFiles(Array.isArray(result.files) ? result.files : []);
+      const currentFiles = Array.isArray(result.files) ? result.files : [];
+      setFiles(currentFiles);
+      setVersionFile((current) => (current ? currentFiles.find((file) => file.path === current.path) || null : null));
+      setPreview((current) => {
+        if (!current || current.version) return current;
+        const latest = currentFiles.find((file) => file.path === current.file.path);
+        return latest ? { ...current, file: latest } : null;
+      });
       setWarnings(Array.isArray(result.warnings) ? result.warnings : []);
       setWorkspaceRoot(typeof result.workspaceRoot === 'string' ? result.workspaceRoot : '');
       setErrorCode(null);
@@ -196,21 +207,28 @@ const WorkspaceFiles: React.FC = () => {
     });
   };
 
-  const openPreview = useCallback((file: EnterpriseFile) => {
+  const openPreview = useCallback((file: EnterpriseFile, version?: EnterpriseFileVersion) => {
     const previewKind = workspaceFilePreviewKind(file.name || file.path);
     setPreview({
       file,
+      version,
       kind: previewKind,
       loading: previewKind === 'pdf' || previewKind === 'image' || previewKind === 'text',
     });
   }, []);
 
   useEffect(() => {
+    const requested = (location.state as { previewPath?: string } | null)?.previewPath;
+    const file = requested ? files.find((item) => item.path === requested) : undefined;
+    if (file) openPreview(file);
+  }, [location.key, files, openPreview]);
+
+  useEffect(() => {
     const file = preview?.file;
     const previewKind = preview?.kind;
     if (!file || (previewKind !== 'pdf' && previewKind !== 'image' && previewKind !== 'text')) return;
     const limit = previewKind === 'text' ? MAX_TEXT_PREVIEW_BYTES : MAX_BINARY_PREVIEW_BYTES;
-    if (file.byteSize > limit) {
+    if ((preview.version?.byteSize ?? file.byteSize) > limit) {
       setPreview((current) =>
         current?.file.path === file.path ? { ...current, loading: false, errorCode: 'PREVIEW_TOO_LARGE' } : current
       );
@@ -219,7 +237,10 @@ const WorkspaceFiles: React.FC = () => {
 
     const controller = new AbortController();
     let objectUrl: string | undefined;
+    let disposed = false;
+    const timeout = setTimeout(() => controller.abort(), 30000);
     const query = new URLSearchParams({ path: file.path });
+    if (preview.version) query.set('version', preview.version.id);
     void fetch(`/enterprise/files/download?${query.toString()}`, {
       credentials: 'same-origin',
       cache: 'no-store',
@@ -242,19 +263,25 @@ const WorkspaceFiles: React.FC = () => {
         );
       })
       .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
+        if (disposed) return;
         setPreview((current) =>
           current?.file.path === file.path
-            ? { ...current, loading: false, errorCode: workspaceErrorCode(error) }
+            ? {
+                ...current,
+                loading: false,
+                errorCode: controller.signal.aborted ? 'PREVIEW_TIMEOUT' : workspaceErrorCode(error),
+              }
             : current
         );
       });
 
     return () => {
+      disposed = true;
+      clearTimeout(timeout);
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [preview?.file, preview?.kind]);
+  }, [preview?.file, preview?.kind, preview?.version, preview?.retry]);
 
   const upload: UploadRequest = async ({ file, onSuccess, onError }) => {
     try {
@@ -364,6 +391,9 @@ const WorkspaceFiles: React.FC = () => {
               <List.Item
                 key={version.id}
                 actions={[
+                  <Button key='preview' type='text' onClick={() => openPreview(versionFile, version)}>
+                    {t('workspace.files.preview')}
+                  </Button>,
                   <Button
                     key='download'
                     type='text'
@@ -392,30 +422,52 @@ const WorkspaceFiles: React.FC = () => {
       <Drawer
         width={900}
         visible={Boolean(preview)}
-        title={preview?.file.name || t('workspace.files.preview')}
-        footer={preview ? <Button icon={<Download />} onClick={() => downloadWorkspaceFile(preview.file)}>{t('workspace.files.download')}</Button> : null}
+        title={preview ? preview.file.name + (preview.version ? ' · ' + formatDate(preview.version.createdAt) : '') : t('workspace.files.preview')}
+        footer={
+          preview ? (
+            <Button icon={<Download />} onClick={() => downloadWorkspaceFile(preview.file, preview.version)}>
+              {t('workspace.files.download')}
+            </Button>
+          ) : null
+        }
         onCancel={() => setPreview(null)}
       >
-        {preview?.loading ? (
+        {preview?.kind === 'office' && /\.(xlsx|docx|pptx)$/i.test(preview.file.name) ? (
+          <OfficePreview
+            path={preview.file.path}
+            version={preview.version?.id}
+            revision={preview.version?.sha256 || preview.file.modifiedAt}
+            onContinue={preview.version ? undefined : () => continueWithFile(preview.file)}
+          />
+        ) : preview?.loading ? (
           <div className='flex min-h-240px items-center justify-center'>
             <Spin loading />
           </div>
         ) : preview?.errorCode ? (
-          <Alert type='error' showIcon content={t('workspace.errors.action', { code: preview.errorCode })} />
+          <Space direction='vertical'>
+            <Alert type='error' showIcon content={t('workspace.errors.action', { code: preview.errorCode })} />
+            <Button
+              onClick={() =>
+                setPreview((current) =>
+                  current
+                    ? { ...current, loading: true, errorCode: undefined, retry: (current.retry || 0) + 1 }
+                    : current
+                )
+              }
+            >
+              {t('workspace.preview.retry')}
+            </Button>
+          </Space>
         ) : preview?.kind === 'text' ? (
           <pre className='m-0 max-h-[72vh] overflow-auto whitespace-pre-wrap break-words bg-fill-1 p-12px text-12px'>
-            {preview.text}
+            {preview.text || t('workspace.preview.empty')}
           </pre>
         ) : preview?.kind === 'image' && preview.objectUrl ? (
           <div className='flex max-h-[72vh] justify-center overflow-auto bg-fill-1 p-12px'>
             <img src={preview.objectUrl} alt={preview.file.name} className='max-w-full object-contain' />
           </div>
         ) : preview?.kind === 'pdf' && preview.objectUrl ? (
-          <iframe
-            title={preview.file.name}
-            src={preview.objectUrl}
-            className='h-[72vh] w-full border-0'
-          />
+          <iframe title={preview.file.name} src={preview.objectUrl} className='h-[72vh] w-full border-0' />
         ) : preview ? (
           <div className='flex flex-col gap-12px'>
             <Alert
@@ -433,7 +485,7 @@ const WorkspaceFiles: React.FC = () => {
                   {t('workspace.files.openInTask')}
                 </Button>
               ) : null}
-              <Button icon={<Download />} onClick={() => downloadWorkspaceFile(preview.file)}>
+              <Button icon={<Download />} onClick={() => downloadWorkspaceFile(preview.file, preview.version)}>
                 {t('workspace.files.download')}
               </Button>
             </Space>

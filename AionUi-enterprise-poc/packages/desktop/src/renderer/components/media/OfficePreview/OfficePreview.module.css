@@ -1,0 +1,23 @@
+.grid {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+  color: var(--color-text-1);
+}
+.grid th,
+.grid td {
+  border: 1px solid var(--color-border-2);
+  padding: 6px 8px;
+  min-width: 48px;
+  max-width: 400px;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+}
+.grid th {
+  background: var(--color-fill-2);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-weight: 500;
+}

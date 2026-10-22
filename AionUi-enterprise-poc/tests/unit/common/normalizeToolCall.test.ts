@@ -1,3 +1,4 @@
+import { toolDeliveryReceipts } from '../../../packages/desktop/src/common/chat/normalizeToolCall';
 import { describe, expect, it } from 'vitest';
 import type { IMessageAcpToolCall } from '@/common/chat/chatLib';
 import { normalizeAcpToolCall } from '@/common/chat/normalizeToolCall';
@@ -56,5 +57,45 @@ describe('normalizeToolCall', () => {
     } as unknown as IMessageAcpToolCall);
 
     expect(result?.output).toBe('[diff] /workspace/file.ts');
+  });
+});
+
+describe('verified tool delivery receipts', () => {
+  it('keeps partial output failures and replaces a later successful retry by path', () => {
+    const output = (outputs: unknown[]) => ({
+      key: 'call',
+      name: 'create_evidence_deliverables',
+      status: 'completed' as const,
+      output: JSON.stringify({ outputs }),
+    });
+    const digest = 'a'.repeat(64);
+    expect(
+      toolDeliveryReceipts([
+        output([
+          { path: 'report.docx', status: 'complete', sha256: digest },
+          { path: 'table.xlsx', status: 'failed', error: 'DENIED' },
+        ]),
+      ]).map((file) => file.status)
+    ).toEqual(['complete', 'failed']);
+    expect(
+      toolDeliveryReceipts([
+        output([{ path: 'table.xlsx', status: 'failed' }]),
+        output([{ path: 'table.xlsx', status: 'complete', sha256: digest }]),
+      ])
+    ).toEqual([{ path: 'table.xlsx', status: 'complete' }]);
+  });
+  it('does not turn prose or unchecked/foreign paths into downloadable successes', () => {
+    const tool = {
+      key: 'a',
+      name: 'tool',
+      status: 'completed' as const,
+      output: JSON.stringify({
+        outputs: [
+          { path: '../other/file.xlsx', status: 'complete', sha256: 'a'.repeat(64) },
+          { path: 'missing.xlsx', status: 'complete' },
+        ],
+      }),
+    };
+    expect(toolDeliveryReceipts([tool])).toEqual([]);
   });
 });

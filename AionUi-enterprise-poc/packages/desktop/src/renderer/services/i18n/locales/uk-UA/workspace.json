@@ -60,7 +60,10 @@
     "error": "Error",
     "cancelled": "Cancelled"
   },
-  "errors": { "load": "Unable to load this section ({{code}}).", "action": "The action failed ({{code}})." },
+  "errors": {
+    "load": "Unable to load this section ({{code}}).",
+    "action": "The action failed ({{code}})."
+  },
   "fileKind": {
     "all": "All files",
     "task": "Task files",
@@ -94,7 +97,10 @@
     "unsupportedPreviewHint": "Цей тип файлу не можна безпечно переглянути тут. Завантажте оригінальний файл.",
     "openInTask": "Відкрити в завданні"
   },
-  "scope": { "mine": "Mine", "shared": "Shared with me" },
+  "scope": {
+    "mine": "Mine",
+    "shared": "Shared with me"
+  },
   "knowledge": {
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
@@ -211,7 +217,10 @@
     "empty": "No saved memory",
     "scopeHint": "Personal memory follows your account. Project memory applies only to the project ID you specify and is never promoted to enterprise scope automatically.",
     "scopeLabel": "Scope",
-    "scope": { "personal": "Personal", "project": "Project" },
+    "scope": {
+      "personal": "Personal",
+      "project": "Project"
+    },
     "projectId": "Project ID",
     "content": "Memory content",
     "saved": "Memory saved",
@@ -220,5 +229,38 @@
     "deleted": "Memory deleted",
     "project": "Project {{id}}",
     "personal": "Personal memory"
+  },
+  "preview": {
+    "basicHint": "Спрощений перегляд; оригінал доступний. Excel: 100 рядків на сторінку, до 40 стовпців. Word/PPT: текст і таблиці. Складне оформлення, зображення й діаграми дивіться в оригіналі. До 25 МБ.",
+    "worksheet": "Аркуш",
+    "retry": "Повторити",
+    "empty": "Немає вмісту",
+    "limitedHint": "Дані скорочено або {{count}} формул не перераховано. Показано вихідні формули замість старих значень.",
+    "previous": "Назад",
+    "next": "Далі",
+    "page": "Від {{start}} з {{total}}",
+    "location": {
+      "paragraph": "Абзац {{count}}",
+      "table": "Таблиця {{count}}",
+      "slide": "Слайд {{count}}"
+    },
+    "configurationError": "Налаштування не готові ({{code}}). Оновіть або попросіть адміністратора перевірити модель, помічника й можливості за замовчуванням.",
+    "admin": "Керування",
+    "busy": "Обробляється інший файл. Повторіть трохи пізніше.",
+    "tooLarge": "Файл перевищує розмір для перегляду. Завантажте оригінал.",
+    "timeout": "Час очікування вичерпано. Повторіть або завантажте оригінал.",
+    "failed": "Помилка перегляду ({{code}}). Повторіть або перевірте оригінал."
+  },
+  "delivery": {
+    "processing": "Обробка",
+    "partial": "Часткова видача: файли не готові",
+    "receipts": "Результати поточного запиту",
+    "failed": "Помилка кроку інструмента",
+    "steps": "Кроки інструментів",
+    "continueFailed": "Продовжити незавершене",
+    "retryPrompt": "Перевірте файли й помилки. Продовжіть лише незавершені кроки, не створюючи готові файли знову. Очікують: {{paths}}",
+    "complete": "Готово",
+    "failedFile": "Помилка",
+    "errorCount": "Кроки із зареєстрованими помилками: {{count}}"
   }
 }

@@ -1,5 +1,9 @@
+import { useNavigate } from 'react-router-dom';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import { emitter } from '@/renderer/utils/emitter';
+import EnterpriseFilePreview from '@/renderer/components/media/OfficePreview/EnterpriseFilePreview';
 import type { BadgeProps } from '@arco-design/web-react';
-import { Badge, Button, Message, Spin, Tooltip } from '@arco-design/web-react';
+import { Badge, Button, Drawer, Message, Space, Spin, Tag, Tooltip } from '@arco-design/web-react';
 import { IconDown, IconRight } from '@arco-design/web-react/icon';
 import { Checklist, Download, Right } from '@icon-park/react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -7,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { ipcBridge } from '@/common';
 import { getAcpImageFileName } from '@/common/chat/acpToolCallOutput';
 import type { NormalizedToolCall, NormalizedToolStatus, ToolMessage } from '@/common/chat/normalizeToolCall';
-import { normalizeToolMessages, hasRunningToolMessages } from '@/common/chat/normalizeToolCall';
+import { normalizeToolMessages, hasRunningToolMessages, toolDeliveryReceipts } from '@/common/chat/normalizeToolCall';
 import LocalImageView from '@/renderer/components/media/LocalImageView';
 import { downloadFileFromPath } from '@/renderer/utils/file/download';
 import { useToolStepLabels } from './toolStepLabels';
@@ -177,3 +181,106 @@ const MessageToolGroupSummary: React.FC<{ messages: ToolMessage[] }> = ({ messag
 };
 
 export default React.memo(MessageToolGroupSummary);
+
+/** Persistent delivery receipts for the most recent user turn, never inferred from prose. */
+export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing: boolean }> = ({
+  messages,
+  processing,
+}) => {
+  const { t } = useTranslation();
+  const tools = normalizeToolMessages(messages);
+  const files = toolDeliveryReceipts(tools);
+  const failed = files.filter((file) => file.status === 'failed');
+  const errors = tools.filter((tool) => tool.status === 'error');
+  const running = tools.findLast((tool) => tool.status === 'running' || tool.status === 'pending');
+  const [preview, setPreview] = useState<string>();
+  const navigate = useNavigate();
+  if (!isEnterpriseWeb() || (!tools.length && !processing)) return null;
+  return (
+    <div className='my-12px p-12px rd-8px border border-border-2' data-testid='task-delivery-summary'>
+      <div className='font-medium mb-8px'>
+        {t(
+          processing
+            ? 'workspace.delivery.processing'
+            : failed.length
+              ? 'workspace.delivery.partial'
+              : files.length
+                ? 'workspace.delivery.receipts'
+                : errors.length
+                  ? 'workspace.delivery.failed'
+                  : 'workspace.delivery.steps'
+        )}
+      </div>
+      {running ? <div className='text-t-secondary mb-8px'>{running.description || running.name}</div> : null}
+      <Space wrap>
+        <Button onClick={() => navigate('/workspace?section=files')}>{t('workspace.tabs.files')}</Button>
+        {failed.length || errors.length ? (
+          <Button
+            onClick={() =>
+              emitter.emit(
+                'sendbox.fill',
+                t('workspace.delivery.retryPrompt', {
+                  paths: failed.map((file) => `${file.path}: ${file.error || ''}`).join('; '),
+                })
+              )
+            }
+          >
+            {t('workspace.delivery.continueFailed')}
+          </Button>
+        ) : null}
+      </Space>
+      {files.map((file) => (
+        <div key={file.path} className='flex flex-wrap items-center gap-8px mt-8px'>
+          <span className='break-all'>{file.path}</span>
+          <Tag color={file.status === 'complete' ? 'green' : 'red'}>
+            {t(file.status === 'complete' ? 'workspace.delivery.complete' : 'workspace.delivery.failedFile')}
+          </Tag>
+          {file.status === 'failed' ? (
+            <span>{file.error}</span>
+          ) : (
+            <>
+              <Button
+                type='text'
+                onClick={() => setPreview(file.path)}
+              >
+                {t('workspace.files.preview')}
+              </Button>
+              <Button
+                type='text'
+                onClick={() =>
+                  window.open(
+                    `/enterprise/files/download?${new URLSearchParams({ path: file.path })}`,
+                    '_blank',
+                    'noopener,noreferrer'
+                  )
+                }
+              >
+                {t('workspace.files.download')}
+              </Button>
+              <Button
+                type='text'
+                onClick={() => emitter.emit('sendbox.fill', t('workspace.files.continuePrompt', { path: file.path }))}
+              >
+                {t('workspace.files.continue')}
+              </Button>
+            </>
+          )}
+        </div>
+      ))}
+      {errors.length ? (
+        <div className='text-t-secondary mt-8px'>
+          {t('workspace.delivery.errorCount', { count: errors.length })}: {errors.map((tool) => tool.name).join(', ')}
+        </div>
+      ) : null}
+      <Drawer
+        width={920}
+        visible={Boolean(preview)}
+        title={preview || ''}
+        footer={null}
+        onCancel={() => setPreview(undefined)}
+      >
+        {preview ? <EnterpriseFilePreview path={preview} /> : null}
+      </Drawer>
+    </div>
+  );
+};

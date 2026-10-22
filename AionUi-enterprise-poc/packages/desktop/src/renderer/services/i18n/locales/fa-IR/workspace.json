@@ -60,7 +60,10 @@
     "error": "Error",
     "cancelled": "Cancelled"
   },
-  "errors": { "load": "Unable to load this section ({{code}}).", "action": "The action failed ({{code}})." },
+  "errors": {
+    "load": "Unable to load this section ({{code}}).",
+    "action": "The action failed ({{code}})."
+  },
   "fileKind": {
     "all": "All files",
     "task": "Task files",
@@ -94,7 +97,10 @@
     "unsupportedPreviewHint": "پیش‌نمایش امن این نوع فایل در اینجا ممکن نیست. فایل اصلی را دانلود کنید.",
     "openInTask": "باز کردن در وظیفه"
   },
-  "scope": { "mine": "Mine", "shared": "Shared with me" },
+  "scope": {
+    "mine": "Mine",
+    "shared": "Shared with me"
+  },
   "knowledge": {
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
@@ -211,7 +217,10 @@
     "empty": "No saved memory",
     "scopeHint": "Personal memory follows your account. Project memory applies only to the project ID you specify and is never promoted to enterprise scope automatically.",
     "scopeLabel": "Scope",
-    "scope": { "personal": "Personal", "project": "Project" },
+    "scope": {
+      "personal": "Personal",
+      "project": "Project"
+    },
     "projectId": "Project ID",
     "content": "Memory content",
     "saved": "Memory saved",
@@ -220,5 +229,38 @@
     "deleted": "Memory deleted",
     "project": "Project {{id}}",
     "personal": "Personal memory"
+  },
+  "preview": {
+    "basicHint": "پیش‌نمایش ساده؛ فایل اصلی قابل دریافت است. اکسل: ۱۰۰ ردیف در صفحه و حداکثر ۴۰ ستون. ورد و پاورپوینت: متن و جدول. برای چیدمان پیچیده، تصویر و نمودار فایل را دریافت کنید. سقف ۲۵ مگابایت.",
+    "worksheet": "برگه",
+    "retry": "تلاش دوباره",
+    "empty": "محتوایی برای نمایش نیست",
+    "limitedHint": "بخشی حذف شده یا {{count}} فرمول محاسبه نشد. فرمول اصلی به‌جای مقادیر قدیمی نمایش داده می‌شود.",
+    "previous": "قبلی",
+    "next": "بعدی",
+    "page": "از {{start}} از {{total}}",
+    "location": {
+      "paragraph": "بند {{count}}",
+      "table": "جدول {{count}}",
+      "slide": "اسلاید {{count}}"
+    },
+    "configurationError": "تنظیمات آماده نیست ({{code}}). تازه‌سازی کنید یا از مدیر بخواهید مدل، دستیار و قابلیت‌های پیش‌فرض را بررسی کند.",
+    "admin": "مدیریت",
+    "busy": "فایل دیگری در حال پردازش است. کمی بعد دوباره تلاش کنید.",
+    "tooLarge": "فایل از سقف پیش‌نمایش بزرگ‌تر است. فایل اصلی را دریافت کنید.",
+    "timeout": "زمان پیش‌نمایش تمام شد. دوباره تلاش کنید یا فایل اصلی را بگیرید.",
+    "failed": "پیش‌نمایش ناموفق ({{code}}). دوباره تلاش کنید یا فایل اصلی را بررسی کنید."
+  },
+  "delivery": {
+    "processing": "در حال پردازش",
+    "partial": "تحویل ناقص: برخی فایل‌ها آماده نیستند",
+    "receipts": "رسید نتایج درخواست",
+    "failed": "یک مرحله ابزار ناموفق بود",
+    "steps": "مراحل ابزار",
+    "continueFailed": "ادامه مراحل ناموفق",
+    "retryPrompt": "ابتدا نتایج و خطاها را بررسی کنید. فقط مراحل ناقص یا ناموفق را ادامه دهید و نتایج تکمیل‌شده را دوباره نسازید. باقی‌مانده: {{paths}}",
+    "complete": "تکمیل",
+    "failedFile": "ناموفق",
+    "errorCount": "مراحل دارای خطا: {{count}}"
   }
 }

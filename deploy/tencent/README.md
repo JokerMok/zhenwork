@@ -4,7 +4,7 @@
 
 ## 当前主机与入口
 
-部署前阅读 `~/server-ops/tencent-main/SERVER.md`、服务器 `/srv/ops/SERVER.md`、项目 `PROJECT.md` 及 `AionUi-enterprise-poc/docs/deployment.md`。主机别名 `tencent-main`，项目独占 `/srv/apps/zhenwork`；员工入口 https://zhenwork.shizibandu.icu ，后台 https://zhenwork-admin.shizibandu.icu/admin/ 。后台静态与 `/api` 走同一 origin；Host 的 RC2 URL 为管理 origin 根地址。
+部署前阅读 `~/server-ops/tencent-main/SERVER.md`、服务器 `/srv/ops/SERVER.md`、项目 `PROJECT.md` 及 `docs/deployment.md`。主机别名 `tencent-main`，项目独占 `/srv/apps/zhenwork`；员工入口 https://zhenwork.shizibandu.icu ，后台 https://zhenwork-admin.shizibandu.icu/admin/ 。后台静态与 `/api` 走同一 origin；Host 的 RC2 URL 为管理 origin 根地址。
 
 应用版本看 `current/RELEASE.json`、实际验收看 `current/VERIFIED.json`。初次源码 SHA 为 `42d834a75722bdbe6331dba226d0febdc6179383`，额外保留 Core 依赖锁及空会话回收补丁，各自 SHA256 在 manifest 中。补丁只用于该准确源码版本；不关闭身份复核、目录隔离、后台授权或单次工具审批。
 
@@ -15,6 +15,10 @@
 RC2默认配置版本2，默认通用助手/DeepSeek Flash；沿用既有凭据与有效授权，费用无价格时未知。报销完整包packageVersion6 / Skill2.2.6，来源与解析器哈希在 `shared/config/office-publication-20261021.json`，变更前后模型记录在 `shared/config/office-model-change-20261021.json`，均root0600；应用回滚不会撤销数据库配置。
 
 当前可用回滚审核：`shared/config/rollback-reviews/20261021-office-reconciliation-v8-to-office-diagnostics.json`，只绑定当前v8和上一已验证基础版本office-diagnostics及实际迁移链；旧版仍有四项业务缺陷，回滚用于基础可用性恢复。本轮未实际执行回滚。新发布/迁移必须重新审核。
+
+## 网页与Host有界更新
+
+本轮网页预览/任务交付/知识上传入口变更可使用 `restage-web.sh --from RELEASE --ref COMMIT --release NEW_RELEASE`。它重建员工网页、管理网页及Host，复用原Java/control-source与精确amd64镜像；依赖锁、Java、control或Rust变化拒绝复用。后续仍审阅manifest，再通过既有finalize完成一致性备份与激活。预览边界见docs/web-office-preview.md；未完成的网页验收不能由构建成功替代。
 
 ## 分阶段更新
 

@@ -89,6 +89,7 @@ const GuidPage: React.FC = () => {
   const [availableMcpServers, setAvailableMcpServers] = useState<IMcpServer[]>([]);
   const [mcpCatalogStatus, setMcpCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [mcpCatalogLoadVersion, setMcpCatalogLoadVersion] = useState(0);
+  const [catalogEpoch, setCatalogEpoch] = useState(0);
   const [guidSelectedMcpServerIds, setGuidSelectedMcpServerIds] = useState<string[] | undefined>(undefined);
   const displayedSkills = useMemo(
     () =>
@@ -117,7 +118,7 @@ const GuidPage: React.FC = () => {
         );
       })
       .catch(() => setAllSkills([]));
-  }, []);
+  }, [catalogEpoch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +138,7 @@ const GuidPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [mcpCatalogLoadVersion]);
+  }, [mcpCatalogLoadVersion, catalogEpoch]);
 
   const handleToggleSkill = useCallback((skillName: string, isAuto: boolean) => {
     if (isAuto) {
@@ -174,6 +175,23 @@ const GuidPage: React.FC = () => {
     locationKey: location.key,
   });
 
+  useEffect(() => {
+    if (hostedEnterpriseWeb && agentSelection.catalogRevision) setCatalogEpoch(agentSelection.catalogRevision);
+  }, [hostedEnterpriseWeb, agentSelection.catalogRevision]);
+  const [configurationAdminUrl, setConfigurationAdminUrl] = useState<string>();
+  useEffect(() => {
+    if (!hostedEnterpriseWeb || !agentSelection.catalogError) return;
+    const controller = new AbortController();
+    void fetch('/enterprise/brand', { credentials: 'same-origin', cache: 'no-store', signal: controller.signal })
+      .then((r) => r.json())
+      .then((brand) => {
+        if (typeof brand.adminUrl === 'string' && new URL(brand.adminUrl).protocol === 'https:')
+          setConfigurationAdminUrl(brand.adminUrl);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [hostedEnterpriseWeb, agentSelection.catalogError]);
+
   const guidInput = useGuidInput({
     locationState: location.state as { workspace?: string } | null,
   });
@@ -194,7 +212,7 @@ const GuidPage: React.FC = () => {
   const selectedAssistantId = agentSelection.selectedAssistantId;
   const hasSelectedAssistant = selectedAssistantId !== null;
   const { data: selectedAssistantDetail } = useSWR(
-    selectedAssistantId ? `guid.assistant.detail.${selectedAssistantId}.${localeKey}` : null,
+    selectedAssistantId ? `guid.assistant.detail.${selectedAssistantId}.${localeKey}.${hostedEnterpriseWeb ? catalogEpoch : 0}` : null,
     async (): Promise<AssistantDetail | null> =>
       ipcBridge.assistants.get
         .invoke({ id: selectedAssistantId!, locale: localeKey })
@@ -205,6 +223,7 @@ const GuidPage: React.FC = () => {
     [selectedAssistantDetail]
   );
   const assistantDefaultsReady =
+    (!hostedEnterpriseWeb || (!agentSelection.catalogLoading && !agentSelection.catalogError && catalogEpoch > 0)) &&
     selectedAssistantDetail != null &&
     (resolvedAssistantDefaults.mcpIds.length === 0 || mcpCatalogStatus !== 'loading');
   const missingAssistantDefaultMcpIds = useMemo(() => {
@@ -784,6 +803,24 @@ const GuidPage: React.FC = () => {
             </Button>
           ) : null}
 
+          {hostedEnterpriseWeb && agentSelection.catalogLoading ? <Alert type='info' content={t('workspace.status.preparing')} /> : null}
+          {hostedEnterpriseWeb && agentSelection.catalogError ? (
+            <Alert
+              type='error'
+              className='mb-12px'
+              content={
+                <Space direction='vertical'>
+                  <span>{t('workspace.preview.configurationError', { code: agentSelection.catalogError })}</span>
+                  <Button onClick={() => window.location.reload()}>{t('common.refresh')}</Button>
+                  {configurationAdminUrl ? (
+                    <Button href={configurationAdminUrl} target='_blank' rel='noopener noreferrer'>
+                      {t('workspace.preview.admin')}
+                    </Button>
+                  ) : null}
+                </Space>
+              }
+            />
+          ) : null}
           {mcpCatalogStatus === 'error' ? (
             <Alert
               className='w-full'

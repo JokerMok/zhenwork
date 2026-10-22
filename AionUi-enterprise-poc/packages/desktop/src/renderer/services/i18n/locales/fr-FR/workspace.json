@@ -60,7 +60,10 @@
     "error": "Error",
     "cancelled": "Cancelled"
   },
-  "errors": { "load": "Unable to load this section ({{code}}).", "action": "The action failed ({{code}})." },
+  "errors": {
+    "load": "Unable to load this section ({{code}}).",
+    "action": "The action failed ({{code}})."
+  },
   "fileKind": {
     "all": "All files",
     "task": "Task files",
@@ -94,7 +97,10 @@
     "unsupportedPreviewHint": "Ce type de fichier ne peut pas être prévisualisé ici en toute sécurité. Téléchargez le fichier original.",
     "openInTask": "Ouvrir dans une tâche"
   },
-  "scope": { "mine": "Mine", "shared": "Shared with me" },
+  "scope": {
+    "mine": "Mine",
+    "shared": "Shared with me"
+  },
   "knowledge": {
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
@@ -211,7 +217,10 @@
     "empty": "No saved memory",
     "scopeHint": "Personal memory follows your account. Project memory applies only to the project ID you specify and is never promoted to enterprise scope automatically.",
     "scopeLabel": "Scope",
-    "scope": { "personal": "Personal", "project": "Project" },
+    "scope": {
+      "personal": "Personal",
+      "project": "Project"
+    },
     "projectId": "Project ID",
     "content": "Memory content",
     "saved": "Memory saved",
@@ -220,5 +229,38 @@
     "deleted": "Memory deleted",
     "project": "Project {{id}}",
     "personal": "Personal memory"
+  },
+  "preview": {
+    "basicHint": "Aperçu simple, original téléchargeable. Excel : 100 lignes par page, 40 colonnes maximum. Word/PPT : texte et tableaux. Téléchargez les mises en page complexes, images et graphiques. Limite : 25 Mo.",
+    "worksheet": "Feuille",
+    "retry": "Réessayer",
+    "empty": "Aucun contenu",
+    "limitedHint": "Contenu tronqué ou {{count}} formules non recalculables. Les formules originales remplacent les anciennes valeurs en cache.",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "page": "À partir de {{start}} sur {{total}}",
+    "location": {
+      "paragraph": "Paragraphe {{count}}",
+      "table": "Tableau {{count}}",
+      "slide": "Diapositive {{count}}"
+    },
+    "configurationError": "Configuration indisponible ({{code}}). Actualisez ou demandez de vérifier le modèle, l’assistant et les capacités par défaut.",
+    "admin": "Administration",
+    "busy": "Un autre fichier est en cours de traitement. Réessayez bientôt.",
+    "tooLarge": "Le fichier dépasse la limite d’aperçu. Téléchargez l’original.",
+    "timeout": "Délai dépassé. Réessayez ou téléchargez l’original.",
+    "failed": "Échec de l’aperçu ({{code}}). Réessayez ou vérifiez l’original."
+  },
+  "delivery": {
+    "processing": "Traitement",
+    "partial": "Livraison partielle : fichiers manquants",
+    "receipts": "Résultats de cette demande",
+    "failed": "Échec d’une étape outil",
+    "steps": "Étapes des outils",
+    "continueFailed": "Continuer les échecs",
+    "retryPrompt": "Vérifiez les résultats et erreurs. Continuez uniquement les étapes inachevées ou échouées sans régénérer les fichiers terminés. En attente : {{paths}}",
+    "complete": "Terminé",
+    "failedFile": "Échec",
+    "errorCount": "Étapes ayant signalé une erreur : {{count}}"
   }
 }

@@ -101,7 +101,7 @@
           <el-button :disabled="form.mcpTools.length>=20" @click="form.mcpTools.push({name:'',effect:'APPROVAL'})">添加工具</el-button>
           <p>未明确标为只读的工具必须经过确认，并由可信代理生成幂等键。公网地址还须列入服务端允许名单。</p>
         </template>
-        <p v-else>支持 UTF-8 txt/md/csv/json。保存后进入文档管理上传和索引。</p>
+        <p v-else>支持 Word、Excel、PPT、PDF、扫描件、图片和 UTF-8 文本。保存后进入文档管理上传、解析和索引。</p>
       </el-form>
       <template #footer><el-button @click="dialog=false">取消</el-button><el-button type="primary" :loading="busy" @click="save">保存企业资源</el-button></template>
     </el-dialog>
@@ -120,7 +120,7 @@
 
     <el-dialog v-model="documentsVisible" title="企业知识文档" width="850px">
       <el-alert v-if="error" :title="error" type="error" :closable="false" />
-      <template v-if="selected"><p>{{ selected.name }} · UTF-8 文本，最大 2 MiB。更新后需重新提交发布审核。</p><input type="file" accept=".txt,.md,.csv,.json" :disabled="busy" @change="uploadDocument" /><el-button @click="loadDocuments">刷新索引状态</el-button><el-table :data="documents"><el-table-column prop="title" label="文件" /><el-table-column prop="version" label="版本" /><el-table-column label="索引状态"><template #default="{row}">{{ statuses[row.status]||row.status }}</template></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button link @click="previewDocument(row)">预览</el-button><input type="file" accept=".txt,.md,.csv,.json" :disabled="busy" @change="uploadDocument($event,row)" /><el-button link @click="reindex(row.id)">重新索引</el-button><el-button link @click="removeDocument(row.id)">删除</el-button></template></el-table-column></el-table><el-button :disabled="documentPage===1" @click="documentPage--;loadDocuments()">上一页文档</el-button><span>第 {{ documentPage }} 页</span><el-button :disabled="documents.length<30" @click="documentPage++;loadDocuments()">下一页文档</el-button><pre class="source">{{ source }}</pre></template>
+      <template v-if="selected"><p>{{ selected.name }} · Word/Excel/PPT/PDF/图片/扫描件及 UTF-8 文本，最大 10 MiB。解析失败保留原因；更新后需重新提交发布审核。</p><input type="file" accept=".txt,.md,.csv,.json,.docx,.xlsx,.pptx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff" :disabled="busy" @change="uploadDocument" /><el-button @click="loadDocuments">刷新索引状态</el-button><el-table :data="documents"><el-table-column prop="title" label="文件" /><el-table-column prop="latest_version" label="版本" /><el-table-column label="索引状态"><template #default="{row}">{{ statuses[row.status]||row.status }}</template></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button link @click="previewDocument(row)">预览</el-button><input type="file" accept=".txt,.md,.csv,.json,.docx,.xlsx,.pptx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff" :disabled="busy" @change="uploadDocument($event,row)" /><el-button link @click="reindex(row.id)">重新索引</el-button><el-button link @click="removeDocument(row.id)">删除</el-button></template></el-table-column></el-table><el-button :disabled="documentPage===1" @click="documentPage--;loadDocuments()">上一页文档</el-button><span>第 {{ documentPage }} 页</span><el-button :disabled="documents.length<30" @click="documentPage++;loadDocuments()">下一页文档</el-button><pre class="source">{{ source }}</pre></template>
     </el-dialog>
 
     <el-dialog v-model="connectionVisible" title="企业 MCP 连接" width="760px">
@@ -154,7 +154,7 @@ const allowedRoots=new Set(['scripts','templates','references','examples','asset
 const allowedRootFiles=new Set(['requirements.txt','requirements.lock','pyproject.toml','uv.lock','package.json','package-lock.json','pnpm-lock.yaml','yarn.lock','README.md','CHANGELOG.md','USAGE.md','VERSION','LICENSE','LICENSE.md']);
 const ignoredNames=new Set(['.DS_Store','Thumbs.db']);
 const type=ref('ASSISTANT'),scope=ref('enterprise'),rows=ref<any[]>([]),page=ref(1),loading=ref(true),error=ref(''),busy=ref(false),dialog=ref(false),editing=ref<any>(),form=ref<any>({}),models=ref<any[]>([]),choices=ref<Record<string,any[]>>({}),toolTypes=ref<any[]>([]),selected=ref<any>();
-const documentsVisible=ref(false),documents=ref<any[]>([]),source=ref(''),documentPage=ref(1);
+const documentsVisible=ref(false),documents=ref<any[]>([]),documentJobs=ref<any[]>([]),source=ref(''),documentPage=ref(1);
 const connectionVisible=ref(false),connection=ref<any>(),connectionTests=ref<any[]>([]),secret=ref(''),clearSecret=ref(false),connectionEnabled=ref(true);
 const versionsVisible=ref(false),versions=ref<any[]>([]),versionPreview=ref('');
 const sharesVisible=ref(false),shareRows=ref<any[]>([]),targetType=ref('USER'),targetQuery=ref(''),targets=ref<any[]>([]),targetId=ref(''),shareUse=ref(true),shareEdit=ref(false),ignoredFiles=ref<string[]>([]);
@@ -189,9 +189,10 @@ async function publish(row:any){error.value='';try{const check=await api('/ai/re
 async function withdraw(row:any){try{await ElMessageBox.confirm('撤回公开发布将停止相关任务，并撤回待审申请。','撤回发布');}catch{return;}await act(()=>api('/ai/resources/'+row.id+'/publication',undefined,'delete'));}
 async function govern(row:any){let reason;try{reason=(await ElMessageBox.prompt('填写治理原因。此操作不授予私人内容访问权限。','资源安全治理')).value;}catch{return;}await act(()=>api('/ai/govern/resources/'+row.id+'/enabled',{enabled:row.securityDisabled,reason},'put'));}
 async function openDocuments(row:any){selected.value=row;documentPage.value=1;source.value='';documentsVisible.value=true;await loadDocuments();}
-async function loadDocuments(){await act(async()=>{documents.value=await api('/ai/knowledge/'+selected.value.id+'/documents?page='+documentPage.value);},false);}
-async function uploadDocument(event:Event,doc?:any){const input=event.target as HTMLInputElement,file=input.files?.[0];if(!file)return;await act(async()=>{const data=new FormData();data.set('file',file);data.set('idempotencyKey',crypto.randomUUID());if(doc){data.set('documentId',doc.id);data.set('expectedVersion',String(doc.latest_version));}await api('/ai/knowledge/'+selected.value.id+'/documents',data);await loadDocuments();},false);input.value='';}
-async function previewDocument(row:any){await act(async()=>{source.value=(await api('/ai/knowledge/documents/'+row.id+'/versions/'+row.version)).content;},false);}
+async function loadDocuments(){await act(async()=>{documents.value=await api('/ai/knowledge/'+selected.value.id+'/documents?page='+documentPage.value);documentJobs.value=await api('/ai/knowledge/'+selected.value.id+'/jobs').catch(()=>[]);},false);}
+function documentIssue(row:any){const job=documentJobs.value.find((item:any)=>String(item.document_id||item.documentId)===String(row.id)&&item.version===row.latest_version);return job?.error_code||job?.errorCode||'';}
+async function uploadDocument(event:Event,doc?:any){const input=event.target as HTMLInputElement,file=input.files?.[0];if(!file)return;if(file.size>10*1024*1024){await fail(new Error('文件超过10 MiB限制'),'文件超过10 MiB限制');input.value='';return;}await act(async()=>{const data=new FormData();data.set('file',file);data.set('idempotencyKey',crypto.randomUUID());if(doc){data.set('documentId',doc.id);data.set('expectedVersion',String(doc.latest_version));}await api('/ai/knowledge/'+selected.value.id+'/documents',data);await loadDocuments();},false);input.value='';}
+async function previewDocument(row:any){await act(async()=>{source.value=(await api('/ai/knowledge/documents/'+row.id+'/versions/'+(row.latest_version||row.version))).content;},false);}
 async function reindex(id:string){await act(()=>api('/ai/knowledge/documents/'+id+'/reindex',{}),false);await loadDocuments();}
 async function removeDocument(id:string){try{await ElMessageBox.confirm('删除文档会取消相关任务并使旧引用失效。','删除文档');}catch{return;}await act(()=>api('/ai/knowledge/documents/'+id,undefined,'delete'),false);await loadDocuments();}
 async function openConnection(row:any){selected.value=row;secret.value='';clearSecret.value=false;connectionTests.value=[];await act(async()=>{const list=await api('/ai/mcp/connections?resourceId='+row.id);connection.value=list.find((c:any)=>c.scope==='ENTERPRISE');connectionEnabled.value=connection.value?.enabled??true;if(connection.value)connectionTests.value=await api('/ai/mcp/connections/'+connection.value.id+'/tests');connectionVisible.value=true;},false);}

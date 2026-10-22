@@ -128,3 +128,13 @@ test.runIf(process.platform !== 'linux')('file access fails closed on platforms 
   await expect(store.upload(workspace, '资料/report.txt', Buffer.from('data'))).rejects.toThrow('OFFICE_FILE_STORAGE_REQUIRES_LINUX');
   await expect(store.download(workspace, '资料/report.txt')).rejects.toThrow('OFFICE_FILE_STORAGE_REQUIRES_LINUX');
 });
+
+test('delivery receipts persist by actor and dataset without exposing another employee receipt', async () => {
+  const { root } = await fixture();
+  const first = await OfficeStore.create(root, actor('17'));
+  const second = await OfficeStore.create(root, actor('18'));
+  await first.rememberDelivery('a'.repeat(64), 'report.docx', 'b'.repeat(64));
+  expect(await first.deliveryReceipt('a'.repeat(64), 'report.docx')).toBe('b'.repeat(64));
+  expect(await second.deliveryReceipt('a'.repeat(64), 'report.docx')).toBeUndefined();
+  await expect(first.rememberDelivery('not-a-hash', 'report.docx', 'b'.repeat(64))).rejects.toThrow('INVALID_DELIVERY_RECEIPT');
+});

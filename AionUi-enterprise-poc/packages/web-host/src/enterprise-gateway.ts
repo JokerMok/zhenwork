@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import net from 'node:net';
@@ -9,6 +9,8 @@ import enLogin from '../../desktop/src/renderer/services/i18n/locales/en-US/logi
 import zhLogin from '../../desktop/src/renderer/services/i18n/locales/zh-CN/login.json' with { type: 'json' };
 import { enterpriseCoreBase, enterpriseCoreHost, enterpriseProxyHost } from './enterprise-core-address.js';
 import { OfficeStore } from './office/office-store.js';
+import { previewOfficeFile } from './office/preview/index.js';
+import { enterpriseProfilePath } from './enterprise-core.js';
 
 export type EnterpriseActor = { serverId: string; userId: string };
 export type EnterpriseCore = { port: number; localToken: string; stop: () => Promise<void>; invalidated?: Promise<void>;
@@ -41,6 +43,7 @@ export type EnterpriseGatewayOptions = {
   /** Only explicit employee control routes; RC2 credentials never enter the browser. */
   controlRequest?: (actor: EnterpriseActor, route: string, init: RequestInit) => Promise<Response>;
   profileRoot?: string;
+  adminUrl?: string;
   refreshResources?: (actor: EnterpriseActor) => Promise<void>;
   /** Validate a desktop supervisor's existing RC2 cookie on the server. */
   resume?: (rc2Cookie: string) => Promise<EnterpriseLogin>;
@@ -727,7 +730,7 @@ export async function startEnterpriseGateway(
         const logoDataUrl = typeof value.logoDataUrl === 'string' &&
           /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value.logoDataUrl) &&
           value.logoDataUrl.length <= 2_800_000 ? value.logoDataUrl : '';
-        return reply(res, 200, { productName, primaryColor, logoDataUrl });
+        return reply(res, 200, { productName, primaryColor, logoDataUrl, adminUrl: opts.adminUrl || null });
       } catch {
         return reply(res, 502, { error: 'BRAND_UNAVAILABLE' });
       }
@@ -782,12 +785,50 @@ export async function startEnterpriseGateway(
         const core = await getCore(auth.session.actor);
         if (!core.workspaceRoot) return reply(res, 503, { error: 'WORKSPACE_UNAVAILABLE' });
         if (url.pathname === '/enterprise/files' && req.method === 'GET') return reply(res, 200, await store.files(core.workspaceRoot));
-        const name = url.searchParams.get('path') || '';
-        if (url.pathname === '/enterprise/files/download' && req.method === 'GET') {
-          const bytes = await store.download(core.workspaceRoot, name, url.searchParams.get('version') || undefined);
+        const requested = url.searchParams.get('path') || '';
+        const uploadRoot = path.join(
+          enterpriseProfilePath(opts.profileRoot, auth.session.actor),
+          'runtime-temp',
+          'aionui'
+        );
+        const attachment = path.isAbsolute(requested) && requested.startsWith(uploadRoot + path.sep);
+        const inputRoot = attachment ? uploadRoot : core.workspaceRoot;
+        const name = path.isAbsolute(requested) ? path.relative(inputRoot, requested) : requested;
+        const version = url.searchParams.get('version') || undefined;
+        if (attachment && version) return reply(res, 400, { error: 'ATTACHMENT_HISTORY_UNAVAILABLE' });
+        if (url.pathname === '/enterprise/files/preview' && req.method === 'GET') {
+          const bytes = await store.download(inputRoot, name, version);
+          const hash = createHash('sha256').update(bytes).digest('hex');
+          if (url.searchParams.get('knownSha') === hash)
+            return reply(res, 200, { unchanged: true, sourceSha256: hash });
+          const preview = await previewOfficeFile(name, bytes, {
+            ...(url.searchParams.has('sheet') ? { sheet: url.searchParams.get('sheet')! } : {}),
+            start: Number(url.searchParams.get('start') || '0'),
+          });
+          if (!(await validateSession(auth.session))) {
+            await revoke(auth.id);
+            return reply(res, 401, { error: 'UNAUTHENTICATED' });
+          }
           if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
-          res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store',
-            'x-content-type-options': 'nosniff', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(name))}` });res.end(bytes);return;
+          if (
+            createHash('sha256')
+              .update(await store.download(inputRoot, name, version))
+              .digest('hex') !== hash
+          )
+            return reply(res, 409, { error: 'FILE_CHANGED_RETRY' });
+          return reply(res, 200, preview);
+        }
+        if (url.pathname === '/enterprise/files/download' && req.method === 'GET') {
+          const bytes = await store.download(inputRoot, name, version);
+          if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+          res.writeHead(200, {
+            'content-type': 'application/octet-stream',
+            'cache-control': 'no-store',
+            'x-content-type-options': 'nosniff',
+            'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(name))}`,
+          });
+          res.end(bytes);
+          return;
         }
         if (url.pathname === '/enterprise/files/diff' && req.method === 'GET') return reply(res, 200, await store.diff(core.workspaceRoot, name, url.searchParams.get('version') || ''));
         if (url.pathname === '/enterprise/files/restore' && req.method === 'POST') {

@@ -39,7 +39,7 @@ export type WorkbookOperationResult<T extends Record<string, unknown>> = T & {
   workbook?: Buffer;
 };
 
-type Operation = 'inspect' | 'audit' | 'edit-column';
+type Operation = 'inspect' | 'audit' | 'edit-column' | 'preview';
 
 type PythonResponse = {
   ok: boolean;
@@ -125,6 +125,7 @@ function runWorkbookOperation<T extends Record<string, unknown>>(
         ...(response.outputBase64 ? { workbook: Buffer.from(response.outputBase64, 'base64') } : {}),
       });
     });
+    child.stdin.on('error', () => finish(new Error('WORKBOOK_PROCESS_INPUT_FAILED')));
     child.stdin.end(input);
   });
 }
@@ -151,4 +152,12 @@ export async function editWorkbookColumn(
   args: WorkbookColumnEditArgs
 ): Promise<WorkbookOperationResult<Record<string, unknown>>> {
   return runWorkbookOperation('edit-column', workbook, args);
+}
+
+/** Bounded read-only page with fresh supported formula values and basic formatting. */
+export async function previewWorkbook(
+  workbook: Buffer,
+  args: { sheet?: string; start?: number } = {}
+): Promise<Record<string, unknown>> {
+  return runWorkbookOperation('preview', workbook, args);
 }

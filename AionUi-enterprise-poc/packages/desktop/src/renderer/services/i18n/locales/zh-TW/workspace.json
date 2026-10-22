@@ -60,7 +60,10 @@
     "error": "錯誤",
     "cancelled": "已取消"
   },
-  "errors": { "load": "無法載入此區域（{{code}}）。", "action": "操作失敗（{{code}}）。" },
+  "errors": {
+    "load": "無法載入此區域（{{code}}）。",
+    "action": "操作失敗（{{code}}）。"
+  },
   "fileKind": {
     "all": "全部檔案",
     "task": "任務檔案",
@@ -94,7 +97,10 @@
     "unsupportedPreviewHint": "此檔案類型無法在這裡安全預覽，請下載原始檔案。",
     "openInTask": "在任務中開啟"
   },
-  "scope": { "mine": "我的", "shared": "共享給我的" },
+  "scope": {
+    "mine": "我的",
+    "shared": "共享給我的"
+  },
   "knowledge": {
     "title": "知識庫",
     "subtitle": "上傳原始資料、查看索引結果、搜尋原文並核對準確版本。",
@@ -186,7 +192,12 @@
       "testFailed": "連線檢測失敗，請核對錯誤資訊和憑據。",
       "discoveredTools": "已發現工具與授權效果",
       "testHint": "儲存並檢測連線後，會在這裡顯示可用工具。",
-      "effects": { "READ": "唯讀", "WRITE": "修改資料", "SEND": "對外傳送", "APPROVAL": "每次使用前確認" }
+      "effects": {
+        "READ": "唯讀",
+        "WRITE": "修改資料",
+        "SEND": "對外傳送",
+        "APPROVAL": "每次使用前確認"
+      }
     },
     "linkedMcps": "隨助手使用的 MCP 連線",
     "resourcesRefreshed": "授權資源已同步。執行中的任務保留目前能力，新任務會使用更新後的資源。",
@@ -206,7 +217,10 @@
     "empty": "暫無記憶",
     "scopeHint": "個人記憶只跟隨你的帳號；專案記憶只用於你指定的專案，不會自動提升為企業範圍。",
     "scopeLabel": "範圍",
-    "scope": { "personal": "個人", "project": "專案" },
+    "scope": {
+      "personal": "個人",
+      "project": "專案"
+    },
     "projectId": "專案 ID",
     "content": "記憶內容",
     "saved": "記憶已儲存",
@@ -215,5 +229,38 @@
     "deleted": "記憶已刪除",
     "project": "專案 {{id}}",
     "personal": "個人記憶"
+  },
+  "preview": {
+    "basicHint": "基本預覽，保留原檔下載。Excel每頁100列、最多40欄；Word/PPT顯示內文與表格，複雜排版、圖片與圖表請下載查看。Office預覽上限25MB。",
+    "worksheet": "工作表",
+    "retry": "重試預覽",
+    "empty": "檔案沒有可顯示的內容",
+    "limitedHint": "部分內容已截斷，或有{{count}}個公式無法重新計算；顯示原公式，不使用舊快取。請下載原檔核對。",
+    "previous": "上一頁",
+    "next": "下一頁",
+    "page": "從第{{start}}項開始，共{{total}}項",
+    "location": {
+      "paragraph": "段落{{count}}",
+      "table": "表格{{count}}",
+      "slide": "第{{count}}張"
+    },
+    "configurationError": "設定尚未就緒（{{code}}）。請重新整理，或聯絡管理員檢查預設模型、助手與能力設定。",
+    "admin": "管理後台",
+    "busy": "預覽服務正在處理另一份檔案，請稍後重試。",
+    "tooLarge": "檔案超過預覽大小限制，請下載原檔查看。",
+    "timeout": "預覽逾時，請重試；仍可下載原檔。",
+    "failed": "無法預覽（{{code}}）。請重試，或下載原檔檢查。"
+  },
+  "delivery": {
+    "processing": "處理中",
+    "partial": "部分交付：仍有檔案未完成",
+    "receipts": "本輪成果回執",
+    "failed": "工具執行失敗",
+    "steps": "本輪工具步驟",
+    "continueFailed": "繼續失敗步驟",
+    "retryPrompt": "請先檢查現有成果與失敗原因，只繼續未完成或失敗步驟，避免重複產生已完成成果。待處理：{{paths}}",
+    "complete": "已完成",
+    "failedFile": "失敗",
+    "errorCount": "曾失敗的工具步驟：{{count}}"
   }
 }

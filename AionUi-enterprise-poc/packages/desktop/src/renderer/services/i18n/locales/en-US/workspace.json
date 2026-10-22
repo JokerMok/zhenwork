@@ -60,7 +60,10 @@
     "error": "Error",
     "cancelled": "Cancelled"
   },
-  "errors": { "load": "Unable to load this section ({{code}}).", "action": "The action failed ({{code}})." },
+  "errors": {
+    "load": "Unable to load this section ({{code}}).",
+    "action": "The action failed ({{code}})."
+  },
   "fileKind": {
     "all": "All files",
     "task": "Task files",
@@ -94,7 +97,10 @@
     "unsupportedPreviewHint": "This file type cannot be safely previewed here. Download the original file instead.",
     "openInTask": "Open in task"
   },
-  "scope": { "mine": "Mine", "shared": "Shared with me" },
+  "scope": {
+    "mine": "Mine",
+    "shared": "Shared with me"
+  },
   "knowledge": {
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
@@ -211,7 +217,10 @@
     "empty": "No saved memory",
     "scopeHint": "Personal memory follows your account. Project memory applies only to the project ID you specify and is never promoted to enterprise scope automatically.",
     "scopeLabel": "Scope",
-    "scope": { "personal": "Personal", "project": "Project" },
+    "scope": {
+      "personal": "Personal",
+      "project": "Project"
+    },
     "projectId": "Project ID",
     "content": "Memory content",
     "saved": "Memory saved",
@@ -220,5 +229,38 @@
     "deleted": "Memory deleted",
     "project": "Project {{id}}",
     "personal": "Personal memory"
+  },
+  "preview": {
+    "basicHint": "Basic preview; the original remains downloadable. Excel shows 100 rows per page and up to 40 columns. Word/PPT shows text and tables; download for complex layouts, images and charts. Office preview limit: 25MB.",
+    "worksheet": "Worksheet",
+    "retry": "Retry preview",
+    "empty": "No content to display",
+    "limitedHint": "Some content is truncated or {{count}} formulas cannot be recalculated. Original formulas are shown; stale cached values are never used. Download to verify.",
+    "previous": "Previous",
+    "next": "Next",
+    "page": "From {{start}} of {{total}}",
+    "location": {
+      "paragraph": "Paragraph {{count}}",
+      "table": "Table {{count}}",
+      "slide": "Slide {{count}}"
+    },
+    "configurationError": "Configuration is not ready ({{code}}). Refresh or ask an administrator to check the default model, assistant and capabilities.",
+    "admin": "Administration",
+    "busy": "Another file is being previewed. Please retry shortly.",
+    "tooLarge": "This file exceeds the preview size limit. Download the original.",
+    "timeout": "Preview timed out. Retry or download the original.",
+    "failed": "Preview failed ({{code}}). Retry, or download and inspect the original."
+  },
+  "delivery": {
+    "processing": "Processing",
+    "partial": "Partial delivery: files remain unfinished",
+    "receipts": "Delivery receipts for this turn",
+    "failed": "A tool step failed",
+    "steps": "Tool steps for this turn",
+    "continueFailed": "Continue failed steps",
+    "retryPrompt": "First check current artifacts and errors. Continue only unfinished or failed steps; do not regenerate completed outputs. Pending: {{paths}}",
+    "complete": "Complete",
+    "failedFile": "Failed",
+    "errorCount": "Tool steps that reported errors: {{count}}"
   }
 }

@@ -54,7 +54,7 @@ export async function startEnterpriseWebFromEnvironment() {
   runtime = createEnterpriseModelRuntime(createRc2GatewayLogin(rc2Url, publicOrigin), startCore,
     { profileRoot, publicOrigin, rc2Resume: createRc2GatewayResume(rc2Url, publicOrigin),
       background: { rc2Url, serviceToken } });
-  const gateway = await startEnterpriseGateway({ staticDir, publicOrigin, port,
+  const gateway = await startEnterpriseGateway({ staticDir, publicOrigin, port, adminUrl: new URL('/admin/', rc2Url).toString(),
     maxSessions: optionalLimit('AION_ENTERPRISE_WEB_MAX_SESSIONS', 1, 1000),
     maxCores: optionalLimit('AION_ENTERPRISE_WEB_MAX_CORES', 1, 200),
     maxStartingCores: optionalLimit('AION_ENTERPRISE_WEB_MAX_STARTING_CORES', 1, 32),

@@ -32,7 +32,7 @@ def compile_embedded_python(name: str) -> None:
 
 compile(text("bootstrap.py"), "bootstrap.py", "exec")
 compile(text("configure.py"), "configure.py", "exec")
-for script in ("deploy.sh", "restage-host.sh", "build-linux.sh", "activate.sh"):
+for script in ("deploy.sh", "restage-host.sh", "restage-web.sh", "build-linux.sh", "activate.sh"):
     compile_embedded_python(script)
 json.loads(text("rollback-compatibility.example.json"))
 
@@ -62,7 +62,7 @@ assert "Host-only restage refused changed path" in restage and "*)" in restage
 assert "packages/web-cli/src/enterprise-entry.ts" in restage and "build-web.mjs" not in restage
 assert "artifactReusedFrom" in restage and "artifactReusedFrom" in prepare
 assert "systemctl" not in restage and "sudo bash '$remote_root/deploy/activate.sh'" not in restage and "current.next" not in restage
-assert "assert reuse['reusedArtifacts']==['admin','control-source','employee','rc2.jar']" in prepare
+assert "assert reuse['reusedArtifacts'] in (['admin','control-source','employee','rc2.jar'], ['admin','control-source','rc2.jar'], ['control-source','rc2.jar'])" in prepare
 for source in (configure,activate):
     assert "shared/uploads" in source and "shared/config/uploads" in source
     assert "target.is_symlink() or not target.is_dir()" in source
@@ -82,3 +82,11 @@ for name, digest in expected.items():
         assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, name
 
 print("ZhenWork scoped deployment maintenance checks passed.")
+
+web_restage = text("restage-web.sh")
+assert "git archive" in web_restage and "build-web.mjs" in web_restage
+assert "['control-source','rc2.jar']" in web_restage
+assert 'packages/desktop/src/renderer/*' in web_restage
+assert 'packages/desktop/src/common/chat/normalizeToolCall.ts)' in web_restage
+assert 'full reviewed stage' in web_restage and '*)' in web_restage
+assert 'systemctl' not in web_restage and 'current.next' not in web_restage

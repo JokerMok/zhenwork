@@ -248,3 +248,46 @@ export function hasRunningToolMessages(messages: ToolMessage[]): boolean {
     return false;
   });
 }
+
+/** Only server tool receipts establish deliverables; chat prose is not a receipt. */
+export function toolDeliveryReceipts(
+  tools: NormalizedToolCall[]
+): Array<{ path: string; status: 'complete' | 'failed'; error?: string }> {
+  const files = new Map<string, { path: string; status: 'complete' | 'failed'; error?: string }>();
+  for (const tool of tools) {
+    if (!tool.output) continue;
+    try {
+      let value = JSON.parse(tool.output);
+      if (Array.isArray(value?.content)) {
+        const text = value.content.find((item: { type?: string; text?: string }) => item.type === 'text')?.text;
+        if (text) value = JSON.parse(text);
+      }
+      const outputs = Array.isArray(value?.outputs)
+        ? value.outputs
+        : value?.downloadUrl && value?.path
+          ? [{ ...value, status: 'complete' }]
+          : [];
+      for (const item of outputs) {
+        if (
+          typeof item.path !== 'string' ||
+          !item.path ||
+          item.path.length > 1024 ||
+          item.path.startsWith('/') ||
+          item.path.split(/[\\/]/).some((part: string) => !part || part === '.' || part === '..') ||
+          !['complete', 'failed'].includes(item.status)
+        )
+          continue;
+        // A completed receipt must include the checked current artifact digest.
+        if (item.status === 'complete' && !/^[a-f0-9]{64}$/.test(item.sha256 || '')) continue;
+        files.set(item.path, {
+          path: item.path,
+          status: item.status,
+          ...(item.error ? { error: String(item.error).slice(0, 200) } : {}),
+        });
+      }
+    } catch {
+      /* Ordinary tool output is not a delivery receipt. */
+    }
+  }
+  return [...files.values()];
+}

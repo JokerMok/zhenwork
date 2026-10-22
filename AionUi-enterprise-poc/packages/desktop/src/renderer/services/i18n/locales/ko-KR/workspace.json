@@ -60,7 +60,10 @@
     "error": "Error",
     "cancelled": "Cancelled"
   },
-  "errors": { "load": "Unable to load this section ({{code}}).", "action": "The action failed ({{code}})." },
+  "errors": {
+    "load": "Unable to load this section ({{code}}).",
+    "action": "The action failed ({{code}})."
+  },
   "fileKind": {
     "all": "All files",
     "task": "Task files",
@@ -94,7 +97,10 @@
     "unsupportedPreviewHint": "이 파일 형식은 여기에서 안전하게 미리 볼 수 없습니다. 원본 파일을 다운로드하세요.",
     "openInTask": "작업에서 열기"
   },
-  "scope": { "mine": "Mine", "shared": "Shared with me" },
+  "scope": {
+    "mine": "Mine",
+    "shared": "Shared with me"
+  },
   "knowledge": {
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
@@ -211,7 +217,10 @@
     "empty": "No saved memory",
     "scopeHint": "Personal memory follows your account. Project memory applies only to the project ID you specify and is never promoted to enterprise scope automatically.",
     "scopeLabel": "Scope",
-    "scope": { "personal": "Personal", "project": "Project" },
+    "scope": {
+      "personal": "Personal",
+      "project": "Project"
+    },
     "projectId": "Project ID",
     "content": "Memory content",
     "saved": "Memory saved",
@@ -220,5 +229,38 @@
     "deleted": "Memory deleted",
     "project": "Project {{id}}",
     "personal": "Personal memory"
+  },
+  "preview": {
+    "basicHint": "기본 미리보기입니다. 원본을 다운로드할 수 있습니다. Excel은 페이지당 100행, 최대 40열입니다. Word/PPT는 본문과 표를 표시합니다. 복잡한 서식, 이미지와 차트는 원본을 확인하세요. 최대 25MB.",
+    "worksheet": "시트",
+    "retry": "미리보기 재시도",
+    "empty": "표시할 내용이 없습니다",
+    "limitedHint": "일부 내용이 생략되거나 수식 {{count}}개를 다시 계산할 수 없습니다. 이전 값 대신 원래 수식을 표시합니다.",
+    "previous": "이전",
+    "next": "다음",
+    "page": "전체 {{total}}개 중 {{start}}부터",
+    "location": {
+      "paragraph": "문단 {{count}}",
+      "table": "표 {{count}}",
+      "slide": "슬라이드 {{count}}"
+    },
+    "configurationError": "설정이 준비되지 않았습니다({{code}}). 새로고침하거나 관리자에게 기본 모델, 도우미 및 기능을 확인해 달라고 요청하세요.",
+    "admin": "관리 화면",
+    "busy": "다른 파일을 처리 중입니다. 잠시 후 다시 시도하세요.",
+    "tooLarge": "미리보기 크기 제한을 초과했습니다. 원본을 다운로드하세요.",
+    "timeout": "미리보기 시간이 초과되었습니다. 다시 시도하거나 원본을 다운로드하세요.",
+    "failed": "미리보기 실패 ({{code}}). 다시 시도하거나 원본을 확인하세요."
+  },
+  "delivery": {
+    "processing": "처리 중",
+    "partial": "일부 전달: 미완성 파일 있음",
+    "receipts": "이번 작업의 결과 기록",
+    "failed": "도구 단계 실패",
+    "steps": "이번 작업의 도구 단계",
+    "continueFailed": "실패한 단계 계속",
+    "retryPrompt": "기존 결과와 오류를 먼저 확인하고 미완성 또는 실패한 단계만 계속하세요. 완료된 결과를 다시 생성하지 마세요. 대상: {{paths}}",
+    "complete": "완료",
+    "failedFile": "실패",
+    "errorCount": "오류가 발생했던 단계: {{count}}"
   }
 }

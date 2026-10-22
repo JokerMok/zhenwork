@@ -523,12 +523,26 @@ export async function startOfficeTools(
             delivery.files.map(async (file) => {
               const relative = path.isAbsolute(file.path) ? path.relative(core.workspaceRoot!, file.path) : file.path;
               const exists = (await store.files(core.workspaceRoot!)).files.some((item) => item.path === relative);
-              if (exists && !input.overwrite) throw new Error('OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME');
+              if (exists) {
+                const current = await store.download(core.workspaceRoot!, relative);
+                const digest = createHash('sha256').update(current).digest('hex');
+                if ((await store.deliveryReceipt(delivery.dataSha256, relative)) === digest) {
+                  return {
+                    relative,
+                    exists,
+                    bytes: current,
+                    reused: true,
+                    validation: await inspectArtifact(relative, current),
+                  };
+                }
+                if (!input.overwrite) throw new Error('OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME');
+              }
               const bytes = await generateOfficeArtifact(file.content);
               return {
                 relative,
                 exists,
                 bytes,
+                reused: false,
                 validation: await inspectArtifact(relative, bytes),
               };
             })
@@ -539,15 +553,22 @@ export async function startOfficeTools(
               await verified(conversation, deliveryReferences(input), client);
               await client.me();
               abort.signal.throwIfAborted();
-              await store.upload(
-                core.workspaceRoot,
-                file.relative,
-                file.bytes,
-                file.exists && input.overwrite === true
-              );
+              if (!file.reused)
+                await store.upload(
+                  core.workspaceRoot,
+                  file.relative,
+                  file.bytes,
+                  file.exists && input.overwrite === true
+                );
               const saved = await store.download(core.workspaceRoot, file.relative);
               if (!saved.equals(file.bytes)) throw new Error('FILE_CHANGED_RETRY');
+              await store.rememberDelivery(
+                delivery.dataSha256,
+                file.relative,
+                createHash('sha256').update(saved).digest('hex')
+              );
               outputs.push({
+                reused: file.reused,
                 path: file.relative,
                 status: 'complete',
                 validation: file.validation,

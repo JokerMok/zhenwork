@@ -60,7 +60,10 @@
     "error": "Error",
     "cancelled": "Cancelled"
   },
-  "errors": { "load": "Unable to load this section ({{code}}).", "action": "The action failed ({{code}})." },
+  "errors": {
+    "load": "Unable to load this section ({{code}}).",
+    "action": "The action failed ({{code}})."
+  },
   "fileKind": {
     "all": "All files",
     "task": "Task files",
@@ -94,7 +97,10 @@
     "unsupportedPreviewHint": "Dieser Dateityp kann hier nicht sicher in der Vorschau angezeigt werden. Laden Sie stattdessen die Originaldatei herunter.",
     "openInTask": "In Aufgabe öffnen"
   },
-  "scope": { "mine": "Mine", "shared": "Shared with me" },
+  "scope": {
+    "mine": "Mine",
+    "shared": "Shared with me"
+  },
   "knowledge": {
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
@@ -211,7 +217,10 @@
     "empty": "No saved memory",
     "scopeHint": "Personal memory follows your account. Project memory applies only to the project ID you specify and is never promoted to enterprise scope automatically.",
     "scopeLabel": "Scope",
-    "scope": { "personal": "Personal", "project": "Project" },
+    "scope": {
+      "personal": "Personal",
+      "project": "Project"
+    },
     "projectId": "Project ID",
     "content": "Memory content",
     "saved": "Memory saved",
@@ -220,5 +229,38 @@
     "deleted": "Memory deleted",
     "project": "Project {{id}}",
     "personal": "Personal memory"
+  },
+  "preview": {
+    "basicHint": "Einfache Vorschau; Original bleibt verfügbar. Excel: 100 Zeilen je Seite, bis 40 Spalten. Word/PPT: Text und Tabellen. Komplexe Layouts, Bilder und Diagramme bitte herunterladen. Grenze: 25MB.",
+    "worksheet": "Arbeitsblatt",
+    "retry": "Erneut versuchen",
+    "empty": "Kein Inhalt",
+    "limitedHint": "Inhalt gekürzt oder {{count}} Formeln nicht neu berechenbar. Originalformeln statt alter Cachewerte werden angezeigt.",
+    "previous": "Zurück",
+    "next": "Weiter",
+    "page": "Ab {{start}} von {{total}}",
+    "location": {
+      "paragraph": "Absatz {{count}}",
+      "table": "Tabelle {{count}}",
+      "slide": "Folie {{count}}"
+    },
+    "configurationError": "Konfiguration nicht bereit ({{code}}). Aktualisieren oder Standardmodell, Assistent und Fähigkeiten prüfen lassen.",
+    "admin": "Verwaltung",
+    "busy": "Eine andere Datei wird verarbeitet. Bitte gleich erneut versuchen.",
+    "tooLarge": "Die Datei überschreitet die Vorschaugrenze. Original herunterladen.",
+    "timeout": "Zeitlimit erreicht. Erneut versuchen oder Original herunterladen.",
+    "failed": "Vorschau fehlgeschlagen ({{code}}). Erneut versuchen oder Original prüfen."
+  },
+  "delivery": {
+    "processing": "In Bearbeitung",
+    "partial": "Teillieferung: Dateien fehlen",
+    "receipts": "Ergebnisbelege dieses Schritts",
+    "failed": "Werkzeugschritt fehlgeschlagen",
+    "steps": "Werkzeugschritte",
+    "continueFailed": "Fehlende Schritte fortsetzen",
+    "retryPrompt": "Vorhandene Ergebnisse und Fehler prüfen. Nur offene/fehlgeschlagene Schritte fortsetzen, abgeschlossene Dateien nicht neu erzeugen. Offen: {{paths}}",
+    "complete": "Fertig",
+    "failedFile": "Fehlgeschlagen",
+    "errorCount": "Schritte mit Fehlern: {{count}}"
   }
 }

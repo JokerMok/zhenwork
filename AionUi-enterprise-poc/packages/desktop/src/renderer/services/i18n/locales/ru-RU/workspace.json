@@ -60,7 +60,10 @@
     "error": "Error",
     "cancelled": "Cancelled"
   },
-  "errors": { "load": "Unable to load this section ({{code}}).", "action": "The action failed ({{code}})." },
+  "errors": {
+    "load": "Unable to load this section ({{code}}).",
+    "action": "The action failed ({{code}})."
+  },
   "fileKind": {
     "all": "All files",
     "task": "Task files",
@@ -94,7 +97,10 @@
     "unsupportedPreviewHint": "Этот тип файла нельзя безопасно просмотреть здесь. Скачайте исходный файл.",
     "openInTask": "Открыть в задаче"
   },
-  "scope": { "mine": "Mine", "shared": "Shared with me" },
+  "scope": {
+    "mine": "Mine",
+    "shared": "Shared with me"
+  },
   "knowledge": {
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
@@ -211,7 +217,10 @@
     "empty": "No saved memory",
     "scopeHint": "Personal memory follows your account. Project memory applies only to the project ID you specify and is never promoted to enterprise scope automatically.",
     "scopeLabel": "Scope",
-    "scope": { "personal": "Personal", "project": "Project" },
+    "scope": {
+      "personal": "Personal",
+      "project": "Project"
+    },
     "projectId": "Project ID",
     "content": "Memory content",
     "saved": "Memory saved",
@@ -220,5 +229,38 @@
     "deleted": "Memory deleted",
     "project": "Project {{id}}",
     "personal": "Personal memory"
+  },
+  "preview": {
+    "basicHint": "Упрощённый просмотр; оригинал доступен для скачивания. Excel: 100 строк на страницу, до 40 столбцов. Word/PPT: текст и таблицы. Сложное оформление, изображения и диаграммы смотрите в оригинале. До 25 МБ.",
+    "worksheet": "Лист",
+    "retry": "Повторить",
+    "empty": "Нет содержимого",
+    "limitedHint": "Данные сокращены или {{count}} формул не пересчитаны. Показаны исходные формулы, а не старые значения.",
+    "previous": "Назад",
+    "next": "Далее",
+    "page": "С {{start}} из {{total}}",
+    "location": {
+      "paragraph": "Абзац {{count}}",
+      "table": "Таблица {{count}}",
+      "slide": "Слайд {{count}}"
+    },
+    "configurationError": "Настройки не готовы ({{code}}). Обновите страницу или попросите администратора проверить модель, помощника и возможности по умолчанию.",
+    "admin": "Управление",
+    "busy": "Обрабатывается другой файл. Повторите чуть позже.",
+    "tooLarge": "Файл превышает размер для просмотра. Скачайте оригинал.",
+    "timeout": "Время ожидания истекло. Повторите или скачайте оригинал.",
+    "failed": "Ошибка просмотра ({{code}}). Повторите или проверьте оригинал."
+  },
+  "delivery": {
+    "processing": "Обработка",
+    "partial": "Частичная выдача: файлы не готовы",
+    "receipts": "Результаты текущего запроса",
+    "failed": "Ошибка шага инструмента",
+    "steps": "Шаги инструментов",
+    "continueFailed": "Продолжить незавершённое",
+    "retryPrompt": "Проверьте файлы и причины ошибок. Продолжите только незавершённые шаги, не создавая готовые файлы заново. Ожидают: {{paths}}",
+    "complete": "Готово",
+    "failedFile": "Ошибка",
+    "errorCount": "Шаги с зарегистрированными ошибками: {{count}}"
   }
 }

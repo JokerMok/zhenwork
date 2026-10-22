@@ -10,7 +10,9 @@ import { useTranslation } from 'react-i18next';
 import { formatByteSize } from '@/renderer/services/i18n/format';
 import { getFileExtension } from '@/renderer/services/FileService';
 import { ipcBridge } from '@/common';
-import { Button, Image, Tooltip } from '@arco-design/web-react';
+import { Button, Drawer, Image, Tooltip } from '@arco-design/web-react';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import EnterpriseFilePreview from './OfficePreview/EnterpriseFilePreview';
 import fileIcon from '@/renderer/assets/icons/file-icon.svg';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg']);
@@ -35,7 +37,13 @@ interface FilePreviewProps {
   hint?: string;
 }
 
-const FilePreview: React.FC<FilePreviewProps> = ({ path, onRemove, onOpen, readonly = false, hint }) => {
+const FilePreview: React.FC<FilePreviewProps> = ({
+  path,
+  onRemove,
+  onOpen: providedOnOpen,
+  readonly = false,
+  hint,
+}) => {
   // Defensive check: ensure path is a string
   if (typeof path !== 'string') {
     console.error('[FilePreview] Invalid path type:', typeof path, path);
@@ -51,6 +59,8 @@ const FilePreview: React.FC<FilePreviewProps> = ({ path, onRemove, onOpen, reado
   const { i18n, t } = useTranslation();
   const [imageUrl, setImageUrl] = useState<string>('');
   const [fileSize, setFileSize] = useState<string>('');
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const onOpen = providedOnOpen || (isEnterpriseWeb() && !isDirectory ? () => setPreviewVisible(true) : undefined);
 
   useEffect(() => {
     // 获取文件大小
@@ -110,7 +120,16 @@ const FilePreview: React.FC<FilePreviewProps> = ({ path, onRemove, onOpen, reado
     onRemove();
   };
 
-  const withHint = (chip: React.ReactElement) => (hint ? <Tooltip content={hint}>{chip}</Tooltip> : chip);
+  const withHint = (chip: React.ReactElement) => (
+    <>
+      {hint ? <Tooltip content={hint}>{chip}</Tooltip> : chip}
+      {previewVisible ? (
+        <Drawer visible width={920} title={file_name} footer={null} onCancel={() => setPreviewVisible(false)}>
+          <EnterpriseFilePreview path={path} />
+        </Drawer>
+      ) : null}
+    </>
+  );
   const withOpen = (chip: React.ReactElement) =>
     onOpen ? (
       <Button

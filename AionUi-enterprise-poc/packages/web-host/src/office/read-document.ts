@@ -276,6 +276,10 @@ def text_read(raw,fmt,start,limit):
     })
 
 try:
+    if len(sys.argv)>5 and sys.argv[5]=='preview' and sys.platform=='linux':
+        import resource
+        resource.setrlimit(resource.RLIMIT_AS,(384*1024*1024,384*1024*1024))
+        resource.setrlimit(resource.RLIMIT_CPU,(15,15))
     fmt=sys.argv[1];start=int(sys.argv[2]);limit=int(sys.argv[3])
     source=sys.stdin.buffer.read(MAX_INPUT+1)
     if len(source)>MAX_INPUT: raise OverflowError()
@@ -318,7 +322,8 @@ function readOptions(options: ReadOfficeDocumentOptions | undefined): { start: n
 export async function readOfficeDocument(
   name: string,
   bytes: Buffer,
-  options?: ReadOfficeDocumentOptions
+  options?: ReadOfficeDocumentOptions,
+  previewLimits = false
 ): Promise<Record<string, unknown>> {
   if (typeof name !== 'string' || !name.trim() || name.includes('\0')) fail('OFFICE_READ_NAME_REQUIRED');
   if (!Buffer.isBuffer(bytes)) fail('OFFICE_READ_BYTES_REQUIRED');
@@ -335,7 +340,15 @@ export async function readOfficeDocument(
   return new Promise((resolve, reject) => {
     const child = execFile(
       python,
-      ['-c', PYTHON_SCRIPT, format, String(start), String(limit), extension.slice(1)],
+      [
+        '-c',
+        PYTHON_SCRIPT,
+        format,
+        String(start),
+        String(limit),
+        extension.slice(1),
+        ...(previewLimits ? ['preview'] : []),
+      ],
       {
         encoding: 'buffer',
         timeout: 30_000,

@@ -60,7 +60,10 @@
     "error": "Error",
     "cancelled": "Cancelled"
   },
-  "errors": { "load": "Unable to load this section ({{code}}).", "action": "The action failed ({{code}})." },
+  "errors": {
+    "load": "Unable to load this section ({{code}}).",
+    "action": "The action failed ({{code}})."
+  },
   "fileKind": {
     "all": "All files",
     "task": "Task files",
@@ -94,7 +97,10 @@
     "unsupportedPreviewHint": "Bu dosya türü burada güvenli biçimde önizlenemiyor. Özgün dosyayı indirin.",
     "openInTask": "Görevde aç"
   },
-  "scope": { "mine": "Mine", "shared": "Shared with me" },
+  "scope": {
+    "mine": "Mine",
+    "shared": "Shared with me"
+  },
   "knowledge": {
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
@@ -211,7 +217,10 @@
     "empty": "No saved memory",
     "scopeHint": "Personal memory follows your account. Project memory applies only to the project ID you specify and is never promoted to enterprise scope automatically.",
     "scopeLabel": "Scope",
-    "scope": { "personal": "Personal", "project": "Project" },
+    "scope": {
+      "personal": "Personal",
+      "project": "Project"
+    },
     "projectId": "Project ID",
     "content": "Memory content",
     "saved": "Memory saved",
@@ -220,5 +229,38 @@
     "deleted": "Memory deleted",
     "project": "Project {{id}}",
     "personal": "Personal memory"
+  },
+  "preview": {
+    "basicHint": "Temel önizleme; özgün dosya indirilebilir. Excel: sayfa başına 100 satır, en fazla 40 sütun. Word/PPT: metin ve tablolar. Karmaşık düzen, resim ve grafikler için dosyayı indirin. Sınır: 25MB.",
+    "worksheet": "Çalışma sayfası",
+    "retry": "Yeniden dene",
+    "empty": "İçerik yok",
+    "limitedHint": "İçerik kısaltıldı veya {{count}} formül hesaplanamadı. Eski değerler yerine özgün formüller gösterilir.",
+    "previous": "Önceki",
+    "next": "Sonraki",
+    "page": "{{total}} öğeden {{start}} itibarıyla",
+    "location": {
+      "paragraph": "Paragraf {{count}}",
+      "table": "Tablo {{count}}",
+      "slide": "Slayt {{count}}"
+    },
+    "configurationError": "Yapılandırma hazır değil ({{code}}). Yenileyin veya yöneticiden varsayılan model, asistan ve yetenekleri kontrol etmesini isteyin.",
+    "admin": "Yönetim",
+    "busy": "Başka bir dosya işleniyor. Biraz sonra yeniden deneyin.",
+    "tooLarge": "Dosya önizleme sınırını aşıyor. Özgün dosyayı indirin.",
+    "timeout": "Önizleme zaman aşımına uğradı. Yeniden deneyin veya indirin.",
+    "failed": "Önizleme başarısız ({{code}}). Yeniden deneyin veya özgün dosyayı inceleyin."
+  },
+  "delivery": {
+    "processing": "İşleniyor",
+    "partial": "Kısmi teslim: bitmemiş dosyalar var",
+    "receipts": "Bu isteğin çıktı kayıtları",
+    "failed": "Araç adımı başarısız",
+    "steps": "Araç adımları",
+    "continueFailed": "Başarısız adımları sürdür",
+    "retryPrompt": "Önce mevcut çıktıları ve hataları kontrol edin. Yalnızca eksik/başarısız adımları sürdürün, tamamlanan çıktıları yeniden üretmeyin. Bekleyen: {{paths}}",
+    "complete": "Tamamlandı",
+    "failedFile": "Başarısız",
+    "errorCount": "Hata bildiren adımlar: {{count}}"
   }
 }

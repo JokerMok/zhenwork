@@ -41,7 +41,7 @@ import MessageAgentStatus from './components/MessageAgentStatus';
 import MessageTips from './components/MessageTips';
 import MessageToolCall from './components/MessageToolCall';
 import MessageToolGroup from './components/MessageToolGroup';
-import MessageToolGroupSummary from './components/MessageToolGroupSummary';
+import MessageToolGroupSummary, { TaskDeliverySummary } from './components/MessageToolGroupSummary';
 import MessageCronTrigger from './components/MessageCronTrigger';
 import MessageSkillSuggest from './components/MessageSkillSuggest';
 import MessageText from './components/MessageText';
@@ -759,6 +759,14 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }>
               }}
             >
               <div className='h-10px' />
+              <TaskDeliverySummary
+                processing={isProcessing}
+                messages={list
+                  .slice(list.findLastIndex((message) => message.position === 'right') + 1)
+                  .filter((message): message is IMessageToolGroup | IMessageAcpToolCall | IMessageToolCall =>
+                    ['tool_group', 'tool_call', 'acp_tool_call'].includes(message.type)
+                  )}
+              />
               {processedList.map((item, index) => (
                 <React.Fragment key={getProcessedItemAnchorId(item) || index}>{renderItem(index, item)}</React.Fragment>
               ))}

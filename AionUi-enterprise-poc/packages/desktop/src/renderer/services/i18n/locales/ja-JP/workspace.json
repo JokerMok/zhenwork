@@ -60,7 +60,10 @@
     "error": "Error",
     "cancelled": "Cancelled"
   },
-  "errors": { "load": "Unable to load this section ({{code}}).", "action": "The action failed ({{code}})." },
+  "errors": {
+    "load": "Unable to load this section ({{code}}).",
+    "action": "The action failed ({{code}})."
+  },
   "fileKind": {
     "all": "All files",
     "task": "Task files",
@@ -94,7 +97,10 @@
     "unsupportedPreviewHint": "このファイル形式はここでは安全にプレビューできません。元のファイルをダウンロードしてください。",
     "openInTask": "タスクで開く"
   },
-  "scope": { "mine": "Mine", "shared": "Shared with me" },
+  "scope": {
+    "mine": "Mine",
+    "shared": "Shared with me"
+  },
   "knowledge": {
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
@@ -211,7 +217,10 @@
     "empty": "No saved memory",
     "scopeHint": "Personal memory follows your account. Project memory applies only to the project ID you specify and is never promoted to enterprise scope automatically.",
     "scopeLabel": "Scope",
-    "scope": { "personal": "Personal", "project": "Project" },
+    "scope": {
+      "personal": "Personal",
+      "project": "Project"
+    },
     "projectId": "Project ID",
     "content": "Memory content",
     "saved": "Memory saved",
@@ -220,5 +229,38 @@
     "deleted": "Memory deleted",
     "project": "Project {{id}}",
     "personal": "Personal memory"
+  },
+  "preview": {
+    "basicHint": "簡易プレビューです。原本はダウンロードできます。Excelは1ページ100行・40列まで。Word/PPTは本文と表を表示します。複雑な書式・画像・グラフは原本をご確認ください。上限25MB。",
+    "worksheet": "シート",
+    "retry": "再試行",
+    "empty": "表示できる内容がありません",
+    "limitedHint": "一部省略、または{{count}}個の数式を再計算できません。古い値を使わず元の数式を表示します。",
+    "previous": "前へ",
+    "next": "次へ",
+    "page": "{{total}}件中{{start}}件目から",
+    "location": {
+      "paragraph": "段落{{count}}",
+      "table": "表{{count}}",
+      "slide": "スライド{{count}}"
+    },
+    "configurationError": "設定の準備ができていません（{{code}}）。更新するか管理者に既定モデル・アシスタント・機能の確認を依頼してください。",
+    "admin": "管理画面",
+    "busy": "別のファイルを処理中です。少し待って再試行してください。",
+    "tooLarge": "プレビューのサイズ上限を超えています。原本をダウンロードしてください。",
+    "timeout": "プレビューがタイムアウトしました。再試行またはダウンロードしてください。",
+    "failed": "プレビューできません（{{code}}）。再試行するか、原本を確認してください。"
+  },
+  "delivery": {
+    "processing": "処理中",
+    "partial": "一部納品：未完成ファイルあり",
+    "receipts": "今回の成果記録",
+    "failed": "ツール処理に失敗",
+    "steps": "今回のツール処理",
+    "continueFailed": "失敗した処理を続行",
+    "retryPrompt": "既存成果とエラーを確認し、未完成・失敗した処理だけを続行してください。完成済みは再生成しないでください。対象：{{paths}}",
+    "complete": "完了",
+    "failedFile": "失敗",
+    "errorCount": "エラーがあった処理：{{count}}"
   }
 }

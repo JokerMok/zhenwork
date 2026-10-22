@@ -9,7 +9,7 @@ const MAX_FILE = 50 * 1024 * 1024;
 const HISTORY_BUDGET = 256 * 1024 * 1024;
 type Version = { id: string; createdAt: string; byteSize: number; sha256: string };
 type Memory = { id: string; scope: 'personal' | 'project'; projectId?: string; content: string; updatedAt: string };
-type State = { files: Record<string, Version[]>; memories: Memory[] };
+type State = { files: Record<string, Version[]>; memories: Memory[]; deliveries?: Record<string, Record<string, string>> };
 const digest = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex');
 const inside = (root: string, file: string): boolean => file === root || file.startsWith(root + path.sep);
 
@@ -55,6 +55,20 @@ export class OfficeStore {
     });
     this.sequence = pending.catch(() => {});
     return pending;
+  }
+
+  async deliveryReceipt(dataSha256: string, name: string): Promise<string | undefined> {
+    return (await this.state()).deliveries?.[dataSha256]?.[name];
+  }
+
+  async rememberDelivery(dataSha256: string, name: string, sha256: string): Promise<void> {
+    if (!/^[a-f0-9]{64}$/.test(dataSha256) || !/^[a-f0-9]{64}$/.test(sha256))
+      throw new Error('INVALID_DELIVERY_RECEIPT');
+    await this.transaction(async (state) => {
+      state.deliveries ||= {};
+      state.deliveries[dataSha256] = { ...state.deliveries[dataSha256], [name]: sha256 };
+      while (Object.keys(state.deliveries).length > 128) delete state.deliveries[Object.keys(state.deliveries)[0]];
+    });
   }
 
   async memories(): Promise<Memory[]> { return (await this.state()).memories; }
@@ -118,7 +132,7 @@ export class OfficeStore {
     const visit = async (directory: string): Promise<void> => {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
         if (names.length >= 500) { warnings.push('FILE_LIST_LIMIT_500'); return; }
-        if (entry.isSymbolicLink() || ['.git', 'node_modules', '.cache'].includes(entry.name)) continue;
+        if (entry.isSymbolicLink() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
         const file = path.join(directory, entry.name);
         if (entry.isDirectory()) await visit(file);
         else if (entry.isFile()) names.push(path.relative(base, file));
