@@ -11,6 +11,7 @@ import { enterpriseCoreBase, enterpriseCoreHost, enterpriseProxyHost } from './e
 import { OfficeStore } from './office/office-store.js';
 import { previewOfficeFile } from './office/preview/index.js';
 import { enterpriseProfilePath } from './enterprise-core.js';
+import { enterpriseReadinessPage } from './enterprise-readiness-page.js';
 
 export type EnterpriseActor = { serverId: string; userId: string };
 export type EnterpriseCore = { port: number; localToken: string; stop: () => Promise<void>; invalidated?: Promise<void>;
@@ -711,12 +712,21 @@ export async function startEnterpriseGateway(
     }
     const auth = await authenticate(req);
     if (!auth) {
-      if (req.method === 'GET' && !req.url.startsWith('/api/') && req.url !== '/enterprise/brand') {
+      if (req.method === 'GET' && !req.url.startsWith('/api/') && req.url !== '/enterprise/brand' && req.url !== '/enterprise/ready') {
         res.writeHead(302, { location: '/enterprise/login', 'cache-control': 'no-store' });
         res.end();
         return;
       }
       return reply(res, 401, { error: 'UNAUTHENTICATED' });
+    }
+    if (req.url === '/enterprise/ready' && req.method === 'GET') {
+      auth.session.responses.add(res);res.once('close', () => auth.session.responses.delete(res));
+      try {
+        await getCore(auth.session.actor);
+        if (!(await validateSession(auth.session))) { await revoke(auth.id); return reply(res, 401, { error: 'UNAUTHENTICATED' }); }
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        return reply(res, 200, { ready: true });
+      } catch (error) { if (!res.destroyed) return replyCoreFailure(res, error); return; }
     }
     if (req.url === '/enterprise/brand' && req.method === 'GET') {
       try {
@@ -1227,6 +1237,13 @@ export async function startEnterpriseGateway(
     if (req.url === '/sw.js') return reply(res, 404, { error: 'OFFLINE_MODE_DISABLED' });
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' ||
         req.headers.accept?.includes('text/html'))) {
+      if (!cores.get(actorKey(auth.session.actor))?.ready || stopping.has(actorKey(auth.session.actor))) {
+        const nonce = randomBytes(16).toString('base64');
+        const english = /\ben(?:-|,|;|$)/i.test(req.headers['accept-language'] || '') && !/^zh\b/i.test(req.headers['accept-language'] || '');
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
+          'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'` });
+        res.end(enterpriseReadinessPage(english, nonce));return;
+      }
       const html = await readFile(path.join(opts.staticDir, 'index.html'), 'utf8');
       const nonce = randomBytes(16).toString('base64');
       const content = html.replace('</head>', '<script>window.__AION_ENTERPRISE_WEB__=true;</script></head>')

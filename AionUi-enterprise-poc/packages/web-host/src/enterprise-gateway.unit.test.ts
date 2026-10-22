@@ -299,7 +299,7 @@ test('enterprise brand is available only to its authenticated session and expose
   const cookie = login.headers['set-cookie']?.[0].split(';')[0];
   const brand = await request('GET', '/enterprise/brand', cookie);
   expect(brand.status).toBe(200);
-  expect(JSON.parse(brand.body)).toEqual({ productName: 'Workspace 1', primaryColor: '#123abc',
+  expect(JSON.parse(brand.body)).toEqual({ adminUrl: null, productName: 'Workspace 1', primaryColor: '#123abc',
     logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=' });
   expect(brand.body).not.toContain('never-expose');
   expect((await request('POST', '/enterprise/logout', cookie)).status).toBe(200);
@@ -933,4 +933,31 @@ test('password setup refuses weak format and foreign origins', async () => {
   const payload = { username: 'reset', password: 'test', newPassword: '12345678' };
   expect((await request('POST', '/enterprise/password', undefined, payload)).status).toBe(400);
   expect((await request('POST', '/enterprise/password', undefined, { ...payload, newPassword: 'Abcd1234' }, 'https://foreign.invalid')).status).toBe(403);
+});
+
+test('a second employee gets a bounded preparation page instead of a blank SPA at Core capacity', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'enterprise-ready-'));
+  await writeFile(path.join(dir, 'index.html'), '<html><head></head><body>Workspace</body></html>');
+  const gateway = await startEnterpriseGateway({ staticDir: dir, publicOrigin: 'https://workspace.example', port: 0,
+    maxCores: 1, coreIdleMs: 0,
+    login: async username => ({ actor: { serverId: 'rc2', userId: username }, validate: async () => true, close: async () => {} }),
+    startCore: async () => ({ port: 9, localToken: 'local-test', stop: async () => {} }),
+  });
+  const call = (method: string, route: string, cookie?: string, payload?: object) => new Promise<{ status: number; cookie?: string; body: string }>((resolve, reject) => {
+    const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method,
+      headers: { host: 'workspace.example', origin: 'https://workspace.example', ...(cookie ? { cookie } : {}), ...(payload ? { 'content-type': 'application/json' } : {}) } }, res => {
+      const chunks: Buffer[] = [];res.on('data', c => chunks.push(c));res.on('end', () => resolve({ status: res.statusCode || 0, cookie: res.headers['set-cookie']?.[0].split(';')[0], body: Buffer.concat(chunks).toString() }));
+    });req.once('error', reject);req.end(payload ? JSON.stringify(payload) : undefined);
+  });
+  try {
+    expect((await call('GET', '/enterprise/ready')).status).toBe(401);
+    const first = (await call('POST', '/enterprise/login', undefined, { username: '1', password: 'test' })).cookie;
+    const second = (await call('POST', '/enterprise/login', undefined, { username: '2', password: 'test' })).cookie;
+    expect((await call('GET', '/enterprise/ready', first)).status).toBe(200);
+    const page = await call('GET', '/', second);expect(page.status).toBe(200);expect(page.body).toContain('data-enterprise-readiness');expect(page.body).toContain('180000');
+    expect((await call('GET', '/enterprise/ready', second)).status).toBe(503);
+    await call('POST', '/enterprise/logout', first, {});
+    expect((await call('GET', '/enterprise/ready', second)).status).toBe(200);
+    expect((await call('GET', '/', second)).body).toContain('window.__AION_ENTERPRISE_WEB__=true');
+  } finally { await gateway.stop();await rm(dir, { recursive: true, force: true }); }
 });

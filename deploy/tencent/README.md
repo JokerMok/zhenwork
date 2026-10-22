@@ -8,7 +8,11 @@
 
 应用版本看 `current/RELEASE.json`、实际验收看 `current/VERIFIED.json`。初次源码 SHA 为 `42d834a75722bdbe6331dba226d0febdc6179383`，额外保留 Core 依赖锁及空会话回收补丁，各自 SHA256 在 manifest 中。补丁只用于该准确源码版本；不关闭身份复核、目录隔离、后台授权或单次工具审批。
 
-## 2026-10-21 当前部署记录
+## 2026-10-22 当前部署记录
+
+当前应用release `20261022-web-office-v15` / SHA `fbbcd99aae55f825557a99d40639c596d6857e52`。员工/管理网页重建并验证后，最终Host-only修复复用其精确哈希；Java/control及19迁移、amd64镜像保留。网页预览/完整包实际执行/更新/撤权/部分交付证据在私有20261022验收报告。管理员当前凭据由用户安全输入保存至root0600 `shared/config/qa-admin-current.json`，初始化文件不是当前口令。新发布先按manifest审查，再既有finalize；回滚审核 `shared/config/rollback-reviews/20261022-v15-to-v8.json`，只退应用/配置，不回退数据库或授权。
+
+以下v8记录作为历史基线保留：
 
 当前激活 `20261021-office-reconciliation-v8`，应用源码 `619c3d9272018a519d5f385f1f86d115aa3dbcf6`。后续纯维护文档提交与应用SHA分别核对。Host-only更新、19条迁移及Web/Admin/Java/native镜像复用；四项真实办公回归和边界见PROJECT.md及私有验收记录。
 
