@@ -141,7 +141,7 @@ test('delivery receipts persist by actor and dataset without exposing another em
 
 test.runIf(process.platform === 'linux')('invalid Office originals remain listed and downloadable without weakening tool validation or path isolation', async () => {
   const { root, workspace } = await fixture();
-  const store = await OfficeStore.create(root, actor('raw-office'));
+  const store = await OfficeStore.create(root, actor('29'));
   await writeFile(path.join(workspace, 'broken.xlsx'), 'PK broken original');
   await expect(store.download(workspace, 'broken.xlsx')).rejects.toThrow('OFFICE_FILE_INCOMPLETE_RETRY');
   expect((await store.downloadOriginal(workspace, 'broken.xlsx')).toString()).toBe('PK broken original');

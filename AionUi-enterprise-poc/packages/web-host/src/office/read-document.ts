@@ -171,7 +171,8 @@ def xlsx_read(raw,start,limit):
     }
 
 def table_from_pptx(table,shape_path):
-    rows=[[cell.text for cell in row.cells[:COLUMN_LIMIT]] for row in table.rows[:ROW_LIMIT]]
+    from itertools import islice
+    rows=[[cell.text for cell in islice(row.cells,COLUMN_LIMIT)] for row in islice(table.rows,ROW_LIMIT)]
     value=bounded_rows(rows,len(table.rows),len(table.columns));value['shape']=shape_path;return value
 
 def pptx_read(raw,start,limit):
