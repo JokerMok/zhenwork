@@ -167,7 +167,7 @@ function assistantDefaultsMatch(actual, expected) {
 
 // Register RC2-authorized resources in AionCore's existing Skill/MCP stores.
 // They remain selectable through AionUi's native conversation controls.
-export async function syncEnterpriseResources(corePort, localToken, config = process.env, fetchImpl = fetch) {
+export async function syncEnterpriseResources(corePort, localToken, config = process.env, fetchImpl = fetch, hooks = {}) {
   const base = coreBase(corePort);
   const headers = { 'x-aion-enterprise-local-token': localToken, 'Content-Type': 'application/json' };
   const request = async (url, body) => {
@@ -377,6 +377,11 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
     if (!deleted || !deleted.ok && deleted.status !== 404) {
       retainedSkillNames.add(name);
       result.issues.push({ type: 'SKILL', id: name, code: 'REVOCATION_FAILED' });
+      if (hooks.removeRevokedSkill) throw new Error('Enterprise Skill revocation failed');
+    } else if (hooks.removeRevokedSkill) {
+      // Host-only managed package cleanup; personal deletion keeps Core's
+      // normal soft-delete behavior. Do not forget this name on failure.
+      await hooks.removeRevokedSkill(name);
     }
   }
   for (const item of listedMcp.filter((item) => !RESERVED_UNMANAGED_MCP_NAMES.has(item.name) && isManagedMcp(item) &&

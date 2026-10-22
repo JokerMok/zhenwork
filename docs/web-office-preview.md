@@ -23,3 +23,7 @@
 ## 发布范围
 
 `deploy/tencent/restage-web.sh` 从已提交SHA归档，仅允许Web/Host、指定管理资源页、对应测试/文档等变更；依赖锁变化、Java/control/Rust变化必须走完整stage。分别构建员工/管理网页与Host，按不可变manifest逐字节复用control-source、Java和精确amd64原生镜像；不得把旧员工网页标成新构建，也不得把应用回滚当数据库回滚。暂存不切换服务，仍经finalize一致性备份及迁移门禁后激活。
+
+## 企业包撤权缓存
+
+Core 的个人 Skill 删除 API 是软删除。网页 Host 在已管理企业包被停用、撤权或被替换后，还会清理该员工固定 Skill 命名空间和 `rc2-stage-*` 中的同名包文件；其它个人 Skill、工作区、成果和历史版本不进入清理范围。使用固定 Python 标准库程序、Linux 目录描述符、`O_NOFOLLOW` 和抗符号链接攻击的 `rmtree(dir_fd=...)`，不执行包内代码。清理失败不遗忘待撤销的 manifest 名称，并使该次运行环境准备失败；不把残留旧包当可用资源。清理受128MiB地址空间、5秒CPU和10秒进程超时约束。

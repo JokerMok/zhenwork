@@ -4,6 +4,7 @@ import path from 'node:path';
 import { EnterpriseMcpProxy } from '../../desktop/src/process/services/enterprise/mcpProxy.mjs';
 import { syncEnterpriseResources } from '../../desktop/src/process/services/enterprise/resourceSync.mjs';
 import { enterpriseProfilePath } from './enterprise-core.js';
+import { removeManagedSkillCache } from './enterprise-skill-cleanup.js';
 import type { EnterpriseActor, EnterpriseCore } from './enterprise-gateway.js';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 import { enterpriseProxyBindHost, enterpriseProxyHost } from './enterprise-core-address.js';
@@ -344,7 +345,9 @@ export async function syncEnterpriseWebResources(
     const bundlePath = path.join(stage, 'resources.json');
     await writeFile(bundlePath, JSON.stringify(bundle), { mode: 0o600 });
     config.AION_ENTERPRISE_RESOURCES_PATH = bundlePath;
-    const syncResult = await syncEnterpriseResources(core, core.localToken, config);
+    const syncResult = await syncEnterpriseResources(core, core.localToken, config, fetch, {
+      removeRevokedSkill: (name: string) => removeManagedSkillCache(profile, name),
+    });
     let invalidate!: () => void;
     const invalidated = new Promise<void>((resolve) => { invalidate = resolve; });
     let checking = false;

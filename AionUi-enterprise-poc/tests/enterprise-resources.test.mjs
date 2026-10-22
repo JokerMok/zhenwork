@@ -426,3 +426,30 @@ test('failed second Skill import keeps the first successful managed Skill', asyn
       { skills: ['test-skill-0'], mcpIds: [], assistantIds: [] });
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
+
+test('Host Skill revocation requires cache cleanup and retains its manifest for a failed cleanup retry', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'aion-host-revoke-'));
+  const manifestPath = path.join(dir, 'enterprise-managed-resources.json');
+  const config = { AION_ENTERPRISE_ROLE: 'worker', AION_ENTERPRISE_PROFILE_DIR: dir };
+  const fetchStub = async (url, options) => {
+    const route = new URL(url).pathname;
+    if (['/api/mcp/servers', '/api/assistants'].includes(route))
+      return new Response(JSON.stringify({ success: true, data: [] }));
+    if (route === '/api/skills/shared-test' && options.method === 'DELETE')
+      return new Response(JSON.stringify({ success: true }));
+    throw new Error(`Unexpected route ${route}`);
+  };
+  try {
+    await fs.writeFile(manifestPath, JSON.stringify({ skills: ['shared-test'], mcpIds: [] }));
+    await assert.rejects(syncEnterpriseResources(32123, 'local-token', config, fetchStub, {
+      removeRevokedSkill: async () => { throw new Error('cache cleanup refused'); },
+    }), /cache cleanup refused/);
+    assert.deepEqual(JSON.parse(await fs.readFile(manifestPath, 'utf8')).skills, ['shared-test']);
+    const removed = [];
+    await syncEnterpriseResources(32123, 'local-token', config, fetchStub, {
+      removeRevokedSkill: async (name) => { removed.push(name); },
+    });
+    assert.deepEqual(removed, ['shared-test']);
+    assert.deepEqual(JSON.parse(await fs.readFile(manifestPath, 'utf8')).skills, []);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});

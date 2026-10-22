@@ -2,7 +2,8 @@ export function syncEnterpriseResources(
   corePort: number | { port: number; host?: string },
   localToken: string,
   config?: NodeJS.ProcessEnv,
-  fetchImpl?: typeof fetch
+  fetchImpl?: typeof fetch,
+  hooks?: { removeRevokedSkill?: (name: string) => Promise<void> }
 ): Promise<{
   skillName?: string;
   mcpId?: string;
