@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
-import { SWRConfig } from 'swr';
+import useSWR, { SWRConfig } from 'swr';
 import { afterEach, expect, test, vi } from 'vitest';
 const { list } = vi.hoisted(() => ({ list: vi.fn() }));
 vi.mock('@/common', () => ({ ipcBridge: { assistants: { list: { invoke: list } } } }));
@@ -37,5 +37,18 @@ test('a rejected configuration refresh exposes its error without marking stale d
   const hook = renderHook(() => useCustomAgentsLoader(), { wrapper: setup() });
   await waitFor(() => expect(hook.result.current.catalogError).toBe('RESOURCE_REFRESH_FAILED'));
   expect(hook.result.current.catalogRevision).toBe(0);
+  hook.unmount();
+});
+
+test('a generic assistant catalog reader cannot consume the enterprise refresh completion', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) }));
+  list.mockResolvedValue([{ id: 'zhenwork-general-office' }]);
+  const hook = renderHook(() => {
+    // Sidebar/assistant metadata is already mounted before Guid in the app.
+    useSWR('assistants.list', () => Promise.resolve([{ id: 'zhenwork-general-office' }]));
+    return useCustomAgentsLoader();
+  }, { wrapper: setup() });
+  await waitFor(() => expect(hook.result.current.catalogRevision).toBeGreaterThan(0));
+  expect(hook.result.current.assistants[0].id).toBe('zhenwork-general-office');
   hook.unmount();
 });
