@@ -92,7 +92,7 @@ export class OfficeStore {
     await this.transaction(async (state) => { state.memories = state.memories.filter((item) => item.id !== id); });
   }
 
-  private async readWorkspace(root: string, name: string): Promise<Buffer> {
+  private async readWorkspace(root: string, name: string, originalBytes = false): Promise<Buffer> {
     // Linux descriptor paths are required for the host/container isolation guarantee.
     if (process.platform !== 'linux') throw new Error('OFFICE_FILE_STORAGE_REQUIRES_LINUX');
     const base = await realpath(root);
@@ -112,7 +112,7 @@ export class OfficeStore {
       if (bytes.length > MAX_FILE) throw new Error('FILE_LIMIT_50MB');
       const after = await handle.stat();
       if (after.mtimeMs !== info.mtimeMs || after.size !== info.size) throw new Error('FILE_BUSY_RETRY');
-      if (/\.(docx|xlsx|pptx)$/i.test(name) && bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])) < Math.max(0, bytes.length - 65557)) throw new Error('OFFICE_FILE_INCOMPLETE_RETRY');
+      if (!originalBytes && /\.(docx|xlsx|pptx)$/i.test(name) && bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06])) < Math.max(0, bytes.length - 65557)) throw new Error('OFFICE_FILE_INCOMPLETE_RETRY');
       return bytes;
     } finally { await handle.close(); }
   }
@@ -143,7 +143,7 @@ export class OfficeStore {
       const files: Array<Record<string, unknown>> = [];
       for (const name of names) {
         try {
-          const bytes = await this.readWorkspace(base, name);
+          const bytes = await this.readWorkspace(base, name, true);
           try { await this.snapshot(state, name, bytes); } catch (error) { warnings.push((error as Error).message); }
           const info = await stat(path.join(base, name));
           files.push({ path: name, name: path.basename(name), byteSize: bytes.length, modifiedAt: info.mtime.toISOString(),
@@ -161,6 +161,11 @@ export class OfficeStore {
     const bytes = await readFile(path.join(this.directory, entry.id + '.bin'));
     if (digest(bytes) !== entry.sha256) throw new Error('VERSION_INTEGRITY_ERROR');
     return bytes;
+  }
+
+  /** Private original-byte download stays available even when Office conversion fails. */
+  async downloadOriginal(root: string, name: string, version?: string): Promise<Buffer> {
+    return version ? this.download(root, name, version) : this.readWorkspace(root, name, true);
   }
 
   async upload(root: string, name: string, bytes: Buffer, overwrite = false, expectedCurrentSha256?: string): Promise<void> {

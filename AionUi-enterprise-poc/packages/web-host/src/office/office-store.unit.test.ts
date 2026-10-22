@@ -138,3 +138,15 @@ test('delivery receipts persist by actor and dataset without exposing another em
   expect(await second.deliveryReceipt('a'.repeat(64), 'report.docx')).toBeUndefined();
   await expect(first.rememberDelivery('not-a-hash', 'report.docx', 'b'.repeat(64))).rejects.toThrow('INVALID_DELIVERY_RECEIPT');
 });
+
+test.runIf(process.platform === 'linux')('invalid Office originals remain listed and downloadable without weakening tool validation or path isolation', async () => {
+  const { root, workspace } = await fixture();
+  const store = await OfficeStore.create(root, actor('raw-office'));
+  await writeFile(path.join(workspace, 'broken.xlsx'), 'PK broken original');
+  await expect(store.download(workspace, 'broken.xlsx')).rejects.toThrow('OFFICE_FILE_INCOMPLETE_RETRY');
+  expect((await store.downloadOriginal(workspace, 'broken.xlsx')).toString()).toBe('PK broken original');
+  expect((await store.files(workspace)).files.some(file => file.path === 'broken.xlsx')).toBe(true);
+  await writeFile(path.join(root, 'outside.xlsx'), 'private');
+  await symlink(path.join(root, 'outside.xlsx'), path.join(workspace, 'escape.xlsx'));
+  await expect(store.downloadOriginal(workspace, 'escape.xlsx')).rejects.toThrow('WORKSPACE_DENIED');
+});

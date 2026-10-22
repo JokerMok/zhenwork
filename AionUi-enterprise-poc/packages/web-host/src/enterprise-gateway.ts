@@ -797,7 +797,7 @@ export async function startEnterpriseGateway(
         const version = url.searchParams.get('version') || undefined;
         if (attachment && version) return reply(res, 400, { error: 'ATTACHMENT_HISTORY_UNAVAILABLE' });
         if (url.pathname === '/enterprise/files/preview' && req.method === 'GET') {
-          const bytes = await store.download(inputRoot, name, version);
+          const bytes = await store.downloadOriginal(inputRoot, name, version);
           const hash = createHash('sha256').update(bytes).digest('hex');
           if (url.searchParams.get('knownSha') === hash)
             return reply(res, 200, { unchanged: true, sourceSha256: hash });
@@ -812,14 +812,14 @@ export async function startEnterpriseGateway(
           if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
           if (
             createHash('sha256')
-              .update(await store.download(inputRoot, name, version))
+              .update(await store.downloadOriginal(inputRoot, name, version))
               .digest('hex') !== hash
           )
             return reply(res, 409, { error: 'FILE_CHANGED_RETRY' });
           return reply(res, 200, preview);
         }
         if (url.pathname === '/enterprise/files/download' && req.method === 'GET') {
-          const bytes = await store.download(inputRoot, name, version);
+          const bytes = await store.downloadOriginal(inputRoot, name, version);
           if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
           res.writeHead(200, {
             'content-type': 'application/octet-stream',
