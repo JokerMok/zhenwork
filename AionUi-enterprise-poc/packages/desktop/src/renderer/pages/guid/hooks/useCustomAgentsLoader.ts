@@ -7,7 +7,7 @@
 import { ipcBridge } from '@/common';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import type { Assistant } from '@/common/types/agent/assistantTypes';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import useSWR, { mutate as swrMutate } from 'swr';
 
 type UseCustomAgentsLoaderResult = {
@@ -30,8 +30,13 @@ type UseCustomAgentsLoaderResult = {
 export const useCustomAgentsLoader = (): UseCustomAgentsLoaderResult => {
   // Preset assistants share their own cache so settings / guid / conversation
   // all see the same list without duplicate HTTP calls.
-  const [catalogRevision, setCatalogRevision] = useState(0);
-  const { data: assistantList, error: catalogLoadError, isValidating } = useSWR('assistants.list', async () => {
+  const enterprise = isEnterpriseWeb();
+  const catalogKey = enterprise ? 'enterprise.guid.assistant.catalog' : 'assistants.list';
+  const {
+    data: catalog,
+    error: catalogLoadError,
+    isValidating,
+  } = useSWR<Assistant[] | { assistants: Assistant[]; revision: number }>(catalogKey, async () => {
     try {
       if (isEnterpriseWeb()) {
         const response = await fetch('/enterprise/resources/refresh', {
@@ -45,19 +50,21 @@ export const useCustomAgentsLoader = (): UseCustomAgentsLoaderResult => {
         if (!response.ok) throw new Error(result.error || 'RESOURCE_REFRESH_FAILED');
       }
       const assistants = await ipcBridge.assistants.list.invoke();
-      setCatalogRevision(Date.now());
-      return assistants;
+      // Keep freshness with the shared value: a remounted Guid can reuse SWR's
+      // deduplicated result without losing a component-local completion flag.
+      return enterprise ? { assistants, revision: Date.now() } : assistants;
     } catch (error) {
       console.error('Failed to load assistants:', error);
       if (isEnterpriseWeb()) throw error;
       return [] as Assistant[];
     }
   });
-  const assistants = assistantList ?? [];
+  const assistants = Array.isArray(catalog) ? catalog : (catalog?.assistants ?? []);
+  const catalogRevision = !Array.isArray(catalog) ? (catalog?.revision ?? 0) : 0;
 
   useEffect(() => {
-    void swrMutate('assistants.list');
-  }, []);
+    void swrMutate(catalogKey);
+  }, [catalogKey]);
 
   return {
     assistants,
