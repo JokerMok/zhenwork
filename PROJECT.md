@@ -5,7 +5,7 @@
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261022-web-office-v15`；准确应用 SHA：`fbbcd99aae55f825557a99d40639c596d6857e52`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
+- 激活 release：`20261022-web-office-v16`；准确应用 SHA：`bac72eab9a9bb369c707bd04f76e1cb1fe70e6f7`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 本轮重建employee/Admin网页与Host；最终Host-only修复逐字节复用已验证网页，Java/control-source及精确amd64镜像复用，19条迁移未变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
@@ -37,6 +37,7 @@
 - 管理端Office/PDF/图片知识上传、10MiB限制、索引状态/失败原因和正确版本预览接通现有后端。独立完整Skill包脚本/模板实际执行v1/v2，停用/恢复/撤权进入真实Core。
 - 修复原生Skill软删除残留：只清Host管理企业包及其暂存副本，目录描述符/不跟随符号链接，保留个人Skill、会话与业务文件；失败不遗忘待清理项。
 - 真实网页：新普通员工上传/执行/三格式预览和浏览器实际下载、同名续改、刷新、历史恢复；受控真实写入失败→部分交付→只补Word，已有Excel SHA/mtime不变；新包v2实际用脚本与模板；知识原文版本/撤权均有证据。额外文本状态任务曾偏离并被网页取消，补通用状态/文本工具后仅3个工具完成，未新增无关PDF。旧失败保留，不能把取消当业务通过。
+- 双浏览器额外复验了单Core容量：第二员工看到准备/等待页，第一员工正常退出后自动进入；旧身份401，会话/原件/预览/下载隔离保持，未提高并发。
 - 原密码、自动语言、品牌配置、记忆/定时/用量架构保留；v8已通过且未受影响路径复用旧证据，没有再次全历史、桌面或压测。完整Host tsc的research.ts:137既有null推断问题仍在，未扩展修理；相关新增类型、renderer检查、定向用例及真实业务结果单独记录。
 
 ## 配置、身份与数据
@@ -76,8 +77,8 @@ ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh status'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh restart'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh logs 100'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh backup'
-# 当前v15专用：只退应用/配置到v8，保留数据库/文件；将失去本轮新增预览及缓存撤权清理
-ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261022-v15-to-v8.json'
+# 当前v16专用：只退应用/配置到v8，保留数据库/文件；将失去本轮新增预览及缓存撤权清理
+ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261022-v16-to-v8.json'
 ```
 
 回滚审核绑定当前/目标SHA及实际19条迁移hash。应用回滚不等于数据库回滚，也不回退数据库中的默认模型/Skill发布；这些通过管理后台单独版本回退。原默认模型与历史能力包仍保留。没有实际执行应用/数据库回滚、整机重启、down -v、全局prune或清理业务数据。后续新发布/迁移会使本次审核失效。
@@ -87,3 +88,5 @@ ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/ap
 - 仍需独立客户需求及对应真实验收依据，才能作真实客户符合性结论；本轮流程和证据不足处理已实测。
 - 真实外部业务API、真实共享目录尚未指定；不伪造接入成功，不阻塞此次四项修复。无须在聊天提供模型密钥。
 - 其余历史功能保留对应版本证据；本轮为上述定向回归，不代表全企业系统、所有文件格式或任意公式全量验收。
+
+2026-10-22收口实测：Core0；可用内存约4.86GiB、磁盘空闲18.61GiB；Host约206MiB、Java约651MiB。拼豆HTTPS200、ops-check内部200，Caddy及账号中心active。本轮未操作其发布配置。最新一致性备份20261022T103506190160Z.tar.gz为749543218字节，保留2份合计1500061018字节；768MiB单包/2GiB总预算及2GiB最低空闲保持。

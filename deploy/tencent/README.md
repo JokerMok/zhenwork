@@ -10,7 +10,7 @@
 
 ## 2026-10-22 当前部署记录
 
-当前应用release `20261022-web-office-v15` / SHA `fbbcd99aae55f825557a99d40639c596d6857e52`。员工/管理网页重建并验证后，最终Host-only修复复用其精确哈希；Java/control及19迁移、amd64镜像保留。网页预览/完整包实际执行/更新/撤权/部分交付证据在私有20261022验收报告。管理员当前凭据由用户安全输入保存至root0600 `shared/config/qa-admin-current.json`，初始化文件不是当前口令。新发布先按manifest审查，再既有finalize；回滚审核 `shared/config/rollback-reviews/20261022-v15-to-v8.json`，只退应用/配置，不回退数据库或授权。
+当前应用release `20261022-web-office-v16` / SHA `bac72eab9a9bb369c707bd04f76e1cb1fe70e6f7`。员工/管理网页重建并验证后，最终Host-only修复复用其精确哈希；Java/control及19迁移、amd64镜像保留。网页预览/完整包实际执行/更新/撤权/部分交付证据在私有20261022验收报告。管理员当前凭据由用户安全输入保存至root0600 `shared/config/qa-admin-current.json`，初始化文件不是当前口令。新发布先按manifest审查，再既有finalize；回滚审核 `shared/config/rollback-reviews/20261022-v16-to-v8.json`，只退应用/配置，不回退数据库或授权。
 
 以下v8记录作为历史基线保留：
 
