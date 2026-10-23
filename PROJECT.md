@@ -128,3 +128,11 @@ ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/ap
 ### 2026-10-23 首页资源刷新定向修复
 
 已在test1001真实网页复现：长模型输出过程中进入 `/#/guid`，旧首页两次POST资源刷新，Core正确判定任务活跃却被UI解释为配置缺失，助手目录拒绝且错误码漏插值。空闲路径可用，本轮未发现永久残留active的证据。修复将首页改为只读目录/状态，显式刷新忙时202排队、同员工并发复用，空闲15秒调度；保留真实任务和实时权限复核。只重建员工网页/Host，复用其他产物。发布及公网回归结果在本节后续记录。
+
+### 2026-10-23 首页刷新最终部署
+
+当前 `20261023-guid-refresh-v3` / 实际应用SHA `5dac6e06240eb711c40b4fdf6730d239a05418e9`。仅员工Web/Host重建；管理/Java/control、23迁移、精确amd64镜像与Core1/启动1/闲120秒保持。v1真实回归发现状态接线遗漏，v2只暂存，v3修正CLI到Gateway状态回调并通过真实员工回归。
+
+test1001原密码实际登录：首页/刷新、新会话/双标签、真实长模型中显式刷新202 pending、完成和取消后安全更新ready、正常网页默认模型回复、发布相关服务重启后的旧会话保留和新对话通过。状态GET503故障注入的错误码/快速重试证据与真实模型结果分开；未制造上游模型故障或宣称永久active已复现。安全门禁包含前台90秒租约，不强杀任务；首页继续使用当前有权资源，后台15秒安全调度。私有证据 `.codex/guid-refresh/acceptance-report.md`，服务器 `shared/config/acceptance/20261023-guid-refresh.md`。
+
+回滚审核 `shared/config/rollback-reviews/20261023-guid-v3-to-inheritance-v7.json`，只恢复v7应用/配置，保留23迁移/文件/权限，会恢复旧首页缺陷；未实际执行。日志/重启仍用manage.sh，更新沿用restage-web --employee-only与finalize。未扩展办公场景或新增外部接口验收。

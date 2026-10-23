@@ -165,3 +165,11 @@ verify-admin-usability.mjs需要环境变量及私有qa-private.json所指的专
 登录来源仅由 Caddy 的实际 socket 来源认定，生产当前没有上游可信 CDN/负载均衡；浏览器 XFF、X-Real-IP 等输入不能改写来源。Caddy→Host→RC2 使用私有 edge token 传递 IP/UA，支持单个 IPv4/IPv6；在线用户与登录日志统一由 RC2 原解析链记录。新增代理须先明确 CIDR/信任链，不能直接取客户端 XFF 第一项。私有 edge/monitor token 不进入浏览器、模型或访问日志。
 
 员工缺模型/授权时应联系组织管理员；身份过期回到员工登录页。环境准备有180秒排队上限、明确失败与重试。Admin监控通过原 Cookie 和 `monitor:admin:list` 权限访问 `/monitor/`，独立 JVM 仅监听18909、Xmx256MiB/MemoryMax384MiB，公网只读。系统工具总览只链接当前权限允许的既有监控页面，生产代码生成器继续禁用。运行产物及真实网页验收以相应 RELEASE.json、VERIFIED.json 和项目维护记录为准。
+
+### 2026-10-23 首页刷新最终部署
+
+当前 `20261023-guid-refresh-v3` / 实际应用SHA `5dac6e06240eb711c40b4fdf6730d239a05418e9`。仅员工Web/Host重建；管理/Java/control、23迁移、精确amd64镜像与Core1/启动1/闲120秒保持。v1真实回归发现状态接线遗漏，v2只暂存，v3修正CLI到Gateway状态回调并通过真实员工回归。
+
+test1001原密码实际登录：首页/刷新、新会话/双标签、真实长模型中显式刷新202 pending、完成和取消后安全更新ready、正常网页默认模型回复、发布相关服务重启后的旧会话保留和新对话通过。状态GET503故障注入的错误码/快速重试证据与真实模型结果分开；未制造上游模型故障或宣称永久active已复现。安全门禁包含前台90秒租约，不强杀任务；首页继续使用当前有权资源，后台15秒安全调度。私有证据 `.codex/guid-refresh/acceptance-report.md`，服务器 `shared/config/acceptance/20261023-guid-refresh.md`。
+
+回滚审核 `shared/config/rollback-reviews/20261023-guid-v3-to-inheritance-v7.json`，只恢复v7应用/配置，保留23迁移/文件/权限，会恢复旧首页缺陷；未实际执行。日志/重启仍用manage.sh，更新沿用restage-web --employee-only与finalize。未扩展办公场景或新增外部接口验收。
