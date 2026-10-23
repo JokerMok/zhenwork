@@ -1,14 +1,25 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-22。当前范围：网页内嵌预览、普通员工任务与成果、企业配置/能力运行连接，以及真实网页定向回归；不制作桌面安装包。
+核对日期：2026-10-23。当前范围：企业外部连接管理、只读 MCP 与查询专家；本轮配置与隔离回归通过，真实上游业务查询仍受凭据/合同阻塞。不制作桌面安装包。
 
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261022-web-office-v16`；准确应用 SHA：`bac72eab9a9bb369c707bd04f76e1cb1fe70e6f7`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
+- 激活 release：`20261023-external-query-v2`；准确应用 SHA：`0c408c209f2ceb1df525c7d436754b7cfd5b6ef4`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
-- 本轮重建employee/Admin网页与Host；最终Host-only修复逐字节复用已验证网页，Java/control-source及精确amd64镜像复用，19条迁移未变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
+- 本轮重建employee/Admin网页、Host与Java；保留精确amd64原生镜像。迁移链20条，新增0020外部连接/调用表与管理菜单，原19条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
+
+## 2026-10-23 外部数据连接
+
+管理员入口：管理后台“AI 资源管理 → 外部数据连接”，路径 `/admin/workspace-resources/connections`。说明见 `docs/external-connections.md`，逐接口映射见 `docs/external-query-mapping.md`。私有实际证据：`.codex/external-connectors/acceptance-report.md`。
+
+- 已实现：实际业务单位/环境/固定地址/方法白名单、AES-GCM加密凭据、留空保留/明确清除、验证时间与安全失败原因、启停、既有USER/ROLE/DEPARTMENT资源授权、独立MCP及最多8个连接的查询专家绑定、无原始参数/结果的调用元数据审计。凭据不进入助手、模型或资源包；只读调用在返回前再次复核身份和权限。
+- 国家平台：24项官方只读方法，SM4/SM3、空对象加密、数字/字符串1000、字段/单位/分页/日期范围校验已实现并经定向协议测试；台账企业ID由服务端注入。企业身份须用entInfo核对名称/ID/信用代码。**尚无真实物联网凭据，真实单位验证、员工单项/组合/追问及成果生成未验收**。小微目标企业仍受当前单位边界限制，不能据目录存在就宣称已开放跨单位查询。
+- 优废：11项原拼写登记，采用本次已确认的 `/biz-api/sql/data|dataList`、JSON POST及无Bearer的JWT头定义。受保护Swagger均401、本地工作流无逐方法依据；具体端点映射、参数、返回口径及业务成功码未核实，全部UNVERIFIED/不可调用。**优废实际查询尚未实现开放**，不将目录或占位配置说成成功接入。
+- 真实网页通过：后台创建两类停用待配置项、保存、无凭据/格式错误的持久反馈、留空更新密文不变、显式清除后无凭据且停用、版本冲突、独立MCP页面授权/撤回。服务端拒绝非管理员、无授权、撤权及停用调用。实际服务重启后配置/默认模型逐字段保留；普通员工在存在不可用外部资源时登录、新建空白任务、默认模型流式响应/持久化及退出旧身份401通过。
+- 真实外部业务查询与专家多源回答：BLOCKED，未用合成结果替代。两条“待配置”记录均停用、无凭据、QA共享已撤回；原模型、助手、办公资料、品牌及自动语言保留。
+- 新增配置表随既有DB一致性备份，沿用数据库外的原主密钥；无需新增MCP进程或公网端口。最新备份和资源实测见当前VERIFIED与两端SERVER记录。
 
 ## 2026-10-21 四项修复历史验收
 
@@ -77,16 +88,16 @@ ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh status'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh restart'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh logs 100'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh backup'
-# 当前v16专用：只退应用/配置到v8，保留数据库/文件；将失去本轮新增预览及缓存撤权清理
-ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261022-v16-to-v8.json'
+# 当前external-query-v2专用：只退应用/配置到已验证v16，保留20条数据库迁移、文件及授权
+ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261023-external-v2-to-web-office-v16.json'
 ```
 
-回滚审核绑定当前/目标SHA及实际19条迁移hash。应用回滚不等于数据库回滚，也不回退数据库中的默认模型/Skill发布；这些通过管理后台单独版本回退。原默认模型与历史能力包仍保留。没有实际执行应用/数据库回滚、整机重启、down -v、全局prune或清理业务数据。后续新发布/迁移会使本次审核失效。
+当前回滚审核绑定v2/v16准确SHA、实际20条迁移及目标19条前缀。v16不提供新外部查询API和页面，不能把回退应用当成撤销连接配置。应用回滚不等于数据库回滚，也不回退数据库中的默认模型/Skill发布；这些通过管理后台单独版本回退。原默认模型与历史能力包仍保留。没有实际执行应用/数据库回滚、整机重启、down -v、全局prune或清理业务数据。后续新发布/迁移会使本次审核失效。
 
 ## 外部条件与未覆盖事项
 
 - 仍需独立客户需求及对应真实验收依据，才能作真实客户符合性结论；本轮流程和证据不足处理已实测。
-- 真实外部业务API、真实共享目录尚未指定；不伪造接入成功，不阻塞此次四项修复。无须在聊天提供模型密钥。
+- 当前已指定优废与国家平台接口；缺各自真实业务凭据及优废逐方法合同，详见2026-10-23记录。真实共享目录尚未指定。无须在聊天提供任何密钥。
 - 其余历史功能保留对应版本证据；本轮为上述定向回归，不代表全企业系统、所有文件格式或任意公式全量验收。
 
 2026-10-22收口实测：Core0；可用内存约4.86GiB、磁盘空闲18.61GiB；Host约206MiB、Java约651MiB。拼豆HTTPS200、ops-check内部200，Caddy及账号中心active。本轮未操作其发布配置。最新一致性备份20261022T103506190160Z.tar.gz为749543218字节，保留2份合计1500061018字节；768MiB单包/2GiB总预算及2GiB最低空闲保持。

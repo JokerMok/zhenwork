@@ -8,7 +8,13 @@
 
 应用版本看 `current/RELEASE.json`、实际验收看 `current/VERIFIED.json`。初次源码 SHA 为 `42d834a75722bdbe6331dba226d0febdc6179383`，额外保留 Core 依赖锁及空会话回收补丁，各自 SHA256 在 manifest 中。补丁只用于该准确源码版本；不关闭身份复核、目录隔离、后台授权或单次工具审批。
 
-## 2026-10-22 当前部署记录
+## 2026-10-23 当前部署记录
+
+当前 `20261023-external-query-v2` / 应用SHA `0c408c209f2ceb1df525c7d436754b7cfd5b6ef4`；当前GitHub维护提交与应用SHA分别记录。Java/网页/Host重建，原amd64镜像不变；0020是新增表和菜单，原19条迁移不变。后台 `/admin/workspace-resources/connections`，凭据只进现有加密服务与数据库。配置/权限/默认办公入口及重启恢复有真实网页/HTTP证据；国家平台24方法仅完成协议实现与受控测试，缺真实物联网凭据；优废11方法合同未核实、不可调用，另缺JWT。真实单项/组合/追问与专家多源业务验收均BLOCKED，不冒充成功接入。
+
+最新回滚审核 `shared/config/rollback-reviews/20261023-external-v2-to-web-office-v16.json`，只退应用/配置至已验证v16，保留20条DB迁移和业务数据；新外部菜单/API在旧版不可使用。既有一致备份、Core并发1/启动1/空闲120秒/等待180秒保留。操作与接口合同见 `docs/external-connections.md` 和 `docs/external-query-mapping.md`。
+
+## 2026-10-22 历史部署记录
 
 当前应用release `20261022-web-office-v16` / SHA `bac72eab9a9bb369c707bd04f76e1cb1fe70e6f7`。员工/管理网页重建并验证后，最终Host-only修复复用其精确哈希；Java/control及19迁移、amd64镜像保留。网页预览/完整包实际执行/更新/撤权/部分交付证据在私有20261022验收报告。管理员当前凭据由用户安全输入保存至root0600 `shared/config/qa-admin-current.json`，初始化文件不是当前口令。新发布先按manifest审查，再既有finalize；回滚审核 `shared/config/rollback-reviews/20261022-v16-to-v8.json`，只退应用/配置，不回退数据库或授权。
 
