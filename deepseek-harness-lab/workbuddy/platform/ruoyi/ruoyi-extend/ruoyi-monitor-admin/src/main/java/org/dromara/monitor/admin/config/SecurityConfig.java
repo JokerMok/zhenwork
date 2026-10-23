@@ -115,6 +115,14 @@ public class SecurityConfig {
      */
     private OncePerRequestFilter trustedProxyAuthentication() {
         return new OncePerRequestFilter() {
+            // SBA controllers complete on an ASYNC dispatch. Re-establish the
+            // request-scoped proxy identity there instead of persisting a
+            // monitor session that could outlive RC2 permission revocation.
+            @Override
+            protected boolean shouldNotFilterAsyncDispatch() {
+                return false;
+            }
+
             @Override
             protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                 throws ServletException, IOException {
