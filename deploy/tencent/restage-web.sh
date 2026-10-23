@@ -130,7 +130,7 @@ m['artifactReusedFrom']={
     'sourceSha':source_sha,
     'reusedArtifacts':['control-source','deploy-assets','monitor.jar','rc2.jar'],
 }
-if employee_only=='1':m['artifactReusedFrom']['reusedArtifacts'].append('admin')
+if employee_only=='1':m['artifactReusedFrom']['reusedArtifacts'].insert(0,'admin')
 pathlib.Path(out).write_text(json.dumps(m,indent=2)+'\n')
 PY
 
