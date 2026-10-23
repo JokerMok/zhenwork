@@ -52,13 +52,47 @@ class ExternalQueryConnectorTest {
     }
 
     @Test
-    void ufeiInventoryIsExplicitButCannotRunWithoutVerifiedContract() {
+    void ufeiFixedInventoryExposesOnlyConfirmedEmptySchemas() {
         var connector = new UfeiDashboardConnector();
         assertEquals(11, connector.catalog().methods().size());
-        assertTrue(connector.catalog().methods().stream().allMatch(method -> "UNVERIFIED".equals(method.contractStatus())));
-        var error = assertThrows(ConnectorException.class,
-            () -> connector.query("https://dev-aiapi.ufei.center", new ConnectorCredential("configured", "unit"), "dealerData", Map.of()));
-        assertEquals("ConnectorContractUnverified", error.code);
+        assertTrue(connector.catalog().methods().stream().allMatch(method -> "VERIFIED".equals(method.contractStatus())
+            && ((Map<?,?>)method.inputSchema().get("properties")).isEmpty()));
+        var error = assertThrows(ConnectorException.class, () -> connector.query("http://127.0.0.1:9",
+            new ConnectorCredential("configured", "local label"), "entSummary", Map.of("date","2026-01")));
+        assertEquals("ConnectorParameterNotAllowed", error.code);
+    }
+
+    @Test
+    void ufeiUsesRawAuthorizationRealSuccessCodeAndCompleteTrendList() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var codes = new java.util.concurrent.ConcurrentLinkedQueue<>(java.util.List.of("200","0"));
+        server.createContext("/biz-api/sql/dataList", exchange -> {
+            assertEquals("test-private-jwt",exchange.getRequestHeaders().getFirst("Authorization"));
+            var body=JsonUtils.parseObject(exchange.getRequestBody().readAllBytes(),Map.class);
+            assertEquals(Map.of("type","hwDashboardSql","method","entTend","params",Map.of()),body);
+            byte[] response=JsonUtils.toJsonString(Map.of("code",codes.remove(),"data","[{\"dateAt\":\"2026-01\",\"count\":2,\"v\":\"snapshot\"},{\"dateAt\":\"2026-02\",\"count\":3,\"v\":\"snapshot\"}]")).getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200,response.length);exchange.getResponseBody().write(response);exchange.close();
+        });
+        server.start();
+        var connector=new UfeiDashboardConnector(HttpClient.newHttpClient(),Clock.systemUTC());
+        String base="http://127.0.0.1:"+server.getAddress().getPort();
+        var result=connector.query(base,new ConnectorCredential("test-private-jwt","local label"),"entTend",Map.of());
+        assertEquals(2,((java.util.List<?>)result.data()).size());
+        assertEquals("2026-02",((Map<?,?>)result.metadata().get("sourcePeriod")).get("to"));
+        assertEquals("UfeiBusinessCode0",assertThrows(ConnectorException.class,()->connector.query(base,new ConnectorCredential("test-private-jwt","label"),"entTend",Map.of())).code);
+    }
+
+    @Test
+    void cswmBindsReturnedEnterpriseInsteadOfTreatingLocalLabelAsAuthentication() throws Exception {
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/iot-server/iot/entInfo",exchange->{
+            exchange.getRequestBody().readAllBytes();
+            byte[] response=JsonUtils.toJsonString(Map.of("code",1000,"data",Map.of("qyid","ENT-1","dwmc","Actual enterprise","tyshxydm","CREDIT"))).getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200,response.length);exchange.getResponseBody().write(response);exchange.close();
+        });server.start();
+        var result=new CswmIotConnector(HttpClient.newHttpClient(),Clock.systemUTC()).validate(baseUrl(),new ConnectorCredential(TEST_TOKEN,"Local display label"));
+        assertTrue(result.valid());assertEquals("ENT-1",result.metadata().get("enterpriseId"));
+        assertFalse(new CswmIotConnector().validate("https://iotapi.cswm.org.cn/iot-server",new ConnectorCredential(TEST_TOKEN,"")).valid());
     }
 
     @Test

@@ -54,9 +54,9 @@ public final class CswmIotConnector implements ExternalQueryConnector {
             String enterpriseId = text(enterprise.get("qyid"));
             String name = text(enterprise.get("dwmc"));
             String creditCode = text(enterprise.get("tyshxydm"));
-            boolean matched = credential.businessIdentity().equals(enterpriseId)
-                || credential.businessIdentity().equals(creditCode)
-                || credential.businessIdentity().equals(name);
+            // The local business-unit label is not an upstream authentication parameter.
+            // Bind queries to the identity returned by the credential-scoped entInfo call.
+            boolean matched = !enterpriseId.isBlank() && (!name.isBlank() || !creditCode.isBlank());
             var metadata = new LinkedHashMap<String, Object>();
             metadata.put("matched", matched);
             metadata.put("enterpriseId", enterpriseId);
@@ -65,7 +65,7 @@ public final class CswmIotConnector implements ExternalQueryConnector {
             metadata.put("verifiedAt", clock.instant().toString());
             metadata.put("environment", environment);
             return new ConnectorValidationResult(matched, matched ? "VALID" : "BUSINESS_IDENTITY_MISMATCH",
-                matched ? "Credential and enterprise identity were verified" : "Credential belongs to a different enterprise",
+                matched ? "已通过 /iot/entInfo 验证凭据，并绑定其返回的实际企业身份；请管理员核对下方单位信息" : "单位信息接口未返回可绑定的企业身份",
                 Map.copyOf(metadata));
         } catch (ConnectorException e) {
             return new ConnectorValidationResult(false, e.code, e.getMessage(), Map.of(
@@ -154,7 +154,7 @@ public final class CswmIotConnector implements ExternalQueryConnector {
         return value == null ? "" : value.toString();
     }
 
-    private static Object sanitize(Object value, String token) {
+    static Object sanitize(Object value, String token) {
         if (value instanceof Map<?, ?> source) {
             var clean = new LinkedHashMap<String, Object>();
             for (var entry : source.entrySet()) {

@@ -54,6 +54,18 @@ export interface ExternalConnection {
   environment: ConnectionEnvironment;
   baseUrl: string;
   credentialConfigured: boolean;
+  configurationConsistent?: boolean;
+  expectedBaseUrl?: string;
+  adapterStatus?: string;
+  validationResult?: {
+    valid?: boolean;
+    category?: string;
+    message?: string;
+    code?: string;
+    businessCode?: string;
+    method?: string;
+    checkedAt?: string;
+  };
   verifiedIdentity?: VerifiedIdentity | boolean;
   testedStatus: string;
   testedAt?: string;

@@ -56,7 +56,7 @@ public class ExternalMcpDispatcher {
         }catch(WorkspaceDenied denied){
             connections.recordCall(runtime,user,toolName,"REVOKED",safeCode(denied.getMessage()),elapsed(started));throw denied;
         }catch(ConnectorException exception){
-            String code=safeCode(exception.code);connections.recordCall(runtime,user,toolName,"FAILED",code,elapsed(started));return response(rpcId,toolError(code));
+            String code=safeCode(exception.code);connections.recordCall(runtime,user,toolName,"FAILED",code,elapsed(started));return response(rpcId,toolError(code,Objects.toString(sanitize(exception.getMessage(),runtime.credential()),"上游查询失败")));
         }catch(ToolFailure failure){
             connections.recordCall(runtime,user,toolName,"FAILED",failure.code,elapsed(started));return response(rpcId,toolError(failure.code));
         }catch(Exception exception){
@@ -75,6 +75,7 @@ public class ExternalMcpDispatcher {
     private static String description(ConnectorMethod method){return method.title()+"。单位："+method.unit()+"；时间口径："+method.timeSemantics()+"；环境说明："+method.environmentNotes();}
     private void authorizeReturn(UUID id,long user,Runnable recheck){recheck.run();access.owned(id,user);}
     private static Map<String,Object> envelopeSchema(Map<String,Object> data){return Map.of("type","object","properties",Map.of("data",data,"source",Map.of("type","object","additionalProperties",true)),"required",List.of("data","source"),"additionalProperties",false);}
+    private static Map<String,Object> toolError(String code,String message){return Map.of("content",List.of(Map.of("type","text","text",JsonUtils.toJsonString(Map.of("code",code,"message",message.substring(0,Math.min(400,message.length())))))),"isError",true);}
     private static Map<String,Object> toolError(String code){return Map.of("content",List.of(Map.of("type","text","text",code)),"isError",true);}
     private static ResponseEntity<byte[]> response(Object id,Object result){Map<String,Object> frame=new LinkedHashMap<>();frame.put("jsonrpc","2.0");frame.put("id",id);frame.put("result",result);return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL,"no-store").contentType(MediaType.APPLICATION_JSON).body(JsonUtils.toJsonString(frame).getBytes(StandardCharsets.UTF_8));}
     @SuppressWarnings("unchecked") private static Map<String,Object> map(Object raw){if(raw==null)return new LinkedHashMap<>();if(!(raw instanceof Map<?,?> source))throw new ToolFailure("InvalidToolArguments");Map<String,Object> out=new LinkedHashMap<>();source.forEach((k,v)->out.put(k.toString(),v));return out;}

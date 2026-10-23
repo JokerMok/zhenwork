@@ -111,6 +111,10 @@ final class ConnectorHttp {
             throw new ConnectorException(503, "ConnectorInterrupted", "External query was interrupted");
         } catch (java.net.http.HttpTimeoutException e) {
             throw new ConnectorException(504, "ConnectorTimeout", "External query timed out");
+        } catch (javax.net.ssl.SSLException e) {
+            throw new ConnectorException(503, "ConnectorTlsFailed", "上游 TLS 安全连接失败，请检查证书和服务状态");
+        } catch (java.net.ConnectException | java.net.UnknownHostException e) {
+            throw new ConnectorException(503, "ConnectorNetworkFailed", "无法连接上游地址，请检查网络和域名解析");
         } catch (IOException e) {
             if (bodyExpired.get()) throw new ConnectorException(504, "ConnectorTimeout", "External query timed out");
             throw new ConnectorException(503, "ConnectorUnavailable", "External service is unavailable");

@@ -62,7 +62,7 @@ assert "Host-only restage refused changed path" in restage and "*)" in restage
 assert "packages/web-cli/src/enterprise-entry.ts" in restage and "build-web.mjs" not in restage
 assert "artifactReusedFrom" in restage and "artifactReusedFrom" in prepare
 assert "systemctl" not in restage and "sudo bash '$remote_root/deploy/activate.sh'" not in restage and "current.next" not in restage
-assert "assert reuse['reusedArtifacts'] in (['admin','control-source','employee','rc2.jar'], ['admin','control-source','rc2.jar'], ['control-source','rc2.jar'])" in prepare
+assert "assert reuse['reusedArtifacts'] in (['admin','control-source','employee','rc2.jar'], ['admin','control-source','rc2.jar'], ['control-source','rc2.jar'], ['employee','web-host.cjs'])" in prepare
 for source in (configure,activate):
     assert "shared/uploads" in source and "shared/config/uploads" in source
     assert "target.is_symlink() or not target.is_dir()" in source
@@ -90,3 +90,6 @@ assert 'packages/desktop/src/renderer/*' in web_restage
 assert 'packages/desktop/src/common/chat/normalizeToolCall.ts)' in web_restage
 assert 'full reviewed stage' in web_restage and '*)' in web_restage
 assert 'systemctl' not in web_restage and 'current.next' not in web_restage
+
+assert 'git diff --quiet "$base_sha" "$sha" -- AionUi-enterprise-poc deploy/tencent/build-web.mjs' in stage
+assert "['employee','web-host.cjs']" in prepare and 'artifact_hash(after)==hashes[name]' in prepare

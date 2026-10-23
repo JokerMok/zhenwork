@@ -49,7 +49,7 @@ if reuse is not None:
  assert re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._-]{5,100}',reuse['release'])
  assert re.fullmatch(r'[a-f0-9]{40}',reuse['sourceSha'])
  assert reuse['release']!=release
- assert reuse['reusedArtifacts'] in (['admin','control-source','employee','rc2.jar'], ['admin','control-source','rc2.jar'], ['control-source','rc2.jar'])
+ assert reuse['reusedArtifacts'] in (['admin','control-source','employee','rc2.jar'], ['admin','control-source','rc2.jar'], ['control-source','rc2.jar'], ['employee','web-host.cjs'])
  base=pathlib.Path('/srv/apps/zhenwork/releases')/reuse['release']
  assert (base/'SOURCE_SHA').read_text().strip()==reuse['sourceSha']
  subprocess.run(['sha256sum','-c','SHA256SUMS'],cwd=base,stdout=subprocess.DEVNULL,check=True)
@@ -69,7 +69,7 @@ if reuse is not None:
   assert artifact_hash(after)==hashes[name],name
  m['artifactReusedFrom']={'release':reuse['release'],'sourceSha':reuse['sourceSha'],
                           'reusedArtifacts':reuse['reusedArtifacts'],'artifactSha256':hashes}
- m['buildLocation']=('macOS Host-only rebuild; Web/Admin/Java/control source reused from immutable release' if 'employee' in reuse['reusedArtifacts'] else ('macOS Web/Host rebuild; Admin/Java/control source reused from immutable release' if 'admin' in reuse['reusedArtifacts'] else 'macOS Web/Admin/Host rebuild; Java/control source reused from immutable release'))
+ m['buildLocation']=('macOS Admin/Java rebuild; employee/Host reused from immutable release' if reuse['reusedArtifacts']==['employee','web-host.cjs'] else ('macOS Host-only rebuild; Web/Admin/Java/control source reused from immutable release' if 'employee' in reuse['reusedArtifacts'] else ('macOS Web/Host rebuild; Admin/Java/control source reused from immutable release' if 'admin' in reuse['reusedArtifacts'] else 'macOS Web/Admin/Host rebuild; Java/control source reused from immutable release')))
 ops=pathlib.Path('/srv/apps/zhenwork/deploy')
 m['maintenanceSha256']={n:hashlib.sha256((ops/n).read_bytes()).hexdigest() for n in ('activate.sh','bootstrap.py','build-linux.sh','finalize-release.sh','manage.sh','prepare-office-host.sh')}
 migrations=[]

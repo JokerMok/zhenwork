@@ -133,3 +133,5 @@ verify-admin-usability.mjs需要环境变量及私有qa-private.json所指的专
 连续引文至少2字符、最多2,000字符，候选最多16条；每条引用严格使用 `quote` 或 `quoteIndex` 二选一。引用错误指出条目序号和原因，不能重复原样提交。每个员工Core最多128个来源/2MiB文本，每个会话最多64个来源，30分钟后重新读取；来源授权、版本及文件哈希在使用时重查。Excel证据表支持最多12个额外标量列，实际文件修改仍须重新打开检查真实表头、数据行和保留内容。
 
 服务器目录同步通过 `scripts/rc2/install_knowledge_directory_sync_remote.sh tencent-main` 从本地仓库安装或更新工具。它仅写入本项目 tools 目录，不覆盖私有配置或启用真实目录/定时器；实际启用须明确源目录、知识库授权、容量边界和root私有凭据。说明见 `scripts/rc2/README-knowledge-directory-sync.md`。代码更新、应用回退和知识文档撤回分别处理，不借更新删除业务数据。
+
+本轮更新（2026-10-23）：全量发布脚本在所有 `AionUi-enterprise-poc` 源码及 `build-web.mjs` 均与当前不可变发布完全一致时，复用 employee 与 web-host.cjs，仅构建本次管理前端/Java。RELEASE 记录来源发布和逐产物哈希；服务端检查原发布 SHA256SUMS 及复用内容一致。源码变化仍走原完整网页构建，Rust/镜像均不会隐式重建。

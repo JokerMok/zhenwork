@@ -30,9 +30,14 @@
       </el-table-column>
       <el-table-column label="验证" min-width="130">
         <template #default="{ row }">
-          <el-tag :type="statusTag(row.testedStatus)">{{ statusName(row.testedStatus) }}</el-tag>
+          <el-tag :type="row.configurationConsistent === false ? 'warning' : statusTag(row.testedStatus)">
+            {{ validationTitle(connectionRow(row)) }}
+          </el-tag>
           <div v-if="row.testedAt" class="subtle">{{ formatTime(row.testedAt) }}</div>
-          <div v-if="row.lastError" class="connection-error">{{ connectionError(row.lastError) }}</div>
+          <div class="subtle">接口适配：{{ row.adapterStatus === 'READY' ? '已有可用方法' : '尚未就绪' }}</div>
+          <div v-if="validationMessage(connectionRow(row))" class="connection-error">
+            {{ validationMessage(connectionRow(row)) }}
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="状态" width="100">
@@ -59,6 +64,21 @@
       destroy-on-close
     >
       <el-alert v-if="dialogError" :title="dialogError" type="error" :closable="false" class="mb-3" />
+      <el-alert
+        v-if="environmentNeedsReselection"
+        title="已保存的环境与地址不一致，尚未切换实际调用环境。请重新选择环境并保存后再验证。"
+        type="warning"
+        :closable="false"
+        class="mb-3"
+      />
+      <el-alert
+        v-else-if="validationChanged"
+        title="配置已变更，保存后需要重新验证；当前显示的是上次验证记录。"
+        type="info"
+        :closable="false"
+        class="mb-3"
+      />
+      <el-button v-if="environmentNeedsReselection" class="mb-3" @click="environmentChanged">按所选环境重新确认地址</el-button>
       <el-form label-position="top">
         <div class="form-grid">
           <el-form-item label="连接名称" required>
@@ -70,7 +90,11 @@
             </el-select>
           </el-form-item>
           <el-form-item label="业务单位" required>
-            <el-input v-model="form.businessUnit" maxlength="120" placeholder="用于标识此连接服务的业务单位" />
+            <el-input v-model="form.businessUnit" maxlength="120" placeholder="填写此连接所属业务单位的本地显示名称" />
+            <div class="field-help">
+              必填，仅用于本地识别和授权分组，不作为上游鉴权参数。国家平台实际单位以凭据调用 entInfo
+              返回的信息为准，请验证后核对。
+            </div>
           </el-form-item>
           <el-form-item label="环境" required>
             <el-select v-model="form.environment" @change="environmentChanged">
@@ -84,8 +108,8 @@
           </el-form-item>
         </div>
         <el-form-item label="服务地址" required>
-          <el-input v-model="form.baseUrl" placeholder="https://" />
-          <div class="field-help">仅接受连接器目录中已确认的环境地址；尚未确认的正式地址不会猜测开放。</div>
+          <el-input :model-value="form.baseUrl" readonly aria-readonly="true" />
+          <div class="field-help">地址由连接器和环境自动确定，不可手动修改；仅开放已有依据的环境地址。</div>
         </el-form-item>
         <el-form-item :label="editing ? '更新访问凭据' : '访问凭据'">
           <el-input
@@ -98,7 +122,9 @@
               editing && editing.credentialConfigured ? '留空保留已保存凭据' : '可稍后填写；无凭据时验证会明确失败'
             "
           />
-          <div v-if="editing?.credentialConfigured" class="field-help">服务端已有凭据。页面不会读取或回显原值。</div>
+          <div v-if="editing?.credentialConfigured" class="field-help">
+            凭证留空则保留已保存凭证。页面不会读取或回显原值；更换与显式清除分别处理。
+          </div>
           <el-checkbox
             v-if="editing?.credentialConfigured"
             v-model="form.clearCredential"
@@ -156,16 +182,16 @@
     <el-dialog v-model="detailsVisible" title="连接详情" width="720px">
       <template v-if="selected">
         <el-alert
-          v-if="selected.lastError"
-          :title="`最近验证失败：${connectionError(selected.lastError)}`"
-          type="error"
+          v-if="validationMessage(selected)"
+          :title="`${validationTitle(selected)}：${validationMessage(selected)}`"
+          :type="selected.testedStatus === 'ERROR' ? 'error' : 'info'"
           :closable="false"
           class="mb-3"
         />
         <el-alert
-          v-if="identityMismatch(selected)"
-          title="配置的业务单位与接口验证返回的企业名称不一致，请核对是否连接了正确企业。"
-          type="warning"
+          v-if="selected.type === 'CSWM_IOT' && identity(selected)?.name"
+          title="业务单位仅为本地标签。请核对下方接口返回的实际企业名称、企业 ID 和统一社会信用代码，确认凭据用于预期单位。"
+          type="info"
           :closable="false"
           class="mb-3"
         />
@@ -173,7 +199,21 @@
           <el-descriptions-item label="连接">
             {{ selected.name }} · {{ connectorName(selected.type) }}
           </el-descriptions-item>
-          <el-descriptions-item label="业务单位">{{ selected.businessUnit }}</el-descriptions-item>
+          <el-descriptions-item label="业务单位（本地标签）">{{ selected.businessUnit }}</el-descriptions-item>
+          <el-descriptions-item label="环境">{{ environmentName(selected.environment) }}</el-descriptions-item>
+          <el-descriptions-item label="凭证验证">{{ validationTitle(selected) }}</el-descriptions-item>
+          <el-descriptions-item label="接口适配">
+            {{ selected.adapterStatus === 'READY' ? '已有可用方法' : '查询能力尚未就绪' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="查询授权">
+            {{ methodSummary(selected) }}；员工仍需获得共享使用授权
+          </el-descriptions-item>
+          <el-descriptions-item v-if="selected.validationResult?.method" label="验证接口">
+            {{ selected.validationResult.method }}
+          </el-descriptions-item>
+          <el-descriptions-item v-if="selected.validationResult?.businessCode" label="上游业务码">
+            {{ selected.validationResult.businessCode }}
+          </el-descriptions-item>
           <el-descriptions-item label="服务地址">{{ selected.baseUrl }}</el-descriptions-item>
           <el-descriptions-item label="凭据">
             {{ selected.credentialConfigured ? '已在服务端配置' : '未配置' }}
@@ -374,6 +414,7 @@ const detailsVisible = ref(false);
 const sharesVisible = ref(false);
 const callsVisible = ref(false);
 const expertVisible = ref(false);
+const environmentNeedsReselection = ref(false);
 const editing = ref<ExternalConnection>();
 const selected = ref<ExternalConnection>();
 const form = ref<FormState>(emptyForm());
@@ -393,6 +434,14 @@ const expertConnectionIds = ref<string[]>([]);
 
 const currentConnector = computed(() => catalog.value.find(item => item.type === form.value.type));
 const readyConnections = computed(() => rows.value.filter(isReady));
+const validationChanged = computed(
+  () =>
+    !!editing.value &&
+    (form.value.environment !== editing.value.environment ||
+      form.value.businessUnit.trim() !== editing.value.businessUnit ||
+      form.value.credential.trim() !== '' ||
+      form.value.clearCredential)
+);
 const shareDescription = computed(() =>
   selected.value?.assistantId
     ? '员工需要同时获得全部已绑定外部连接和查询专家的查看、使用权限。下方操作不会展示或复制外部系统凭据。'
@@ -423,7 +472,11 @@ function callRow(row: unknown) {
 
 async function message(errorValue: unknown, fallback: string) {
   const result = (await extractErrorMessage(errorValue)) || fallback;
-  return result.includes('VersionConflict') ? '连接版本已变化，请关闭编辑窗口并重新加载后再试。' : result;
+  if (result.includes('VersionConflict')) return '连接版本已变化，请关闭编辑窗口并重新加载后再试。';
+  const code = result.match(
+    /External(?:EnvironmentReselectRequired|EnvironmentMismatch|EnvironmentNotSupported|EndpointNotAllowed|BusinessUnitRequired|NameRequired|EnvironmentRequired)|InvalidExternalCredential/
+  )?.[0];
+  return code ? connectionError(code) : result;
 }
 
 async function load() {
@@ -445,7 +498,7 @@ function connectorName(type: ConnectorType) {
 }
 
 function environmentName(environment: ConnectionEnvironment) {
-  return environment === 'PRODUCTION' ? '生产' : '测试';
+  return environment === 'PRODUCTION' ? '生产环境' : '测试环境';
 }
 
 function connectionError(code?: string) {
@@ -459,10 +512,52 @@ function connectionError(code?: string) {
     ConnectorAccessDenied: '上游未授权此项访问',
     ConnectorTimeout: '上游请求超时，可稍后重试',
     ConnectorUnavailable: '上游暂不可达，请检查网络和服务状态',
+    ConnectorTlsFailed: '连接失败：上游 TLS 安全连接失败，请检查证书和服务状态',
+    ConnectorNetworkFailed: '连接失败：请检查网络和域名解析',
+    ExternalEnvironmentMismatch: '配置不一致：环境与地址不匹配，请重新选择环境并保存',
+    ExternalEnvironmentReselectRequired: '请重新选择环境并保存，确认实际调用地址',
+    ExternalEnvironmentNotSupported: '该连接器尚未开放所选环境',
+    ExternalEndpointNotAllowed: '服务地址与连接器环境不一致，请重新选择环境',
+    ExternalBusinessUnitRequired: '请填写业务单位的本地显示名称',
+    ExternalNameRequired: '请填写连接名称',
+    ExternalEnvironmentRequired: '请选择环境',
+    InvalidExternalCredential: '凭据格式不正确，请勿填写掩码字符',
     BUSINESS_IDENTITY_MISMATCH: '凭据所属企业与填写的实际业务单位不一致，请查看验证身份'
   };
   if (code?.startsWith('CswmBusinessCode')) return `国家平台业务拒绝（code=${code.slice('CswmBusinessCode'.length)}）`;
-  return (code && messages[code]) || code || '请查看连接状态';
+  if (code?.startsWith('UfeiBusinessCode')) return `优废业务拒绝（code=${code.slice('UfeiBusinessCode'.length)}）`;
+  return (code && messages[code]) || '验证未完成，请查看连接状态或重新验证';
+}
+
+function validationTitle(row: ExternalConnection) {
+  if (row.configurationConsistent === false) return '配置不一致';
+  const category = row.validationResult?.category;
+  const labels: Record<string, string> = {
+    CONFIG_CHANGED: '配置已变更，待重新验证',
+    CONFIG_INCOMPLETE: '配置不完整',
+    CONFIG_INCONSISTENT: '配置不一致',
+    ADAPTER_NOT_READY: '查询能力尚未就绪',
+    VERIFIED: '凭证验证通过',
+    TIMEOUT: '连接超时',
+    TLS_ERROR: '安全连接失败',
+    NETWORK_ERROR: '网络连接失败',
+    UPSTREAM_REJECTED: '上游业务拒绝',
+    VALIDATION_ERROR: '验证未完成'
+  };
+  if (category && labels[category]) return labels[category];
+  if (
+    ['NoVerifiedConnectorMethods', 'ConnectorContractUnverified', 'CONNECTOR_CONTRACT_UNVERIFIED'].includes(
+      row.lastError || ''
+    )
+  )
+    return '查询能力尚未就绪';
+  return statusName(row.testedStatus);
+}
+function validationMessage(row: ExternalConnection) {
+  if (row.configurationConsistent === false)
+    return '已保存环境与地址不一致，未切换实际调用环境。请编辑、重新选择环境并保存。';
+  if (row.validationResult?.message) return row.validationResult.message;
+  return row.lastError ? connectionError(row.lastError) : '';
 }
 
 function statusName(status?: string) {
@@ -486,7 +581,13 @@ function statusTag(status?: string): 'success' | 'danger' | 'warning' | 'info' {
 }
 
 function isReady(row: ExternalConnection) {
-  return row.enabled && row.credentialConfigured && ['VERIFIED', 'READY', 'SUCCESS'].includes(row.testedStatus);
+  return (
+    row.enabled &&
+    row.configurationConsistent !== false &&
+    row.credentialConfigured &&
+    row.allowedMethods.length > 0 &&
+    ['VERIFIED', 'READY', 'SUCCESS'].includes(row.testedStatus)
+  );
 }
 
 function methodSummary(row: ExternalConnection) {
@@ -506,6 +607,7 @@ function methodSummary(row: ExternalConnection) {
 
 function openEditor(row?: ExternalConnection) {
   dialogError.value = '';
+  environmentNeedsReselection.value = row?.configurationConsistent === false;
   editing.value = row;
   if (row) {
     form.value = {
@@ -543,6 +645,7 @@ function connectorChanged() {
 }
 
 function environmentChanged() {
+  environmentNeedsReselection.value = false;
   const environment = currentConnector.value?.environments.find(item => item.name === form.value.environment);
   if (environment) form.value.baseUrl = environment.baseUrl;
 }
@@ -558,7 +661,13 @@ function validateForm() {
   const value = form.value;
   if (!value.name.trim()) return '请填写连接名称。';
   if (!value.businessUnit.trim()) return '请填写业务单位。';
-  if (!/^https:\/\//i.test(value.baseUrl.trim())) return '服务地址必须使用 HTTPS。';
+  if (environmentNeedsReselection.value) return '请重新选择环境并保存，确认实际调用地址。';
+  if (
+    !currentConnector.value?.environments.some(
+      item => item.name === value.environment && item.baseUrl === value.baseUrl
+    )
+  )
+    return '环境与服务地址不一致，请重新选择环境。';
   if ((currentConnector.value?.methods || []).some(methodAvailable) && !value.allowedMethods.length)
     return '请至少选择一个可用的固定查询方法。';
   const allowed = new Set((currentConnector.value?.methods || []).filter(methodAvailable).map(method => method.name));
@@ -609,8 +718,9 @@ async function verify(row: ExternalConnection) {
   error.value = '';
   try {
     const result = await connectionApi.verify(row.id, row.version);
-    if (result.testedStatus === 'READY') ElMessage.success('连接验证通过，已核对接口身份');
-    else ElMessage.warning(`连接验证未通过：${connectionError(result.lastError)}`);
+    if (result.testedStatus === 'READY')
+      ElMessage.success(validationMessage(result) || '连接验证通过，请核对返回的实际单位信息');
+    else ElMessage.warning(`${validationTitle(result)}：${validationMessage(result)}`);
     await load();
   } catch (cause) {
     error.value = await message(cause, '连接验证失败，请核对地址、凭据、版本和服务状态。');
@@ -660,16 +770,6 @@ async function saveExpert() {
 function openDetails(row: ExternalConnection) {
   selected.value = row;
   detailsVisible.value = true;
-}
-
-function identityMismatch(row: ExternalConnection) {
-  const verified = identity(row);
-  if (!verified) return row.verifiedIdentity === false;
-  if (verified.businessUnitMatched !== undefined) return !verified.businessUnitMatched;
-  if (verified.matched !== undefined) return !verified.matched;
-  if (!verified.name) return false;
-  const normalize = (value: string) => value.replace(/[\s（）()]/g, '').toLocaleLowerCase();
-  return normalize(verified.name) !== normalize(row.businessUnit);
 }
 
 function identity(row: ExternalConnection) {

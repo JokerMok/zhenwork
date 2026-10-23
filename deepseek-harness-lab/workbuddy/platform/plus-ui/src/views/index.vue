@@ -15,6 +15,7 @@
     <template v-else>
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" />
       <el-skeleton v-if="!data && loading" :rows="8" animated />
+      <el-empty v-else-if="!data && !error" description="暂无可显示的使用统计" />
       <template v-if="data">
         <section class="usage-overview" v-loading="loading" aria-label="使用概况">
           <dl class="usage-summary">
@@ -74,7 +75,8 @@
           <p class="usage-note">展示调用最多的前100位用户。活跃用户指期间发起过模型调用的用户；一次办公任务可能调用模型多次。</p>
         </section>
         <footer class="usage-notes">
-          <p>Token 仅累计供应商已返回的用量，另有 {{ number(data.summary.unknownTokenRequests) }} 次调用未报告用量，不按零计算。费用暂不可统计。</p>
+          <p>模型调用统计来自工作台模型中继回执，与外部数据连接是否配置无关。</p>
+          <p>Token 仅累计供应商已返回的用量，另有 {{ number(data.summary.unknownTokenRequests) }} 次调用未报告用量，不按零计算。另有 {{ number(data.summary.unknownCostRequests) }} 次调用未报告可核对费用，本页不做费用估算。</p>
           <p>最近更新 {{ updatedAt }} · 数据范围 {{ data.period.from }} 至 {{ data.period.to }}</p>
         </footer>
       </template>
@@ -84,7 +86,7 @@
 </template>
 
 <script setup name="Index" lang="ts">
-import request from '@/utils/request';
+import request, { extractErrorMessage } from '@/utils/request';
 import auth from '@/plugins/auth';
 
 type UsageCounts = { requests: number; completed: number; failed: number; cancelled: number; inputTokens: number; outputTokens: number };
@@ -101,6 +103,7 @@ const loading = ref(false);
 const error = ref('');
 const updatedAt = ref('');
 let generation = 0;
+let activeController: AbortController | undefined;
 const number = (value: number) => new Intl.NumberFormat('zh-CN').format(value);
 const dateTime = (value: string) => value ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '—';
 const chartMax = computed(() => Math.max(2, Math.ceil(Math.max(0, ...(data.value?.daily.map(day => day.requests) || [])) / 2) * 2));
@@ -108,19 +111,29 @@ const barStep = computed(() => 930 / Math.max(1, data.value?.daily.length || 1))
 async function load() {
   if (!canView.value) return;
   const current = ++generation;
+  activeController?.abort();
+  const controller = new AbortController();
+  activeController = controller;
   loading.value = true; error.value = '';
   try {
-    const result = await request({ url: '/ai/admin/dashboard', params: { days: days.value } });
+    const result = await request({ url: '/ai/admin/dashboard', params: { days: days.value }, signal: controller.signal, timeout: 15000 });
     if (current !== generation) return;
+    if (!result?.data?.period || !result?.data?.summary || !Array.isArray(result?.data?.daily) || !Array.isArray(result?.data?.users)) throw new Error('使用统计返回格式不完整');
     data.value = result.data as Dashboard;
     updatedAt.value = dateTime(new Date().toISOString());
-  } catch {
-    if (current === generation) error.value = '使用统计读取失败，请重新读取。';
+  } catch (cause: any) {
+    if (current !== generation) return;
+    const message = await extractErrorMessage(cause);
+    if (current !== generation) return;
+    if (cause?.code === 'ERR_CANCELED') error.value = '使用统计读取已取消，请重新读取。';
+    else if (cause?.code === 'ETIMEDOUT' || cause?.code === 'ECONNABORTED' || message?.includes('超时')) error.value = '使用统计读取超时，请重新读取。';
+    else error.value = message ? `使用统计读取失败：${message}` : '使用统计读取失败，请重新读取。';
   } finally {
-    if (current === generation) loading.value = false;
+    if (current === generation) { activeController = undefined; loading.value = false; }
   }
 }
 onMounted(load);
+onBeforeUnmount(() => { generation++; activeController?.abort(); activeController = undefined; loading.value = false; });
 </script>
 
 <style lang="scss" scoped>

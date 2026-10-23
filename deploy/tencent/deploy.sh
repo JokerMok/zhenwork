@@ -116,6 +116,12 @@ else
   [[ $gateway_image =~ ^sha256:[a-f0-9]{64}$ ]] || { echo 'Gateway source changed; pass its reviewed existing amd64 image with --gateway-image sha256:...' >&2; exit 1; }
 fi
 
+# Reuse the immutable employee/Host artifacts only when all their source inputs are unchanged.
+reuse_employee=0
+if git diff --quiet "$base_sha" "$sha" -- AionUi-enterprise-poc deploy/tencent/build-web.mjs; then
+  reuse_employee=1
+  echo "Employee/Host sources unchanged; retain immutable artifacts from $base_release."
+else
 # Reuse JavaScript dependencies only when the archived lock is byte-identical.
 web_cache=${ZHENWORK_DEPENDENCY_CACHE:-$repo/AionUi-enterprise-poc}
 if [[ -d "$web_cache/node_modules" && -d "$web_cache/packages/web-host/node_modules" ]] &&
@@ -126,6 +132,8 @@ else
   (cd "$app" && bun install --frozen-lockfile --ignore-scripts)
 fi
 (cd "$app" && node "$ops/build-web.mjs")
+
+fi
 
 admin_cache=${ZHENWORK_ADMIN_CACHE:-$repo/deepseek-harness-lab/workbuddy/platform/plus-ui}
 if [[ -d "$admin_cache/node_modules" ]] && cmp -s "$admin_cache/pnpm-lock.yaml" "$control/platform/plus-ui/pnpm-lock.yaml"; then
@@ -171,9 +179,9 @@ maven_network=()
 
 stage="$work/release"
 mkdir -p "$stage/employee" "$stage/admin" "$stage/control-source/platform/ruoyi/script/sql/postgres" "$stage/control-source/migrations"
-cp -R "$app/out/renderer/." "$stage/employee/"
+if [[ $reuse_employee == 0 ]]; then cp -R "$app/out/renderer/." "$stage/employee/"; fi
 cp -R "$control/platform/plus-ui/dist/." "$stage/admin/"
-cp "$app/packages/web-cli/dist/aionui-enterprise-web.cjs" "$stage/web-host.cjs"
+if [[ $reuse_employee == 0 ]]; then cp "$app/packages/web-cli/dist/aionui-enterprise-web.cjs" "$stage/web-host.cjs"; fi
 cp "$control/platform/ruoyi/ruoyi-admin/target/ruoyi-admin.jar" "$stage/rc2.jar"
 cp "$control/platform/ruoyi/script/sql/postgres/postgres_ry_vue.sql" "$stage/control-source/platform/ruoyi/script/sql/postgres/"
 cp -R "$control/migrations/rc2" "$stage/control-source/migrations/"
@@ -190,9 +198,9 @@ for raw in sys.argv[3:]:
 print(h.hexdigest(),hashlib.sha256((lock if lock.exists() else fallback).read_bytes()).hexdigest(),gateway.hexdigest())
 PY
 )
-python3 - "$stage/IMAGE_IDS.json" "$current_json" "$release" "$base_release" "$core_image" "$gateway_image" "$core_changed" "$gateway_changed" "$core_tree_sha" "$core_lock_sha" "$core_binary_sha" "$legacy" "$gateway_source_sha" <<'PY'
+python3 - "$stage/IMAGE_IDS.json" "$current_json" "$release" "$base_release" "$core_image" "$gateway_image" "$core_changed" "$gateway_changed" "$core_tree_sha" "$core_lock_sha" "$core_binary_sha" "$legacy" "$gateway_source_sha" "$reuse_employee" <<'PY'
 import json,pathlib,sys
-out,current,release,base,core,gateway,core_changed,gateway_changed,tree,lock,binary,legacy,gateway_source=sys.argv[1:]
+out,current,release,base,core,gateway,core_changed,gateway_changed,tree,lock,binary,legacy,gateway_source,reuse_employee=sys.argv[1:]
 m=json.loads(current); images=dict(m['images']); images.update(core=core,gateway=gateway)
 data={'release':release,'baseRelease':base,'images':images,'runtimeBase':m['runtimeBase'],
       'coreSourceChanged':core_changed=='1','gatewaySourceChanged':gateway_changed=='1',
@@ -202,6 +210,7 @@ data={'release':release,'baseRelease':base,'images':images,'runtimeBase':m['runt
       'compatiblePasswordPolicies':['8-alnum-v1'] if legacy=='1' else ['8-16-alnum-temp-v2'],
       'coreRuntimeCapabilities':(['python-system-site-packages','openpyxl==3.1.5','python-docx==1.2.0','python-pptx==1.0.2']
         if core=='sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0' else [])}
+if reuse_employee=='1':data['artifactReusedFrom']={'release':base,'sourceSha':m['sourceSha'],'reusedArtifacts':['employee','web-host.cjs']}
 pathlib.Path(out).write_text(json.dumps(data,indent=2)+'\n')
 PY
 
@@ -210,6 +219,9 @@ PY
 remote_root=/srv/apps/zhenwork
 ssh tencent-main "set -eu; sudo rm -rf '$remote_root/incoming/$release'; sudo install -d -o ubuntu -g ubuntu '$remote_root/incoming/$release'"
 rsync -az --delete "$stage/" "tencent-main:$remote_root/incoming/$release/"
+if [[ $reuse_employee == 1 ]]; then
+  ssh tencent-main "sudo cp -a '$remote_root/releases/$base_release/employee/.' '$remote_root/incoming/$release/employee/'; sudo cp -a '$remote_root/releases/$base_release/web-host.cjs' '$remote_root/incoming/$release/web-host.cjs'"
+fi
 for name in activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh; do
   rsync -az "$ops/$name" "tencent-main:/tmp/zhenwork-$release-$name"
   ssh tencent-main "sudo install -o root -g root -m 0755 '/tmp/zhenwork-$release-$name' '$remote_root/deploy/$name'; rm -f '/tmp/zhenwork-$release-$name'"

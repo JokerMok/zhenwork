@@ -24,7 +24,7 @@
 
 请求体始终包含 `data`、`nonce`、`timestamp`、`sign`。`data` 使用 `new SM4(HexUtil.decodeHex(token)).encryptHex(JSON)`；空入参也加密 `{}`。签名原文固定为 `data={data}&nonce={nonce}&timestamp={seconds}`，使用 SM3 后转大写，Header 传 `token`。实际锁定的 Hutool 5.8.47/BC 实现与独立 OpenSSL 的 SM4-ECB/PKCS#7 测试向量一致；明文采用 UTF-8，密文为小写十六进制。响应不解密。只有 HTTP 200 且 `code` 的数字或字符串表示为 `1000` 才算成功。
 
-管理员验证固定调用 `entInfo`，将所填业务单位与 `qyid`、`tyshxydm` 或 `dwmc` 精确比较。验证结果只保存 `matched`、`enterpriseId`、`name`、`creditCode`、`verifiedAt` 和环境，不保存 token、原始响应或单位的联系人、地址等其他字段。运行查询时使用验证得到的 `enterpriseId` 作为身份边界；`ledger.qyid` 由 MCP 服务端注入已验证企业 ID，不向模型开放该参数；适配器仍校验其精确一致。小微查询中的目标企业 ID 仍受当前已验证单位边界限制，不据此宣称已开放跨单位查询。
+管理员验证固定调用 `entInfo`。业务单位为必填本地显示标签，不作为上游鉴权参数，也不据其名称认定凭据归属；验证以凭据实际返回的 `qyid` 绑定运行时，并展示 `dwmc` 与 `tyshxydm` 供管理员核对。验证结果只保存 `matched`、`enterpriseId`、`name`、`creditCode`、`verifiedAt` 和环境，不保存 token、原始响应或单位的联系人、地址等其他字段。运行查询时使用验证得到的 `enterpriseId` 作为身份边界；`ledger.qyid` 由 MCP 服务端注入已验证企业 ID，不向模型开放该参数；适配器仍校验其精确一致。小微查询中的目标企业 ID 仍受当前已验证单位边界限制，不据此宣称已开放跨单位查询。
 
 ### 方法目录
 
@@ -66,22 +66,30 @@
 - [开发 Swagger 入口](https://dev-aiapi.ufei.center/swagger-ui/index.html#/)
 - 当前对接契约确认 JSON POST 查询端点为 `/biz-api/sql/data`（对象）与 `/biz-api/sql/dataList`（列表），Header `Authorization` 直接传 JWT、不加 `Bearer`，请求体为 `method`、`params`、`type`，且 `type` 固定为 `hwDashboardSql`。本地旧后台文档中的 `/admin/commonSql/*` 仅作为旧版资料，不用于当前适配器。
 
-2026-10-23 实际访问 Swagger 页面、`/v3/api-docs`、`/v3/api-docs/swagger-config`、`/v2/api-docs` 与 Swagger resources 均返回 HTTP 401。相关本地 Coze/工作流文本与压缩包定向检索没有找到以下 11 个方法的请求节点。现有证据仍不能确定各方法走 `data` 还是 `dataList`、参数、字段、单位、时间口径或业务成功码。
+2026-10-23 使用管理员已保存凭据进行只读联调，11 个固定方法均实际返回 HTTP 200、业务码 `200`、message `操作成功`。成功码取自真实调用而非 Swagger 占位示例；不接受 `0` 或国家平台的 `1000`。两类路由均进行了有界只读核实：聚合项选 `data`，趋势与地区分布选 `dataList`，避免把对象接口的首条记录误作完整趋势。所有方法使用固定 `type=hwDashboardSql`、空 `params={}`，严格空参数 schema；不提供任意企业、时间、SQL 或 URL。
 
-因此下列方法会出现在目录中，但状态均为 `UNVERIFIED`、`available=false`，运行时返回 `ConnectorContractUnverified`，不会向上游发起猜测式请求：
+受保护 OpenAPI 在传相同 JWT 时仍返回 401，不影响已由真实固定查询确认的合同。定向检索本地 Coze 工作流/旧后台资料没有找到这些方法的原节点；不将缺失节点当成停止真实只读验证的理由。以下映射依据真实响应形状。业务字段中仍未确认的定义保留明确限制，不猜测单位或统计范围。
 
-| 方法 | 业务名称 | 当前缺口 |
-|---|---|---|
-| `dealerData` | 经营单位数据 | 端点、参数、返回、单位、成功码未核实 |
-| `companyData` | 产废企业数据 | 同上 |
-| `entSummary` | 企业汇总 | 同上 |
-| `entTend` | 企业趋势 | 同上；上游方法名原文如此 |
-| `deviceSummary` | 设备汇总 | 同上 |
-| `mgrCat` | 管理类别 | 同上 |
-| `onlineTime` | 设备在网时长 | 同上 |
-| `areaCover` | 地区覆盖 | 同上 |
-| `deliveryTend` | 申报趋势 | 同上；上游方法名原文如此 |
-| `ledgerSummary` | 台账汇总 | 同上 |
-| `warnNotice` | 预警关注 | 同上 |
+| 方法 | 路径后缀 | 实际返回字段 | 范围与限制 |
+|---|---|---|---|
+| `dealerData` | `data` | sumWeight、inWeight、outWeight、useWeight、v | 经营单位重量快照；重量单位、sumWeight 与明细关系未声明 |
+| `companyData` | `data` | sumWeight、inWeight、outWeight、useWeight、transWeight、v | 产废企业重量快照；重量单位和完整统计范围未声明 |
+| `entSummary` | `data` | companyCount、dealerCount、totalCount、v | 三项原值口径不同；不能认定 totalCount 等于前两项之和 |
+| `entTend` | `dataList` | dateAt、count、v | 实际返回月份，按月；不支持自选日期 |
+| `deviceSummary` | `data` | v0Count、a3Count、count、v | V0/A3 与总数量原值 |
+| `mgrCat` | `data` | importantCount、registrationCount、simpleCount、v | 管理类别分布 |
+| `onlineTime` | `data` | less1Year、more1less2Year、more2Year、v | 上游时长分组；临界值开闭口径未声明 |
+| `areaCover` | `dataList` | province、city、count、v | 完整省市分布列表，不能只取第一项 |
+| `deliveryTend` | `dataList` | dateAt、weight、v | 实际月份重量趋势；重量单位未声明 |
+| `ledgerSummary` | `data` | count、v | 台账数量快照，统计起止时间未声明 |
+| `warnNotice` | `data` | expiredCount、nextExpiredCount、cooling、offline、syncError、noDataCount、v | 预警原值；cooling 具体定义、到期阈值未声明 |
 
-最小解锁证据是受保护 OpenAPI 的相应片段，或每个方法一份脱敏的成功请求/响应样例，需保留：相对路径、鉴权头名称、`type/method/params`、HTTP 状态、业务成功字段和值、返回 JSON 结构、单位与统计时间口径。生产 host 当前也没有官方依据，不能从开发 host 猜测。
+实际 JSON 字符串编码最多解析两层；严格校验对象/列表形状。统一 source 带原始版本 `sourceVersions`，趋势带实际 `sourcePeriod`、月粒度。`queriedAt` 只表示本次查询时刻；`v` 未经明确合同不解释为统计时间，不能将快照声称为今天/实时数据。重量单位未确认时必须标为未知，不擅自使用吨或公斤。
+
+这 11 项目录合同已就绪，连接仍须独立完成凭据验证、勾选允许方法及员工授权。优废验证调用 `entSummary`，验证的是凭据可执行该固定查询；接口不返回企业鉴权主体，不能凭本地业务单位名称声称已核对优废凭据所属企业。仍仅开放已确认测试地址；无可靠刷新协议，不实现猜测式登录/自动续期。
+
+## 本轮实际联调边界
+
+国家平台生产 entInfo 返回实际企业身份。已成功取得废物、设施、管理计划、许可证、联单、台账等真实记录；部分处置、库存及小微列表为空，须列为调用成功无数据。按页请求和日期过滤分别验证；分页的 total 与当前页条数分开，不把当前页当全量。二维码查询仍需要真实设施/联单二维码，小微下属单位查询需要已授权的真实子单位及受控归属链，不用构造参数假称业务验收通过。
+
+真实业务记录和截图只保存在部署方私有验收目录，不进入 Git。网页专家查询、文件、权限和部署结果另见本轮维护记录；协议与定向测试不替代网页验收。

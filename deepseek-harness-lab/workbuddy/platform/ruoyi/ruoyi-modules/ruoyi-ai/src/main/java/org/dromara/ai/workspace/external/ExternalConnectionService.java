@@ -79,6 +79,8 @@ public class ExternalConnectionService {
             Map<String,Object> old=lockAdmin(id,actor);
             if(input.expectedVersion()==null||number(old,"version")!=input.expectedVersion())throw new WorkspaceDenied(409,"VersionConflict");
             if(!old.get("connector_type").toString().equals(input.type().name()))throw new WorkspaceDenied(400,"ConnectorTypeImmutable");
+            if(!configurationMatches(old) && !validated.baseUrl().equals(input.baseUrl()))
+                throw new WorkspaceDenied(400,"ExternalEnvironmentReselectRequired");
             String supplied=credential(input.credential());
             if(Boolean.TRUE.equals(input.clearCredential())&&supplied!=null)throw new WorkspaceDenied(400,"InvalidCredentialChange");
             String cipher=Boolean.TRUE.equals(input.clearCredential())?null:supplied==null?(String)old.get("credential_cipher"):secrets.encrypt(supplied);
@@ -98,8 +100,8 @@ public class ExternalConnectionService {
                 template=next;
             } else jdbc.update("UPDATE ai_resource SET name=?,updated_by=?,updated_at=NOW() WHERE id=?",input.name().trim(),actor,old.get("resource_id"));
             String status=identityChanged?"NOT_TESTED":old.get("tested_status").toString();
-            jdbc.update("UPDATE ai_external_connection SET name=?,business_unit=?,environment=?,base_url=?,credential_cipher=?,identity_verified=CASE WHEN ? THEN FALSE ELSE identity_verified END,verified_identity=CASE WHEN ? THEN '{}'::jsonb ELSE verified_identity END,allowed_methods=?::text[],tested_status=?,last_error=CASE WHEN ? THEN NULL ELSE last_error END,version=version+1,updated_at=NOW() WHERE id=?",
-                input.name().trim(),input.businessUnit().trim(),input.environment(),validated.baseUrl(),cipher,identityChanged,identityChanged,toPgArray(validated.methods()),status,identityChanged,id);
+            jdbc.update("UPDATE ai_external_connection SET name=?,business_unit=?,environment=?,base_url=?,credential_cipher=?,identity_verified=CASE WHEN ? THEN FALSE ELSE identity_verified END,verified_identity=CASE WHEN ? THEN '{}'::jsonb ELSE verified_identity END,allowed_methods=?::text[],tested_status=?,last_error=CASE WHEN ? THEN NULL ELSE last_error END,validation_result=CASE WHEN ? THEN '{\"category\":\"CONFIG_CHANGED\",\"message\":\"配置已变更，待重新验证\"}'::jsonb ELSE validation_result END,version=version+1,updated_at=NOW() WHERE id=?",
+                input.name().trim(),input.businessUnit().trim(),input.environment(),validated.baseUrl(),cipher,identityChanged,identityChanged,toPgArray(validated.methods()),status,identityChanged,identityChanged,id);
             jdbc.update("UPDATE ai_mcp_connection SET template_version=?,enabled=?,status=?,auth_version=auth_version+CASE WHEN ? THEN 1 ELSE 0 END,version=version+1,tools_snapshot='[]'::jsonb,last_error=NULL,updated_at=NOW() WHERE id=?",
                 template,nextEnabled,status,(identityChanged||templateChanged||enabledChanged),id);
             revoke[0]=identityChanged||templateChanged||enabledChanged;
@@ -116,22 +118,29 @@ public class ExternalConnectionService {
         long started=System.nanoTime();
         ConnectorValidationResult validation;
         String cipher=(String)snapshot.get("credential_cipher");
-        if(cipher==null) validation=new ConnectorValidationResult(false,"ExternalCredentialRequired","Credential required",Map.of());
-        else if(array(snapshot.get("allowed_methods")).isEmpty()) validation=new ConnectorValidationResult(false,"NoVerifiedConnectorMethods","No verified connector methods",Map.of());
+        if(blank(Objects.toString(snapshot.get("business_unit"),"")))
+            validation=new ConnectorValidationResult(false,"ExternalBusinessUnitRequired","请填写业务单位（用于本地标识连接）",Map.of());
+        else if(!configurationMatches(snapshot))
+            validation=new ConnectorValidationResult(false,"ExternalEnvironmentMismatch","已保存环境与服务地址不一致；请编辑、重新选择环境并保存后验证。尚未调用上游。",Map.of());
+        else if(cipher==null) validation=new ConnectorValidationResult(false,"ExternalCredentialRequired","尚未配置访问凭据，请编辑并填写",Map.of());
         else try {
             validation=connectors.require(ConnectorType.valueOf(snapshot.get("connector_type").toString())).validate(
-                snapshot.get("base_url").toString(),new ConnectorCredential(secrets.decrypt(cipher),snapshot.get("business_unit").toString()));
+                resolvedBase(ConnectorType.valueOf(snapshot.get("connector_type").toString()),snapshot.get("environment").toString()),
+                new ConnectorCredential(secrets.decrypt(cipher),snapshot.get("business_unit").toString()));
         } catch(ConnectorException e) {
-            validation=new ConnectorValidationResult(false,safeCode(e.code),"Connector validation failed",Map.of());
+            validation=new ConnectorValidationResult(false,safeCode(e.code),e.getMessage(),Map.of());
         } catch(Exception e) {
-            validation=new ConnectorValidationResult(false,"ExternalValidationFailed","Connector validation failed",Map.of());
+            validation=new ConnectorValidationResult(false,"ExternalValidationFailed","连接验证未完成，请检查服务日志中的错误编号",Map.of());
         }
         String safe=safeCode(validation.code());
         boolean ready=validation.valid();
+        String runtimeStatus=ready&&!array(snapshot.get("allowed_methods")).isEmpty()?"READY":ready?"NOT_TESTED":"ERROR";
+        String credentialStatus=ready?"READY":"ERROR";
+        Map<String,Object> validationDetails=validationDetails(validation,snapshot.get("connector_type").toString());
         Map<String,Object> identity=identity(validation.metadata(),snapshot.get("connector_type").toString(),ready);
         tx.executeWithoutResult(status->{Map<String,Object> current=lockAdmin(id,actor);if(number(current,"version")!=expectedVersion)throw new WorkspaceDenied(409,"VersionConflict");
-            jdbc.update("UPDATE ai_external_connection SET tested_status=?,last_error=?,identity_verified=?,verified_identity=?::jsonb,version=version+1,updated_at=NOW() WHERE id=?",ready?"READY":"ERROR",ready?null:safe,Boolean.TRUE.equals(identity.get("matched")),JsonUtils.toJsonString(identity),id);
-            jdbc.update("UPDATE ai_mcp_connection SET status=?,last_error=?,tested_at=NOW(),auth_version=auth_version+1,version=version+1,updated_at=NOW() WHERE id=?",ready?"READY":"ERROR",ready?null:safe,id);
+            jdbc.update("UPDATE ai_external_connection SET tested_status=?,last_error=?,identity_verified=?,verified_identity=?::jsonb,validation_result=?::jsonb,version=version+1,updated_at=NOW() WHERE id=?",credentialStatus,ready?null:safe,Boolean.TRUE.equals(identity.get("matched")),JsonUtils.toJsonString(identity),JsonUtils.toJsonString(validationDetails),id);
+            jdbc.update("UPDATE ai_mcp_connection SET status=?,last_error=?,tested_at=NOW(),auth_version=auth_version+1,version=version+1,updated_at=NOW() WHERE id=?",runtimeStatus,ready?null:safe,id);
             jdbc.update("INSERT INTO ai_mcp_test(id,connection_id,actor_user_id,status,latency_ms,tool_count,error_code) VALUES(?,?,?,?,?,?,?)",UUID.randomUUID(),id,actor,ready?"PASS":"FAIL",(System.nanoTime()-started)/1_000_000,array(current.get("allowed_methods")).size(),ready?null:safe);audit(actor,"external.connection.verified",(UUID)current.get("resource_id"),id);
         });
         conversations.revokeConnection(id);
@@ -149,19 +158,19 @@ public class ExternalConnectionService {
             Map<String,Object> row=lockAdmin(id,actor);
             if(expectedVersion!=null&&number(row,"version")!=expectedVersion)throw new WorkspaceDenied(409,"VersionConflict");
             List<UUID> ids=requested==null||requested.isEmpty()?List.of(id):List.copyOf(requested);if(ids.size()>8||new HashSet<>(ids).size()!=ids.size()||!ids.contains(id))throw new WorkspaceDenied(400,"InvalidExpertConnections");
-            List<String> resourceIds=new ArrayList<>();for(UUID connectionId:ids){Map<String,Object> selected=getAdminRow(connectionId,actor);if(!Boolean.TRUE.equals(selected.get("enabled"))||!"READY".equals(selected.get("tested_status")))throw new WorkspaceDenied(409,"ExternalConnectionNotReady");resourceIds.add(selected.get("resource_id").toString());}
+            List<String> resourceIds=new ArrayList<>();for(UUID connectionId:ids){Map<String,Object> selected=getAdminRow(connectionId,actor);if(!Boolean.TRUE.equals(selected.get("enabled"))||!"READY".equals(selected.get("tested_status"))||array(selected.get("allowed_methods")).isEmpty())throw new WorkspaceDenied(409,"ExternalConnectionNotReady");resourceIds.add(selected.get("resource_id").toString());}
             UUID existing=(UUID)row.get("expert_resource_id");
-            if(!Boolean.TRUE.equals(row.get("enabled"))||!"READY".equals(row.get("tested_status")))throw new WorkspaceDenied(409,"ExternalConnectionNotReady");
+            if(!Boolean.TRUE.equals(row.get("enabled"))||!"READY".equals(row.get("tested_status"))||array(row.get("allowed_methods")).isEmpty())throw new WorkspaceDenied(409,"ExternalConnectionNotReady");
             UUID model=jdbc.queryForObject("SELECT model_id FROM ai_office_defaults WHERE singleton",UUID.class);
             if(model==null)throw new WorkspaceDenied(409,"OfficeDefaultModelRequired");
             String name=expertName(row.get("name").toString());
             Map<String,Object> config=new LinkedHashMap<>();
             config.put("avatar","⌁");
-            config.put("instruction","使用用户所用语言回答。固定业务事实必须调用所绑定的查询工具；同一问题内方法和参数相同的查询只调用一次；不同条件分别查询。多个问题分别发起对应查询，跨系统比较前先对齐单位、时间和统计口径。计算、比例和汇总使用可用的办公 Python 或结构化数据汇总工具，不以文字心算代替。回答标明来源、环境、单位、queriedAt，并在上游提供时标明 sourcePeriod。上游不支持的日期、企业或条件应明确说明，不得猜测；单项失败时保留其他成功结果并说明局部失败。");
+            config.put("instruction","使用用户所用语言回答。固定业务事实必须调用所绑定的查询工具；同一问题内方法和参数相同的查询只调用一次；不同条件分别查询。多个问题分别发起对应查询，跨系统比较前先对齐单位、时间和统计口径。计算、比例和汇总使用可用的办公 Python 或结构化数据汇总工具，不以文字心算代替。回答标明来源、环境、单位、queriedAt，并在上游提供时标明 sourcePeriod。上游不支持的日期、企业或条件应明确说明，不得猜测；优废固定大屏的查询时间不等于数据时间，v 仅为上游版本标记，未确认的重量单位和统计口径必须标为未知，不得默认吨/公斤。entSummary.totalCount 不保证等于其它字段之和。单项失败时保留其他成功结果并说明局部失败。");
             config.put("modelId",model.toString());config.put("skillIds",List.of());config.put("mcpIds",List.of(row.get("resource_id").toString()));config.put("toolIds",List.of());config.put("knowledgeIds",List.of());
             config.put("mcpIds",resourceIds);
             UUID assistant;boolean reused=existing!=null;
-            if(existing==null){UUID key=UUID.nameUUIDFromBytes(("external-expert:"+id).getBytes(StandardCharsets.UTF_8));Map<String,Object> created=resources.create(actor,"ASSISTANT",name,"Enterprise external query expert",true,config,key);assistant=UUID.fromString(created.get("id").toString());resources.activate(assistant,actor,((Number)created.get("version")).intValue());jdbc.update("UPDATE ai_external_connection SET expert_resource_id=?,updated_at=NOW() WHERE id=? AND expert_resource_id IS NULL",assistant,id);audit(actor,"external.expert.created",assistant,id);}else{assistant=existing;Map<String,Object> current=resources.get(assistant,actor);Map<String,Object> currentConfig=(Map<String,Object>)current.get("config");if(!Objects.equals(currentConfig.get("mcpIds"),resourceIds)){Map<String,Object> edited=resources.edit(assistant,actor,((Number)current.get("version")).intValue(),name,"Enterprise external query expert",config);resources.activate(assistant,actor,((Number)edited.get("version")).intValue());audit(actor,"external.expert.updated",assistant,id);}}
+            if(existing==null){UUID key=UUID.nameUUIDFromBytes(("external-expert:"+id).getBytes(StandardCharsets.UTF_8));Map<String,Object> created=resources.create(actor,"ASSISTANT",name,"Enterprise external query expert",true,config,key);assistant=UUID.fromString(created.get("id").toString());resources.activate(assistant,actor,((Number)created.get("version")).intValue());jdbc.update("UPDATE ai_external_connection SET expert_resource_id=?,updated_at=NOW() WHERE id=? AND expert_resource_id IS NULL",assistant,id);audit(actor,"external.expert.created",assistant,id);}else{assistant=existing;Map<String,Object> current=resources.get(assistant,actor);Map<String,Object> currentConfig=(Map<String,Object>)current.get("config");if(!Objects.equals(currentConfig.get("mcpIds"),resourceIds)||!Objects.equals(currentConfig.get("instruction"),config.get("instruction"))){Map<String,Object> edited=resources.edit(assistant,actor,((Number)current.get("version")).intValue(),name,"Enterprise external query expert",config);resources.activate(assistant,actor,((Number)edited.get("version")).intValue());audit(actor,"external.expert.updated",assistant,id);}}
             return expertDto(assistant,name,reused,ids,resourceIds);
         });
     }
@@ -171,8 +180,9 @@ public class ExternalConnectionService {
         if(rows.size()!=1)throw new WorkspaceDenied(404,"ExternalConnectionNotFound");
         Map<String,Object> row=rows.getFirst();
         if(!Boolean.TRUE.equals(row.get("enabled"))||!"READY".equals(row.get("status"))||!"READY".equals(row.get("tested_status"))||number(row,"auth_version")!=expectedAuthVersion)throw new WorkspaceDenied(403,"McpConnectionRevoked");
+        if(!configurationMatches(row))throw new WorkspaceDenied(403,"ExternalEnvironmentMismatch");
         String cipher=(String)row.get("credential_cipher");if(cipher==null)throw new WorkspaceDenied(403,"ExternalCredentialRequired");
-        return new RuntimeConnection(id,(UUID)row.get("resource_id"),ConnectorType.valueOf(row.get("connector_type").toString()),row.get("name").toString(),row.get("business_unit").toString(),row.get("environment").toString(),row.get("base_url").toString(),secrets.decrypt(cipher),array(row.get("allowed_methods")),JsonUtils.parseMap(row.get("verified_identity").toString()),number(row,"version"));
+        return new RuntimeConnection(id,(UUID)row.get("resource_id"),ConnectorType.valueOf(row.get("connector_type").toString()),row.get("name").toString(),row.get("business_unit").toString(),row.get("environment").toString(),resolvedBase(ConnectorType.valueOf(row.get("connector_type").toString()),row.get("environment").toString()),secrets.decrypt(cipher),array(row.get("allowed_methods")),JsonUtils.parseMap(row.get("verified_identity").toString()),number(row,"version"));
     }
 
     public ConnectorCatalog catalog(ConnectorType type){return connectors.require(type).catalog();}
@@ -186,7 +196,7 @@ public class ExternalConnectionService {
     private UUID resourceId(UUID id){return jdbc.queryForObject("SELECT resource_id FROM ai_mcp_connection WHERE id=?",UUID.class,id);}
 
     private Map<String,Object> dto(Map<String,Object> row){
-        List<String> expertResources=expertResources(row.get("expert_resource_id"));Map<String,Object> out=new LinkedHashMap<>();out.put("id",row.get("id").toString());out.put("resourceId",row.get("resource_id").toString());out.put("type",row.get("connector_type"));out.put("name",row.get("name"));out.put("businessUnit",row.get("business_unit"));out.put("environment",row.get("environment"));out.put("baseUrl",row.get("base_url"));out.put("credentialConfigured",row.get("credential_cipher")!=null);out.put("verifiedIdentity",JsonUtils.parseMap(row.get("verified_identity").toString()));out.put("testedStatus",row.get("tested_status"));out.put("lastError",row.get("last_error"));out.put("testedAt",row.get("tested_at")==null?null:row.get("tested_at").toString());out.put("enabled",row.get("enabled"));out.put("allowedMethods",array(row.get("allowed_methods")));out.put("assistantId",row.get("expert_resource_id")==null?null:row.get("expert_resource_id").toString());out.put("expertResourceIds",expertResources);out.put("expertConnectionIds",connectionIds(expertResources));out.put("version",row.get("version"));out.put("updatedAt",row.get("updated_at").toString());return out;
+        List<String> expertResources=expertResources(row.get("expert_resource_id"));Map<String,Object> out=new LinkedHashMap<>();out.put("id",row.get("id").toString());out.put("resourceId",row.get("resource_id").toString());out.put("type",row.get("connector_type"));out.put("name",row.get("name"));out.put("businessUnit",row.get("business_unit"));out.put("environment",row.get("environment"));out.put("baseUrl",row.get("base_url"));out.put("credentialConfigured",row.get("credential_cipher")!=null);out.put("verifiedIdentity",JsonUtils.parseMap(row.get("verified_identity").toString()));out.put("testedStatus",row.get("tested_status"));out.put("lastError",row.get("last_error"));out.put("validationResult",row.get("validation_result")==null?Map.of():JsonUtils.parseMap(row.get("validation_result").toString()));out.put("configurationConsistent",configurationMatches(row));out.put("expectedBaseUrl",expectedBase(row));out.put("adapterStatus",catalog(ConnectorType.valueOf(row.get("connector_type").toString())).methods().stream().anyMatch(m->"VERIFIED".equals(m.contractStatus()))?"READY":"PENDING");out.put("testedAt",row.get("tested_at")==null?null:row.get("tested_at").toString());out.put("enabled",row.get("enabled"));out.put("allowedMethods",array(row.get("allowed_methods")));out.put("assistantId",row.get("expert_resource_id")==null?null:row.get("expert_resource_id").toString());out.put("expertResourceIds",expertResources);out.put("expertConnectionIds",connectionIds(expertResources));out.put("version",row.get("version"));out.put("updatedAt",row.get("updated_at").toString());return out;
     }
     private List<String> expertResources(Object assistant){if(!(assistant instanceof UUID id))return List.of();try{String json=jdbc.queryForObject("SELECT v.config::text FROM ai_resource r JOIN ai_resource_version v ON v.resource_id=r.id AND v.version=r.latest_version WHERE r.id=?",String.class,id);Object value=JsonUtils.parseMap(json).get("mcpIds");return value instanceof List<?> list?list.stream().map(Object::toString).toList():List.of();}catch(Exception e){return List.of();}}
     private List<String> connectionIds(List<String> resources){if(resources.isEmpty())return List.of();List<UUID> ids=new ArrayList<>();for(String value:resources)try{ids.add(UUID.fromString(value));}catch(Exception ignored){}if(ids.isEmpty())return List.of();String placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));return jdbc.queryForList("SELECT id::text FROM ai_mcp_connection WHERE resource_id IN ("+placeholders+")",String.class,ids.toArray());}
@@ -198,17 +208,45 @@ public class ExternalConnectionService {
     private Map<String,Object> expertDto(UUID id,String connectionName,boolean reused,List<UUID> connectionIds,List<String> resourceIds){return Map.of("assistantId",id.toString(),"name",connectionName,"reused",reused,"boundConnectionIds",connectionIds.stream().map(UUID::toString).toList(),"boundResourceIds",resourceIds);}
     private record Validated(String baseUrl,List<String> methods){}
     private Validated validate(Save input,boolean update){
-        if(input==null||input.type()==null||blank(input.name())||input.name().trim().length()>100||blank(input.businessUnit())||input.businessUnit().trim().length()>200||blank(input.environment())||blank(input.baseUrl())||input.baseUrl().length()>500||input.allowedMethods()==null||new HashSet<>(input.allowedMethods()).size()!=input.allowedMethods().size())throw new WorkspaceDenied(400,"InvalidExternalConnection");
+        if(input==null||input.type()==null)throw new WorkspaceDenied(400,"ExternalConnectorRequired");
+        if(blank(input.name())||input.name().trim().length()>100)throw new WorkspaceDenied(400,"ExternalNameRequired");
+        if(blank(input.businessUnit())||input.businessUnit().trim().length()>200)throw new WorkspaceDenied(400,"ExternalBusinessUnitRequired");
+        if(blank(input.environment()))throw new WorkspaceDenied(400,"ExternalEnvironmentRequired");
+        if(input.allowedMethods()==null||new HashSet<>(input.allowedMethods()).size()!=input.allowedMethods().size())throw new WorkspaceDenied(400,"InvalidExternalConnection");
         if(Boolean.TRUE.equals(input.clearCredential())&&!update)throw new WorkspaceDenied(400,"InvalidCredentialChange");
-        String supplied=credential(input.credential());
+        credential(input.credential());
         ConnectorCatalog catalog=connectors.require(input.type()).catalog();
-        boolean environment=catalog.environments().stream().anyMatch(e->e.name().equals(input.environment())&&e.baseUrl().equals(input.baseUrl()));
-        if(!environment)throw new WorkspaceDenied(400,"ExternalEndpointNotAllowed");
+        String base=resolvedBase(input.type(),input.environment());
         Set<String> verified=new HashSet<>();for(ConnectorMethod method:catalog.methods())if("VERIFIED".equals(method.contractStatus()))verified.add(method.name());
         if(!verified.containsAll(input.allowedMethods()))throw new WorkspaceDenied(400,"ExternalMethodNotVerified");
-        return new Validated(input.baseUrl(),List.copyOf(input.allowedMethods()));
+        return new Validated(base,List.copyOf(input.allowedMethods()));
     }
-    private static String credential(String value){if(value==null||value.isBlank())return null;if(value.length()>4096||value.chars().anyMatch(c->c=='\r'||c=='\n'||c==0))throw new WorkspaceDenied(400,"InvalidExternalCredential");return value;}
+    private String resolvedBase(ConnectorType type,String environment){
+        return connectors.require(type).catalog().environments().stream().filter(e->e.name().equals(environment)).findFirst()
+            .orElseThrow(()->new WorkspaceDenied(400,"ExternalEnvironmentNotSupported")).baseUrl();
+    }
+    private String expectedBase(Map<String,Object> row){try{return resolvedBase(ConnectorType.valueOf(row.get("connector_type").toString()),row.get("environment").toString());}catch(Exception e){return "";}}
+    private boolean configurationMatches(Map<String,Object> row){String expected=expectedBase(row);return !expected.isEmpty()&&expected.equals(row.get("base_url"));}
+    private static Map<String,Object> validationDetails(ConnectorValidationResult value,String type){
+        String code=safeCode(value.code());String category;
+        if(value.valid())category="VERIFIED";
+        else if(code.contains("Environment"))category="CONFIG_INCONSISTENT";
+        else if(code.contains("Required")||code.contains("Invalid"))category="CONFIG_INCOMPLETE";
+        else if(code.contains("Contract")||code.equals("NoVerifiedConnectorMethods"))category="ADAPTER_NOT_READY";
+        else if(code.contains("Timeout"))category="TIMEOUT";
+        else if(code.contains("Tls"))category="TLS_ERROR";
+        else if(code.contains("Network")||code.contains("Unavailable"))category="NETWORK_ERROR";
+        else if(code.contains("BusinessCode")||code.contains("Authentication")||code.contains("AccessDenied")||code.contains("Rejected"))category="UPSTREAM_REJECTED";
+        else category="VALIDATION_ERROR";
+        Map<String,Object> out=new LinkedHashMap<>();out.put("valid",value.valid());out.put("category",category);out.put("code",code);
+        String message=Objects.toString(value.message(),"连接验证未完成").replaceAll("[\\r\\n\\t]"," ");
+        out.put("message",message.substring(0,Math.min(400,message.length())));
+        out.put("method","CSWM_IOT".equals(type)?"/iot/entInfo":"/biz-api/sql/data · entSummary");
+        if(code.startsWith("CswmBusinessCode"))out.put("businessCode",code.substring("CswmBusinessCode".length()));
+        if(code.startsWith("UfeiBusinessCode"))out.put("businessCode",code.substring("UfeiBusinessCode".length()));
+        out.put("checkedAt",Instant.now().toString());return out;
+    }
+    private static String credential(String value){if(value==null||value.isBlank())return null;if(value.matches("[*•●]+")||value.length()>4096||value.chars().anyMatch(c->c=='\r'||c=='\n'||c==0))throw new WorkspaceDenied(400,"InvalidExternalCredential");return value;}
     private static boolean blank(String value){return value==null||value.isBlank();}
     private static String config(List<String> methods){Map<String,Object> effects=new TreeMap<>();methods.forEach(m->effects.put(m,"READ"));return JsonUtils.toJsonString(Map.of("transport","STREAMABLE_HTTP","endpoint","","managedProfile","external-query","authType","NONE","allowedTools",methods,"toolEffects",effects,"timeoutSeconds",60));}
     private static String hash(String content){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}

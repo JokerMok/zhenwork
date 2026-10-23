@@ -247,6 +247,8 @@ service.interceptors.response.use(
     }
   },
   async (error: any) => {
+    // Superseded requests are intentionally cancelled by their owner.
+    if (axios.isCancel(error) || error?.code === 'ERR_CANCELED') return Promise.reject(error);
     if (error?.response?.status === 401) {
       removeToken();
       await router.replace('/login');
