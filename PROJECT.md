@@ -1,25 +1,33 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-23。当前范围：企业外部连接管理、只读 MCP 与查询专家；本轮配置与隔离回归通过，真实上游业务查询仍受凭据/合同阻塞。不制作桌面安装包。
+核对日期：2026-10-23。当前范围：外部真实只读查询、员工专家接线、连接配置交互与管理首页统计。已具备输入的真实业务与网页路径通过，未确认字段口径及缺实际入参的查询单列。不制作桌面安装包。
 
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261023-external-query-v2`；准确应用 SHA：`0c408c209f2ceb1df525c7d436754b7cfd5b6ef4`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
+- 激活 release：`20261023-external-query-v4`；准确应用 SHA：`fe272f3810d6ed8a62ce85488997d715643e628b`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
-- 本轮重建employee/Admin网页、Host与Java；保留精确amd64原生镜像。迁移链20条，新增0020外部连接/调用表与管理菜单，原19条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
+- 本轮v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
 
-## 2026-10-23 外部数据连接
+## 2026-10-23 真实外部查询与配置修复
 
-管理员入口：管理后台“AI 资源管理 → 外部数据连接”，路径 `/admin/workspace-resources/connections`。说明见 `docs/external-connections.md`，逐接口映射见 `docs/external-query-mapping.md`。私有实际证据：`.codex/external-connectors/acceptance-report.md`。
+管理员入口：[AI资源管理 → 外部数据连接](https://zhenwork-admin.shizibandu.icu/admin/workspace-resources/connections)。连接目录决定测试/生产环境和只读地址；业务单位为必填本地标签。凭据留空保留，明确清除才删除并停用。验证后核对国家平台返回的企业ID、名称、信用代码，勾选固定方法，创建/绑定查询专家，通过“共享”授员工、角色或部门VIEW/USE（专家与全部绑定连接一并授权）。员工在新任务的高级设置/助手入口选择已获授查询专家，无须API/token/模型配置。
 
-- 已实现：实际业务单位/环境/固定地址/方法白名单、AES-GCM加密凭据、留空保留/明确清除、验证时间与安全失败原因、启停、既有USER/ROLE/DEPARTMENT资源授权、独立MCP及最多8个连接的查询专家绑定、无原始参数/结果的调用元数据审计。凭据不进入助手、模型或资源包；只读调用在返回前再次复核身份和权限。
-- 国家平台：24项官方只读方法，SM4/SM3、空对象加密、数字/字符串1000、字段/单位/分页/日期范围校验已实现并经定向协议测试；台账企业ID由服务端注入。企业身份须用entInfo核对名称/ID/信用代码。**尚无真实物联网凭据，真实单位验证、员工单项/组合/追问及成果生成未验收**。小微目标企业仍受当前单位边界限制，不能据目录存在就宣称已开放跨单位查询。
-- 优废：11项原拼写登记，采用本次已确认的 `/biz-api/sql/data|dataList`、JSON POST及无Bearer的JWT头定义。受保护Swagger均401、本地工作流无逐方法依据；具体端点映射、参数、返回口径及业务成功码未核实，全部UNVERIFIED/不可调用。**优废实际查询尚未实现开放**，不将目录或占位配置说成成功接入。
-- 真实网页通过：后台创建两类停用待配置项、保存、无凭据/格式错误的持久反馈、留空更新密文不变、显式清除后无凭据且停用、版本冲突、独立MCP页面授权/撤回。服务端拒绝非管理员、无授权、撤权及停用调用。实际服务重启后配置/默认模型逐字段保留；普通员工在存在不可用外部资源时登录、新建空白任务、默认模型流式响应/持久化及退出旧身份401通过。
-- 真实外部业务查询与专家多源回答：BLOCKED，未用合成结果替代。两条“待配置”记录均停用、无凭据、QA共享已撤回；原模型、助手、办公资料、品牌及自动语言保留。
-- 新增配置表随既有DB一致性备份，沿用数据库外的原主密钥；无需新增MCP进程或公网端口。最新备份和资源实测见当前VERIFIED与两端SERVER记录。
+- 国家平台：复用管理员真实生产凭据，entInfo实际身份已核对。24项官方只读方法中21项已真实成功调用。废物、贮存设施、管理计划、许可证、委外计划、联单、产生台账、运输单位及库存状态等有真实记录；页1/页2、日期过滤和台账单位等有实际证据。自行处置/经营设施、出库/待入库/接受未入库及小微列表本次成功但为空，不能写为有数据核对通过。二维码两项和小微转移仍缺实际二维码/子单位归属链，不构造假参数验收。
+- 优废：11项原名全部通过真实HTTP200/code200核实并启用。8个聚合走data，entTend/areaCover/deliveryTend走dataList；严格空params。中继结果与独立直连接口逐项一致，包含实际来源、快照版本、月份、范围限制。重量单位、cooling定义、到期阈值、部分总数与统计范围未声明，明确未知，不把v解释为当天统计时刻，不猜生产地址或JWT刷新协议。
+- 真实员工网页：普通账号选择后台发布的双源专家，完成单项、跨能力/跨源组合、连续追问、程序计算及五表Excel生成；实际接口审计对应员工身份。预览可切工作表，正常下载按钮取得与已验证文件相同字节；月度明细合计经程序核对，未将其当累计企业数。刷新/正常退出/本项目重启后文件SHA不变，原会话重新查询成功。
+- 员工初次真实回归暴露v3运行端断点：Rc2Client.relayMcp引用未声明会话参数，Host转发又遗漏该参数。v4修复共享客户端/交互及后台转发链；保留受控会话路由、身份复核及资源权限。旧“未取得数据”的会话属于失败证据，不能因其生成了说明文件或HTTP成功而标记业务通过。
+- 连接交互真实通过：新建/编辑环境切换、地址只读、必填、保存重开、真实凭据留空保留、返回实际单位；历史环境地址不一致在上游前拒绝，单环境优废也可显式重新确认地址后保存。验证持久区分配置缺失/不一致、网络/TLS/超时、上游码与说明、通过；方法未就绪不再伪装鉴权失败。真实无效验收凭据返回业务码3000及说明；验收凭据已明确清除，临时连接停用。
+- 权限与恢复：未授权第二员工两条连接的list/call共4次拒绝；员工已授连接停用403、撤权404、其它单位未授权404，恢复授权后真实查询成功。伪qyid在本地schema拒绝；台账ID服务端绑定。实际RC2/Host重启后两条真实连接完整DTO及默认模型逐字段保持，普通办公文件工具仍可执行。
+
+私有证据入口：`.codex/external-connectors/followup/acceptance-report.md`；业务数据、账户及截图不进Git。接口映射见 `docs/external-query-mapping.md`。Java18项、Node资源/中继18项、Host受影响8项通过；一个扩查的Mac专用历史清理测试因要求Linux profile失败，不扩展修复，未作为业务通过证据。
+
+## 2026-10-23 管理首页统计
+
+真实浏览器与服务器日志确认：原统计CTE重复运行且取消浏览器后仍占用6个数据库连接，首页50秒等待骨架。仅取消已确认旧只读查询恢复池；改为一次有界物化扫描和聚合，数据库10秒上限，前端15秒、取消与竞态保护。
+
+7/30/90天、直接打开/刷新/重新登录/快速切换真实网页通过，约0.3–0.5秒，统计与数据库独立记录一致。失败保留上次数据并可重试；空数据/503/超时/401的反馈用明确注入响应验证，未当真实业务数据。模型调用和Token来自真实中继回执，未知费用保留未知，不依赖Core或外部业务凭据。证据 `.codex/external-connectors/followup/stats-browser.json` 与 `followup-stats/report.md`。
 
 ## 2026-10-21 四项修复历史验收
 
@@ -88,16 +96,18 @@ ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh status'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh restart'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh logs 100'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh backup'
-# 当前external-query-v2专用：只退应用/配置到已验证v16，保留20条数据库迁移、文件及授权
-ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261023-external-v2-to-web-office-v16.json'
+# 当前external-query-v4专用：只退应用/配置到已验证v2，保留21条数据库迁移、文件及授权
+ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261023-external-v4-to-external-v2.json'
 ```
 
-当前回滚审核绑定v2/v16准确SHA、实际20条迁移及目标19条前缀。v16不提供新外部查询API和页面，不能把回退应用当成撤销连接配置。应用回滚不等于数据库回滚，也不回退数据库中的默认模型/Skill发布；这些通过管理后台单独版本回退。原默认模型与历史能力包仍保留。没有实际执行应用/数据库回滚、整机重启、down -v、全局prune或清理业务数据。后续新发布/迁移会使本次审核失效。
+当前回滚审核绑定v4/v2准确SHA、实际21条迁移及目标20条前缀。0021仅加法列与前置状态修正，回滚不退数据库；v2不含本轮优废实用方法/统计修复及会话参数修复，回退用于基础可用性恢复，不能称新查询能力仍保留。应用回滚不等于数据库/文件/授权回滚。未实际执行回滚、整机重启、down-v、全局prune或清理业务数据；新发布或迁移必须重新审核。
 
 ## 外部条件与未覆盖事项
 
 - 仍需独立客户需求及对应真实验收依据，才能作真实客户符合性结论；本轮流程和证据不足处理已实测。
-- 当前已指定优废与国家平台接口；缺各自真实业务凭据及优废逐方法合同，详见2026-10-23记录。真实共享目录尚未指定。无须在聊天提供任何密钥。
+- 两套业务凭据均已在后台保存并真实联调，无须补新密钥。待补：国家平台真实设施/联单二维码及小微关联单位范围；优废重量单位、cooling/到期阈值等具体字段口径。真实共享目录仍未指定。
 - 其余历史功能保留对应版本证据；本轮为上述定向回归，不代表全企业系统、所有文件格式或任意公式全量验收。
 
 2026-10-22收口实测：Core0；可用内存约4.86GiB、磁盘空闲18.61GiB；Host约206MiB、Java约651MiB。拼豆HTTPS200、ops-check内部200，Caddy及账号中心active。本轮未操作其发布配置。最新一致性备份20261022T103506190160Z.tar.gz为749543218字节，保留2份合计1500061018字节；768MiB单包/2GiB总预算及2GiB最低空闲保持。
+
+2026-10-23 v4收口实测（2026-10-23T07:19:10.783521+00:00）：Core0；系统MemAvailable 5.31GiB、盘空闲7.22GiB。Host/RC2/拼豆/Caddy/账号中心active、天墟healthy，拼豆及ops-check HTTP200。并发1/启动1/闲120秒/等待180秒保持。最新一致备份 `/srv/backups/config/20261023T070155150461Z.tar.gz`，750421284 bytes，保留2份共1499915270 bytes，原容量预算未改。没有对生产做恢复或数据库回滚。

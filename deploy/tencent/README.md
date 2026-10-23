@@ -10,9 +10,13 @@
 
 ## 2026-10-23 当前部署记录
 
-当前 `20261023-external-query-v2` / 应用SHA `0c408c209f2ceb1df525c7d436754b7cfd5b6ef4`；当前GitHub维护提交与应用SHA分别记录。Java/网页/Host重建，原amd64镜像不变；0020是新增表和菜单，原19条迁移不变。后台 `/admin/workspace-resources/connections`，凭据只进现有加密服务与数据库。配置/权限/默认办公入口及重启恢复有真实网页/HTTP证据；国家平台24方法仅完成协议实现与受控测试，缺真实物联网凭据；优废11方法合同未核实、不可调用，另缺JWT。真实单项/组合/追问与专家多源业务验收均BLOCKED，不冒充成功接入。
+当前 `20261023-external-query-v4` / 应用SHA `fe272f3810d6ed8a62ce85488997d715643e628b`。v3构建管理网页/Java，复用未改employee/Host；v4修复MCP会话标识转发，仅重建Host，其余按manifest哈希复用v3。0021为验证详情加法迁移，原20条hash不变；原amd64镜像保持。
 
-最新回滚审核 `shared/config/rollback-reviews/20261023-external-v2-to-web-office-v16.json`，只退应用/配置至已验证v16，保留20条DB迁移和业务数据；新外部菜单/API在旧版不可使用。既有一致备份、Core并发1/启动1/空闲120秒/等待180秒保留。操作与接口合同见 `docs/external-connections.md` 和 `docs/external-query-mapping.md`。
+真实员工网页已查询两源，完成单项/组合/追问、程序计算、五表Excel、切表预览及实际下载；服务重启后原会话再次实际查询、文件字节及连接/模型配置保持。管理首页统计根因是重复CTE耗尽连接池，现有界扫描聚合、SQL10秒和UI15秒超时/取消/竞态保护；7/30/90与数据库独立计数一致，真实网页加载通过。
+
+国家平台21方法真实成功，部分为空另列；其余二维码/小微范围待实际入参。优废11方法真实200/code200，固定空参数，8个data、3个dataList；重量单位及部分业务口径仍未知。完整映射/界面用法见 `docs/external-connections.md`、`docs/external-query-mapping.md`；私有证据 `followup/acceptance-report.md`。不再将已保存有效凭据写成缺失。
+
+当前回滚审核 `shared/config/rollback-reviews/20261023-external-v4-to-external-v2.json`，只退应用/配置至此前已验证v2，保留21条DB迁移和文件/授权；新查询功能随旧应用退回，不是数据库回滚。既有一致备份、Core1/启动1/闲120秒/等180秒保持。
 
 ## 2026-10-22 历史部署记录
 

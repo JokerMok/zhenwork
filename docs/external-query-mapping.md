@@ -93,3 +93,45 @@
 国家平台生产 entInfo 返回实际企业身份。已成功取得废物、设施、管理计划、许可证、联单、台账等真实记录；部分处置、库存及小微列表为空，须列为调用成功无数据。按页请求和日期过滤分别验证；分页的 total 与当前页条数分开，不把当前页当全量。二维码查询仍需要真实设施/联单二维码，小微下属单位查询需要已授权的真实子单位及受控归属链，不用构造参数假称业务验收通过。
 
 真实业务记录和截图只保存在部署方私有验收目录，不进入 Git。网页专家查询、文件、权限和部署结果另见本轮维护记录；协议与定向测试不替代网页验收。
+
+### 2026-10-23 逐方法真实状态
+
+以下仅记录本轮返回状态，不公开单位身份、业务行或数量；成功无数据不表示真实业务数据已核对。
+
+| 连接器/方法 | 本轮真实状态 | 具体边界 |
+|---|---|---|
+| CSWM `entInfo` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listWasteInfo` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listStorageInfo` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listProductionInfo` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listDispositionInfo` | 成功、无数据 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listDispositionOutInfo` | 成功、无数据 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listOwnLicence` | 成功且有实际返回 | 不同页/条件含空返回，按查询范围分别报告 |
+| CSWM `listOutStorageInventory` | 成功、无数据 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listWaitInStorageInventory` | 成功、无数据 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listToOthers` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listCollectToOthers` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listManifest` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `ledger` | 成功且有实际返回 | 不同页/条件含空返回，按查询范围分别报告 |
+| CSWM `getCurrentTime` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listDictionary` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listMicroEnt` | 成功、无数据 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listKsycsq` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listReceiveWaitInRecord` | 成功、无数据 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listTransport` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `listLicence` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `getInventoryStatusByBatchCode` | 成功且有实际返回 | 按目录规定范围；分页仍仅当前页 |
+| CSWM `getFacilityInfoByQrCode` | 待真实入参验收 | 缺实际设施二维码 |
+| CSWM `getManifestNoByQrCode` | 待真实入参验收 | 缺实际联单二维码 |
+| CSWM `listMicroTrans` | 待受控范围接入/真实验收 | 当前小微名单为空；关联子单位授权链尚待核实，不接受任意企业ID |
+| UFEI `dealerData` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
+| UFEI `companyData` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
+| UFEI `entSummary` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
+| UFEI `entTend` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
+| UFEI `deviceSummary` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
+| UFEI `mgrCat` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
+| UFEI `onlineTime` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
+| UFEI `areaCover` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
+| UFEI `deliveryTend` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
+| UFEI `ledgerSummary` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
+| UFEI `warnNotice` | 成功、有数据且与独立直连接口一致 | 严格空参数；未声明的单位/口径不推断 |
