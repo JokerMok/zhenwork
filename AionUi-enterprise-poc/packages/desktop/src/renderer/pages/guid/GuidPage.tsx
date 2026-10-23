@@ -42,6 +42,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
 import styles from './index.module.css';
+import { redirectEnterpriseLoginIfNeeded, workspaceErrorTranslationKey } from '@/renderer/pages/workspace/workspaceApi';
 
 type GuidNavigationState = {
   resetAssistant?: boolean;
@@ -178,18 +179,9 @@ const GuidPage: React.FC = () => {
   useEffect(() => {
     if (hostedEnterpriseWeb && agentSelection.catalogRevision) setCatalogEpoch(agentSelection.catalogRevision);
   }, [hostedEnterpriseWeb, agentSelection.catalogRevision]);
-  const [configurationAdminUrl, setConfigurationAdminUrl] = useState<string>();
   useEffect(() => {
     if (!hostedEnterpriseWeb || !agentSelection.catalogError) return;
-    const controller = new AbortController();
-    void fetch('/enterprise/brand', { credentials: 'same-origin', cache: 'no-store', signal: controller.signal })
-      .then((r) => r.json())
-      .then((brand) => {
-        if (typeof brand.adminUrl === 'string' && new URL(brand.adminUrl).protocol === 'https:')
-          setConfigurationAdminUrl(brand.adminUrl);
-      })
-      .catch(() => {});
-    return () => controller.abort();
+    redirectEnterpriseLoginIfNeeded(agentSelection.catalogError);
   }, [hostedEnterpriseWeb, agentSelection.catalogError]);
 
   const guidInput = useGuidInput({
@@ -212,7 +204,9 @@ const GuidPage: React.FC = () => {
   const selectedAssistantId = agentSelection.selectedAssistantId;
   const hasSelectedAssistant = selectedAssistantId !== null;
   const { data: selectedAssistantDetail } = useSWR(
-    selectedAssistantId ? `guid.assistant.detail.${selectedAssistantId}.${localeKey}.${hostedEnterpriseWeb ? catalogEpoch : 0}` : null,
+    selectedAssistantId
+      ? `guid.assistant.detail.${selectedAssistantId}.${localeKey}.${hostedEnterpriseWeb ? catalogEpoch : 0}`
+      : null,
     async (): Promise<AssistantDetail | null> =>
       ipcBridge.assistants.get
         .invoke({ id: selectedAssistantId!, locale: localeKey })
@@ -803,7 +797,9 @@ const GuidPage: React.FC = () => {
             </Button>
           ) : null}
 
-          {hostedEnterpriseWeb && agentSelection.catalogLoading ? <Alert type='info' content={t('workspace.status.preparing')} /> : null}
+          {hostedEnterpriseWeb && agentSelection.catalogLoading ? (
+            <Alert type='info' content={t('workspace.status.preparing')} />
+          ) : null}
           {hostedEnterpriseWeb && agentSelection.catalogError ? (
             <Alert
               type='error'
@@ -811,12 +807,13 @@ const GuidPage: React.FC = () => {
               content={
                 <Space direction='vertical'>
                   <span>{t('workspace.preview.configurationError', { code: agentSelection.catalogError })}</span>
-                  <Button onClick={() => window.location.reload()}>{t('common.refresh')}</Button>
-                  {configurationAdminUrl ? (
-                    <Button href={configurationAdminUrl} target='_blank' rel='noopener noreferrer'>
-                      {t('workspace.preview.admin')}
+                  <span>{t(workspaceErrorTranslationKey(agentSelection.catalogError, 'load'))}</span>
+                  <Space size='mini'>
+                    <Button onClick={() => window.location.reload()}>{t('common.retry')}</Button>
+                    <Button onClick={() => navigate('/workspace?section=abilities')}>
+                      {t('guid.viewCapabilities')}
                     </Button>
-                  ) : null}
+                  </Space>
                 </Space>
               }
             />

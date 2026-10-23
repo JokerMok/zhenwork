@@ -58,11 +58,18 @@
     "completed": "已完成",
     "failed": "失败",
     "error": "错误",
-    "cancelled": "已取消"
+    "cancelled": "已取消",
+    "preparationFailed": "环境准备未完成，请按下方原因处理后重试。",
+    "capabilityForbidden": "当前账号没有工作台使用权限，请联系管理员核对员工角色和授权。",
+    "environmentUnavailable": "运行环境暂时不可用，请重试；仍失败时联系管理员检查服务。",
+    "identityExpired": "登录已过期，请重新登录。"
   },
   "errors": {
     "load": "无法加载此区域（{{code}}）。",
-    "action": "操作失败（{{code}}）。"
+    "action": "操作失败（{{code}}）。",
+    "authentication": "登录状态已失效，正在返回登录页，请重新登录。",
+    "forbidden": "当前账号没有这项能力的使用权限，请联系组织管理员授权。",
+    "noModel": "当前账号没有可用模型，请联系组织管理员检查默认模型和授权。"
   },
   "fileKind": {
     "all": "全部文件",
@@ -98,6 +105,7 @@
     "openInTask": "在任务中打开"
   },
   "scope": {
+    "available": "全部可用",
     "mine": "我的",
     "shared": "共享给我的"
   },
@@ -123,6 +131,7 @@
     "deleteConfirm": "删除 {{name}}，并停止今后继续使用？",
     "deleted": "文档已删除",
     "empty": "请选择知识库，或上传第一份文档",
+    "availableEmpty": "当前账号暂无可用知识库；可切换到“我的”新建个人知识库，或联系组织管理员授权。",
     "versionStatus": "最新 v{{latest}}，已索引 v{{indexed}}",
     "version": "版本",
     "indexError": "索引错误：{{code}}",
@@ -140,10 +149,12 @@
   },
   "abilities": {
     "title": "能力",
-    "subtitle": "管理个人助手，并查看共享给你的助手。运行引擎和模型由工作台统一管理。",
+    "subtitle": "查看组织提供和个人创建的可用模型与能力；组织默认项会自动继承到你的工作台。",
     "create": "新建能力",
     "detail": "能力详情",
     "empty": "暂无能力",
+    "personalEmpty": "暂无个人能力；组织提供的能力仍可在“全部可用”中使用。",
+    "modelsEmpty": "当前账号暂无可用模型，请联系管理员检查组织默认模型与授权。",
     "name": "名称",
     "description": "说明",
     "instructions": "工作指令",
@@ -160,6 +171,17 @@
     "unavailable": "不可用",
     "readinessError": "此能力存在不可用依赖：{{errors}}",
     "assistants": "助手",
+    "models": "模型",
+    "tools": "工具",
+    "default": "组织默认",
+    "workspaceBuiltin": "工作台内置",
+    "nativeAssistant": "通用办公助手",
+    "nativeTools": "办公文件工具",
+    "nativeOfficeDescription": "由工作台随组织默认模型 {{model}} 提供，可直接用于新任务；这是本机工作台能力，不属于 MCP 连接目录。",
+    "origin": {
+      "organization": "组织提供",
+      "personal": "个人"
+    },
     "skillPackages": "能力包",
     "importPackage": "导入能力包目录",
     "packageHint": "选择一个且只包含一份 SKILL.md 的目录；配套文件会保留相对路径和二进制内容一并导入。",

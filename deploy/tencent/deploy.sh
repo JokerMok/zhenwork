@@ -49,7 +49,7 @@ if [[ $legacy == 1 && ! -f "$ops/build-linux.sh" ]]; then ops="$repo/deploy/tenc
   echo 'The committed tree is missing application locks or deploy/tencent scripts.' >&2; exit 1;
 }
 if [[ $legacy == 0 ]]; then
-  for committed_file in deploy.sh restage-host.sh activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh verify-maintenance.py prepare-office-host.sh README.md rollback-compatibility.example.json; do
+  for committed_file in deploy.sh restage-host.sh activate.sh backup.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh verify-maintenance.py prepare-office-host.sh prepare-monitor.py zhenwork-monitor.service zhenwork-caddy-edge.conf zhenwork-web.service zhenwork.caddy README.md rollback-compatibility.example.json; do
     cmp -s "$repo/deploy/tencent/$committed_file" "$ops/$committed_file" || {
       echo "deploy/tencent/$committed_file differs from $sha; commit the maintenance flow before staging." >&2; exit 1;
     }
@@ -151,6 +151,7 @@ VITE_APP_CONTEXT_PATH=/admin/
 VITE_APP_ENCRYPT=false
 VITE_APP_CLIENT_ID=$client
 VITE_APP_MESSAGE_ENABLED=false
+VITE_APP_MONITOR_ADMIN=/monitor/
 ENV
 (cd "$control/platform/plus-ui" && node node_modules/vite/bin/vite.js build --mode tencent)
 
@@ -175,14 +176,16 @@ maven_cache=${ZHENWORK_MAVEN_REPOSITORY:-${ZHENWORK_MAVEN_CACHE_ROOT:-$repo/.cod
 mkdir -p "$maven_cache"
 maven_network=()
 [[ ${ZHENWORK_MAVEN_OFFLINE:-0} == 1 ]] && maven_network=(-o)
-(cd "$control/platform/ruoyi" && MAVEN_OPTS='-Xms128m -Xmx1536m' sh mvnw "${maven_network[@]}" -s "$ops/config/maven-settings.xml" -B -ntp -Dmaven.repo.local="$maven_cache" -pl ruoyi-admin -am package -Dmaven.test.skip=true)
+(cd "$control/platform/ruoyi" && MAVEN_OPTS='-Xms128m -Xmx1536m' sh mvnw "${maven_network[@]}" -s "$ops/config/maven-settings.xml" -B -ntp -Dmaven.repo.local="$maven_cache" -pl ruoyi-admin,ruoyi-extend/ruoyi-monitor-admin -am package -Dmaven.test.skip=true)
 
 stage="$work/release"
-mkdir -p "$stage/employee" "$stage/admin" "$stage/control-source/platform/ruoyi/script/sql/postgres" "$stage/control-source/migrations"
+mkdir -p "$stage/employee" "$stage/admin" "$stage/control-source/platform/ruoyi/script/sql/postgres" "$stage/control-source/migrations" "$stage/deploy-assets"
 if [[ $reuse_employee == 0 ]]; then cp -R "$app/out/renderer/." "$stage/employee/"; fi
 cp -R "$control/platform/plus-ui/dist/." "$stage/admin/"
 if [[ $reuse_employee == 0 ]]; then cp "$app/packages/web-cli/dist/aionui-enterprise-web.cjs" "$stage/web-host.cjs"; fi
 cp "$control/platform/ruoyi/ruoyi-admin/target/ruoyi-admin.jar" "$stage/rc2.jar"
+cp "$control/platform/ruoyi/ruoyi-extend/ruoyi-monitor-admin/target/ruoyi-monitor-admin.jar" "$stage/monitor.jar"
+cp "$ops/backup.sh" "$ops/prepare-monitor.py" "$ops/zhenwork-monitor.service" "$ops/zhenwork-caddy-edge.conf" "$ops/zhenwork-web.service" "$ops/zhenwork.caddy" "$stage/deploy-assets/"
 cp "$control/platform/ruoyi/script/sql/postgres/postgres_ry_vue.sql" "$stage/control-source/platform/ruoyi/script/sql/postgres/"
 cp -R "$control/migrations/rc2" "$stage/control-source/migrations/"
 printf '%s\n' "$sha" > "$stage/SOURCE_SHA"
@@ -222,7 +225,7 @@ rsync -az --delete "$stage/" "tencent-main:$remote_root/incoming/$release/"
 if [[ $reuse_employee == 1 ]]; then
   ssh tencent-main "sudo cp -a '$remote_root/releases/$base_release/employee/.' '$remote_root/incoming/$release/employee/'; sudo cp -a '$remote_root/releases/$base_release/web-host.cjs' '$remote_root/incoming/$release/web-host.cjs'"
 fi
-for name in activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh; do
+for name in activate.sh backup.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh prepare-monitor.py; do
   rsync -az "$ops/$name" "tencent-main:/tmp/zhenwork-$release-$name"
   ssh tencent-main "sudo install -o root -g root -m 0755 '/tmp/zhenwork-$release-$name' '$remote_root/deploy/$name'; rm -f '/tmp/zhenwork-$release-$name'"
 done

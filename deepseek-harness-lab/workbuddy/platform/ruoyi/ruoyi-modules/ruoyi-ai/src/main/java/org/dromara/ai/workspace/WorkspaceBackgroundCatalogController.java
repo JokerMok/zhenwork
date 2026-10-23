@@ -54,8 +54,9 @@ public class WorkspaceBackgroundCatalogController {
         @RequestHeader("Authorization") String serviceAuthorization,
         @RequestHeader("X-Aion-Background-Secret") String secret) {
         long userId = owner(grantId, serviceAuthorization, secret);
+        if (!"available".equals(scope)) throw new WorkspaceDenied(400, "InvalidResourceFilter");
         resourcePermission(userId, type);
-        List<Map<String, Object>> items = resources.list(userId, type, scope, page);
+        List<Map<String, Object>> items = resources.list(userId, type, "available", page);
         return R.ok(items.stream().filter(item -> item.get("actions") instanceof List<?> actions && actions.contains("USE") &&
             item.get("publishedVersion") != null).map(item -> {var active=new java.util.LinkedHashMap<>(item);active.put("version",item.get("publishedVersion"));return active;}).toList());
     }

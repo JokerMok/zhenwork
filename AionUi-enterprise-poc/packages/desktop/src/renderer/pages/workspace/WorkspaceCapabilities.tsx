@@ -20,11 +20,18 @@ import { Delete, FolderOpen, Plus, Refresh } from '@icon-park/react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { enterpriseControl, enterpriseRequest, newIdempotencyKey, workspaceErrorCode } from './workspaceApi';
+import {
+  enterpriseControl,
+  enterpriseRequest,
+  newIdempotencyKey,
+  workspaceErrorCode,
+  workspaceErrorTranslationKey,
+} from './workspaceApi';
+import { availableModelId, catalogOrigin, preferredAvailableModel, type AvailableModel } from './workspaceCatalog';
 import type { ResourceScope, WorkspaceResource } from './workspaceTypes';
 import McpConnections from './capabilities/McpConnections';
 
-type CapabilityType = 'ASSISTANT' | 'SKILL' | 'MCP';
+type CapabilityType = 'MODEL' | 'ASSISTANT' | 'SKILL' | 'MCP' | 'TOOL';
 type AssistantConfig = {
   avatar?: string;
   instruction: string;
@@ -38,7 +45,6 @@ type SkillFile = { path: string; content: string; encoding: 'base64'; executable
 type SkillConfig = { source: string; files: SkillFile[]; manifest?: { name?: string } };
 type AssistantResource = WorkspaceResource & { config: AssistantConfig };
 type SkillResource = WorkspaceResource & { config: SkillConfig };
-type AvailableModel = { id?: string; modelId?: string; name?: string };
 type RuntimeIssue = {
   type: 'SKILL' | 'MCP' | 'ASSISTANT';
   id: string;
@@ -86,9 +92,11 @@ const WorkspaceCapabilities: React.FC = () => {
   const navigate = useNavigate();
   const [message, messageContext] = Message.useMessage();
   const [form] = Form.useForm<EditorValue>();
-  const [scope, setScope] = useState<ResourceScope>('mine');
+  const [scope, setScope] = useState<ResourceScope>('available');
   const [capabilityType, setCapabilityType] = useState<CapabilityType>('ASSISTANT');
   const [items, setItems] = useState<WorkspaceResource[]>([]);
+  const [models, setModels] = useState<AvailableModel[]>([]);
+  const [organizationDefaultModel, setOrganizationDefaultModel] = useState<AvailableModel | null>(null);
   const [runtimeIssues, setRuntimeIssues] = useState<RuntimeIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -105,23 +113,53 @@ const WorkspaceCapabilities: React.FC = () => {
   const [refreshingResources, setRefreshingResources] = useState(false);
   const [openingResourceId, setOpeningResourceId] = useState<string | null>(null);
   const packageSignature = useRef('');
+  const loadGeneration = useRef(0);
+
+  useEffect(
+    () => () => {
+      loadGeneration.current += 1;
+    },
+    []
+  );
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setLoading(true);
     try {
-      const [value, issues] = await Promise.all([
+      if (capabilityType === 'MODEL') {
+        const value = await enterpriseControl<AvailableModel[]>('/ai/models/available');
+        if (generation !== loadGeneration.current) return;
+        setModels(Array.isArray(value) ? value : []);
+        setOrganizationDefaultModel(value.find((model) => model.source === 'ORGANIZATION' && model.isDefault) || null);
+        setItems([]);
+        setRuntimeIssues([]);
+        setErrorCode(null);
+        return;
+      }
+      const [value, issues, availableModels] = await Promise.all([
         enterpriseControl<WorkspaceResource[]>(`/ai/resources?type=${capabilityType}&scope=${scope}&page=1`),
         enterpriseControl<RuntimeIssue[]>('/ai/resources/runtime-issues'),
+        capabilityType === 'ASSISTANT' || capabilityType === 'TOOL'
+          ? enterpriseControl<AvailableModel[]>('/ai/models/available').catch((): AvailableModel[] => [])
+          : Promise.resolve([] as AvailableModel[]),
       ]);
+      if (generation !== loadGeneration.current) return;
       setItems(Array.isArray(value) ? value : []);
+      setModels([]);
+      setOrganizationDefaultModel(
+        availableModels.find((model) => model.source === 'ORGANIZATION' && model.isDefault) || null
+      );
       setRuntimeIssues(Array.isArray(issues) ? issues : []);
       setErrorCode(null);
     } catch (error) {
+      if (generation !== loadGeneration.current) return;
       setItems([]);
+      setModels([]);
+      setOrganizationDefaultModel(null);
       setRuntimeIssues([]);
       setErrorCode(workspaceErrorCode(error));
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, [capabilityType, scope]);
 
@@ -187,22 +225,14 @@ const WorkspaceCapabilities: React.FC = () => {
   const openAssistantEditor = async (item?: WorkspaceResource) => {
     setReadiness(null);
     const dependencies = await Promise.all([
-      enterpriseControl<WorkspaceResource[]>('/ai/resources?type=SKILL&scope=mine&page=1').catch(
+      enterpriseControl<WorkspaceResource[]>('/ai/resources?type=SKILL&scope=available&page=1').catch(
         (): WorkspaceResource[] => []
       ),
-      enterpriseControl<WorkspaceResource[]>('/ai/resources?type=SKILL&scope=shared&page=1').catch(
-        (): WorkspaceResource[] => []
-      ),
-      enterpriseControl<WorkspaceResource[]>('/ai/resources?type=MCP&scope=mine&page=1').catch(
-        (): WorkspaceResource[] => []
-      ),
-      enterpriseControl<WorkspaceResource[]>('/ai/resources?type=MCP&scope=shared&page=1').catch(
+      enterpriseControl<WorkspaceResource[]>('/ai/resources?type=MCP&scope=available&page=1').catch(
         (): WorkspaceResource[] => []
       ),
     ]);
-    const [mineSkills, sharedSkills, mineMcps, sharedMcps] = dependencies;
-    const skills = [...mineSkills, ...sharedSkills.filter((skill) => !mineSkills.some((own) => own.id === skill.id))];
-    const mcps = [...mineMcps, ...sharedMcps.filter((mcp) => !mineMcps.some((own) => own.id === mcp.id))];
+    const [skills, mcps] = dependencies;
     setAssistantSkills(skills.filter((skill) => skill.actions.includes('USE')));
     setAssistantMcps(mcps.filter((mcp) => mcp.actions.includes('USE')));
     if (!item) {
@@ -228,7 +258,8 @@ const WorkspaceCapabilities: React.FC = () => {
         enabled: detail.enabled,
       });
     } catch (error) {
-      message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+      const code = workspaceErrorCode(error);
+      message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
     }
   };
 
@@ -236,7 +267,8 @@ const WorkspaceCapabilities: React.FC = () => {
     try {
       setSkillDetail(await enterpriseControl<SkillResource>(`/ai/resources/${item.id}`));
     } catch (error) {
-      message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+      const code = workspaceErrorCode(error);
+      message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
     }
   };
 
@@ -247,8 +279,7 @@ const WorkspaceCapabilities: React.FC = () => {
       let saved: AssistantResource;
       if (editing === 'new') {
         const models = await enterpriseControl<AvailableModel[]>('/ai/models/available');
-        const model = models.find((candidate) => typeof (candidate.id || candidate.modelId) === 'string');
-        const modelId = model?.id || model?.modelId;
+        const modelId = availableModelId(preferredAvailableModel(models) || {});
         if (!modelId) throw new Error('ModelUnavailable');
         saved = await enterpriseControl<AssistantResource>('/ai/resources', {
           method: 'POST',
@@ -296,7 +327,8 @@ const WorkspaceCapabilities: React.FC = () => {
       setEditing(null);
       await load();
     } catch (error) {
-      message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+      const code = workspaceErrorCode(error);
+      message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
     } finally {
       setSaving(false);
     }
@@ -346,7 +378,8 @@ const WorkspaceCapabilities: React.FC = () => {
       message.success(t('workspace.abilities.packageImported', { count: files.length }));
       await load();
     } catch (error) {
-      message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+      const code = workspaceErrorCode(error);
+      message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
     } finally {
       setSaving(false);
     }
@@ -377,7 +410,8 @@ const WorkspaceCapabilities: React.FC = () => {
           message.success(t('workspace.abilities.deleted'));
           await load();
         } catch (error) {
-          message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+          const code = workspaceErrorCode(error);
+          message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
           throw error;
         }
       },
@@ -387,6 +421,8 @@ const WorkspaceCapabilities: React.FC = () => {
   const canEdit = editing !== null && (editing === 'new' || editing.actions.includes('EDIT'));
   const packageBudgetIssues = runtimeIssues.filter((issue) => issue.code === 'PACKAGE_BUDGET_EXCEEDED');
   const otherRuntimeIssues = runtimeIssues.filter((issue) => issue.code !== 'PACKAGE_BUDGET_EXCEEDED');
+  const nativeOfficeCapability =
+    scope === 'available' && organizationDefaultModel && (capabilityType === 'ASSISTANT' || capabilityType === 'TOOL');
 
   return (
     <div className='flex flex-col gap-12px'>
@@ -398,14 +434,19 @@ const WorkspaceCapabilities: React.FC = () => {
         </div>
         <Space wrap>
           <Select value={capabilityType} onChange={setCapabilityType} style={{ width: 145 }}>
+            <Select.Option value='MODEL'>{t('workspace.abilities.models')}</Select.Option>
             <Select.Option value='ASSISTANT'>{t('workspace.abilities.assistants')}</Select.Option>
             <Select.Option value='SKILL'>{t('workspace.abilities.skillPackages')}</Select.Option>
             <Select.Option value='MCP'>{t('workspace.abilities.mcpConnections')}</Select.Option>
+            <Select.Option value='TOOL'>{t('workspace.abilities.tools')}</Select.Option>
           </Select>
-          <Select value={scope} onChange={setScope} style={{ width: 130 }}>
-            <Select.Option value='mine'>{t('workspace.scope.mine')}</Select.Option>
-            <Select.Option value='shared'>{t('workspace.scope.shared')}</Select.Option>
-          </Select>
+          {capabilityType !== 'MODEL' ? (
+            <Select value={scope} onChange={setScope} style={{ width: 150 }}>
+              <Select.Option value='available'>{t('workspace.scope.available')}</Select.Option>
+              <Select.Option value='mine'>{t('workspace.scope.mine')}</Select.Option>
+              <Select.Option value='shared'>{t('workspace.scope.shared')}</Select.Option>
+            </Select>
+          ) : null}
           {scope === 'mine' && capabilityType === 'ASSISTANT' ? (
             <Button type='primary' icon={<Plus />} onClick={() => void openAssistantEditor()}>
               {t('workspace.abilities.create')}
@@ -420,8 +461,8 @@ const WorkspaceCapabilities: React.FC = () => {
           ) : null}
           <Button
             icon={<Refresh />}
-            onClick={() => void refreshCapabilities()}
-            loading={refreshingResources}
+            onClick={() => void (capabilityType === 'MODEL' ? load() : refreshCapabilities())}
+            loading={capabilityType === 'MODEL' ? loading : refreshingResources}
             disabled={Boolean(openingResourceId)}
           >
             {t('common.refresh')}
@@ -449,10 +490,72 @@ const WorkspaceCapabilities: React.FC = () => {
           })}
         />
       ) : null}
-      {errorCode ? <Alert type='error' showIcon content={t('workspace.errors.load', { code: errorCode })} /> : null}
+      {nativeOfficeCapability ? (
+        <List
+          dataSource={[capabilityType]}
+          render={() => (
+            <List.Item>
+              <List.Item.Meta
+                title={
+                  <div className='flex flex-wrap items-center gap-8px'>
+                    <span>
+                      {capabilityType === 'ASSISTANT'
+                        ? t('workspace.abilities.nativeAssistant')
+                        : t('workspace.abilities.nativeTools')}
+                    </span>
+                    <Tag color='arcoblue'>{t('workspace.abilities.origin.organization')}</Tag>
+                    <Tag>{t('workspace.abilities.workspaceBuiltin')}</Tag>
+                    <Tag color='green'>{t('workspace.abilities.available')}</Tag>
+                  </div>
+                }
+                description={t('workspace.abilities.nativeOfficeDescription', {
+                  model:
+                    organizationDefaultModel.name ||
+                    organizationDefaultModel.code ||
+                    availableModelId(organizationDefaultModel),
+                })}
+              />
+            </List.Item>
+          )}
+        />
+      ) : null}
+      {errorCode ? (
+        <Alert
+          type='error'
+          showIcon
+          content={t(workspaceErrorTranslationKey(errorCode, 'load'), { code: errorCode })}
+        />
+      ) : null}
       <Spin loading={loading} className='w-full'>
-        {items.length === 0 && !loading ? (
-          <Empty description={t('workspace.abilities.empty')} />
+        {capabilityType === 'MODEL' ? (
+          models.length === 0 && !loading ? (
+            <Empty description={t('workspace.abilities.modelsEmpty')} />
+          ) : (
+            <List
+              dataSource={models}
+              render={(model) => (
+                <List.Item key={availableModelId(model) || model.code || model.name}>
+                  <List.Item.Meta
+                    title={
+                      <div className='flex flex-wrap items-center gap-8px'>
+                        <span>{model.name || model.code || availableModelId(model)}</span>
+                        <Tag color={catalogOrigin(model) === 'organization' ? 'arcoblue' : 'purple'}>
+                          {t(`workspace.abilities.origin.${catalogOrigin(model)}`)}
+                        </Tag>
+                        {model.isDefault ? <Tag color='green'>{t('workspace.abilities.default')}</Tag> : null}
+                        <Tag color='blue'>{t('workspace.abilities.available')}</Tag>
+                      </div>
+                    }
+                    description={model.code || availableModelId(model) || t('workspace.none')}
+                  />
+                </List.Item>
+              )}
+            />
+          )
+        ) : items.length === 0 && !loading && !nativeOfficeCapability ? (
+          <Empty
+            description={scope === 'mine' ? t('workspace.abilities.personalEmpty') : t('workspace.abilities.empty')}
+          />
         ) : (
           <List
             dataSource={items}
@@ -504,6 +607,10 @@ const WorkspaceCapabilities: React.FC = () => {
                   title={
                     <div className='flex flex-wrap items-center gap-8px'>
                       <span>{item.name}</span>
+                      <Tag color={catalogOrigin(item) === 'organization' ? 'arcoblue' : 'purple'}>
+                        {t(`workspace.abilities.origin.${catalogOrigin(item)}`)}
+                      </Tag>
+                      {item.isDefault ? <Tag color='green'>{t('workspace.abilities.default')}</Tag> : null}
                       <Tag>{t('workspace.abilities.version', { version: item.version })}</Tag>
                       <Tag color={item.enabled && !item.securityDisabled ? 'blue' : 'gray'}>
                         {item.enabled && !item.securityDisabled

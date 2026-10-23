@@ -6,11 +6,11 @@ export function createRc2GatewayPublicBrand(baseUrl, origin) {
 }
 
 /** RC2 alone owns the employee identity; its cookie stays in the server process. */
-export function createRc2GatewayLogin(baseUrl, origin) {
-  return async (username, password) => {
+export function createRc2GatewayLogin(baseUrl, origin, edgeToken) {
+  return async (username, password, clientMetadata) => {
     const client = new Rc2Client(baseUrl, origin);
     await client.bootstrap();
-    const actor = await client.login({ username, password });
+    const actor = await client.login({ username, password, clientMetadata, edgeToken });
     const userId = String(actor.userId);
     const serverId = String(actor.serverId);
     if (actor.mustChangePassword) {
@@ -64,13 +64,13 @@ export function createRc2GatewayResume(baseUrl, origin) {
 }
 
 /** Authenticate the reset credential, then use only the native self-service password API. */
-export function createRc2GatewayPasswordChange(baseUrl, origin) {
-  return async (username, oldPassword, newPassword) => {
+export function createRc2GatewayPasswordChange(baseUrl, origin, edgeToken) {
+  return async (username, oldPassword, newPassword, clientMetadata) => {
     if (!/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/.test(newPassword)) throw new Error('Invalid new password');
     const client = new Rc2Client(baseUrl, origin);
     try {
       await client.bootstrap();
-      await client.login({ username, password: oldPassword });
+      await client.login({ username, password: oldPassword, clientMetadata, edgeToken });
       const { response, body } = await client.request('/system/user/profile/updatePwd', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPassword, newPassword }),

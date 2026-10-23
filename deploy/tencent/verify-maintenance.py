@@ -39,6 +39,9 @@ json.loads(text("rollback-compatibility.example.json"))
 stage = text("deploy.sh")
 prepare = text("build-linux.sh")
 activate = text("activate.sh")
+manage = text("manage.sh")
+backup = text("backup.sh")
+monitor_unit = text("zhenwork-monitor.service")
 restage = text("restage-host.sh")
 configure = text("configure.py")
 office_dependencies = text("prepare-office-host.sh")
@@ -55,6 +58,26 @@ assert activate.index("systemctl start server-config-backup.service") < activate
 for token in ("databaseMigrations", "targetMigrationPrefix", "additiveSchemaCompatible", "Future schema is never implicitly accepted"):
     assert token in activate
 assert "schema_advancing" in activate and "Services remain stopped" in activate
+assert 'caddy_installer=/usr/local/sbin/caddy-site-install' in activate
+assert 'source "$root/shared/config/edge.env"' in activate
+assert 'source "$root/shared/config/monitor-proxy.env"' in activate
+assert '"$caddy_installer" zhenwork "$target/deploy-assets/zhenwork.caddy"' in activate
+assert 'save_runtime_snapshot "$snapshot"' in activate and 'restore_runtime_snapshot "$snapshot"' in activate
+assert "'caddy-site':('/etc/caddy/sites-enabled/zhenwork.caddy','zhenwork.caddy')" in activate
+assert "'monitor-unit':('/etc/systemd/system/zhenwork-monitor.service','zhenwork-monitor.service')" in activate
+assert "'caddy-dropin':('/etc/systemd/system/caddy.service.d/zhenwork-edge.conf','zhenwork-edge.conf')" in activate
+assert "'backup-hook':('/etc/server-ops/backup.d/zhenwork.sh','backup-hook.sh')" in activate
+assert "monitor-jar" not in activate and "shared/monitor.jar" not in activate
+assert "Legacy rollback target has no captured runtime snapshot" in activate
+assert 'if [[ $monitor_target == 1 ]]' in activate and 'restore_runtime_snapshot "$root/shared/config/versions/$release"' in activate
+assert 'monitor_available()' in manage and 'if monitor_available; then' in manage
+assert '"$root/current/monitor.jar"' in manage and 'shared/monitor.jar' not in manage
+assert manage.index('systemctl restart zhenwork-rc2') < manage.index('if monitor_available; then') < manage.index('systemctl restart zhenwork-web')
+assert 'systemctl is-active --quiet zhenwork-monitor' in backup
+assert "--exclude='./monitor.jar'" in backup
+assert backup.index('systemctl start zhenwork-rc2') < backup.index('systemctl start zhenwork-monitor') < backup.index('systemctl start zhenwork-web')
+assert '/srv/apps/zhenwork/current/monitor.jar' in monitor_unit and '/srv/apps/zhenwork/shared/monitor.jar' not in monitor_unit
+assert "'backup.sh'" in prepare and 'activate.sh backup.sh bootstrap.py' in stage
 assert "git diff --name-only --no-renames -z" in restage
 assert "packages/web-host/src/*|AionUi-enterprise-poc/packages/web-cli/src/*" in restage
 assert "packages/desktop" in restage and "full reviewed stage" in restage
@@ -62,7 +85,8 @@ assert "Host-only restage refused changed path" in restage and "*)" in restage
 assert "packages/web-cli/src/enterprise-entry.ts" in restage and "build-web.mjs" not in restage
 assert "artifactReusedFrom" in restage and "artifactReusedFrom" in prepare
 assert "systemctl" not in restage and "sudo bash '$remote_root/deploy/activate.sh'" not in restage and "current.next" not in restage
-assert "assert reuse['reusedArtifacts'] in (['admin','control-source','employee','rc2.jar'], ['admin','control-source','rc2.jar'], ['control-source','rc2.jar'], ['employee','web-host.cjs'])" in prepare
+assert "['control-source','deploy-assets','monitor.jar','rc2.jar']" in prepare
+assert "['admin','control-source','deploy-assets','employee','monitor.jar','rc2.jar']" in prepare
 for source in (configure,activate):
     assert "shared/uploads" in source and "shared/config/uploads" in source
     assert "target.is_symlink() or not target.is_dir()" in source
@@ -85,7 +109,7 @@ print("ZhenWork scoped deployment maintenance checks passed.")
 
 web_restage = text("restage-web.sh")
 assert "git archive" in web_restage and "build-web.mjs" in web_restage
-assert "['control-source','rc2.jar']" in web_restage
+assert "['control-source','deploy-assets','monitor.jar','rc2.jar']" in web_restage
 assert 'packages/desktop/src/renderer/*' in web_restage
 assert 'packages/desktop/src/common/chat/normalizeToolCall.ts)' in web_restage
 assert 'full reviewed stage' in web_restage and '*)' in web_restage

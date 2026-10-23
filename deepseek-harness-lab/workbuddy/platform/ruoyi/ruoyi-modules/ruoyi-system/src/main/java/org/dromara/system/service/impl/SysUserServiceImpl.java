@@ -21,6 +21,7 @@ import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.system.api.UserService;
 import org.dromara.system.api.domain.UserDTO;
 import org.dromara.system.domain.SysUser;
+import org.dromara.system.domain.SysRole;
 import org.dromara.system.domain.SysUserPost;
 import org.dromara.system.domain.SysUserRole;
 import org.dromara.system.domain.bo.SysUserBo;
@@ -318,11 +319,14 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
      * @return 结果
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean registerUser(SysUserBo user) {
         user.setCreateBy(0L);
         user.setUpdateBy(0L);
         SysUser sysUser = MapstructUtils.convert(user, SysUser.class);
-        return userMapper.insert(sysUser) > 0;
+        boolean created = userMapper.insert(sysUser) > 0;
+        if (created) insertUserRole(sysUser.getUserId(), user.getRoleIds(), false);
+        return created;
     }
 
     /**
@@ -357,6 +361,7 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void insertUserAuth(Long userId, Long[] roleIds) {
+        checkUserAllowed(userId);
         insertUserRole(userId, roleIds, true);
     }
 
@@ -461,11 +466,15 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
      * @param clear   清除已存在的关联数据
      */
     private void insertUserRole(Long userId, Long[] roleIds, boolean clear) {
-        if (ArrayUtil.isEmpty(roleIds)) {
-            return;
-        }
-
-        List<Long> roleList = new ArrayList<>(Arrays.asList(roleIds));
+        // A null role field on an edit means "leave roles unchanged" (including self-service edits).
+        if (clear && roleIds == null) return;
+        // Every ordinary account has the workspace baseline, including imports and empty role forms.
+        // Additional department/role resource grants remain independent of this qualification.
+        List<Long> roleList = new ArrayList<>(roleIds == null ? List.of() : Arrays.asList(roleIds));
+        var employee = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
+            .eq(SysRole::getRoleKey, "workspace_employee").eq(SysRole::getStatus, "0").eq(SysRole::getDelFlag, "0"));
+        if (employee == null) throw new ServiceException("企业员工基础角色未配置或已停用，请联系管理员");
+        roleList = new ArrayList<>(new LinkedHashSet<>(roleList));
 
         // 非超级管理员，禁止包含超级管理员角色
         if (!LoginHelper.isSuperAdmin(userId)) {
@@ -473,14 +482,17 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         }
 
         // 移除超管角色后若无剩余角色，说明仅选了超管角色且不允许分配，显式报错
-        if (roleList.isEmpty()) {
+        if (roleIds != null && roleIds.length > 0 && roleList.isEmpty()) {
             throw new ServiceException("不允许为普通用户分配超级管理员角色，请至少选择一个其他角色");
         }
 
         // 校验是否有权限访问这些角色（含数据权限控制）
-        if (roleMapper.selectRoleCount(roleList) != roleList.size()) {
+        var additionalRoles = roleList.stream().filter(id -> !id.equals(employee.getRoleId())).toList();
+        if (!additionalRoles.isEmpty() && roleMapper.selectRoleCount(additionalRoles) != additionalRoles.size()) {
             throw new ServiceException("没有权限访问角色的数据");
         }
+
+        if (!roleList.contains(employee.getRoleId())) roleList.add(employee.getRoleId());
 
         // 是否清除原有绑定
         if (clear) {

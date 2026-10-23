@@ -7,8 +7,21 @@ zhenwork.shizibandu.icu {
             roll_keep 3
             roll_keep_for 168h
         }
+        format filter {
+            request>headers>X-ZhenWork-Edge-Token delete
+            request>headers>X-ZhenWork-Monitor-Authorization delete
+        }
     }
-    reverse_proxy 127.0.0.1:18891
+    reverse_proxy 127.0.0.1:18891 {
+        header_up X-ZhenWork-Edge-Token {$ZHENWORK_EDGE_TOKEN}
+        header_up X-ZhenWork-Client-IP {http.request.remote.host}
+        header_up X-ZhenWork-Client-User-Agent {http.request.header.User-Agent}
+        header_up X-Forwarded-For {http.request.remote.host}
+        header_up -Forwarded
+        header_up -X-Real-IP
+        header_up -CF-Connecting-IP
+        header_up -X-ZhenWork-Monitor-Authorization
+    }
 }
 zhenwork-admin.shizibandu.icu {
     header X-Content-Type-Options nosniff
@@ -20,30 +33,93 @@ zhenwork-admin.shizibandu.icu {
             roll_keep 3
             roll_keep_for 168h
         }
+        format filter {
+            request>headers>X-ZhenWork-Edge-Token delete
+            request>headers>X-ZhenWork-Monitor-Authorization delete
+        }
     }
+    # The employee Host may relay an already validated browser identity. Never
+    # accept its metadata unless the private edge token matches exactly.
+    @trustedEmployeeRelay header X-ZhenWork-Edge-Token {$ZHENWORK_EDGE_TOKEN}
+    vars @trustedEmployeeRelay verified_client_ip {http.request.header.X-ZhenWork-Client-IP}
+    vars @trustedEmployeeRelay verified_client_ua {http.request.header.X-ZhenWork-Client-User-Agent}
+    request_header @trustedEmployeeRelay X-Forwarded-For {vars.verified_client_ip}
+    request_header @trustedEmployeeRelay User-Agent {vars.verified_client_ua}
+    request_header @trustedEmployeeRelay -Forwarded
+    request_header @trustedEmployeeRelay -X-Real-IP
+    request_header @trustedEmployeeRelay -CF-Connecting-IP
+
+    @externalAdmin not header X-ZhenWork-Edge-Token {$ZHENWORK_EDGE_TOKEN}
+    request_header @externalAdmin X-Forwarded-For {http.request.remote.host}
+    request_header @externalAdmin -Forwarded
+    request_header @externalAdmin -X-Real-IP
+    request_header @externalAdmin -CF-Connecting-IP
+
     # RC2 has one canonical Origin. Rewrite only the explicitly trusted admin
     # Origin; preserve foreign/absent origins so RC2's write checks still apply.
     @adminOrigin header Origin https://zhenwork-admin.shizibandu.icu
     request_header @adminOrigin Origin https://zhenwork.shizibandu.icu
-    @externalInternal {
-        path /internal/* /api/internal/*
-        not remote_ip 127.0.0.1 ::1
+    # Keep the internal-path denial ahead of every proxy handler. Caddy's
+    # normal directive sorting would otherwise move a matcher-bound respond
+    # after the mutually exclusive handle group.
+    route {
+        @externalInternal {
+            path /internal/* /api/internal/*
+            not remote_ip 127.0.0.1 ::1
+        }
+        respond @externalInternal 403
+        @monitorWrite {
+            path /monitor/*
+            not method GET HEAD
+        }
+        respond @monitorWrite 405
+        handle /monitor/* {
+            forward_auth 127.0.0.1:18890 {
+                uri /internal/monitor/access
+                header_up clientid {$ZHENWORK_CLIENT_ID}
+                header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+                header_up -X-ZhenWork-Edge-Token
+                header_up -X-ZhenWork-Client-IP
+                header_up -X-ZhenWork-Client-User-Agent
+                header_up -X-ZhenWork-Monitor-Authorization
+            }
+            # This secret is available only to Caddy and the monitor process.
+            # Loopback is an additional boundary, not the authentication proof.
+            request_header X-ZhenWork-Monitor-Authorization {$ZHENWORK_MONITOR_PROXY_TOKEN}
+            header Content-Security-Policy "frame-ancestors 'self'"
+            reverse_proxy 127.0.0.1:18909 {
+                header_up -X-ZhenWork-Edge-Token
+                header_up -X-ZhenWork-Client-IP
+                header_up -X-ZhenWork-Client-User-Agent
+            }
+        }
+        handle_path /api/* {
+            reverse_proxy 127.0.0.1:18890 {
+                header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+                header_up -X-ZhenWork-Edge-Token
+                header_up -X-ZhenWork-Client-IP
+                header_up -X-ZhenWork-Client-User-Agent
+                header_up -X-ZhenWork-Monitor-Authorization
+            }
+        }
+        @control path /ai/* /auth/* /system/* /internal/rc2/*
+        handle @control {
+            reverse_proxy 127.0.0.1:18890 {
+                header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+                header_up -X-ZhenWork-Edge-Token
+                header_up -X-ZhenWork-Client-IP
+                header_up -X-ZhenWork-Client-User-Agent
+                header_up -X-ZhenWork-Monitor-Authorization
+            }
+        }
+        handle_path /admin/* {
+            root * /srv/apps/zhenwork/current/admin
+            try_files {path} /index.html
+            file_server
+        }
+        handle / {
+            redir * /admin/ 302
+        }
+        respond 404
     }
-    respond @externalInternal 403
-    handle_path /api/* {
-        reverse_proxy 127.0.0.1:18890
-    }
-    @control path /ai/* /auth/* /system/* /internal/rc2/*
-    handle @control {
-        reverse_proxy 127.0.0.1:18890
-    }
-    handle_path /admin/* {
-        root * /srv/apps/zhenwork/current/admin
-        try_files {path} /index.html
-        file_server
-    }
-    handle / {
-        redir /admin/ 302
-    }
-    respond 404
 }

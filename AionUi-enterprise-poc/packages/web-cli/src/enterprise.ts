@@ -41,6 +41,8 @@ export async function startEnterpriseWebFromEnvironment() {
   }
   const serviceToken = (await readFile(tokenFile, 'utf8')).trim();
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(serviceToken)) throw new Error('Invalid RC2 service token');
+  const edgeToken = required('ZHENWORK_EDGE_TOKEN');
+  if (!/^[A-Za-z0-9_-]{32,128}$/.test(edgeToken)) throw new Error('Invalid edge proxy token');
   const gatewayImage = required('AION_ENTERPRISE_WEB_DOCKER_GATEWAY_IMAGE');
   const supervisor = await acquireEnterpriseDockerSupervisor(profileRoot, gatewayImage);
   try {
@@ -51,7 +53,7 @@ export async function startEnterpriseWebFromEnvironment() {
     appVersion: required('AION_ENTERPRISE_WEB_APP_VERSION'),
     coreImage: required('AION_ENTERPRISE_WEB_DOCKER_CORE_IMAGE'), gatewayImage, upstreamProxyPort,
     authorizeCronJob: async (actor, jobId) => runtime ? runtime.authorizeCronJob(actor, jobId) : false });
-  runtime = createEnterpriseModelRuntime(createRc2GatewayLogin(rc2Url, publicOrigin), startCore,
+  runtime = createEnterpriseModelRuntime(createRc2GatewayLogin(rc2Url, publicOrigin, edgeToken), startCore,
     { profileRoot, publicOrigin, rc2Resume: createRc2GatewayResume(rc2Url, publicOrigin),
       background: { rc2Url, serviceToken } });
   const gateway = await startEnterpriseGateway({ staticDir, publicOrigin, port, adminUrl: new URL('/admin/', rc2Url).toString(),
@@ -62,8 +64,9 @@ export async function startEnterpriseWebFromEnvironment() {
     coreStartWaitMs: optionalLimit('AION_ENTERPRISE_WEB_CORE_START_WAIT_MS', 1000, 300_000),
     coreIdleMs: optionalLimit('AION_ENTERPRISE_WEB_CORE_IDLE_MS', 0, 86_400_000),
     publicBrand: createRc2GatewayPublicBrand(rc2Url, publicOrigin),
-    changePassword: createRc2GatewayPasswordChange(rc2Url, publicOrigin),
+    changePassword: createRc2GatewayPasswordChange(rc2Url, publicOrigin, edgeToken),
     login: runtime.login, resume: runtime.resume, startCore: runtime.startCore,
+    trustedProxyToken: edgeToken,
     profileRoot, controlRequest: runtime.controlRequest,
     refreshResources: runtime.refreshResources,
     syncCronGrant: runtime.syncCronGrant, hasBackgroundJobs: runtime.hasBackgroundJobs,

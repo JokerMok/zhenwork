@@ -16,7 +16,8 @@ public class WorkspaceResources {
     private final WorkspacePermissions permissions;
     private final AiResourceGuard guard;
     private final WorkspaceConversations conversations;
-    public WorkspaceResources(JdbcTemplate jdbc,TransactionTemplate tx,WorkspacePermissions permissions,AiResourceGuard guard,WorkspaceConversations conversations){this.jdbc=jdbc;this.tx=tx;this.permissions=permissions;this.guard=guard;this.conversations=conversations;}
+    private final WorkspaceAssistantReadiness readiness;
+    public WorkspaceResources(JdbcTemplate jdbc,TransactionTemplate tx,WorkspacePermissions permissions,AiResourceGuard guard,WorkspaceConversations conversations,WorkspaceAssistantReadiness readiness){this.jdbc=jdbc;this.tx=tx;this.permissions=permissions;this.guard=guard;this.conversations=conversations;this.readiness=readiness;}
     private static String hash(String content){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException();}}
     private String config(String type,Map<String,Object> data){
         if(data==null)throw new WorkspaceDenied(400,"ConfigurationRequired");
@@ -42,7 +43,7 @@ public class WorkspaceResources {
         });return get(id,actor);
     }
     public Map<String,Object> get(UUID id,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.VIEW);int version=((Number)(guard.owner(row,actor)||guard.acl(id,actor,AiResourceGuard.Action.EDIT)?row.get("latest_version"):row.get("published_version"))).intValue();var v=guard.version(id,version,actor,AiResourceGuard.Action.VIEW);return dto(row,v,version,actor,true);}
-    public Map<String,Object> active(UUID id,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.USE);int version=((Number)row.get("published_version")).intValue();var v=guard.version(id,version,actor,AiResourceGuard.Action.USE);return dto(row,v,version,actor,true);}
+    public Map<String,Object> active(UUID id,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.USE);readiness.requireDependencies(id,row.get("resource_type").toString(),actor);int version=((Number)row.get("published_version")).intValue();var v=guard.version(id,version,actor,AiResourceGuard.Action.USE);return dto(row,v,version,actor,true);}
     public List<Map<String,Object>> versions(UUID id,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.VIEW);if(!guard.owner(row,actor)&&!guard.acl(id,actor,AiResourceGuard.Action.EDIT))throw new WorkspaceDenied(403,"VersionHistoryRequiresEdit");return jdbc.queryForList("SELECT version,review_state,content_hash,created_by::text,created_at::text FROM ai_resource_version WHERE resource_id=? ORDER BY version DESC LIMIT 200",id);}
     public Map<String,Object> version(UUID id,int version,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.VIEW);if(!guard.owner(row,actor)&&!guard.acl(id,actor,AiResourceGuard.Action.EDIT))throw new WorkspaceDenied(403,"VersionHistoryRequiresEdit");return dto(row,guard.version(id,version,actor,AiResourceGuard.Action.VIEW),version,actor,true);}
     private Map<String,Object> dto(Map<String,Object> row,Map<String,Object> version,int number,long actor,boolean content){
@@ -52,10 +53,19 @@ public class WorkspaceResources {
         List<String> actions=new ArrayList<>();for(var action:AiResourceGuard.Action.values())if(action!=AiResourceGuard.Action.GOVERN)try{guard.require((UUID)row.get("id"),actor,action);actions.add(action.name());}catch(WorkspaceDenied ignored){}value.put("actions",actions);if(content)value.put("config",JsonUtils.parseMap(version.get("config").toString()));return value;
     }
     public List<Map<String,Object>> list(long actor,String type,String scope,int page){
-        if(!TYPES.contains(type)||!Set.of("mine","shared","public","enterprise").contains(scope))throw new WorkspaceDenied(400,"InvalidResourceFilter");permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":view");
+        if(!TYPES.contains(type)||!Set.of("mine","shared","public","enterprise","available").contains(scope))throw new WorkspaceDenied(400,"InvalidResourceFilter");permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":view");
+        if(scope.equals("available"))return available(actor,type,page);
         if(scope.equals("enterprise"))permissions.require(actor,"ai:resource:enterprise");String predicate=switch(scope){case "enterprise"->"r.owner_type='ENTERPRISE' AND ? IS NOT NULL";case "mine"->"r.owner_type='USER' AND r.owner_user_id=?";case "public"->"r.visibility='ENTERPRISE_PUBLIC' AND r.lifecycle_state='ACTIVE' AND r.published_version IS NOT NULL AND ? IS NOT NULL";default->"r.published_version IS NOT NULL AND EXISTS(SELECT 1 FROM ai_resource_acl a WHERE a.resource_id=r.id AND a.action='VIEW' AND ((a.subject_type='USER' AND a.subject_id=?) OR (a.subject_type='ROLE' AND a.subject_id IN(SELECT role_id FROM sys_user_role WHERE user_id=?)) OR (a.subject_type='DEPARTMENT' AND a.subject_id=(SELECT dept_id FROM sys_user WHERE user_id=?))))";};
         List<Object> args=new ArrayList<>();args.add(type);args.add(actor);if(scope.equals("shared")){args.add(actor);args.add(actor);}args.add((Math.min(1000,Math.max(1,page))-1)*30);
         var ids=jdbc.queryForList("SELECT r.id FROM ai_resource r WHERE r.lifecycle_state<>'ARCHIVED' AND r.resource_type=? AND "+predicate+" ORDER BY r.updated_at DESC LIMIT 30 OFFSET ?",UUID.class,args.toArray());List<Map<String,Object>> result=new ArrayList<>();for(UUID id:ids)try{var item=get(id,actor);item.remove("config");result.add(item);}catch(WorkspaceDenied ignored){}return result;
+    }
+    /** Canonical effective catalog. Execution reuses the same guard and published version checks. */
+    public List<Map<String,Object>> available(long actor,String type,int page){
+        permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":use");
+        var ids=jdbc.queryForList("SELECT r.id FROM ai_resource r WHERE r.resource_type=? AND r.enabled AND NOT r.security_disabled AND r.lifecycle_state='ACTIVE' AND r.published_version IS NOT NULL AND (r.owner_user_id=? OR (r.owner_type='ENTERPRISE' AND ?) OR r.visibility='ENTERPRISE_PUBLIC' OR EXISTS(SELECT 1 FROM ai_resource_acl a WHERE a.resource_id=r.id AND a.action='USE' AND ((a.subject_type='USER' AND a.subject_id=?) OR (a.subject_type='ROLE' AND EXISTS(SELECT 1 FROM sys_user_role ur JOIN sys_role s ON s.role_id=ur.role_id WHERE ur.user_id=? AND s.role_id=a.subject_id AND s.status='0' AND s.del_flag='0')) OR (a.subject_type='DEPARTMENT' AND EXISTS(SELECT 1 FROM sys_user u JOIN sys_dept d ON d.dept_id=u.dept_id WHERE u.user_id=? AND u.dept_id=a.subject_id AND d.status='0' AND d.del_flag='0'))))) ORDER BY r.updated_at DESC,r.id LIMIT 30 OFFSET ?",UUID.class,type,actor,permissions.has(actor,"ai:resource:enterprise"),actor,actor,actor,(Math.min(1000,Math.max(1,page))-1)*30);
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(UUID id:ids)try{var item=active(id,actor);item.remove("config");item.put("source",Long.toString(actor).equals(item.get("ownerUserId"))?"PERSONAL":"ORGANIZATION");result.add(item);}catch(WorkspaceDenied ignored){/* Permission can change after selecting the page. */}
+        return result;
     }
     public Map<String,Object> edit(UUID id,long actor,int expected,String name,String description,Map<String,Object> data){
         tx.executeWithoutResult(status->{jdbc.queryForList("SELECT id FROM ai_resource WHERE id=? FOR UPDATE",id);var resource=guard.require(id,actor,AiResourceGuard.Action.EDIT);if(((Number)resource.get("latest_version")).intValue()!=expected)throw new WorkspaceDenied(409,"VersionConflict");String json=config(resource.get("resource_type").toString(),data);int next=expected+1;

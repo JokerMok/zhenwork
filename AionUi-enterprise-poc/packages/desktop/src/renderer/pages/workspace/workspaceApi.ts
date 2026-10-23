@@ -1,4 +1,13 @@
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
+
 type Rc2Envelope<T> = { code?: unknown; msg?: unknown; data?: T };
+
+type WorkspaceErrorFallback = 'load' | 'action';
+type WorkspaceErrorTranslationKey =
+  | 'workspace.errors.authentication'
+  | 'workspace.errors.forbidden'
+  | 'workspace.errors.noModel'
+  | `workspace.errors.${WorkspaceErrorFallback}`;
 
 export class WorkspaceApiError extends Error {
   readonly code: string;
@@ -14,11 +23,61 @@ async function parseJson(response: Response): Promise<unknown> {
   return response.json().catch((): null => null);
 }
 
+const normalizedErrorCode = (code: unknown): string =>
+  String(code ?? '')
+    .trim()
+    .toUpperCase();
+
+export function enterpriseLoginRedirectPath(code: unknown, hostedEnterpriseWeb = isEnterpriseWeb()): string | null {
+  if (!hostedEnterpriseWeb) return null;
+  const normalized = normalizedErrorCode(code);
+  return normalized === '401' ||
+    normalized === 'HTTP_401' ||
+    normalized === 'UNAUTHENTICATED' ||
+    normalized === 'SESSION_REVOKED'
+    ? '/enterprise/login'
+    : null;
+}
+
+export function redirectEnterpriseLoginIfNeeded(code: unknown): boolean {
+  const target = enterpriseLoginRedirectPath(code);
+  if (!target || typeof window === 'undefined') return false;
+  if (window.location.pathname !== target) window.location.replace(target);
+  return true;
+}
+
+export function workspaceErrorTranslationKey(
+  code: unknown,
+  fallback: WorkspaceErrorFallback
+): WorkspaceErrorTranslationKey {
+  const normalized = normalizedErrorCode(code);
+  if (
+    normalized === '401' ||
+    normalized === 'HTTP_401' ||
+    normalized === 'UNAUTHENTICATED' ||
+    normalized === 'SESSION_REVOKED'
+  )
+    return 'workspace.errors.authentication';
+  if (
+    normalized === '403' ||
+    normalized === 'HTTP_403' ||
+    normalized === 'FORBIDDEN' ||
+    normalized === 'PERMISSION_DENIED' ||
+    normalized === 'PERMISSIONDENIED' ||
+    normalized === 'ACCESS_DENIED'
+  )
+    return 'workspace.errors.forbidden';
+  if (normalized === 'MODELUNAVAILABLE' || normalized === 'MODEL_UNAVAILABLE' || normalized === 'NO_AVAILABLE_MODEL')
+    return 'workspace.errors.noModel';
+  return `workspace.errors.${fallback}`;
+}
+
 export function unwrapRc2Response<T>(value: unknown): T {
   if (!value || typeof value !== 'object') return value as T;
   const envelope = value as Rc2Envelope<T>;
   if (typeof envelope.code === 'number') {
     if (envelope.code !== 200) {
+      redirectEnterpriseLoginIfNeeded(envelope.code);
       throw new WorkspaceApiError(
         String(envelope.code),
         typeof envelope.msg === 'string' ? envelope.msg : 'Request failed'
@@ -39,6 +98,7 @@ export async function enterpriseControl<T>(path: string, init?: RequestInit): Pr
   });
   const value = await parseJson(response);
   if (!response.ok) {
+    redirectEnterpriseLoginIfNeeded(response.status);
     const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
     throw new WorkspaceApiError(
       typeof record.error === 'string' ? record.error : `HTTP_${response.status}`,
@@ -53,6 +113,7 @@ export async function enterpriseRequest<T>(path: string, init?: RequestInit): Pr
   const response = await fetch(path, { ...init, credentials: 'same-origin', cache: 'no-store' });
   const value = await parseJson(response);
   if (!response.ok) {
+    redirectEnterpriseLoginIfNeeded(response.status);
     const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
     throw new WorkspaceApiError(
       typeof record.error === 'string' ? record.error : `HTTP_${response.status}`,
@@ -80,6 +141,7 @@ export async function uploadWorkspaceFiles(
   });
   const value = await parseJson(response);
   if (!response.ok) {
+    redirectEnterpriseLoginIfNeeded(response.status);
     const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
     throw new WorkspaceApiError(
       typeof record.error === 'string' ? record.error : `HTTP_${response.status}`,

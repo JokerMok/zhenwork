@@ -1,0 +1,31 @@
+[Unit]
+Description=ZhenWork Spring Boot Admin monitor
+Requires=zhenwork-rc2.service
+After=network-online.target zhenwork-rc2.service
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=zhenwork
+Group=zhenwork
+WorkingDirectory=/srv/apps/zhenwork/shared
+EnvironmentFile=/srv/apps/zhenwork/shared/config/monitor.env
+EnvironmentFile=/srv/apps/zhenwork/shared/config/monitor-proxy.env
+ExecStart=/usr/bin/java -Xms64m -Xmx256m -XX:MaxMetaspaceSize=128m -XX:ActiveProcessorCount=1 -jar /srv/apps/zhenwork/current/monitor.jar --spring.profiles.active=prod
+Restart=on-failure
+RestartSec=8
+TimeoutStopSec=30
+MemoryHigh=320M
+MemoryMax=384M
+CPUQuota=50%
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/srv/apps/zhenwork/shared/logs
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

@@ -29,12 +29,13 @@ export type EnterpriseFile = {
   versions: EnterpriseFileVersion[];
 };
 
-export type ResourceScope = 'mine' | 'shared';
+export type ResourceScope = 'available' | 'mine' | 'shared';
 
 export type WorkspaceResource = {
   id: string;
   resourceType: 'ASSISTANT' | 'KNOWLEDGE' | 'SKILL' | 'MCP' | 'TOOL';
   ownerType: 'USER' | 'ENTERPRISE';
+  source?: 'ORGANIZATION' | 'PERSONAL' | string;
   ownerUserId?: string | null;
   visibility: string;
   lifecycleState: string;
@@ -45,6 +46,7 @@ export type WorkspaceResource = {
   publishedVersion?: number | null;
   securityDisabled?: boolean;
   reviewState?: string;
+  isDefault?: boolean;
   updatedAt: string;
   actions: string[];
   config?: Record<string, unknown>;

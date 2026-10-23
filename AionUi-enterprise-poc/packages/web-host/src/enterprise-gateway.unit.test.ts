@@ -21,6 +21,8 @@ const clientPrefs = new Map<string, Record<string, unknown>>();
 const pinnedConversations = new Map<string, boolean>([['1', true]]);
 const conversationNames = new Map<string, string>();
 let lastDirRoot = '';
+const edgeToken = 'fixed-edge-token-for-enterprise-unit-tests';
+let lastLoginClient: { ipAddress: string; userAgent: string } | undefined;
 let publicBrandValue: unknown = { productName: 'ZhenWork', companyName: '示例企业',
   loginTitle: '欢迎使用ZhenWork', loginSubtitle: '使用企业账号继续', primaryColor: '#2563eb' };
 
@@ -45,6 +47,9 @@ function request(
           ...(cookie ? { cookie } : {}),
           ...(payload ? { 'content-type': 'application/json' } : {}),
           'x-aion-enterprise-local-token': 'browser-forged',
+          'x-zhenwork-edge-token': edgeToken,
+          'x-zhenwork-client-ip': '203.0.113.10',
+          'x-zhenwork-client-user-agent': 'Mozilla/5.0 Unit Chrome/120',
           ...extraHeaders,
         },
       },
@@ -74,8 +79,10 @@ beforeAll(async () => {
     staticDir: tempDir,
     publicOrigin: 'https://workspace.example',
     port: 0,
+    trustedProxyToken: edgeToken,
     publicBrand: async () => publicBrandValue,
-    login: async (username, password) => {
+    login: async (username, password, client) => {
+      lastLoginClient = client;
       if (username === 'reset' && password === 'test') {
         const error = new Error('Password change required');
         Object.assign(error, { code: 'PASSWORD_CHANGE_REQUIRED' });
@@ -290,6 +297,27 @@ test('anonymous login page uses only safe public RC2 brand fields and a nonce CS
   } finally {
     publicBrandValue = { productName: 'ZhenWork', primaryColor: '#2563eb' };
   }
+});
+
+test('login accepts metadata only from the authenticated loopback proxy boundary', async () => {
+  lastLoginClient = undefined;
+  const forwarded = await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' },
+    'https://workspace.example', {
+      'x-forwarded-for': '198.51.100.99',
+      'x-zhenwork-client-ip': '2001:db8::25',
+      'x-zhenwork-client-user-agent': 'Mozilla/5.0 Test Safari/18',
+    });
+  expect(forwarded.status).toBe(200);
+  expect(lastLoginClient).toEqual({ ipAddress: '2001:db8::25', userAgent: 'Mozilla/5.0 Test Safari/18' });
+
+  lastLoginClient = undefined;
+  expect((await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' },
+    'https://workspace.example', { 'x-zhenwork-edge-token': 'browser-forged-edge-token' })).status).toBe(401);
+  expect(lastLoginClient).toBeUndefined();
+  expect((await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' },
+    'https://workspace.example', { 'x-zhenwork-edge-token': 'é'.repeat(edgeToken.length) })).status).toBe(401);
+  expect((await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' },
+    'https://workspace.example', { 'x-zhenwork-client-ip': '203.0.113.10, 127.0.0.1' })).status).toBe(401);
 });
 
 test('enterprise brand is available only to its authenticated session and exposes display fields only', async () => {

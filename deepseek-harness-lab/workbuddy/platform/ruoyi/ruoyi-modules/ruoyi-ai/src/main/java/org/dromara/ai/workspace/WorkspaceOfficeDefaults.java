@@ -6,7 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
-/** A single enterprise default; model RBAC still determines each employee's available catalog. */
+/** The enterprise default is a shared reference for employees; other models retain explicit grants. */
 @RestController
 @RequestMapping("/ai/admin/office-defaults")
 @RequiredArgsConstructor

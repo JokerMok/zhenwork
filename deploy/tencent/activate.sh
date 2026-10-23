@@ -38,6 +38,92 @@ os.lchown(link,0,0)
 PY
 old=$(basename "$(readlink -f "$root/current")")
 [[ "$old" != "$release" ]] || { echo 'Already active'; exit 0; }
+caddy_installer=/usr/local/sbin/caddy-site-install
+[[ -x "$caddy_installer" ]] || { echo 'Required caddy-site-install helper is unavailable.' >&2; exit 1; }
+
+load_caddy_environment() {
+  unset ZHENWORK_EDGE_TOKEN ZHENWORK_CLIENT_ID ZHENWORK_MONITOR_PROXY_TOKEN
+  set -a
+  [[ -f "$root/shared/config/edge.env" ]] && source "$root/shared/config/edge.env"
+  [[ -f "$root/shared/config/monitor-proxy.env" ]] && source "$root/shared/config/monitor-proxy.env"
+  set +a
+}
+
+save_runtime_snapshot() {
+  python3 - "$1" <<'PY'
+import json,os,pathlib,shutil,stat,subprocess,sys
+snapshot=pathlib.Path(sys.argv[1]); target=snapshot/'runtime-state'; temporary=snapshot/'.runtime-state.next'
+entries={
+ 'caddy-site':('/etc/caddy/sites-enabled/zhenwork.caddy','zhenwork.caddy'),
+ 'web-unit':('/etc/systemd/system/zhenwork-web.service','zhenwork-web.service'),
+ 'monitor-unit':('/etc/systemd/system/zhenwork-monitor.service','zhenwork-monitor.service'),
+ 'caddy-dropin':('/etc/systemd/system/caddy.service.d/zhenwork-edge.conf','zhenwork-edge.conf'),
+ 'backup-hook':('/etc/server-ops/backup.d/zhenwork.sh','backup-hook.sh'),
+ 'edge-env':('/srv/apps/zhenwork/shared/config/edge.env','edge.env'),
+ 'monitor-env':('/srv/apps/zhenwork/shared/config/monitor.env','monitor.env'),
+ 'monitor-proxy-env':('/srv/apps/zhenwork/shared/config/monitor-proxy.env','monitor-proxy.env'),
+}
+if temporary.exists(): shutil.rmtree(temporary)
+temporary.mkdir(mode=0o700)
+manifest={}
+for key,(raw,name) in entries.items():
+ source=pathlib.Path(raw); exists=source.exists()
+ if exists and (source.is_symlink() or not source.is_file()): raise RuntimeError(f'{source} must be a regular file')
+ manifest[key]={'path':raw,'file':name,'exists':exists,'mode':stat.S_IMODE(source.stat().st_mode) if exists else None}
+ if exists:
+  shutil.copyfile(source,temporary/name); (temporary/name).chmod(0o600)
+if not manifest['caddy-site']['exists'] or not manifest['web-unit']['exists']:
+ raise RuntimeError('Active ZhenWork Caddy site and web unit are required for a recoverable snapshot')
+manifest['monitor-enabled']=subprocess.run(
+ ['systemctl','is-enabled','--quiet','zhenwork-monitor.service'],
+ stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
+(temporary/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n'); (temporary/'manifest.json').chmod(0o600)
+if target.exists(): shutil.rmtree(target)
+temporary.replace(target)
+PY
+}
+
+restore_runtime_snapshot() {
+  local state="$1/runtime-state"
+  [[ -f "$state/manifest.json" ]] || { echo "Runtime snapshot is missing: $state" >&2; return 1; }
+  if [[ $(python3 -c 'import json,sys;print(int(json.load(open(sys.argv[1]))["monitor-enabled"]))' "$state/manifest.json") == 0 ]]; then
+    systemctl disable zhenwork-monitor.service >/dev/null 2>&1 || true
+  fi
+  python3 - "$state" <<'PY'
+import json,os,pathlib,shutil,sys
+state=pathlib.Path(sys.argv[1]); manifest=json.loads((state/'manifest.json').read_text())
+for key,item in manifest.items():
+ if key in ('caddy-site','monitor-enabled'): continue
+ destination=pathlib.Path(item['path'])
+ if item['exists']:
+  destination.parent.mkdir(parents=True,exist_ok=True)
+  temporary=destination.with_name(destination.name+'.zhenwork-restore')
+  if temporary.exists() or temporary.is_symlink(): temporary.unlink()
+  shutil.copyfile(state/item['file'],temporary); os.chown(temporary,0,0); temporary.chmod(item['mode']); temporary.replace(destination)
+ elif destination.exists() or destination.is_symlink():
+  destination.unlink()
+PY
+  systemctl daemon-reload
+  if [[ $(python3 -c 'import json,sys;print(int(json.load(open(sys.argv[1]))["monitor-enabled"]))' "$state/manifest.json") == 1 ]]; then
+    systemctl enable zhenwork-monitor.service >/dev/null
+  fi
+  load_caddy_environment
+  "$caddy_installer" zhenwork "$state/zhenwork.caddy"
+}
+
+monitor_target=0
+monitor_parts=(monitor.jar deploy-assets/backup.sh deploy-assets/prepare-monitor.py deploy-assets/zhenwork-monitor.service deploy-assets/zhenwork-caddy-edge.conf deploy-assets/zhenwork-web.service deploy-assets/zhenwork.caddy)
+monitor_present=0
+for part in "${monitor_parts[@]}"; do [[ -f "$target/$part" ]] && monitor_present=$((monitor_present+1)); done
+if [[ $monitor_present == ${#monitor_parts[@]} ]]; then
+  monitor_target=1
+elif [[ $monitor_present != 0 ]]; then
+  echo 'Target has an incomplete monitor deployment set.' >&2; exit 1
+elif [[ $mode == update ]]; then
+  echo 'Update target is missing the required monitor deployment set.' >&2; exit 1
+elif [[ ! -f "$root/shared/config/versions/$release/runtime-state/manifest.json" ]]; then
+  echo 'Legacy rollback target has no captured runtime snapshot.' >&2; exit 1
+fi
 
 bash "$root/deploy/prepare-office-host.sh"
 
@@ -100,7 +186,8 @@ mkdir -p "$snapshot"; chmod 700 "$snapshot"
 cp "$root/.env" "$snapshot/compose.env"
 cp "$root/shared/config/web.env" "$snapshot/web.env"
 cp "$root/shared/config/application-rc2.yml" "$snapshot/application-rc2.yml"
-chmod 600 "$snapshot/"*
+chmod 600 "$snapshot/compose.env" "$snapshot/web.env" "$snapshot/application-rc2.yml"
+save_runtime_snapshot "$snapshot"
 
 services_stopped=0
 switched=0
@@ -115,6 +202,7 @@ recover() {
         cp "$snapshot/compose.env" "$root/.env"
         cp "$snapshot/web.env" "$root/shared/config/web.env"
         cp "$snapshot/application-rc2.yml" "$root/shared/config/application-rc2.yml"
+        restore_runtime_snapshot "$snapshot" || echo 'Runtime snapshot recovery requires operator attention.' >&2
       fi
       bash "$root/deploy/manage.sh" restart || true
       echo 'Finalization failed before any schema advance; previous application/config restored.' >&2
@@ -124,6 +212,7 @@ recover() {
 }
 trap recover EXIT
 systemctl stop zhenwork-web zhenwork-rc2
+systemctl stop zhenwork-monitor 2>/dev/null || true
 services_stopped=1
 
 if [[ $mode == update ]]; then
@@ -156,13 +245,35 @@ fi
 
 ln -s "releases/$release" "$root/current.next"; mv -Tf "$root/current.next" "$root/current"
 switched=1
+
+# Install complete monitor-capable releases. A reviewed rollback to a legacy
+# verified release restores the exact project Caddy/unit state captured while
+# that release was active.
+if [[ $monitor_target == 1 ]]; then
+  python3 "$target/deploy-assets/prepare-monitor.py"
+  install -o root -g root -m 0644 "$target/deploy-assets/zhenwork-monitor.service" /etc/systemd/system/zhenwork-monitor.service
+  install -o root -g root -m 0644 "$target/deploy-assets/zhenwork-web.service" /etc/systemd/system/zhenwork-web.service
+  install -o root -g root -m 0755 "$target/deploy-assets/backup.sh" /etc/server-ops/backup.d/zhenwork.sh
+  install -d -o root -g root -m 0755 /etc/systemd/system/caddy.service.d
+  install -o root -g root -m 0644 "$target/deploy-assets/zhenwork-caddy-edge.conf" /etc/systemd/system/caddy.service.d/zhenwork-edge.conf
+  systemctl daemon-reload
+  systemctl enable zhenwork-monitor.service >/dev/null
+  load_caddy_environment
+  "$caddy_installer" zhenwork "$target/deploy-assets/zhenwork.caddy"
+else
+  restore_runtime_snapshot "$root/shared/config/versions/$release"
+fi
 bash "$root/deploy/manage.sh" restart
 
 mkdir -p "$root/shared/config/versions/$release"; chmod 700 "$root/shared/config/versions/$release"
 cp "$root/.env" "$root/shared/config/versions/$release/compose.env"
 cp "$root/shared/config/web.env" "$root/shared/config/versions/$release/web.env"
 cp "$root/shared/config/application-rc2.yml" "$root/shared/config/versions/$release/application-rc2.yml"
-chmod 600 "$root/shared/config/versions/$release/"*
+for optional in monitor.env monitor-proxy.env edge.env; do
+  [[ -f "$root/shared/config/$optional" ]] && cp "$root/shared/config/$optional" "$root/shared/config/versions/$release/$optional"
+done
+chmod 600 "$root/shared/config/versions/$release/compose.env" "$root/shared/config/versions/$release/web.env" "$root/shared/config/versions/$release/application-rc2.yml"
+save_runtime_snapshot "$root/shared/config/versions/$release"
 if [[ -f "$root/releases/$old/VERIFIED.json" ]]; then
   ln -s "releases/$old" "$root/previous.next"; mv -Tf "$root/previous.next" "$root/previous"
 fi

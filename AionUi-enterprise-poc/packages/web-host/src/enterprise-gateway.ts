@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import net from 'node:net';
@@ -14,6 +14,7 @@ import { enterpriseProfilePath } from './enterprise-core.js';
 import { enterpriseReadinessPage } from './enterprise-readiness-page.js';
 
 export type EnterpriseActor = { serverId: string; userId: string };
+export type EnterpriseClientMetadata = { ipAddress: string; userAgent: string };
 export type EnterpriseCore = { port: number; localToken: string; stop: () => Promise<void>; invalidated?: Promise<void>;
   /** Host-visible mount path for this actor's service workspace. */
   workspaceRoot?: string;
@@ -36,11 +37,12 @@ export type EnterpriseGatewayOptions = {
   /** Public HTTPS origin terminated by the trusted reverse proxy. */
   publicOrigin: string;
   port: number;
-  login: (username: string, password: string) => Promise<EnterpriseLogin>;
+  login: (username: string, password: string, client: EnterpriseClientMetadata) => Promise<EnterpriseLogin>;
   /** Public RC2 display fields for the unauthenticated login page. */
   publicBrand?: () => Promise<unknown>;
   /** Reauthenticate the current credential and update only that identity through RC2. */
-  changePassword?: (username: string, oldPassword: string, newPassword: string) => Promise<void>;
+  changePassword?: (username: string, oldPassword: string, newPassword: string,
+    client: EnterpriseClientMetadata) => Promise<void>;
   /** Only explicit employee control routes; RC2 credentials never enter the browser. */
   controlRequest?: (actor: EnterpriseActor, route: string, init: RequestInit) => Promise<Response>;
   profileRoot?: string;
@@ -65,6 +67,8 @@ export type EnterpriseGatewayOptions = {
   coreStartWaitMs?: number;
   /** Reclaim an unused Core after this interval; zero disables idle reclamation. */
   coreIdleMs?: number;
+  /** Shared only by the loopback Caddy boundary and this process; browsers never receive it. */
+  trustedProxyToken?: string;
   /** Loopback browser smoke tests only; the production CLI never enables this. */
   allowInsecureLoopbackDev?: boolean;
 };
@@ -90,6 +94,35 @@ const IDLE_CORE_WS_CLOSE = Buffer.from([0x88, 0x02, 0x0f, 0xa1]); // 4001
 const MAX_BODY = 50 * 1024 * 1024;
 const LOGIN_BODY = 4096;
 const MAX_PROVIDER_RESPONSE = 2 * 1024 * 1024;
+
+function sameSecret(actual: string | undefined, expected: string): boolean {
+  if (!actual) return false;
+  const actualBytes = Buffer.from(actual);
+  const expectedBytes = Buffer.from(expected);
+  return actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes);
+}
+
+function loopbackPeer(address: string | undefined): boolean {
+  if (!address) return false;
+  const normalized = address.startsWith('::ffff:') ? address.slice(7) : address;
+  return normalized === '::1' || (net.isIP(normalized) === 4 && normalized.startsWith('127.'));
+}
+
+function clientMetadata(req: IncomingMessage, trustedProxyToken?: string): EnterpriseClientMetadata | null {
+  const peer = req.socket.remoteAddress;
+  if (!loopbackPeer(peer)) return null;
+  if (!trustedProxyToken) {
+    const address = peer?.startsWith('::ffff:') ? peer.slice(7) : peer;
+    return address ? { ipAddress: address, userAgent: req.headers['user-agent'] || 'Unknown' } : null;
+  }
+  const token = req.headers['x-zhenwork-edge-token'];
+  const ipAddress = req.headers['x-zhenwork-client-ip'];
+  const userAgent = req.headers['x-zhenwork-client-user-agent'];
+  if (typeof token !== 'string' || !sameSecret(token, trustedProxyToken) ||
+      typeof ipAddress !== 'string' || net.isIP(ipAddress) === 0 ||
+      typeof userAgent !== 'string' || !/^[\x20-\x7e]{1,512}$/.test(userAgent)) return null;
+  return { ipAddress, userAgent };
+}
 
 type LoginBrand = {
   productName: string; companyName: string; loginTitle: string; loginSubtitle: string;
@@ -343,6 +376,10 @@ function replyCoreFailure(res: ServerResponse, error: unknown): void {
   if (error instanceof CoreCapacityError) {
     res.setHeader('retry-after', '5');
     reply(res, 503, { error: 'CORE_CAPACITY' });
+  } else if (error instanceof Error && 'code' in error && error.code === 'AUTHENTICATION_REQUIRED') {
+    reply(res, 401, { error: 'AUTHENTICATION_REQUIRED' });
+  } else if (error instanceof Error && 'code' in error && error.code === 'CAPABILITY_FORBIDDEN') {
+    reply(res, 403, { error: 'CAPABILITY_FORBIDDEN' });
   } else reply(res, 503, { error: 'CORE_UNAVAILABLE' });
 }
 
@@ -657,6 +694,8 @@ export async function startEnterpriseGateway(
       return;
     }
     if ((req.url === '/enterprise/login' || req.url === '/enterprise/password') && req.method === 'POST') {
+      const client = clientMetadata(req, opts.trustedProxyToken);
+      if (!client) return reply(res, 401, { error: 'LOGIN_FAILED' });
       if (sessions.size + pendingSessions >= maxSessions) return reply(res, 503, { error: 'SESSION_CAPACITY' });
       const now = Date.now();
       while (loginAttempts.length && loginAttempts[0] < now - 60_000) loginAttempts.shift();
@@ -675,10 +714,10 @@ export async function startEnterpriseGateway(
           if (typeof input.newPassword !== 'string' || !/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/.test(input.newPassword)) {
             return reply(res, 400, { error: 'INVALID_NEW_PASSWORD' });
           }
-          await opts.changePassword(input.username, input.password, input.newPassword);
+          await opts.changePassword(input.username, input.password, input.newPassword, client);
           return reply(res, 200, { ok: true });
         }
-        const login = await opts.login(input.username, input.password);
+        const login = await opts.login(input.username, input.password, client);
         actorKey(login.actor);
         const id = randomBytes(32).toString('hex');
         sessions.set(id, { ...login, sockets: new Set(), requests: new Set(), responses: new Set(), expiresAt: Date.now() + SESSION_MS });

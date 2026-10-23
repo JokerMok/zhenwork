@@ -1,5 +1,6 @@
 {
   "mcpCatalogLoadFailed": "工具连接目录加载失败。你仍可继续使用工作台；默认连接将由会话恢复。可重试加载或在高级设置中调整。",
+  "viewCapabilities": "查看可用能力",
   "mcpDefaultsUnavailable": "以下默认工具连接当前不可用：{{names}}。工作台将继续使用其余可用能力；可在高级设置中调整。",
   "promptExamplesHint": "试试这些指令",
   "defaultPrompts": {

@@ -1,4 +1,4 @@
-import type { EnterpriseActor, EnterpriseCore, EnterpriseGatewayOptions } from './enterprise-gateway.js';
+import type { EnterpriseActor, EnterpriseClientMetadata, EnterpriseCore, EnterpriseGatewayOptions } from './enterprise-gateway.js';
 import { EnterpriseModelProxy } from '../../desktop/src/process/services/enterprise/modelProxy.mjs';
 import { removeEnterpriseModelProvider, syncEnterpriseModelProvider } from '../../desktop/src/process/services/enterprise/modelProvider.mjs';
 import type { Rc2GatewayClient, Rc2GatewayLogin } from './enterprise-rc2-login.mjs';
@@ -18,7 +18,7 @@ function key(actor: EnterpriseActor): string {
 
 /** Shares a per-employee Core across web sessions while retaining each RC2 cookie server-side. */
 export function createEnterpriseModelRuntime(
-  rc2Login: (username: string, password: string) => Promise<Rc2GatewayLogin>,
+  rc2Login: (username: string, password: string, client: EnterpriseClientMetadata) => Promise<Rc2GatewayLogin>,
   startIsolatedCore: (actor: EnterpriseActor) => Promise<EnterpriseCore>,
   options: { profileRoot?: string; publicOrigin?: string; rc2Resume?: (cookie: string) => Promise<Rc2GatewayLogin>;
     background?: { rc2Url: string; serviceToken: string } } = {}
@@ -164,7 +164,7 @@ export function createEnterpriseModelRuntime(
       }
       return response;
     },
-    login: async (username, password) => register(await rc2Login(username, password)),
+    login: async (username, password, client) => register(await rc2Login(username, password, client)),
     resume: options.rc2Resume ? async (cookie) => register(await options.rc2Resume!(cookie)) : undefined,
     hasBackgroundJobs: (actor) => grants.get(key(actor))?.hasJobs() === true,
     authorizeCronJob: async (actor, jobId) => {

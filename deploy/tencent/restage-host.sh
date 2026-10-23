@@ -99,7 +99,7 @@ m['baseRelease']=current
 m['artifactReusedFrom']={
     'release':source_release,
     'sourceSha':source_sha,
-    'reusedArtifacts':['admin','control-source','employee','rc2.jar'],
+    'reusedArtifacts':['admin','control-source','deploy-assets','employee','monitor.jar','rc2.jar'],
 }
 pathlib.Path(out).write_text(json.dumps(m,indent=2)+'\n')
 PY
@@ -115,7 +115,7 @@ ssh tencent-main "set -eu; \
   sudo chown -R ubuntu:ubuntu '$remote_root/incoming/$release'; \
   sudo rm -f '$remote_root/incoming/$release/RELEASE.json' '$remote_root/incoming/$release/SHA256SUMS' '$remote_root/incoming/$release/VERIFIED.json'"
 rsync -az "$work/stage/web-host.cjs" "$work/stage/SOURCE_SHA" "$work/stage/IMAGE_IDS.json" "tencent-main:$remote_root/incoming/$release/"
-for name in activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh; do
+for name in activate.sh backup.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh; do
   rsync -az "$work/source/deploy/tencent/$name" "tencent-main:/tmp/zhenwork-$release-$name"
   ssh tencent-main "sudo install -o root -g root -m 0755 '/tmp/zhenwork-$release-$name' '$remote_root/deploy/$name'; rm -f '/tmp/zhenwork-$release-$name'"
 done

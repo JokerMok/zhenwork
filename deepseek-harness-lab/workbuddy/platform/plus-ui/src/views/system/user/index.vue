@@ -380,6 +380,7 @@
                   :disabled="item.status == '1'"
                 ></el-option>
               </el-select>
+              <div class="text-xs text-[var(--el-text-color-secondary)]">自动包含员工基础角色及企业默认办公能力；业务资源按额外角色、部门或指定用户授权。</div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -588,7 +589,7 @@ const initData: PageData<UserForm, UserQuery> = {
         trigger: 'blur'
       }
     ],
-    roleIds: [{ required: true, message: '用户角色不能为空', trigger: 'blur' }]
+    roleIds: []
   }
 };
 const data = reactive<PageData<UserForm, UserQuery>>(initData);

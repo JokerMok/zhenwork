@@ -47,6 +47,8 @@ export class Rc2Client {
     this.cookie = '';
     this.clientId = '';
     this.serverId = '';
+    this.clientMetadata = undefined;
+    this.edgeToken = '';
   }
 
   async request(path, options = {}) {
@@ -55,6 +57,11 @@ export class Rc2Client {
     if (options.method && !['GET', 'HEAD', 'OPTIONS'].includes(options.method.toUpperCase()))
       headers.Origin = this.origin;
     if (this.cookie) headers.Cookie = this.cookie;
+    if (this.clientMetadata && this.edgeToken) {
+      headers['X-ZhenWork-Edge-Token'] = this.edgeToken;
+      headers['X-ZhenWork-Client-IP'] = this.clientMetadata.ipAddress;
+      headers['X-ZhenWork-Client-User-Agent'] = this.clientMetadata.userAgent;
+    }
     let response;
     try {
       response = await this.fetchImpl(`${this.baseUrl}${path}`, {
@@ -116,12 +123,18 @@ export class Rc2Client {
     }
   }
 
-  async login({ username, password, code = undefined, uuid = undefined }) {
+  async login({ username, password, code = undefined, uuid = undefined,
+    clientMetadata = undefined, edgeToken = undefined }) {
     if (!this.clientId) await this.bootstrap();
     const { clientId } = this;
+    const forwardedHeaders = clientMetadata && edgeToken ? {
+      'X-ZhenWork-Edge-Token': edgeToken,
+      'X-ZhenWork-Client-IP': clientMetadata.ipAddress,
+      'X-ZhenWork-Client-User-Agent': clientMetadata.userAgent,
+    } : {};
     const { response, body } = await this.request('/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...forwardedHeaders },
       body: JSON.stringify({ clientId, grantType: 'password', username, password, ...(code ? { code, uuid } : {}) }),
     });
     if (!response.ok || body?.code !== 200) {
@@ -132,6 +145,8 @@ export class Rc2Client {
     const setCookie = response.headers.getSetCookie?.().find((value) => value.startsWith('__Host-workspace-rc2='));
     if (!setCookie) throw new Rc2ConnectionError('VERSION');
     this.cookie = setCookie.split(';', 1)[0];
+    this.clientMetadata = clientMetadata;
+    this.edgeToken = edgeToken || '';
     try {
       const actor = await this.me();
       this.userId = actor.userId;
@@ -156,7 +171,9 @@ export class Rc2Client {
   async availableModels() {
     if (!this.cookie) throw new Error('No RC2 session');
     const { response, body } = await this.request('/ai/models/available');
-    if (!response.ok || body?.code !== 200 || !Array.isArray(body.data)) throw new Error('RC2 models unavailable');
+    if (response.status === 401 || body?.code === 401) throw new Rc2ConnectionError('AUTHENTICATION_REQUIRED');
+    if (response.status === 403 || body?.code === 403) throw new Rc2ConnectionError('CAPABILITY_FORBIDDEN');
+    if (!response.ok || body?.code !== 200 || !Array.isArray(body.data)) throw new Rc2ConnectionError('CAPABILITY_SERVICE_UNAVAILABLE');
     return body.data.filter(
       (model) =>
         typeof model.id === 'string' &&
@@ -205,31 +222,22 @@ export class Rc2Client {
   async resources(type) {
     if (!['ASSISTANT', 'SKILL', 'MCP', 'KNOWLEDGE'].includes(type)) throw new Error('Invalid resource type');
     const items = new Map();
-    for (const scope of ['mine', 'shared', 'public']) {
-      for (let page = 1; page <= 10; page++) {
-        const { response, body } = await this.request(`/ai/resources?type=${type}&scope=${scope}&page=${page}`);
-        if (!response.ok || body?.code !== 200 || !Array.isArray(body.data))
-          throw new Error('RC2 resources unavailable');
-        for (const item of body.data)
-          if (item?.actions?.includes('USE') && Number.isInteger(item.publishedVersion)) {
-            items.set(item.id, {
-              id: item.id,
-              name: item.name,
-              description: item.description,
-              version: item.publishedVersion,
-              source:
-                item.ownerType === 'ENTERPRISE'
-                  ? 'enterprise'
-                  : item.ownerUserId === this.userId
-                    ? 'personal'
-                    : 'shared',
-              type,
-            });
-          }
-        if (body.data.length < 30) break;
-      }
+    // One server-authoritative effective catalog is shared by UI and runtime.
+    for (let page = 1; page <= 100; page++) {
+      const { response, body } = await this.request(`/ai/resources?type=${type}&scope=available&page=${page}`);
+      if (!response.ok || body?.code !== 200 || !Array.isArray(body.data))
+        throw new Error('RC2 resources unavailable');
+      for (const item of body.data)
+        if (item?.actions?.includes('USE') && Number.isInteger(item.publishedVersion)) {
+          items.set(item.id, {
+            id: item.id, name: item.name, description: item.description,
+            version: item.publishedVersion,
+            source: item.source === 'ORGANIZATION' ? 'enterprise' : 'personal', type,
+          });
+        }
+      if (body.data.length < 30) return [...items.values()];
     }
-    return [...items.values()];
+    throw new Error('Enterprise capability catalog exceeds 3000 resources; narrow the authorized scope');
   }
 
   async knowledgeDocuments(baseId) {
@@ -325,6 +333,8 @@ export class Rc2Client {
     } finally {
       this.cookie = '';
       this.userId = '';
+      this.clientMetadata = undefined;
+      this.edgeToken = '';
     }
   }
 }

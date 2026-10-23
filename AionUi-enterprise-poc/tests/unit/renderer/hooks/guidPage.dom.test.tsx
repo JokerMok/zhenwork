@@ -333,6 +333,8 @@ describe('GuidPage', () => {
     agentSelectionMock.selectedAssistantBackend = 'aionrs';
     agentSelectionMock.setSelectedAcpModel.mockReset();
     agentSelectionMock.setSelectedMode.mockReset();
+    delete (agentSelectionMock as typeof agentSelectionMock & { catalogError?: string }).catalogError;
+    delete (agentSelectionMock as typeof agentSelectionMock & { catalogLoading?: boolean }).catalogLoading;
     agentSelectionMock.assistants = [
       {
         id: 'bare-aionrs',
@@ -795,6 +797,18 @@ describe('GuidPage', () => {
 
     // Restore shared mock state for later tests.
     sendMock.isButtonDisabled = false;
+  });
+
+  it('keeps catalog failures in the employee workspace instead of linking the admin console', () => {
+    platformMock.enterpriseWeb = true;
+    Object.assign(agentSelectionMock, { catalogError: 'PermissionDenied', catalogLoading: false });
+
+    render(<GuidPage />);
+
+    expect(screen.getByText('workspace.errors.forbidden')).toBeInTheDocument();
+    expect(screen.queryByText('workspace.preview.admin')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('guid.viewCapabilities'));
+    expect(navigateMock).toHaveBeenCalledWith('/workspace?section=abilities');
   });
 });
 

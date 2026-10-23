@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   WorkspaceApiError,
+  enterpriseLoginRedirectPath,
   newIdempotencyKey,
   unwrapRc2Response,
   workspaceErrorCode,
+  workspaceErrorTranslationKey,
 } from '../../../packages/desktop/src/renderer/pages/workspace/workspaceApi';
 
 describe('enterprise workspace response handling', () => {
@@ -31,5 +33,35 @@ describe('enterprise workspace response handling', () => {
     const second = newIdempotencyKey();
     expect(first).toMatch(/^[0-9a-f-]{36}$/i);
     expect(second).not.toBe(first);
+  });
+
+  it('redirects only hosted enterprise web sessions back to enterprise login', () => {
+    expect(enterpriseLoginRedirectPath(401, true)).toBe('/enterprise/login');
+    expect(enterpriseLoginRedirectPath('SESSION_REVOKED', true)).toBe('/enterprise/login');
+    expect(enterpriseLoginRedirectPath(401, false)).toBeNull();
+    expect(enterpriseLoginRedirectPath(403, true)).toBeNull();
+  });
+
+  it('redirects an expired hosted RC2 envelope while still surfacing its error', () => {
+    const replace = vi.fn();
+    vi.stubGlobal('window', {
+      __AION_ENTERPRISE_WEB__: true,
+      location: { pathname: '/', replace },
+    });
+    try {
+      expect(() => unwrapRc2Response({ code: 401, msg: 'expired', data: null })).toThrowError(
+        new WorkspaceApiError('401', 'expired')
+      );
+      expect(replace).toHaveBeenCalledWith('/enterprise/login');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('maps authorization and model failures to actionable localized messages', () => {
+    expect(workspaceErrorTranslationKey('HTTP_403', 'load')).toBe('workspace.errors.forbidden');
+    expect(workspaceErrorTranslationKey('PermissionDenied', 'action')).toBe('workspace.errors.forbidden');
+    expect(workspaceErrorTranslationKey('ModelUnavailable', 'action')).toBe('workspace.errors.noModel');
+    expect(workspaceErrorTranslationKey('REQUEST_FAILED', 'load')).toBe('workspace.errors.load');
   });
 });

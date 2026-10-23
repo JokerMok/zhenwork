@@ -58,11 +58,18 @@
     "completed": "Completed",
     "failed": "Failed",
     "error": "Error",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "preparationFailed": "Environment preparation did not finish. Review the reason below and retry.",
+    "capabilityForbidden": "This account is not authorized to use the workspace. Ask your administrator to check employee roles and grants.",
+    "environmentUnavailable": "The execution environment is unavailable. Retry, or ask your administrator to check the service.",
+    "identityExpired": "Your session has expired. Sign in again."
   },
   "errors": {
     "load": "Unable to load this section ({{code}}).",
-    "action": "The action failed ({{code}})."
+    "action": "The action failed ({{code}}).",
+    "authentication": "Your session has expired. Returning to sign-in now.",
+    "forbidden": "This account does not have access to this ability. Contact your organization administrator for access.",
+    "noModel": "No model is available to this account. Ask your organization administrator to check the default model and access."
   },
   "fileKind": {
     "all": "All files",
@@ -98,6 +105,7 @@
     "openInTask": "Open in task"
   },
   "scope": {
+    "available": "All available",
     "mine": "Mine",
     "shared": "Shared with me"
   },
@@ -123,6 +131,7 @@
     "deleteConfirm": "Delete {{name}} and revoke it from future use?",
     "deleted": "Document deleted",
     "empty": "Choose a knowledge base or add its first document",
+    "availableEmpty": "No knowledge base is available to this account. Switch to Mine to create a personal knowledge base, or contact your organization administrator for access.",
     "versionStatus": "latest v{{latest}}, indexed v{{indexed}}",
     "version": "Version",
     "indexError": "Indexing error: {{code}}",
@@ -140,10 +149,12 @@
   },
   "abilities": {
     "title": "Abilities",
-    "subtitle": "Manage personal assistants and inspect assistants shared with you. Runtime and model details stay managed by the workspace.",
+    "subtitle": "View models and abilities provided by your organization or created personally. Organization defaults are inherited automatically.",
     "create": "Create ability",
     "detail": "Ability details",
     "empty": "No abilities found",
+    "personalEmpty": "You have no personal abilities. Organization-provided abilities remain available under All available.",
+    "modelsEmpty": "No models are available to this account. Ask an administrator to check the organization default model and access.",
     "name": "Name",
     "description": "Description",
     "instructions": "Instructions",
@@ -160,6 +171,17 @@
     "unavailable": "Unavailable",
     "readinessError": "This ability has unavailable dependencies: {{errors}}",
     "assistants": "Assistants",
+    "models": "Models",
+    "tools": "Tools",
+    "default": "Organization default",
+    "workspaceBuiltin": "Workspace built-in",
+    "nativeAssistant": "General office assistant",
+    "nativeTools": "Office file tools",
+    "nativeOfficeDescription": "Provided by the workspace with the organization default model {{model}} and available to new tasks. This is a native workspace capability, not an MCP catalog connection.",
+    "origin": {
+      "organization": "Organization",
+      "personal": "Personal"
+    },
     "skillPackages": "Skill packages",
     "importPackage": "Import package folder",
     "packageHint": "Select one folder containing exactly one SKILL.md. Companion files are imported with their relative paths and binary contents preserved.",

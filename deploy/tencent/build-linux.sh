@@ -7,7 +7,10 @@ release=${1:?release required}
 incoming=${2:-$root/incoming/$release}
 [[ $release =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{5,100}$ ]] || exit 2
 [[ $incoming == "$root/incoming/$release" ]] || { echo 'Unexpected incoming path' >&2; exit 2; }
-[[ -f "$incoming/SOURCE_SHA" && -f "$incoming/IMAGE_IDS.json" && -f "$incoming/rc2.jar" && -f "$incoming/web-host.cjs" ]] || { echo 'Incomplete staged release' >&2; exit 1; }
+[[ -f "$incoming/SOURCE_SHA" && -f "$incoming/IMAGE_IDS.json" && -f "$incoming/rc2.jar" && -f "$incoming/monitor.jar" && -f "$incoming/web-host.cjs" ]] || { echo 'Incomplete staged release' >&2; exit 1; }
+for asset in backup.sh prepare-monitor.py zhenwork-monitor.service zhenwork-caddy-edge.conf zhenwork-web.service zhenwork.caddy; do
+  [[ -f "$incoming/deploy-assets/$asset" ]] || { echo "Missing deploy asset: $asset" >&2; exit 1; }
+done
 target="$root/releases/$release"
 [[ ! -e "$target" ]] || { echo "Release already exists: $release" >&2; exit 1; }
 
@@ -49,7 +52,12 @@ if reuse is not None:
  assert re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._-]{5,100}',reuse['release'])
  assert re.fullmatch(r'[a-f0-9]{40}',reuse['sourceSha'])
  assert reuse['release']!=release
- assert reuse['reusedArtifacts'] in (['admin','control-source','employee','rc2.jar'], ['admin','control-source','rc2.jar'], ['control-source','rc2.jar'], ['employee','web-host.cjs'])
+ assert reuse['reusedArtifacts'] in (
+  ['admin','control-source','deploy-assets','employee','monitor.jar','rc2.jar'],
+  ['admin','control-source','deploy-assets','monitor.jar','rc2.jar'],
+  ['control-source','deploy-assets','monitor.jar','rc2.jar'],
+  ['employee','web-host.cjs'],
+ )
  base=pathlib.Path('/srv/apps/zhenwork/releases')/reuse['release']
  assert (base/'SOURCE_SHA').read_text().strip()==reuse['sourceSha']
  subprocess.run(['sha256sum','-c','SHA256SUMS'],cwd=base,stdout=subprocess.DEVNULL,check=True)
@@ -71,7 +79,7 @@ if reuse is not None:
                           'reusedArtifacts':reuse['reusedArtifacts'],'artifactSha256':hashes}
  m['buildLocation']=('macOS Admin/Java rebuild; employee/Host reused from immutable release' if reuse['reusedArtifacts']==['employee','web-host.cjs'] else ('macOS Host-only rebuild; Web/Admin/Java/control source reused from immutable release' if 'employee' in reuse['reusedArtifacts'] else ('macOS Web/Host rebuild; Admin/Java/control source reused from immutable release' if 'admin' in reuse['reusedArtifacts'] else 'macOS Web/Admin/Host rebuild; Java/control source reused from immutable release')))
 ops=pathlib.Path('/srv/apps/zhenwork/deploy')
-m['maintenanceSha256']={n:hashlib.sha256((ops/n).read_bytes()).hexdigest() for n in ('activate.sh','bootstrap.py','build-linux.sh','finalize-release.sh','manage.sh','prepare-office-host.sh')}
+m['maintenanceSha256']={n:hashlib.sha256((ops/n).read_bytes()).hexdigest() for n in ('activate.sh','backup.sh','bootstrap.py','build-linux.sh','finalize-release.sh','manage.sh','prepare-office-host.sh')}
 migrations=[]
 for f in sorted((p/'control-source/migrations/rc2').glob('[0-9][0-9][0-9][0-9]_*.sql')):
  migrations.append({'version':f.name,'sha256':hashlib.sha256(f.read_bytes()).hexdigest()})

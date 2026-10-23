@@ -34,6 +34,8 @@ const accounts = new Map([
 const sessions = new Map();
 let nextSession = 0;
 const token = 'fixed-stub-local-capability';
+const loginRequestHeaders = [];
+const logoutRequestHeaders = [];
 
 test('employee brand loads from RC2 with a bounded published logo', async () => {
   const id = 'cb532e4e-91b8-4634-a2bb-92ab9ec48808';
@@ -144,6 +146,7 @@ function stubServer() {
         data: { clientId: 'stub-client', protocolVersion: 2, serverId: 'rc2-stub-server' },
       });
     if (req.url === '/auth/login' && req.method === 'POST') {
+      loginRequestHeaders.push(req.headers);
       let input;
       try {
         input = JSON.parse(
@@ -178,6 +181,7 @@ function stubServer() {
         : send(401, { code: 401 });
     }
     if (req.url === '/auth/logout' && req.method === 'POST') {
+      logoutRequestHeaders.push(req.headers);
       if (req.headers.clientid !== 'stub-client') return send(401, { code: 401 });
       sessions.delete(sid);
       res.setHeader('Set-Cookie', '__Host-workspace-rc2=; Max-Age=0; HttpOnly; Secure; SameSite=Strict; Path=/');
@@ -210,11 +214,16 @@ test('RC2 cookie contract, stable IDs, disable, logout and A/B profile isolation
       new Rc2Client(base, 'https://wrong-origin.example').login({ username: 'alpha', password: 'stub-alpha' }),
       /ORIGIN/
     );
-    const actorA = await a.login({ username: 'alpha', password: 'stub-alpha' });
+    const actorA = await a.login({ username: 'alpha', password: 'stub-alpha',
+      clientMetadata: { ipAddress: '2001:db8::25', userAgent: 'Mozilla/5.0 Test Chrome/120' },
+      edgeToken: 'fixed-edge-token-for-enterprise-unit-tests' });
     const actorB = await b.login({ username: 'beta', password: 'stub-beta' });
     assert.equal(actorA.userId, '101');
     assert.equal(actorB.userId, '202');
     assert.equal(actorA.serverId, 'rc2-stub-server');
+    const forwarded = loginRequestHeaders.find((headers) => headers['x-zhenwork-client-ip'] === '2001:db8::25');
+    assert.equal(forwarded['x-zhenwork-edge-token'], 'fixed-edge-token-for-enterprise-unit-tests');
+    assert.equal(forwarded['x-zhenwork-client-user-agent'], 'Mozilla/5.0 Test Chrome/120');
     assert.match(a.cookie, /^__Host-workspace-rc2=/);
     assert.notEqual(a.cookie, 'cookie-session');
     const profileA = await prepareProfile(root, actorA.serverId, actorA.userId);
@@ -225,6 +234,9 @@ test('RC2 cookie contract, stable IDs, disable, logout and A/B profile isolation
     assert.equal((await prepareProfile(root, actorA.serverId, actorA.userId)).dir, profileA.dir);
     accounts.get('alpha').active = false;
     await assert.rejects(a.me(), /revoked|disabled/);
+    await a.logout();
+    const logout = logoutRequestHeaders.find((headers) => headers['x-zhenwork-client-ip'] === '2001:db8::25');
+    assert.equal(logout['x-zhenwork-client-user-agent'], 'Mozilla/5.0 Test Chrome/120');
     assert.equal((await b.me()).userId, '202');
     await b.logout();
     assert.equal(b.cookie, '');

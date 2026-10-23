@@ -17,9 +17,10 @@ import {
 } from '@arco-design/web-react';
 import type { UploadRequest } from '@arco-design/web-react/es/Upload/interface';
 import { Delete, Refresh, Search, UploadOne } from '@icon-park/react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { enterpriseControl, newIdempotencyKey, workspaceErrorCode } from './workspaceApi';
+import { catalogOrigin } from './workspaceCatalog';
+import { enterpriseControl, newIdempotencyKey, workspaceErrorCode, workspaceErrorTranslationKey } from './workspaceApi';
 import type {
   KnowledgeCitation,
   KnowledgeDocument,
@@ -71,7 +72,7 @@ const knowledgeIssueKey = (code: string): string => {
 const WorkspaceKnowledge: React.FC = () => {
   const { t } = useTranslation();
   const [message, messageContext] = Message.useMessage();
-  const [scope, setScope] = useState<ResourceScope>('mine');
+  const [scope, setScope] = useState<ResourceScope>('available');
   const [bases, setBases] = useState<WorkspaceResource[]>([]);
   const [baseId, setBaseId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
@@ -82,6 +83,8 @@ const WorkspaceKnowledge: React.FC = () => {
   const [results, setResults] = useState<KnowledgeCitation[]>([]);
   const [jobs, setJobs] = useState<KnowledgeJob[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const basesLoadGeneration = useRef(0);
+  const documentsLoadGeneration = useRef(0);
   const issueMessage = useCallback(
     (code: string) =>
       t(`workspace.knowledge.issues.${knowledgeIssueKey(code)}`, {
@@ -94,37 +97,60 @@ const WorkspaceKnowledge: React.FC = () => {
   const selectedBase = useMemo(() => bases.find((base) => base.id === baseId) || null, [baseId, bases]);
   const canEdit = Boolean(selectedBase?.actions.includes('EDIT'));
 
+  useEffect(
+    () => () => {
+      basesLoadGeneration.current += 1;
+      documentsLoadGeneration.current += 1;
+    },
+    []
+  );
+
   const loadBases = useCallback(async () => {
+    const generation = ++basesLoadGeneration.current;
+    documentsLoadGeneration.current += 1;
     setLoading(true);
+    setBaseId(null);
+    setDocuments([]);
+    setJobs([]);
+    setResults([]);
     try {
       const value = await enterpriseControl<WorkspaceResource[]>(`/ai/resources?type=KNOWLEDGE&scope=${scope}&page=1`);
+      if (generation !== basesLoadGeneration.current) return;
       const items = Array.isArray(value) ? value : [];
       setBases(items);
       setBaseId((current) => (current && items.some((item) => item.id === current) ? current : items[0]?.id || null));
       setErrorCode(null);
     } catch (error) {
+      if (generation !== basesLoadGeneration.current) return;
       setBases([]);
       setBaseId(null);
       setErrorCode(workspaceErrorCode(error));
     } finally {
-      setLoading(false);
+      if (generation === basesLoadGeneration.current) setLoading(false);
     }
   }, [scope]);
 
   const loadDocuments = useCallback(async () => {
+    const generation = ++documentsLoadGeneration.current;
     if (!baseId) {
       setDocuments([]);
+      setJobs([]);
       return;
     }
+    setDocuments([]);
+    setJobs([]);
+    setResults([]);
     try {
       const [value, jobValue] = await Promise.all([
         enterpriseControl<KnowledgeDocument[]>(`/ai/knowledge/${baseId}/documents?page=1`),
         enterpriseControl<KnowledgeJob[]>(`/ai/knowledge/${baseId}/jobs`),
       ]);
+      if (generation !== documentsLoadGeneration.current) return;
       setDocuments(Array.isArray(value) ? value : []);
       setJobs(Array.isArray(jobValue) ? jobValue : []);
       setErrorCode(null);
     } catch (error) {
+      if (generation !== documentsLoadGeneration.current) return;
       setDocuments([]);
       setErrorCode(workspaceErrorCode(error));
     }
@@ -208,7 +234,8 @@ const WorkspaceKnowledge: React.FC = () => {
       );
       setResults(Array.isArray(value.citations) ? value.citations : []);
     } catch (error) {
-      message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+      const code = workspaceErrorCode(error);
+      message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
     } finally {
       setSearching(false);
     }
@@ -218,7 +245,8 @@ const WorkspaceKnowledge: React.FC = () => {
     try {
       setPreview(await enterpriseControl<Preview>(`/ai/knowledge/documents/${documentId}/versions/${version}`));
     } catch (error) {
-      message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+      const code = workspaceErrorCode(error);
+      message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
     }
   };
 
@@ -233,7 +261,8 @@ const WorkspaceKnowledge: React.FC = () => {
           message.success(t('workspace.knowledge.deleted'));
           await loadDocuments();
         } catch (error) {
-          message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+          const code = workspaceErrorCode(error);
+          message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
           throw error;
         }
       },
@@ -246,7 +275,8 @@ const WorkspaceKnowledge: React.FC = () => {
       message.success(t('workspace.knowledge.reindexQueued'));
       await loadDocuments();
     } catch (error) {
-      message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+      const code = workspaceErrorCode(error);
+      message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
     }
   };
 
@@ -259,10 +289,16 @@ const WorkspaceKnowledge: React.FC = () => {
           <div className='mt-3px text-13px text-t-secondary'>{t('workspace.knowledge.subtitle')}</div>
         </div>
         <Space wrap>
-          <Select value={scope} onChange={setScope} style={{ width: 120 }}>
+          <Select value={scope} onChange={setScope} style={{ width: 150 }}>
+            <Select.Option value='available'>{t('workspace.scope.available')}</Select.Option>
             <Select.Option value='mine'>{t('workspace.scope.mine')}</Select.Option>
             <Select.Option value='shared'>{t('workspace.scope.shared')}</Select.Option>
           </Select>
+          {selectedBase ? (
+            <Tag color={catalogOrigin(selectedBase) === 'organization' ? 'arcoblue' : 'purple'}>
+              {t(`workspace.abilities.origin.${catalogOrigin(selectedBase)}`)}
+            </Tag>
+          ) : null}
           <Select
             value={baseId || undefined}
             onChange={setBaseId}
@@ -292,7 +328,13 @@ const WorkspaceKnowledge: React.FC = () => {
           </Button>
         </Space>
       </div>
-      {errorCode ? <Alert type='error' showIcon content={t('workspace.errors.load', { code: errorCode })} /> : null}
+      {errorCode ? (
+        <Alert
+          type='error'
+          showIcon
+          content={t(workspaceErrorTranslationKey(errorCode, 'load'), { code: errorCode })}
+        />
+      ) : null}
       <Card>
         <Input.Search
           value={query}
@@ -327,7 +369,11 @@ const WorkspaceKnowledge: React.FC = () => {
       </Card>
       <Spin loading={loading} className='w-full'>
         {!baseId || (documents.length === 0 && !loading) ? (
-          <Empty description={t('workspace.knowledge.empty')} />
+          <Empty
+            description={
+              scope === 'available' ? t('workspace.knowledge.availableEmpty') : t('workspace.knowledge.empty')
+            }
+          />
         ) : (
           <List
             dataSource={documents}

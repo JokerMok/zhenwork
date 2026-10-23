@@ -15,7 +15,7 @@ import {
 import { Refresh } from '@icon-park/react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { enterpriseControl, workspaceErrorCode } from '../workspaceApi';
+import { enterpriseControl, workspaceErrorCode, workspaceErrorTranslationKey } from '../workspaceApi';
 import type { WorkspaceResource } from '../workspaceTypes';
 
 type McpTemplateConfig = {
@@ -109,7 +109,8 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
       message.success(t('workspace.abilities.mcp.saved'));
       await load();
     } catch (error) {
-      message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+      const code = workspaceErrorCode(error);
+      message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
     } finally {
       setSaving(false);
     }
@@ -129,7 +130,8 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
       } else message.error(t('workspace.abilities.mcp.testFailed'));
       await load();
     } catch (error) {
-      message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+      const code = workspaceErrorCode(error);
+      message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
     } finally {
       setSaving(false);
     }
@@ -160,7 +162,13 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
       {messageContext}
       <Spin loading={loading} className='w-full'>
         <div className='flex flex-col gap-14px'>
-          {errorCode ? <Alert type='error' showIcon content={t('workspace.errors.load', { code: errorCode })} /> : null}
+          {errorCode ? (
+            <Alert
+              type='error'
+              showIcon
+              content={t(workspaceErrorTranslationKey(errorCode, 'load'), { code: errorCode })}
+            />
+          ) : null}
           {detail ? (
             <Descriptions
               column={1}

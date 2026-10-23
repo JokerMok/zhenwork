@@ -102,6 +102,7 @@ VITE_APP_CONTEXT_PATH=/admin/
 VITE_APP_ENCRYPT=false
 VITE_APP_CLIENT_ID=$client
 VITE_APP_MESSAGE_ENABLED=false
+VITE_APP_MONITOR_ADMIN=/monitor/
 ENV
 (cd "$admin" && node node_modules/vite/bin/vite.js build --mode tencent)
 mkdir -p "$work/stage/admin"
@@ -121,7 +122,7 @@ m['baseRelease']=current
 m['artifactReusedFrom']={
     'release':source_release,
     'sourceSha':source_sha,
-    'reusedArtifacts':['control-source','rc2.jar'],
+    'reusedArtifacts':['control-source','deploy-assets','monitor.jar','rc2.jar'],
 }
 pathlib.Path(out).write_text(json.dumps(m,indent=2)+'\n')
 PY
@@ -141,7 +142,7 @@ ssh tencent-main "rm -rf '$remote_root/incoming/$release/employee'"
 rsync -az "$work/stage/employee/" "tencent-main:$remote_root/incoming/$release/employee/"
 ssh tencent-main "rm -rf '$remote_root/incoming/$release/admin'"
 rsync -az "$work/stage/admin/" "tencent-main:$remote_root/incoming/$release/admin/"
-for name in activate.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh; do
+for name in activate.sh backup.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh; do
   rsync -az "$work/source/deploy/tencent/$name" "tencent-main:/tmp/zhenwork-$release-$name"
   ssh tencent-main "sudo install -o root -g root -m 0755 '/tmp/zhenwork-$release-$name' '$remote_root/deploy/$name'; rm -f '/tmp/zhenwork-$release-$name'"
 done

@@ -78,7 +78,9 @@ ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh restart'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh logs 100'
 ```
 
-restart 重启本项目 Java/Host，确认 DB/Redis/bridge-anchor 健康。回滚不还原数据库，也不允许“旧应用 + 任意未来 schema”。目标必须有 `VERIFIED.json`、兼容当前密码策略，并由审核人基于 `rollback-compatibility.example.json` 创建 root 所有、不可组/全局写的文件，放到 `shared/config/rollback-reviews/`。审核文件必须精确绑定当前发布、目标发布、目标 source SHA、当前数据库的完整迁移名/hash 清单，以及目标发布迁移前缀；数据库后来新增一个迁移就会使旧审核失效。
+restart 重启本项目 RC2/Host，并仅在监控 unit、当前不可变 release 的 `monitor.jar` 和私有配置完整时启动 Monitor，同时确认 DB/Redis/bridge-anchor 健康。Monitor 直接从 `current/monitor.jar` 运行，二进制由 release manifest 与 `SHA256SUMS` 管理，不复制到 shared，也不进入员工资料备份。发布切换前只把本项目 Caddy 站点、Web/Monitor unit、Caddy 环境 drop-in 和相关私有环境文件保存到当前版本的 `shared/config/versions/<release>/runtime-state/`。新站点只能经宿主机既有 `caddy-site-install` 校验并 reload；安装器校验和 reload 时同时加载 edge 与 monitor-proxy 私有环境。回滚到没有 monitor.jar/deploy-assets 的已验证旧版本时，恢复该版本快照并停用 Monitor，RC2/Host 仍按旧 unit 启动。
+
+回滚不还原数据库，也不允许“旧应用 + 任意未来 schema”。目标必须有 `VERIFIED.json`、兼容当前密码策略，并由审核人基于 `rollback-compatibility.example.json` 创建 root 所有、不可组/全局写的文件，放到 `shared/config/rollback-reviews/`。审核文件必须精确绑定当前发布、目标发布、目标 source SHA、当前数据库的完整迁移名/hash 清单，以及目标发布迁移前缀；数据库后来新增一个迁移就会使旧审核失效。
 
 ```sh
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/REVIEW.json'
@@ -139,3 +141,13 @@ verify-admin-usability.mjs需要环境变量及私有qa-private.json所指的专
 服务器目录同步通过 `scripts/rc2/install_knowledge_directory_sync_remote.sh tencent-main` 从本地仓库安装或更新工具。它仅写入本项目 tools 目录，不覆盖私有配置或启用真实目录/定时器；实际启用须明确源目录、知识库授权、容量边界和root私有凭据。说明见 `scripts/rc2/README-knowledge-directory-sync.md`。代码更新、应用回退和知识文档撤回分别处理，不借更新删除业务数据。
 
 本轮更新（2026-10-23）：全量发布脚本在所有 `AionUi-enterprise-poc` 源码及 `build-web.mjs` 均与当前不可变发布完全一致时，复用 employee 与 web-host.cjs，仅构建本次管理前端/Java。RELEASE 记录来源发布和逐产物哈希；服务端检查原发布 SHA256SUMS 及复用内容一致。源码变化仍走原完整网页构建，Rust/镜像均不会隐式重建。
+
+### 员工组织能力与登录来源（2026-10-23）
+
+普通新增、导入和注册统一保留 `workspace_employee` 基础角色；编辑角色为 null 表示不修改，显式空数组保留基础角色。0022仅修复既有用户的必要关联，不改密码、文件或个人配置。企业默认模型通过 `ai_office_defaults.model_id` 引用供活动员工继承；其他模型继续按 ALL/部门/角色/用户策略授权，停用账号、角色、模型或 Provider 不可继续使用。后台“模型管理→设为企业默认”明确告知面向全员；不要把敏感专用模型设为全员默认。
+
+员工页面、交互执行与离线任务的资源目录统一使用 `scope=available`，返回当前有 USE 权限的发布版本；执行仍重新检查资源及助手、Skill 的依赖。企业资源沿用发布、角色/部门/用户共享机制，不给每位员工复制模型 Key、MCP 或技能包。默认通用办公助手和办公文件工具在 Host 内安装；业务连接凭据继续留在 RC2。组织通用 Skill 可共享给基础员工角色；敏感知识、业务专家及其连接分别按业务部门/角色授权。
+
+登录来源仅由 Caddy 的实际 socket 来源认定，生产当前没有上游可信 CDN/负载均衡；浏览器 XFF、X-Real-IP 等输入不能改写来源。Caddy→Host→RC2 使用私有 edge token 传递 IP/UA，支持单个 IPv4/IPv6；在线用户与登录日志统一由 RC2 原解析链记录。新增代理须先明确 CIDR/信任链，不能直接取客户端 XFF 第一项。私有 edge/monitor token 不进入浏览器、模型或访问日志。
+
+员工缺模型/授权时应联系组织管理员；身份过期回到员工登录页。环境准备有180秒排队上限、明确失败与重试。Admin监控通过原 Cookie 和 `monitor:admin:list` 权限访问 `/monitor/`，独立 JVM 仅监听18909、Xmx256MiB/MemoryMax384MiB，公网只读。系统工具总览只链接当前权限允许的既有监控页面，生产代码生成器继续禁用。运行产物及真实网页验收以相应 RELEASE.json、VERIFIED.json 和项目维护记录为准。
