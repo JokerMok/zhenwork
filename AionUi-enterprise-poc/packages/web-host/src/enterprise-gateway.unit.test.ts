@@ -581,6 +581,12 @@ test('requires enterprise login and correct Origin', async () => {
   const anonymous = await request('GET', '/');
   expect(anonymous.status).toBe(302);
   expect(anonymous.headers.location).toBe('/enterprise/login');
+  for (const api of ['/enterprise/control/ai/me', '/enterprise/control/ai/models/available', '/enterprise/files', '/enterprise/memories', '/enterprise/search?keyword=test']) {
+    const denied = await request('GET', api);
+    expect(denied.status).toBe(401);
+    expect(denied.headers.location).toBeUndefined();
+    expect(JSON.parse(denied.body)).toEqual({ error: 'UNAUTHENTICATED' });
+  }
   expect(
     (await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' }, 'https://evil.example'))
       .status

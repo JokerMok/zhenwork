@@ -751,7 +751,9 @@ export async function startEnterpriseGateway(
     }
     const auth = await authenticate(req);
     if (!auth) {
-      if (req.method === 'GET' && !req.url.startsWith('/api/') && req.url !== '/enterprise/brand' && req.url !== '/enterprise/ready') {
+      // API consumers need a 401, never a followed redirect containing login HTML.
+      // Public enterprise login/password/bootstrap routes have already returned.
+      if (req.method === 'GET' && !req.url.startsWith('/api/') && !req.url.startsWith('/enterprise/')) {
         res.writeHead(302, { location: '/enterprise/login', 'cache-control': 'no-store' });
         res.end();
         return;
