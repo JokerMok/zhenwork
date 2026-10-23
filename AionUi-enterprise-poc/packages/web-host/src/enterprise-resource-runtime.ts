@@ -165,7 +165,8 @@ export async function syncEnterpriseWebResources(
   profileRoot: string,
   model: Model | null,
   activeClient: () => Promise<Rc2GatewayClient>,
-  relayClient: (conversationId?: string) => Promise<Rc2GatewayClient>
+  relayClient: (conversationId?: string) => Promise<Rc2GatewayClient>,
+  onCatalogChange?: () => void
 ): Promise<{ stop: () => Promise<void>; invalidated: Promise<void>; issues: RuntimeResourceIssue[] }> {
   const profile = enterpriseProfilePath(profileRoot, actor);
   const stage = await mkdtemp(path.join(profile, 'rc2-stage-'));
@@ -180,11 +181,16 @@ export async function syncEnterpriseWebResources(
     const assistants: Assistant[] = [];
     const issues: RuntimeResourceIssue[] = [];
     const catalogs = { skills: [] as CatalogItem[], mcps: [] as CatalogItem[] };
+    const fingerprint = (items: CatalogItem[]): string => items.map(item => `${item.id}:${item.version}`).sort().join('|');
+    let catalogSignatures: string[] = [];
+    let modelSignature = (model?.availableModels || (model ? [model] : [])).map(item => item.id).join('|');
     if (model) {
       const availableModels = model.availableModels?.length ? model.availableModels : [model];
       const [assistantCatalog, skillCatalog, mcpCatalog] = await Promise.allSettled([
         client.resources('ASSISTANT'), client.resources('SKILL'), client.resources('MCP'),
       ]);
+      catalogSignatures = [assistantCatalog, skillCatalog, mcpCatalog].map(result =>
+        fingerprint(result.status === 'fulfilled' ? optionalCatalog(result.value) : []));
       if (skillCatalog.status === 'fulfilled') catalogs.skills = optionalCatalog(skillCatalog.value);
       if (mcpCatalog.status === 'fulfilled') catalogs.mcps = optionalCatalog(mcpCatalog.value);
       for (const item of assistantCatalog.status === 'fulfilled' ? optionalCatalog(assistantCatalog.value).slice(0, 20) : []) {
@@ -356,7 +362,19 @@ export async function syncEnterpriseWebResources(
       checking = true;
       try {
         const current = await activeClient();
-        const availableModelIds = new Set((await current.availableModels()).map((item) => item.id));
+        const currentModels = await current.availableModels();
+        const availableModelIds = new Set(currentModels.map((item) => item.id));
+        // Additions and a changed default apply once the Core is idle. Revocations
+        // below still invalidate the running capability immediately.
+        if (onCatalogChange && model) {
+          const snapshots = await Promise.allSettled(['ASSISTANT', 'SKILL', 'MCP'].map(type => current.resources(type)));
+          const signatures = snapshots.map((result, index) => result.status === 'fulfilled'
+            ? fingerprint(optionalCatalog(result.value)) : catalogSignatures[index]);
+          const nextModels = currentModels.map(item => item.id).join('|');
+          if (nextModels !== modelSignature || signatures.some((value,index) => value !== catalogSignatures[index])) {
+            modelSignature = nextModels;catalogSignatures = signatures;onCatalogChange();
+          }
+        }
         if (model && !availableModelIds.has(model.id)) throw new Error('Model revoked');
         if (runnable.some((item) => !availableModelIds.has(item.modelId))) throw new Error('Assistant model revoked');
         for (const item of runnable) {

@@ -214,3 +214,36 @@ test('host resource control directory refuses a symlink into an employee profile
     await expect(enterpriseManagedResourcePath(root, actor)).rejects.toThrow('control directory invalid');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('a new organization default requests an idle refresh without revoking an allowed running model', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'enterprise-default-refresh-'));
+  const actor = { serverId: 'rc2', userId: '42' };
+  await mkdir(enterpriseProfilePath(root, actor), { recursive: true });
+  let models = [{ id: 'model-1', code: 'old', name: 'Old', streaming: true }];
+  const client = {
+    resources: async () => [],
+    availableModels: async () => models,
+  } as unknown as Rc2GatewayClient;
+  const core = http.createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ success: true, data: req.url === '/api/assistants'
+      ? [{ id: 'builtin', agent_id: 'agent-1', agent: { type: 'aionrs' } }] : [] }));
+  });
+  await new Promise<void>(resolve => core.listen(0, '127.0.0.1', resolve));
+  const port = (core.address() as { port: number }).port;
+  let refresh!: () => void;
+  const changed = new Promise<void>(resolve => { refresh = resolve; });
+  const synced = await syncEnterpriseWebResources(actor, { port, localToken: 'secret', stop: async () => {} },
+    root, { id: 'model-1', code: 'old' }, async () => client, async () => client, refresh);
+  let revoked = false;
+  void synced.invalidated.then(() => { revoked = true; });
+  try {
+    models = [{ id: 'model-2', code: 'new', name: 'New', streaming: true }, ...models];
+    await Promise.race([changed, new Promise((_, reject) => setTimeout(() => reject(new Error('default refresh not observed')), 6500))]);
+    expect(revoked).toBe(false);
+  } finally {
+    await synced.stop();
+    await new Promise<void>(resolve => core.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
+}, 10000);

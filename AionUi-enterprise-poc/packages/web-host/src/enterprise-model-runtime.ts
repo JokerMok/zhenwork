@@ -290,6 +290,7 @@ export function createEnterpriseModelRuntime(
       let office: Awaited<ReturnType<typeof startOfficeTools>> | null = null;
       let resources: Awaited<ReturnType<typeof syncEnterpriseWebResources>> | null = null;
       let stopRefreshTimer = (): void => {};
+      let refreshPending = false;
       try {
         const proxyHost = enterpriseProxyHost(core);
         const { port, key: proxyKey } = await proxy.start(enterpriseProxyBindHost(core));
@@ -302,12 +303,12 @@ export function createEnterpriseModelRuntime(
         });
         resources = options.profileRoot
           ? await syncEnterpriseWebResources(actor, core, options.profileRoot, { ...model, availableModels: models },
-            () => activeClient(actor), (conversationId) => relayClient(actor, conversationId))
+            () => activeClient(actor), (conversationId) => relayClient(actor, conversationId), () => { refreshPending = true; })
           : null;
         resourceIssues.set(key(actor), resources?.issues || []);
         let invalidate: () => void = () => {};
         const invalidated = new Promise<void>((resolve) => { invalidate = resolve; });
-        let generation = 0, refreshing: Promise<void> | null = null, stoppingResources = false, refreshPending = false;
+        let generation = 0, refreshing: Promise<void> | null = null, stoppingResources = false;
         resources?.invalidated.then(() => { if (generation === 0) invalidate(); });
         const refresh = async (): Promise<void> => {
           if (stoppingResources) return;
@@ -333,7 +334,7 @@ export function createEnterpriseModelRuntime(
               AION_ENTERPRISE_MODELS_JSON: JSON.stringify(available),
             });
             resources = await syncEnterpriseWebResources(actor, core, options.profileRoot, { ...chosen, availableModels: available },
-              () => activeClient(actor), (conversationId) => relayClient(actor, conversationId));
+              () => activeClient(actor), (conversationId) => relayClient(actor, conversationId), () => { refreshPending = true; });
             resourceIssues.set(key(actor), resources.issues);
             resources.invalidated.then(() => { if (generation === currentGeneration) invalidate(); });
             if (office) await ensureOfficeAssistant(core, office.mcpId, chosen);

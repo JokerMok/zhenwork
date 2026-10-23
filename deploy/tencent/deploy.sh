@@ -174,9 +174,9 @@ PY
 )
 maven_cache=${ZHENWORK_MAVEN_REPOSITORY:-${ZHENWORK_MAVEN_CACHE_ROOT:-$repo/.codex/dependency-cache/maven}/$maven_inputs}
 mkdir -p "$maven_cache"
-maven_network=()
-[[ ${ZHENWORK_MAVEN_OFFLINE:-0} == 1 ]] && maven_network=(-o)
-(cd "$control/platform/ruoyi" && MAVEN_OPTS='-Xms128m -Xmx1536m' sh mvnw "${maven_network[@]}" -s "$ops/config/maven-settings.xml" -B -ntp -Dmaven.repo.local="$maven_cache" -pl ruoyi-admin,ruoyi-extend/ruoyi-monitor-admin -am package -Dmaven.test.skip=true)
+maven_network=(-B -ntp)
+[[ ${ZHENWORK_MAVEN_OFFLINE:-0} == 1 ]] && maven_network+=(-o)
+(cd "$control/platform/ruoyi" && MAVEN_OPTS='-Xms128m -Xmx1536m' sh mvnw "${maven_network[@]}" -s "$ops/config/maven-settings.xml" -Dmaven.repo.local="$maven_cache" -pl ruoyi-admin,ruoyi-extend/ruoyi-monitor-admin -am package -Dmaven.test.skip=true)
 
 stage="$work/release"
 mkdir -p "$stage/employee" "$stage/admin" "$stage/control-source/platform/ruoyi/script/sql/postgres" "$stage/control-source/migrations" "$stage/deploy-assets"
