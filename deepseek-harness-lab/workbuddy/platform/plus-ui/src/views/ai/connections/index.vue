@@ -12,7 +12,7 @@
     </div>
 
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb-3" />
-    <el-table v-loading="loading" :data="rows" empty-text="尚未配置外部业务连接">
+    <el-table v-loading="loading" :data="rows" row-key="id" empty-text="尚未配置外部业务连接">
       <el-table-column prop="name" label="连接名称" min-width="150" />
       <el-table-column label="连接器" min-width="160">
         <template #default="{ row }">{{ connectorName(row.type) }}</template>
@@ -496,7 +496,12 @@ function methodSummary(row: ExternalConnection) {
       item.title || item.name
     ])
   );
-  return row.allowedMethods?.length ? row.allowedMethods.map(name => names.get(name) || name).join('、') : '未授权';
+  if (!row.allowedMethods?.length) return '未授权';
+  const preview = row.allowedMethods
+    .slice(0, 2)
+    .map(name => names.get(name) || name)
+    .join('、');
+  return `${row.allowedMethods.length} 项：${preview}${row.allowedMethods.length > 2 ? '等' : ''}`;
 }
 
 function openEditor(row?: ExternalConnection) {

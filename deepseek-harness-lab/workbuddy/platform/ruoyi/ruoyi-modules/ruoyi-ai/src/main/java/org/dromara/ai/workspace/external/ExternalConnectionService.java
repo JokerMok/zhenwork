@@ -154,7 +154,7 @@ public class ExternalConnectionService {
             if(!Boolean.TRUE.equals(row.get("enabled"))||!"READY".equals(row.get("tested_status")))throw new WorkspaceDenied(409,"ExternalConnectionNotReady");
             UUID model=jdbc.queryForObject("SELECT model_id FROM ai_office_defaults WHERE singleton",UUID.class);
             if(model==null)throw new WorkspaceDenied(409,"OfficeDefaultModelRequired");
-            String name=row.get("name")+" 查询专家";
+            String name=expertName(row.get("name").toString());
             Map<String,Object> config=new LinkedHashMap<>();
             config.put("avatar","⌁");
             config.put("instruction","使用用户所用语言回答。固定业务事实必须调用所绑定的查询工具；同一问题内方法和参数相同的查询只调用一次；不同条件分别查询。多个问题分别发起对应查询，跨系统比较前先对齐单位、时间和统计口径。计算、比例和汇总使用可用的办公 Python 或结构化数据汇总工具，不以文字心算代替。回答标明来源、环境、单位、queriedAt，并在上游提供时标明 sourcePeriod。上游不支持的日期、企业或条件应明确说明，不得猜测；单项失败时保留其他成功结果并说明局部失败。");
@@ -190,7 +190,12 @@ public class ExternalConnectionService {
     }
     private List<String> expertResources(Object assistant){if(!(assistant instanceof UUID id))return List.of();try{String json=jdbc.queryForObject("SELECT v.config::text FROM ai_resource r JOIN ai_resource_version v ON v.resource_id=r.id AND v.version=r.latest_version WHERE r.id=?",String.class,id);Object value=JsonUtils.parseMap(json).get("mcpIds");return value instanceof List<?> list?list.stream().map(Object::toString).toList():List.of();}catch(Exception e){return List.of();}}
     private List<String> connectionIds(List<String> resources){if(resources.isEmpty())return List.of();List<UUID> ids=new ArrayList<>();for(String value:resources)try{ids.add(UUID.fromString(value));}catch(Exception ignored){}if(ids.isEmpty())return List.of();String placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));return jdbc.queryForList("SELECT id::text FROM ai_mcp_connection WHERE resource_id IN ("+placeholders+")",String.class,ids.toArray());}
-    private Map<String,Object> expertDto(UUID id,String connectionName,boolean reused,List<UUID> connectionIds,List<String> resourceIds){return Map.of("assistantId",id.toString(),"name",connectionName+" 查询专家","reused",reused,"boundConnectionIds",connectionIds.stream().map(UUID::toString).toList(),"boundResourceIds",resourceIds);}
+    static String expertName(String connectionName){
+        int end=Math.min(90,connectionName.length());
+        if(end>0&&end<connectionName.length()&&Character.isHighSurrogate(connectionName.charAt(end-1)))end--;
+        return connectionName.substring(0,end)+" 查询专家";
+    }
+    private Map<String,Object> expertDto(UUID id,String connectionName,boolean reused,List<UUID> connectionIds,List<String> resourceIds){return Map.of("assistantId",id.toString(),"name",connectionName,"reused",reused,"boundConnectionIds",connectionIds.stream().map(UUID::toString).toList(),"boundResourceIds",resourceIds);}
     private record Validated(String baseUrl,List<String> methods){}
     private Validated validate(Save input,boolean update){
         if(input==null||input.type()==null||blank(input.name())||input.name().trim().length()>100||blank(input.businessUnit())||input.businessUnit().trim().length()>200||blank(input.environment())||blank(input.baseUrl())||input.baseUrl().length()>500||input.allowedMethods()==null||new HashSet<>(input.allowedMethods()).size()!=input.allowedMethods().size())throw new WorkspaceDenied(400,"InvalidExternalConnection");

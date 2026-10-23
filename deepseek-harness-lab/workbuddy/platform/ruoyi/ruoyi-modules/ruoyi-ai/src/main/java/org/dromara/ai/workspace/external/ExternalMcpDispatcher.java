@@ -43,7 +43,7 @@ public class ExternalMcpDispatcher {
         long started=System.nanoTime();String toolName="unknown";
         try{
             if(!(request.get("params") instanceof Map<?,?> raw)||!raw.keySet().stream().allMatch(k->Set.of("name","arguments","_meta").contains(k.toString())))throw new ToolFailure("InvalidToolArguments");
-            toolName=Objects.toString(raw.get("name"),"");ConnectorMethod selected=methods.get(toolName);if(selected==null)throw new ToolFailure("McpToolNotAllowed");
+            ConnectorMethod selected=methods.get(Objects.toString(raw.get("name"),""));if(selected==null)throw new ToolFailure("McpToolNotAllowed");toolName=selected.name();
             Map<String,Object> arguments=map(raw.get("arguments"));validate(arguments,toolSchema(runtime,selected));if(runtime.type()==ConnectorType.CSWM_IOT&&"ledger".equals(selected.name()))arguments.put("qyid",runtime.verifiedIdentity().get("enterpriseId"));enforceIdentity(runtime,arguments);
             String boundIdentity=runtime.type()==ConnectorType.CSWM_IOT?Objects.toString(runtime.verifiedIdentity().get("enterpriseId"),""):runtime.businessUnit();
             if(boundIdentity.isBlank())throw new ToolFailure("ExternalIdentityNotVerified");

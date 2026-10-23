@@ -11,6 +11,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ExternalMcpDispatcherTest {
     @Test
+    void expertNameFitsExistingResourceLimitsWithoutSplittingSurrogatePairs() {
+        String name=ExternalConnectionService.expertName("A".repeat(89)+"😀"+"B".repeat(9));
+        assertTrue(name.length()<=100);
+        assertEquals("A".repeat(89)+" 查询专家",name);
+    }
+
+    @Test
     void ledgerEnterpriseIdIsInjectedByTheServerInsteadOfChosenByTheModel() {
         var runtime = new ExternalConnectionService.RuntimeConnection(UUID.randomUUID(),UUID.randomUUID(),
             ConnectorType.CSWM_IOT,"连接","本单位","TEST","https://test-iotapi.cswm.org.cn/iot-server",
