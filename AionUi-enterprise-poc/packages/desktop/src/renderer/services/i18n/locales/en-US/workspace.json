@@ -62,14 +62,18 @@
     "preparationFailed": "Environment preparation did not finish. Review the reason below and retry.",
     "capabilityForbidden": "This account is not authorized to use the workspace. Ask your administrator to check employee roles and grants.",
     "environmentUnavailable": "The execution environment is unavailable. Retry, or ask your administrator to check the service.",
-    "identityExpired": "Your session has expired. Sign in again."
+    "identityExpired": "Your session has expired. Sign in again.",
+    "resourceUpdatePending": "Capability updates are queued until the current task finishes. Existing authorized capabilities remain available.",
+    "resourceCheckDeferred": "Capability updates could not be checked. Existing authorized capabilities remain available; a check will run later."
   },
   "errors": {
     "load": "Unable to load this section ({{code}}).",
     "action": "The action failed ({{code}}).",
     "authentication": "Your session has expired. Returning to sign-in now.",
     "forbidden": "This account does not have access to this ability. Contact your organization administrator for access.",
-    "noModel": "No model is available to this account. Ask your organization administrator to check the default model and access."
+    "noModel": "No model is available to this account. Ask your organization administrator to check the default model and access.",
+    "noCapability": "No work capabilities are authorized for this account. Contact an administrator.",
+    "prepareFailed": "The work environment could not be prepared ({{code}}). Retry, or contact an administrator if it persists."
   },
   "fileKind": {
     "all": "All files",

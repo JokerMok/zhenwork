@@ -13,6 +13,7 @@ import { previewOfficeFile } from './office/preview/index.js';
 import { enterpriseProfilePath } from './enterprise-core.js';
 import { enterpriseReadinessPage } from './enterprise-readiness-page.js';
 
+export type EnterpriseResourceState = { state: 'ready' | 'pending' | 'refreshing'; reason?: 'TASK_ACTIVE' | 'CHECK_FAILED' };
 export type EnterpriseActor = { serverId: string; userId: string };
 export type EnterpriseClientMetadata = { ipAddress: string; userAgent: string };
 export type EnterpriseCore = { port: number; localToken: string; stop: () => Promise<void>; invalidated?: Promise<void>;
@@ -47,7 +48,8 @@ export type EnterpriseGatewayOptions = {
   controlRequest?: (actor: EnterpriseActor, route: string, init: RequestInit) => Promise<Response>;
   profileRoot?: string;
   adminUrl?: string;
-  refreshResources?: (actor: EnterpriseActor) => Promise<void>;
+  refreshResources?: (actor: EnterpriseActor) => Promise<EnterpriseResourceState | void>;
+  resourceStatus?: (actor: EnterpriseActor) => EnterpriseResourceState;
   /** Validate a desktop supervisor's existing RC2 cookie on the server. */
   resume?: (rc2Cookie: string) => Promise<EnterpriseLogin>;
   startCore: (actor: EnterpriseActor) => Promise<EnterpriseCore>;
@@ -793,13 +795,19 @@ export async function startEnterpriseGateway(
     }
     auth.session.responses.add(res);
     res.once('close', () => auth.session.responses.delete(res));
+    if (req.url === '/enterprise/resources/status' && req.method === 'GET') {
+      try {
+        await getCore(auth.session.actor);
+        return reply(res, 200, opts.resourceStatus?.(auth.session.actor) || { state: 'ready' });
+      } catch (error) { return replyCoreFailure(res, error); }
+    }
     if (req.url === '/enterprise/resources/refresh' && req.method === 'POST') {
       if (!opts.refreshResources) return reply(res, 503, { error: 'RESOURCE_REFRESH_UNAVAILABLE' });
-      try { await getCore(auth.session.actor);await opts.refreshResources(auth.session.actor);return reply(res, 200, { ok: true }); }
-      catch (error) {
-        if ((error as Error).message === 'RESOURCE_REFRESH_TASK_ACTIVE') return reply(res, 409, { error: 'RESOURCE_REFRESH_TASK_ACTIVE' });
-        return replyCoreFailure(res, error);
-      }
+      try {
+        await getCore(auth.session.actor);
+        const status = await opts.refreshResources(auth.session.actor) || { state: 'ready' };
+        return reply(res, status.state === 'pending' ? 202 : 200, { ok: true, ...status });
+      } catch (error) { return replyCoreFailure(res, error); }
     }
     if (req.url.startsWith('/enterprise/control/')) {
       const route = req.url.slice('/enterprise/control'.length);

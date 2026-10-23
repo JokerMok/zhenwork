@@ -58,11 +58,15 @@
     "completed": "已完成",
     "failed": "失敗",
     "error": "錯誤",
-    "cancelled": "已取消"
+    "cancelled": "已取消",
+    "resourceUpdatePending": "能力更新已排程，將在目前任務結束後生效；既有可用能力仍可使用。",
+    "resourceCheckDeferred": "暫時無法檢查能力更新，可繼續使用既有授權能力；稍後自動檢查。"
   },
   "errors": {
     "load": "無法載入此區域（{{code}}）。",
-    "action": "操作失敗（{{code}}）。"
+    "action": "操作失敗（{{code}}）。",
+    "noCapability": "目前沒有已授權的辦公能力，請聯絡管理員。",
+    "prepareFailed": "工作環境準備失敗（{{code}}）。請重試；若仍失敗，請聯絡管理員。"
   },
   "fileKind": {
     "all": "全部檔案",

@@ -131,6 +131,7 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
   const otherActor = { serverId: 'rc2', userId: '18' };
   await mkdir(enterpriseProfilePath(root, actor), { recursive: true });
   let idle = true;
+  let checkFailed = false;
   let models = [
     { id: 'model-a', code: 'shared-vendor-code', name: 'Alpha', streaming: true },
     { id: 'model-b', code: 'shared-vendor-code', name: 'Beta', streaming: true },
@@ -178,6 +179,7 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
     if (req.method === 'POST' && route === '/api/skills/assistant-rule/write') return send({ success: true, data: { ok: true } });
     if (req.method === 'GET' && route === '/api/settings/client') return send({ success: true, data: settings });
     if (req.method === 'PUT' && route === '/api/settings/client') { settings = { ...settings, ...body };return send({ success: true, data: settings }); }
+    if (req.method === 'GET' && route === '/api/cron/internal/idle-ready' && checkFailed) return send({}, 503);
     if (req.method === 'GET' && route === '/api/cron/internal/idle-ready') return send({ success: true, data: { idle } });
     return send({ success: false }, 404);
   })().catch(() => { res.statusCode = 500;res.end('{}'); }); });
@@ -216,8 +218,13 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
     expect((assistants.find((item) => item.id === 'zhenwork-general-office')?.defaults as { model: { value: string } }).model.value).toBe('rc2-model-a');
 
     await expect(runtime.refreshResources(otherActor)).rejects.toThrow('RESOURCE_REFRESH_UNAVAILABLE');
+    checkFailed = true;
+    await expect(runtime.refreshResources(actor)).resolves.toEqual({ state: 'pending', reason: 'CHECK_FAILED' });
+    checkFailed = false;
     idle = false;
-    await expect(runtime.refreshResources(actor)).rejects.toThrow('RESOURCE_REFRESH_TASK_ACTIVE');
+    await expect(Promise.all([runtime.refreshResources(actor), runtime.refreshResources(actor), runtime.refreshResources(actor)])).resolves.toEqual(Array(3).fill({ state: 'pending', reason: 'TASK_ACTIVE' }));
+    expect(runtime.resourceStatus?.(actor)).toEqual({ state: 'pending', reason: 'TASK_ACTIVE' });
+    expect(coreCalls.filter((call) => call.method === 'PUT' && call.route === '/api/providers/rc2-enterprise-model')).toHaveLength(0);
     const committed = await runtime.controlRequest(actor, '/ai/resources/example', { method: 'POST', body: '{}' });
     expect(committed.status).toBe(200);
     expect(controlWrites).toBe(1);
@@ -236,6 +243,7 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
     expect(updates).toHaveLength(1);
     expect(updates[0].body?.models).toEqual(['rc2-model-b', 'rc2-model-a']);
     expect((assistants.find((item) => item.id === 'zhenwork-general-office')?.defaults as { model: { value: string } }).model.value).toBe('rc2-model-b');
+    expect(runtime.resourceStatus?.(actor)).toEqual({ state: 'ready' });
     await login.close();
   } finally {
     await handle?.stop();
@@ -245,7 +253,7 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
   }
 });
 
-test('gateway returns a non-retryable busy response when resource refresh would interrupt a task', async () => {
+test('gateway accepts one deferred update without treating an active task as a configuration failure', async () => {
   const staticDir = await mkdtemp(path.join(tmpdir(), 'enterprise-refresh-gateway-'));
   await writeFile(path.join(staticDir, 'index.html'), '<html></html>');
   const coreServer = http.createServer((_req, res) => { res.setHeader('content-type', 'application/json');res.end('{}'); });
@@ -255,7 +263,7 @@ test('gateway returns a non-retryable busy response when resource refresh would 
     staticDir, publicOrigin: 'https://workspace.example', port: 0,
     login: async () => ({ actor: { serverId: 'rc2', userId: '17' }, validate: async () => true, close: async () => {} }),
     startCore: async () => ({ port: corePort, localToken: 'core-token', stop: async () => {} }),
-    refreshResources: async () => { throw new Error('RESOURCE_REFRESH_TASK_ACTIVE'); },
+    refreshResources: async () => ({ state: 'pending', reason: 'TASK_ACTIVE' }),
   });
   const request = (route: string, cookie?: string, payload?: unknown) => new Promise<{
     status: number; headers: http.IncomingHttpHeaders; body: string;
@@ -273,8 +281,8 @@ test('gateway returns a non-retryable busy response when resource refresh would 
     expect(login.status).toBe(200);
     const cookie = login.headers['set-cookie']?.[0].split(';')[0];
     const refresh = await request('/enterprise/resources/refresh', cookie);
-    expect(refresh.status).toBe(409);
-    expect(JSON.parse(refresh.body)).toEqual({ error: 'RESOURCE_REFRESH_TASK_ACTIVE' });
+    expect(refresh.status).toBe(202);
+    expect(JSON.parse(refresh.body)).toEqual({ ok: true, state: 'pending', reason: 'TASK_ACTIVE' });
   } finally {
     await gateway.stop();
     await new Promise<void>((resolve) => coreServer.close(() => resolve()));

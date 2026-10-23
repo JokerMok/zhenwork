@@ -38,6 +38,12 @@ RC2默认配置版本2，默认通用助手/DeepSeek Flash；沿用既有凭据�
 
 当前可用回滚审核：`shared/config/rollback-reviews/20261021-office-reconciliation-v8-to-office-diagnostics.json`，只绑定当前v8和上一已验证基础版本office-diagnostics及实际迁移链；旧版仍有四项业务缺陷，回滚用于基础可用性恢复。本轮未实际执行回滚。新发布/迁移必须重新审核。
 
+## 首页资源刷新修复（2026-10-23）
+
+首页目录初始化现在只读 `GET /enterprise/resources/status` 与当前助手目录，不再在每次进入、重挂载或重试时重写运行资源。显式刷新按员工合并请求；Core 的真实任务/取消/后台占用保护保持，忙时返回 HTTP202 pending，空闲后由原15秒调度安全更新。当前任务不取消，不清会话或文件；执行端原权限复核继续生效。状态读取失败可重试，错误码插值明确；普通员工不需填写API或MCP。
+
+仅员工网页与Host变更时使用 `restage-web.sh --employee-only --from RELEASE --ref COMMIT --release NEW_RELEASE`，先核对管理端源码完全相同，再按原manifest复用管理前端、Java、控制源和精确amd64镜像；依赖及其余路径门禁保持。验收范围为真实员工首页、运行中切换/刷新、合并重试、任务结束/取消及服务恢复，不扩大办公场景。
+
 ## 网页与Host有界更新
 
 本轮网页预览/任务交付/知识上传入口变更可使用 `restage-web.sh --from RELEASE --ref COMMIT --release NEW_RELEASE`。它重建员工网页、管理网页及Host，复用原Java/control-source与精确amd64镜像；依赖锁、Java、control或Rust变化拒绝复用。后续仍审阅manifest，再通过既有finalize完成一致性备份与激活。预览边界见docs/web-office-preview.md；未完成的网页验收不能由构建成功替代。

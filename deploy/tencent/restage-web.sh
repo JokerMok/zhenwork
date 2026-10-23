@@ -7,12 +7,14 @@ cd "$repo"
 from=
 ref=
 release=
+employee_only=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --employee-only) employee_only=1; shift ;;
     --from) from=${2:?--from requires a release ID}; shift 2 ;;
     --ref) ref=${2:?--ref requires a commit}; shift 2 ;;
     --release) release=${2:?--release requires a new release ID}; shift 2 ;;
-    -h|--help) echo 'Usage: restage-web.sh --from RELEASE --ref COMMIT --release NEW_RELEASE'; exit 0 ;;
+    -h|--help) echo 'Usage: restage-web.sh --from RELEASE --ref COMMIT --release NEW_RELEASE [--employee-only]'; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -86,6 +88,9 @@ cp "$app/packages/web-cli/dist/aionui-enterprise-web.cjs" "$work/stage/web-host.
 mkdir -p "$work/stage/employee"
 cp -R "$app/out/renderer/." "$work/stage/employee/"
 [[ -s "$work/stage/web-host.cjs" ]] || { echo 'Web/Host bundle was not produced.' >&2; exit 1; }
+if [[ $employee_only == 1 ]]; then
+  git diff --quiet "$from_sha" "$sha" -- deepseek-harness-lab/workbuddy/platform/plus-ui || { echo "Admin source changed; cannot reuse Admin artifacts." >&2; exit 1; }
+else
 admin="$work/source/deepseek-harness-lab/workbuddy/platform/plus-ui"
 admin_cache="$repo/deepseek-harness-lab/workbuddy/platform/plus-ui"
 git show "$from_sha:deepseek-harness-lab/workbuddy/platform/plus-ui/pnpm-lock.yaml" > "$work/from.pnpm-lock.yaml"
@@ -107,14 +112,15 @@ ENV
 (cd "$admin" && node node_modules/vite/bin/vite.js build --mode tencent)
 mkdir -p "$work/stage/admin"
 cp -R "$admin/dist/." "$work/stage/admin/"
+fi
 printf '%s\n' "$sha" > "$work/stage/SOURCE_SHA"
 
 from_images=$(ssh tencent-main "sudo cat '$remote_root/releases/$from/IMAGE_IDS.json'")
 current_release=$(ssh tencent-main "basename \"\$(readlink -f '$remote_root/current')\"")
 [[ $current_release =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{5,100}$ ]] || exit 1
-python3 - "$work/stage/IMAGE_IDS.json" "$from_images" "$release" "$current_release" "$from" "$from_sha" <<'PY'
+python3 - "$work/stage/IMAGE_IDS.json" "$from_images" "$release" "$current_release" "$from" "$from_sha" "$employee_only" <<'PY'
 import json,pathlib,sys
-out,raw,release,current,source_release,source_sha=sys.argv[1:]
+out,raw,release,current,source_release,source_sha,employee_only=sys.argv[1:]
 m=json.loads(raw)
 assert m['release']==source_release
 m['release']=release
@@ -124,6 +130,7 @@ m['artifactReusedFrom']={
     'sourceSha':source_sha,
     'reusedArtifacts':['control-source','deploy-assets','monitor.jar','rc2.jar'],
 }
+if employee_only=='1':m['artifactReusedFrom']['reusedArtifacts'].append('admin')
 pathlib.Path(out).write_text(json.dumps(m,indent=2)+'\n')
 PY
 
@@ -140,8 +147,10 @@ ssh tencent-main "set -eu; \
 rsync -az "$work/stage/web-host.cjs" "$work/stage/SOURCE_SHA" "$work/stage/IMAGE_IDS.json" "tencent-main:$remote_root/incoming/$release/"
 ssh tencent-main "rm -rf '$remote_root/incoming/$release/employee'"
 rsync -az "$work/stage/employee/" "tencent-main:$remote_root/incoming/$release/employee/"
-ssh tencent-main "rm -rf '$remote_root/incoming/$release/admin'"
-rsync -az "$work/stage/admin/" "tencent-main:$remote_root/incoming/$release/admin/"
+if [[ $employee_only != 1 ]]; then
+  ssh tencent-main "rm -rf '$remote_root/incoming/$release/admin'"
+  rsync -az "$work/stage/admin/" "tencent-main:$remote_root/incoming/$release/admin/"
+fi
 for name in activate.sh backup.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh; do
   rsync -az "$work/source/deploy/tencent/$name" "tencent-main:/tmp/zhenwork-$release-$name"
   ssh tencent-main "sudo install -o root -g root -m 0755 '/tmp/zhenwork-$release-$name' '$remote_root/deploy/$name'; rm -f '/tmp/zhenwork-$release-$name'"

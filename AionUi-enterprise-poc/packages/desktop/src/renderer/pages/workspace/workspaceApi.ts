@@ -7,6 +7,8 @@ type WorkspaceErrorTranslationKey =
   | 'workspace.errors.authentication'
   | 'workspace.errors.forbidden'
   | 'workspace.errors.noModel'
+  | 'workspace.errors.noCapability'
+  | 'workspace.errors.prepareFailed'
   | `workspace.errors.${WorkspaceErrorFallback}`;
 
 export class WorkspaceApiError extends Error {
@@ -34,7 +36,7 @@ export function enterpriseLoginRedirectPath(code: unknown, hostedEnterpriseWeb =
   return normalized === '401' ||
     normalized === 'HTTP_401' ||
     normalized === 'UNAUTHENTICATED' ||
-    normalized === 'SESSION_REVOKED'
+    normalized === 'SESSION_REVOKED' || normalized === 'AUTHENTICATION_REQUIRED'
     ? '/enterprise/login'
     : null;
 }
@@ -55,7 +57,7 @@ export function workspaceErrorTranslationKey(
     normalized === '401' ||
     normalized === 'HTTP_401' ||
     normalized === 'UNAUTHENTICATED' ||
-    normalized === 'SESSION_REVOKED'
+    normalized === 'SESSION_REVOKED' || normalized === 'AUTHENTICATION_REQUIRED'
   )
     return 'workspace.errors.authentication';
   if (
@@ -64,10 +66,12 @@ export function workspaceErrorTranslationKey(
     normalized === 'FORBIDDEN' ||
     normalized === 'PERMISSION_DENIED' ||
     normalized === 'PERMISSIONDENIED' ||
-    normalized === 'ACCESS_DENIED'
+    normalized === 'ACCESS_DENIED' || normalized === 'CAPABILITY_FORBIDDEN'
   )
     return 'workspace.errors.forbidden';
-  if (normalized === 'MODELUNAVAILABLE' || normalized === 'MODEL_UNAVAILABLE' || normalized === 'NO_AVAILABLE_MODEL')
+  if (normalized === 'CORE_UNAVAILABLE' || normalized === 'CORE_CAPACITY') return 'workspace.errors.prepareFailed';
+  if (normalized === 'NO_AVAILABLE_CAPABILITY') return 'workspace.errors.noCapability';
+  if (normalized === 'MODELUNAVAILABLE' || normalized === 'MODEL_UNAVAILABLE' || normalized === 'NO_AVAILABLE_MODEL' || normalized === 'DEFAULT_MODEL_UNAVAILABLE')
     return 'workspace.errors.noModel';
   return `workspace.errors.${fallback}`;
 }

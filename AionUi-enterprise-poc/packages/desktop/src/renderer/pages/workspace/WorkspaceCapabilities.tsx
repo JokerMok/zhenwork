@@ -168,20 +168,22 @@ const WorkspaceCapabilities: React.FC = () => {
   }, [load]);
 
   const refreshRuntimeResources = useCallback(async () => {
-    const result = await enterpriseRequest<{ ok?: boolean }>('/enterprise/resources/refresh', {
+    const result = await enterpriseRequest<{ ok?: boolean; state?: string }>('/enterprise/resources/refresh', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}',
     });
     if (result.ok !== true) throw new Error('RESOURCE_REFRESH_FAILED');
+    return result;
   }, []);
 
   const refreshCapabilities = useCallback(async () => {
     setRefreshingResources(true);
     try {
-      await refreshRuntimeResources();
+      const result = await refreshRuntimeResources();
       await load();
-      message.success(t('workspace.abilities.resourcesRefreshed'));
+      if (result.state === 'pending') message.info(t('workspace.status.resourceUpdatePending'));
+      else message.success(t('workspace.abilities.resourcesRefreshed'));
     } catch (error) {
       const code = workspaceErrorCode(error);
       message.error(
@@ -198,7 +200,8 @@ const WorkspaceCapabilities: React.FC = () => {
     async (item: WorkspaceResource) => {
       setOpeningResourceId(item.id);
       try {
-        await refreshRuntimeResources();
+        const result = await refreshRuntimeResources();
+        if (result.state === 'pending') { message.info(t('workspace.status.resourceUpdatePending'));return; }
         let selectedSkillName: string | undefined;
         if (item.resourceType === 'SKILL') {
           const detail = await enterpriseControl<SkillResource>(`/ai/resources/${item.id}`);

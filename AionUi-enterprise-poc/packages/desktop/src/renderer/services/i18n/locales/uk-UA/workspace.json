@@ -58,11 +58,15 @@
     "completed": "Completed",
     "failed": "Failed",
     "error": "Error",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "resourceUpdatePending": "Capability updates are queued until the current task finishes. Existing authorized capabilities remain available.",
+    "resourceCheckDeferred": "Capability updates could not be checked. Existing authorized capabilities remain available; a check will run later."
   },
   "errors": {
     "load": "Unable to load this section ({{code}}).",
-    "action": "The action failed ({{code}})."
+    "action": "The action failed ({{code}}).",
+    "noCapability": "No work capabilities are authorized for this account. Contact an administrator.",
+    "prepareFailed": "The work environment could not be prepared ({{code}}). Retry, or contact an administrator if it persists."
   },
   "fileKind": {
     "all": "All files",

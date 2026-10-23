@@ -62,14 +62,18 @@
     "preparationFailed": "环境准备未完成，请按下方原因处理后重试。",
     "capabilityForbidden": "当前账号没有工作台使用权限，请联系管理员核对员工角色和授权。",
     "environmentUnavailable": "运行环境暂时不可用，请重试；仍失败时联系管理员检查服务。",
-    "identityExpired": "登录已过期，请重新登录。"
+    "identityExpired": "登录已过期，请重新登录。",
+    "resourceUpdatePending": "能力更新已排队，将在当前任务结束后生效；现有可用能力仍可使用。",
+    "resourceCheckDeferred": "暂时无法检查能力更新，可继续使用现有授权能力；稍后自动检查。"
   },
   "errors": {
     "load": "无法加载此区域（{{code}}）。",
     "action": "操作失败（{{code}}）。",
     "authentication": "登录状态已失效，正在返回登录页，请重新登录。",
     "forbidden": "当前账号没有这项能力的使用权限，请联系组织管理员授权。",
-    "noModel": "当前账号没有可用模型，请联系组织管理员检查默认模型和授权。"
+    "noModel": "当前账号没有可用模型，请联系组织管理员检查默认模型和授权。",
+    "noCapability": "当前没有已授权的办公能力，请联系管理员。",
+    "prepareFailed": "工作环境准备失败（{{code}}）。请重试；若仍失败，请联系管理员。"
   },
   "fileKind": {
     "all": "全部文件",

@@ -216,8 +216,10 @@ const GuidPage: React.FC = () => {
     () => resolveGuidAssistantDefaults(selectedAssistantDetail),
     [selectedAssistantDetail]
   );
+  const catalogErrorKind = workspaceErrorTranslationKey(agentSelection.catalogError, 'load');
+  const catalogBlocksStart = agentSelection.catalogError && (catalogEpoch === 0 || catalogErrorKind !== 'workspace.errors.load');
   const assistantDefaultsReady =
-    (!hostedEnterpriseWeb || (!agentSelection.catalogLoading && !agentSelection.catalogError && catalogEpoch > 0)) &&
+    (!hostedEnterpriseWeb || (!catalogBlocksStart && catalogEpoch > 0)) &&
     selectedAssistantDetail != null &&
     (resolvedAssistantDefaults.mcpIds.length === 0 || mcpCatalogStatus !== 'loading');
   const missingAssistantDefaultMcpIds = useMemo(() => {
@@ -800,16 +802,19 @@ const GuidPage: React.FC = () => {
           {hostedEnterpriseWeb && agentSelection.catalogLoading ? (
             <Alert type='info' content={t('workspace.status.preparing')} />
           ) : null}
+          {hostedEnterpriseWeb && agentSelection.resourceState?.state !== undefined && agentSelection.resourceState.state !== 'ready' ? (
+            <Alert type='info' content={t(agentSelection.resourceState.reason === 'CHECK_FAILED'
+              ? 'workspace.status.resourceCheckDeferred' : 'workspace.status.resourceUpdatePending')} />
+          ) : null}
           {hostedEnterpriseWeb && agentSelection.catalogError ? (
             <Alert
               type='error'
               className='mb-12px'
               content={
                 <Space direction='vertical'>
-                  <span>{t('workspace.preview.configurationError', { code: agentSelection.catalogError })}</span>
-                  <span>{t(workspaceErrorTranslationKey(agentSelection.catalogError, 'load'))}</span>
+                  <span>{t(catalogErrorKind, { code: agentSelection.catalogError })}</span>
                   <Space size='mini'>
-                    <Button onClick={() => window.location.reload()}>{t('common.retry')}</Button>
+                    <Button loading={agentSelection.catalogLoading} onClick={agentSelection.retryCatalog}>{t('common.retry')}</Button>
                     <Button onClick={() => navigate('/workspace?section=abilities')}>
                       {t('guid.viewCapabilities')}
                     </Button>

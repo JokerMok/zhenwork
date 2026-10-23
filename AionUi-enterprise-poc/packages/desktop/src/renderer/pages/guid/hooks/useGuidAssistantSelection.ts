@@ -39,6 +39,8 @@ export type GuidAssistantSelectionResult = {
   catalogError?: string;
   catalogLoading?: boolean;
   catalogRevision?: number;
+  resourceState?: { state: 'ready' | 'pending' | 'refreshing'; reason?: string };
+  retryCatalog?: () => void;
   selectedMode: string;
   setSelectedMode: (mode: React.SetStateAction<string>, options?: { persistPreference?: boolean }) => void;
   selectedAcpModel: string | null;
@@ -130,7 +132,7 @@ export const useGuidAssistantSelection = ({
   const [selectedMode, _setSelectedMode] = useState<string>('default');
   const [selectedAcpModel, _setSelectedAcpModel] = useState<string | null>(null);
   const [selectedThoughtLevelValue, _setSelectedThoughtLevelValue] = useState<string>('');
-  const { assistants, catalogError, catalogLoading, catalogRevision } = useCustomAgentsLoader();
+  const { assistants, catalogError, catalogLoading, catalogRevision, resourceState, retryCatalog } = useCustomAgentsLoader();
   const managedAgentRuntimeCatalog = useManagedAgentRuntimeCatalog();
   const resolveDefaultAssistantId = useCallback(
     () =>
@@ -342,6 +344,8 @@ export const useGuidAssistantSelection = ({
   const defaultAssistantId = useMemo(() => pickDefaultAssistantSelectionKey(assistants), [assistants]);
 
   return {
+    resourceState,
+    retryCatalog,
     catalogError,
     catalogLoading,
     catalogRevision,

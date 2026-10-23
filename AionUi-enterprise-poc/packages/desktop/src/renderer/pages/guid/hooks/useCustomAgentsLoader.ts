@@ -7,8 +7,9 @@
 import { ipcBridge } from '@/common';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import type { Assistant } from '@/common/types/agent/assistantTypes';
-import { useEffect } from 'react';
-import useSWR, { mutate as swrMutate } from 'swr';
+import { useCallback, useRef } from 'react';
+import { enterpriseRequest, workspaceErrorCode } from '@/renderer/pages/workspace/workspaceApi';
+import useSWR from 'swr';
 
 type UseCustomAgentsLoaderResult = {
   /**
@@ -20,6 +21,8 @@ type UseCustomAgentsLoaderResult = {
   catalogError?: string;
   catalogLoading: boolean;
   catalogRevision: number;
+  resourceState?: { state: 'ready' | 'pending' | 'refreshing'; reason?: string };
+  retryCatalog: () => void;
 };
 
 /**
@@ -32,44 +35,64 @@ export const useCustomAgentsLoader = (): UseCustomAgentsLoaderResult => {
   // all see the same list without duplicate HTTP calls.
   const enterprise = isEnterpriseWeb();
   const catalogKey = enterprise ? 'enterprise.guid.assistant.catalog' : 'assistants.list';
+  const freshness = useRef<{ signature: string; revision: number } | null>(null);
+  const retrying = useRef(false);
   const {
     data: catalog,
     error: catalogLoadError,
     isValidating,
-  } = useSWR<Assistant[] | { assistants: Assistant[]; revision: number }>(catalogKey, async () => {
-    try {
-      if (isEnterpriseWeb()) {
-        const response = await fetch('/enterprise/resources/refresh', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          body: '{}',
-          signal: AbortSignal.timeout(45000),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'RESOURCE_REFRESH_FAILED');
+    mutate,
+  } = useSWR<
+    | Assistant[]
+    | {
+        assistants: Assistant[];
+        revision: number;
+        resourceState: { state: 'ready' | 'pending' | 'refreshing'; reason?: string };
       }
-      const assistants = await ipcBridge.assistants.list.invoke();
-      // Keep freshness with the shared value: a remounted Guid can reuse SWR's
-      // deduplicated result without losing a component-local completion flag.
-      return enterprise ? { assistants, revision: Date.now() } : assistants;
-    } catch (error) {
-      console.error('Failed to load assistants:', error);
-      if (isEnterpriseWeb()) throw error;
-      return [] as Assistant[];
+  >(
+    catalogKey,
+    async () => {
+      try {
+        // Entering Guid is a read, never a request to rewrite execution resources.
+        // Core initialization is already actor-scoped and synchronized by Host.
+        const resourceState = enterprise
+          ? await enterpriseRequest<{ state: 'ready' | 'pending' | 'refreshing'; reason?: string }>(
+              '/enterprise/resources/status'
+            )
+          : { state: 'ready' as const };
+        const assistants = await ipcBridge.assistants.list.invoke();
+        if (!enterprise) return assistants;
+        if (!assistants.some((assistant) => assistant.enabled !== false)) throw new Error('NO_AVAILABLE_CAPABILITY');
+        const signature = JSON.stringify(assistants);
+        if (freshness.current?.signature !== signature) freshness.current = { signature, revision: Date.now() };
+        return { assistants, revision: freshness.current!.revision, resourceState };
+      } catch (error) {
+        if (enterprise) throw error;
+        return [] as Assistant[];
+      }
+    },
+    {
+      revalidateOnFocus: false,
+      errorRetryCount: 0,
+      // Poll only an accepted, pending update. This GET cannot enqueue work.
+      refreshInterval: (data) => (data && !Array.isArray(data) && data.resourceState.state !== 'ready' ? 15000 : 0),
     }
-  });
+  );
   const assistants = Array.isArray(catalog) ? catalog : (catalog?.assistants ?? []);
   const catalogRevision = !Array.isArray(catalog) ? (catalog?.revision ?? 0) : 0;
-
-  useEffect(() => {
-    void swrMutate(catalogKey);
-  }, [catalogKey]);
-
+  const retryCatalog = useCallback(() => {
+    if (retrying.current || isValidating) return;
+    retrying.current = true;
+    void mutate().catch(() => {}).finally(() => {
+      retrying.current = false;
+    });
+  }, [isValidating, mutate]);
   return {
     assistants,
-    catalogLoading: isValidating,
+    catalogLoading: !catalog && isValidating,
     catalogRevision,
-    catalogError: catalogLoadError instanceof Error ? catalogLoadError.message : undefined,
+    catalogError: catalogLoadError ? workspaceErrorCode(catalogLoadError) : undefined,
+    resourceState: !Array.isArray(catalog) ? catalog?.resourceState : undefined,
+    retryCatalog,
   };
 };
