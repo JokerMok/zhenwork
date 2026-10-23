@@ -1,14 +1,26 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-23。当前范围：外部真实只读查询、员工专家接线、连接配置交互与管理首页统计。已具备输入的真实业务与网页路径通过，未确认字段口径及缺实际入参的查询单列。不制作桌面安装包。
+核对日期：2026-10-23。当前范围：新员工组织能力继承、登录来源、受保护服务监控和系统工具；定向真实网页验收通过，外部资料边界继续单列。不制作桌面安装包。
 
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261023-external-query-v4`；准确应用 SHA：`fe272f3810d6ed8a62ce85488997d715643e628b`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
+- 激活 release：`20261023-employee-inheritance-v7`；准确应用 SHA：`cea46c0ef395f1a3e3c5712af477a55ecbb27e37`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
-- 本轮v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
+- 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
+
+## 2026-10-23 员工组织能力、登录来源和管理入口
+
+完整根因、设置及权限边界见 [员工组织能力维护说明](docs/employee-capabilities.md)。企业默认模型引用对基础员工生效；新增/导入/注册统一补基础角色，已有员工幂等修复；页面、运行时、后台任务统一 available 目录，助手依赖及撤权再次检查。员工看到组织/个人能力，无需个人 API/MCP。敏感业务连接仍按部门/角色/用户显式授权，不开放全企业。
+
+实际后台新建未手选角色的普通员工，个人模型策略与资源授权均0；首次登录真实对话，组织包脚本/模板生成 XLSX、预览/下载、117.50元独立核算及部门专家真实上游查询通过。撤权拒绝实际调用、部门变更旧身份失效、双账号会话/文件/预览下载隔离、刷新及切换通过。test1001 原密码登录并完成真实模型回合。新会话 IP/Chrome/OSX 与在线/审计一致，伪造转发头未覆盖；旧审计保留。
+
+监控新增真实受保护 SBA4.1.2 服务，修复 HTTPS base、异步身份及200错误信封误放行；代理只认明确204。公网显示 RC2 UP、刷新/重进通过；未登录及普通员工登录均拒绝。系统工具为真实落地页，既有缓存/在线用户入口及刷新通过。部门变更暴露的 API302→HTML200 已修为真实401，普通员工能进入现有重新登录流程。
+
+本轮最初构建员工/管理网页及 Java/监控，v7只补Host401处理，其他产物按manifest复用v6，23条迁移（新增0022/0023），原21hash和原生镜像不变。完整新员工办公/业务查询复用未变产物的真实证据；v7再验身份、部门、隔离、文件版本、test1001模型和管理入口。私有证据 `.codex/employee-inheritance/acceptance-report.md`；未跑全历史/桌面/压测。Core1/启动1/闲120秒/等180秒保持。
+
+收口：Core0，可用内存5.04GiB、磁盘余5.07GiB；Host/RC2/monitor/拼豆/Caddy active，两入口及拼豆正常TLS200、ops-check200。最新一致备份 `20261023T125542688920Z.tar.gz`（751867057字节），2份合计1503902195字节；原768MiB/2GiB/最低2GiB预算不变。历史隔离恢复证据复用，未再次生产还原。
 
 ## 2026-10-23 真实外部查询与配置修复
 
@@ -61,7 +73,7 @@
 
 ## 配置、身份与数据
 
-- RC2 `office-defaults` 版本2；默认助手 `zhenwork-general-office`；默认模型 `3cdb425d-b8df-456c-b769-8abc5a66cd82` / `deepseek-v4-1-flash-261017`。保留原模型，仅复制仍有效的原授权；API密钥未变、价格未配置时费用未知。
+- RC2 `office-defaults` 版本2；默认助手 `zhenwork-general-office`；默认模型 `3cdb425d-b8df-456c-b769-8abc5a66cd82` / `deepseek-v4-1-flash-261017`。保留原模型，企业默认通过组织引用生效、其他模型保留原授权；API密钥未变、价格未配置时费用未知。
 - 完整报销能力包沿原资源权限发布 packageVersion6 / Skill2.2.6，保留21个配套文件；解析器SHA256：`f70f56c06e63a39e5e36bf5f80fca7faeced2b2a3dd4acb9431346269e8c08e0`。发布记录 `shared/config/office-publication-20261021.json`、模型变更前后记录 `shared/config/office-model-change-20261021.json`，root0600。
 - 当前管理员由用户隐藏输入后保存于 `shared/config/qa-admin-current.json`，root0600，实际登录已验证；本轮未改密码。初始化 `shared/config/pilot-credentials.json` 不自动同步后续改密，不能当当前管理员密码。QA材料 `.codex/enterprise-delivery/qa-private.json` 为0600。完整口令、Cookie、令牌、密钥禁止进入日志/Git/交付文字。
 - 后台重置固定临时值 `a123456`；首次自设/常规改密为8—16位ASCII字母数字且含两类。该密码流程、后台真实统计等前轮已验收功能保留，本轮不重置账号。
@@ -73,6 +85,7 @@
 | --- | --- | --- |
 | Web Host | 非root `zhenwork-web.service`，127.0.0.1:18891 | shared/config/web.env；journalctl -u zhenwork-web |
 | RuoYi/RC2 | zhenwork-rc2.service，127.0.0.1:18890 | shared/config/application-rc2.yml；shared/logs/rc2 |
+| 服务监控 | zhenwork-monitor.service，127.0.0.1:18909 | 私有monitor.env/proxy.env；受保护/monitor/ |
 | PostgreSQL17 / Redis8 | 独立Compose zhenwork，18432/18379均loopback | shared/data；健康检查、自启 |
 | 员工Core/Gateway | 按员工启动，无公网端口 | 每员工隔离profile；受控Docker内部代理 |
 | HTTPS | 复用宿主Caddy80/443，两origin独立 | /etc/caddy/sites-enabled/zhenwork.caddy |
@@ -96,8 +109,8 @@ ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh status'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh restart'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh logs 100'
 ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh backup'
-# 当前external-query-v4专用：只退应用/配置到已验证v2，保留21条数据库迁移、文件及授权
-ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261023-external-v4-to-external-v2.json'
+# 当前inheritance-v7专用：只退应用/配置到已验证external-v4，保留23条迁移及业务数据；新功能会退回
+ssh tencent-main 'sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261023-inheritance-v7-to-external-v4.json'
 ```
 
 当前回滚审核绑定v4/v2准确SHA、实际21条迁移及目标20条前缀。0021仅加法列与前置状态修正，回滚不退数据库；v2不含本轮优废实用方法/统计修复及会话参数修复，回退用于基础可用性恢复，不能称新查询能力仍保留。应用回滚不等于数据库/文件/授权回滚。未实际执行回滚、整机重启、down-v、全局prune或清理业务数据；新发布或迁移必须重新审核。

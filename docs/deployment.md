@@ -50,3 +50,9 @@ Java 服务位于 `deepseek-harness-lab/workbuddy/platform/ruoyi`，管理界面
 空闲 Core 回收可降低进程占用；运行中的任务和有效后台任务会保留相应 Core。是否向外部模型发送资料取决于模型与工具配置，私有部署工作台不自动表示模型也在内网运行。
 
 本次公有发布不包含生产部署、收费接口调用、正式签名安装包或业务验收。目标 Linux、异机登录、员工隔离、真实授权任务及升级恢复需要在部署方环境验证。
+
+## 员工组织能力与服务监控
+
+默认模型通过现有 office-defaults 与 workspace_employee 角色引用；新增、导入及已有员工修复不复制上游凭据。组织资源仍须发布并明确授权，助手依赖同样检查。页面、执行和后台任务统一使用 available 目录。配置和实际验证边界见 [员工组织能力](employee-capabilities.md)。
+
+部署新增独立 loopback Spring Boot Admin 服务，仅经 RC2 明确204授权的 Caddy 代理访问；SBA设置当前版本的HTTPS public-url，异步响应重新验证私有代理身份。公开API与网页文档的未登录响应分别处理，员工API必须401而非登录HTML。监控资产、单元、私有配置及恢复快照纳入既有部署，备份不打包可重建monitor.jar。

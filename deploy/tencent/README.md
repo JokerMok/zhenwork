@@ -8,7 +8,15 @@
 
 应用版本看 `current/RELEASE.json`、实际验收看 `current/VERIFIED.json`。初次源码 SHA 为 `42d834a75722bdbe6331dba226d0febdc6179383`，额外保留 Core 依赖锁及空会话回收补丁，各自 SHA256 在 manifest 中。补丁只用于该准确源码版本；不关闭身份复核、目录隔离、后台授权或单次工具审批。
 
-## 2026-10-23 当前部署记录
+## 2026-10-23 员工继承当前部署
+
+当前 `20261023-employee-inheritance-v7` / 应用SHA `cea46c0ef395f1a3e3c5712af477a55ecbb27e37`，23迁移，原21及amd64镜像不变。v7仅重建Host，按manifest复用v6的网页、Java、监控及部署资产。实际新建普通员工无需手选角色或个人模型/MCP，完成真实办公和部门查询；撤权/部门切换/双账号隔离/test1001原密码模型对话/登录来源/公网监控与工具页已定向回归。见 `docs/employee-capabilities.md` 和私有 `.codex/employee-inheritance/acceptance-report.md`。
+
+新增非root `zhenwork-monitor.service`，仅127.0.0.1:18909，MemoryMax384MiB；员工Host18891、RC2 18890保持。私有edge和monitor-proxy认证独立；只认RC2明确204，不能使用通用2xx放行。SBA异步身份和HTTPS public-url均配置。`prepare-monitor.py` 与候选Caddy通过既有caddy-site-install安装；失败恢复本项目快照。
+
+当前回滚审核 `shared/config/rollback-reviews/20261023-inheritance-v7-to-external-v4.json` 绑定实际23条迁移和此前已验证external-v4。仅退应用/配置，不回退数据库；将撤回本轮修复，旧前端无法渲染新增tool/index路由，作为应急回退限制明确保留。未实际回滚。Core1/启动1/闲120秒/等180秒、既有备份预算保持。
+
+## 2026-10-23 外部查询历史部署记录
 
 当前 `20261023-external-query-v4` / 应用SHA `fe272f3810d6ed8a62ce85488997d715643e628b`。v3构建管理网页/Java，复用未改employee/Host；v4修复MCP会话标识转发，仅重建Host，其余按manifest哈希复用v3。0021为验证详情加法迁移，原20条hash不变；原amd64镜像保持。
 
