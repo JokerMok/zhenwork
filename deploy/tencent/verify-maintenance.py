@@ -120,3 +120,10 @@ assert 'systemctl' not in web_restage and 'current.next' not in web_restage
 
 assert 'git diff --quiet "$base_sha" "$sha" -- AionUi-enterprise-poc deploy/tencent/build-web.mjs' in stage
 assert "['employee','web-host.cjs']" in prepare and 'artifact_hash(after)==hashes[name]' in prepare
+
+# A 200 error envelope must never count as monitor authorization.
+caddy = text("zhenwork.caddy")
+assert "@monitorAuthorized status 204" in caddy
+assert "handle_response @monitorAuthorized" in caddy
+assert 'respond "Administrator login and monitoring permission required" 401' in caddy
+assert caddy.index("handle_response @monitorAuthorized") < caddy.index("request_header X-ZhenWork-Monitor-Authorization {$ZHENWORK_MONITOR_PROXY_TOKEN}")

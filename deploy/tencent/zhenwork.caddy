@@ -74,23 +74,32 @@ zhenwork-admin.shizibandu.icu {
         }
         respond @monitorWrite 405
         handle /monitor/* {
-            forward_auth 127.0.0.1:18890 {
-                uri /internal/monitor/access
-                header_up clientid {$ZHENWORK_CLIENT_ID}
-                header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
-                header_up -X-ZhenWork-Edge-Token
-                header_up -X-ZhenWork-Client-IP
-                header_up -X-ZhenWork-Client-User-Agent
-                header_up -X-ZhenWork-Monitor-Authorization
-            }
-            # This secret is available only to Caddy and the monitor process.
-            # Loopback is an additional boundary, not the authentication proof.
-            request_header X-ZhenWork-Monitor-Authorization {$ZHENWORK_MONITOR_PROXY_TOKEN}
-            header Content-Security-Policy "frame-ancestors 'self'"
-            reverse_proxy 127.0.0.1:18909 {
-                header_up -X-ZhenWork-Edge-Token
-                header_up -X-ZhenWork-Client-IP
-                header_up -X-ZhenWork-Client-User-Agent
+            route {
+                # Native RuoYi may encode authentication errors in HTTP 200.
+                # Only this controller's explicit 204 authorizes the next hop.
+                reverse_proxy 127.0.0.1:18890 {
+                    method GET
+                    rewrite /internal/monitor/access
+                    header_up clientid {$ZHENWORK_CLIENT_ID}
+                    header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+                    header_up -X-ZhenWork-Edge-Token
+                    header_up -X-ZhenWork-Client-IP
+                    header_up -X-ZhenWork-Client-User-Agent
+                    header_up -X-ZhenWork-Monitor-Authorization
+                    @monitorAuthorized status 204
+                    handle_response @monitorAuthorized {
+                        request_header X-ZhenWork-Monitor-Authorization {$ZHENWORK_MONITOR_PROXY_TOKEN}
+                    }
+                    handle_response {
+                        respond "Administrator login and monitoring permission required" 401
+                    }
+                }
+                header Content-Security-Policy "frame-ancestors 'self'"
+                reverse_proxy 127.0.0.1:18909 {
+                    header_up -X-ZhenWork-Edge-Token
+                    header_up -X-ZhenWork-Client-IP
+                    header_up -X-ZhenWork-Client-User-Agent
+                }
             }
         }
         handle_path /api/* {
