@@ -68,7 +68,7 @@ export async function startEnterpriseWebFromEnvironment() {
     login: runtime.login, resume: runtime.resume, startCore: runtime.startCore,
     trustedProxyToken: edgeToken,
     profileRoot, controlRequest: runtime.controlRequest,
-    refreshResources: runtime.refreshResources,
+    refreshResources: runtime.refreshResources, resourceStatus: runtime.resourceStatus,
     syncCronGrant: runtime.syncCronGrant, hasBackgroundJobs: runtime.hasBackgroundJobs,
     authorizeBackground: runtime.authorizeBackground,
     backgroundDue: runtime.backgroundDue,

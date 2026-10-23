@@ -63,7 +63,7 @@
     "capabilityForbidden": "This account is not authorized to use the workspace. Ask your administrator to check employee roles and grants.",
     "environmentUnavailable": "The execution environment is unavailable. Retry, or ask your administrator to check the service.",
     "identityExpired": "Your session has expired. Sign in again.",
-    "resourceUpdatePending": "Capability updates are queued until the current task finishes. Existing authorized capabilities remain available.",
+    "resourceUpdatePending": "The capability update is queued until execution and workspace leases are safely released. Existing authorized capabilities remain available.",
     "resourceCheckDeferred": "Capability updates could not be checked. Existing authorized capabilities remain available; a check will run later."
   },
   "errors": {

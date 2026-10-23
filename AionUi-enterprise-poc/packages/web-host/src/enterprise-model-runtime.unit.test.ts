@@ -263,12 +263,13 @@ test('gateway accepts one deferred update without treating an active task as a c
     staticDir, publicOrigin: 'https://workspace.example', port: 0,
     login: async () => ({ actor: { serverId: 'rc2', userId: '17' }, validate: async () => true, close: async () => {} }),
     startCore: async () => ({ port: corePort, localToken: 'core-token', stop: async () => {} }),
+    resourceStatus: () => ({ state: 'pending', reason: 'TASK_ACTIVE' }),
     refreshResources: async () => ({ state: 'pending', reason: 'TASK_ACTIVE' }),
   });
-  const request = (route: string, cookie?: string, payload?: unknown) => new Promise<{
+  const request = (route: string, cookie?: string, payload?: unknown, method = 'POST') => new Promise<{
     status: number; headers: http.IncomingHttpHeaders; body: string;
   }>((resolve, reject) => {
-    const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method: 'POST', headers: {
+    const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method, headers: {
       host: 'workspace.example', origin: 'https://workspace.example', ...(cookie ? { cookie } : {}),
       ...(payload ? { 'content-type': 'application/json' } : {}),
     } }, (res) => { const chunks: Buffer[] = [];res.on('data', (chunk: Buffer) => chunks.push(chunk));res.on('end', () => resolve({
@@ -280,6 +281,11 @@ test('gateway accepts one deferred update without treating an active task as a c
     const login = await request('/enterprise/login', undefined, { username: 'employee', password: 'secret' });
     expect(login.status).toBe(200);
     const cookie = login.headers['set-cookie']?.[0].split(';')[0];
+    const unauth = await request('/enterprise/resources/status', undefined, undefined, 'GET');
+    expect(unauth.status).toBe(401);
+    const status = await request('/enterprise/resources/status', cookie, undefined, 'GET');
+    expect(status.status).toBe(200);
+    expect(JSON.parse(status.body)).toEqual({ state: 'pending', reason: 'TASK_ACTIVE' });
     const refresh = await request('/enterprise/resources/refresh', cookie);
     expect(refresh.status).toBe(202);
     expect(JSON.parse(refresh.body)).toEqual({ ok: true, state: 'pending', reason: 'TASK_ACTIVE' });
