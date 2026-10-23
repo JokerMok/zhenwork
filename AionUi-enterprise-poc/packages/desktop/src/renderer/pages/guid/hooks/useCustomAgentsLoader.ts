@@ -57,7 +57,8 @@ export const useCustomAgentsLoader = (): UseCustomAgentsLoaderResult => {
         // Core initialization is already actor-scoped and synchronized by Host.
         const resourceState = enterprise
           ? await enterpriseRequest<{ state: 'ready' | 'pending' | 'refreshing'; reason?: string }>(
-              '/enterprise/resources/status'
+              '/enterprise/resources/status',
+              { signal: AbortSignal.timeout(45000) }
             )
           : { state: 'ready' as const };
         const assistants = await ipcBridge.assistants.list.invoke();
