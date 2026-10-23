@@ -36,7 +36,7 @@ while IFS= read -r -d '' path; do
   case "$path" in
     AionUi-enterprise-poc/packages/web-host/src/*|AionUi-enterprise-poc/packages/web-cli/src/*)
       host_change=1 ;;
-    AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.mjs|AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.d.mts)
+    AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.mjs|AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.d.mts|AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/rc2Client.mjs)
       # This shared Node adapter is bundled into Host; it is never imported by renderer code.
       host_change=1 ;;
     scripts/office/parse_toll_summaries.py|scripts/office/test_parse_toll_summaries.py)

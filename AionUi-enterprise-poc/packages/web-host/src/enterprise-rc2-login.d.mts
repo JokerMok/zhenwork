@@ -8,7 +8,7 @@ export type Rc2GatewayClient = {
   knowledgeSearch?(baseId: string, query: string): Promise<unknown>;
   readyMcpConnection(resourceId: string): Promise<{ id: string }>;
   authorizedMcpConnection(id: string, resourceId: string): Promise<unknown>;
-  relayMcp(connectionId: string, raw: string, headers: Record<string, unknown>, signal: AbortSignal): Promise<Response>;
+  relayMcp(connectionId: string, raw: string, headers: Record<string, unknown>, signal: AbortSignal, conversationId?: string): Promise<Response>;
 };
 export type Rc2GatewayLogin = Awaited<ReturnType<EnterpriseGatewayOptions['login']>> & { client: Rc2GatewayClient };
 export function createRc2GatewayPublicBrand(baseUrl: string, origin: string): () => Promise<unknown>;

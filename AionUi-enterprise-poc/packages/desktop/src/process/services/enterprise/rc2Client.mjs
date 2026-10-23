@@ -280,7 +280,7 @@ export class Rc2Client {
     return { filename: body.data.filename, content: body.data.content, version };
   }
 
-  relayMcp(connectionId, raw, headers, signal) {
+  relayMcp(connectionId, raw, headers, signal, conversationId) {
     if (!this.cookie || !this.clientId) throw new Error('No RC2 session');
     return this.fetchImpl(`${this.baseUrl}/ai/mcp/connections/${encodeURIComponent(connectionId)}/relay`, {
       method: 'POST',

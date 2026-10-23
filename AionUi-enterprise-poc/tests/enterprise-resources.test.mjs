@@ -453,3 +453,21 @@ test('Host Skill revocation requires cache cleanup and retains its manifest for 
     assert.deepEqual(JSON.parse(await fs.readFile(manifestPath, 'utf8')).skills, []);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
+
+
+test('interactive MCP relay forwards the scoped conversation without exposing RC2 auth to Core', async () => {
+  const sent = [];
+  const client = new Rc2Client('https://control.example.test/api', 'https://staff.example.test', async (url, init) => {
+    sent.push({ url, headers: init.headers });
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [] } }));
+  });
+  client.cookie = '__Host-workspace-rc2=test-only';
+  client.clientId = 'test-client';
+  const raw = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+  const response = await client.relayMcp('connection-1', raw, {}, new AbortController().signal, 'conversation-1');
+  assert.equal(response.status, 200);
+  assert.equal(sent[0].headers['X-Aion-Conversation-Id'], 'conversation-1');
+  assert.equal(sent[0].url, 'https://control.example.test/api/ai/mcp/connections/connection-1/relay');
+  await client.relayMcp('connection-1', raw, {}, new AbortController().signal);
+  assert.equal(sent[1].headers['X-Aion-Conversation-Id'], undefined);
+});

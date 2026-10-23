@@ -315,7 +315,7 @@ export async function syncEnterpriseWebResources(
             const latest = await current.authorizedResource(mcpResourceId, 'MCP') as Resource;
             if (latest.version !== resource.version) return new Response(null, { status: 403 });
             await current.authorizedMcpConnection(connectionId, mcpResourceId);
-            return current.relayMcp(connectionId, raw, headers, signal);
+            return current.relayMcp(connectionId, raw, headers, signal, conversationId);
           } catch { return new Response(null, { status: 403 }); }
         } },
         });

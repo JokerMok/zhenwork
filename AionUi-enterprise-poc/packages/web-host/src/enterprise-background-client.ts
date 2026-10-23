@@ -131,9 +131,10 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
     return connection;
   }
 
-  relayMcp(connectionId: string, raw: string, headers: Record<string, unknown>, signal: AbortSignal): Promise<Response> {
+  relayMcp(connectionId: string, raw: string, headers: Record<string, unknown>, signal: AbortSignal, conversationId?: string): Promise<Response> {
     return this.fetchRc2(`/mcp/connections/${encodeURIComponent(connectionId)}/relay`, {
       method: 'POST', headers: { 'Content-Type': 'application/json',
+        ...(conversationId ? { 'X-Aion-Conversation-Id': conversationId } : {}),
         ...(typeof headers['mcp-session-id'] === 'string' ? { 'Mcp-Session-Id': headers['mcp-session-id'] } : {}),
         ...(typeof headers['mcp-protocol-version'] === 'string' ?
           { 'MCP-Protocol-Version': headers['mcp-protocol-version'] } : {}),

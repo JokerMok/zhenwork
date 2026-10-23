@@ -26,6 +26,7 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
   const excess = Array.from({ length: 25 }, (_, index) =>
     `66666666-6666-4666-8666-${String(index).padStart(12, '0')}`);
   let knowledgeVersion = 5;
+  const relayedConversations: Array<string | undefined> = [];
   const writes: Array<{ route: string; body: Record<string, unknown> }> = [];
   const assistantDetails = new Map<string, Record<string, unknown>>();
   const core = http.createServer(async (req, res) => {
@@ -135,6 +136,10 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
       return { id: `connection-${id}` };
     },
     authorizedMcpConnection: async () => ({ enabled: true }),
+    relayMcp: async (_id: string, _raw: string, _headers: Record<string, unknown>, _signal: AbortSignal, conversationId?: string) => {
+      relayedConversations.push(conversationId);
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [] } }), { headers: { 'content-type': 'application/json' } });
+    },
     availableModels: async () => [{ id: 'model-1' }, { id: 'model-2' }],
   } as unknown as Rc2GatewayClient;
   try {
@@ -147,6 +152,14 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     expect(manifest.skills).toEqual(skillNames);
     expect(synced.issues).toContainEqual({ type: 'SKILL', id: skillId, code: 'DEPENDENCY_UNVERIFIED' });
     expect(manifest.mcpIds).toHaveLength(2);
+    const registeredMcp = writes.find(({ route, body }) => route === '/api/mcp/servers' && body.name === `rc2-enterprise-${firstMcpId}`)!.body;
+    const transport = registeredMcp.transport as { url: string; headers: Record<string, string> };
+    const mcpUrl = new URL(transport.url);
+    mcpUrl.pathname = '/conversations/conv-42/mcp';
+    const relayed = await fetch(mcpUrl, { method: 'POST', headers: { ...transport.headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+    expect(relayed.status).toBe(200);
+    expect(relayedConversations).toEqual(['conv-42']);
     const assistantExpected = mode !== 'standalone authorization';
     expect(manifest.assistantIds).toEqual(assistantExpected ? [`rc2-${assistantId}`] : []);
     if (assistantExpected) {
