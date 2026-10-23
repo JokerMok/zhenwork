@@ -22,7 +22,7 @@ class WorkspaceMcpRelayControllerTest {
 
     @Test
     void onlyConfiguredMcpDestinationsCanBeUsed() {
-        var relay = new WorkspaceMcpRelayController(null, null, null);
+        var relay = new WorkspaceMcpRelayController(null, null, null, null);
         ReflectionTestUtils.setField(relay, "catalogUrl", "http://127.0.0.1:3588/mcp");
         ReflectionTestUtils.setField(relay, "allowedHosts", "mcp.example.com");
         assertEquals("127.0.0.1", relay.destination(Map.of("managedProfile", "acceptance-catalog")).getHost());

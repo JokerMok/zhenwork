@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.web.bind.annotation.*;
+import org.dromara.ai.workspace.external.ExternalMcpDispatcher;
 
 import java.net.URI;
 import java.net.InetAddress;
@@ -28,6 +29,7 @@ public class WorkspaceMcpRelayController {
     private final WorkspacePrincipal principals;
     private final WorkspaceMcpAccess access;
     private final JdbcTemplate jdbc;
+    private final ExternalMcpDispatcher external;
     @Value("${workspace.mcp.acceptance-catalog-url:}")
     private String catalogUrl;
     @Value("${workspace.mcp.allowed-hosts:}")
@@ -57,6 +59,8 @@ public class WorkspaceMcpRelayController {
             throw new WorkspaceDenied(403, "McpConnectionNotReady");
         var plan = access.secretPlan(id, ((Number)connection.get("auth_version")).longValue(), user);
         if (!"STREAMABLE_HTTP".equals(plan.get("transport"))) throw new WorkspaceDenied(400, "McpTransportNotSupported");
+        if ("external-query".equals(plan.get("managedProfile")))
+            return external.exchange(id,user,((Number)connection.get("auth_version")).longValue(),message,recheck);
         if ("tools/call".equals(method)) {
             if (!(message.get("params") instanceof Map<?,?> params)
                 || !((List<?>)plan.get("allowedTools")).contains(Objects.toString(params.get("name"), "")))
