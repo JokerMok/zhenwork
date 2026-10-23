@@ -100,7 +100,7 @@ public class SysUserBo implements Serializable {
     /**
      * 角色组
      */
-    @Size(min = 1, message = "用户角色不能为空")
+    // Empty means the service supplies the employee baseline; null on edit preserves existing roles.
     private Long[] roleIds;
 
     /**

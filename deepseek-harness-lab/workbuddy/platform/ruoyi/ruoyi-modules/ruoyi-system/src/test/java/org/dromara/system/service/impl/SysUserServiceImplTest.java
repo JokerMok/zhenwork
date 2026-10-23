@@ -3,6 +3,8 @@ package org.dromara.system.service.impl;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.system.domain.SysRole;
+import org.dromara.system.domain.bo.SysUserBo;
+import jakarta.validation.Validation;
 import org.dromara.system.domain.SysUserRole;
 import org.dromara.system.mapper.*;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,15 @@ class SysUserServiceImplTest {
     void nullRolesOnEditLeaveExistingRolesUntouched() throws Exception {
         invokeInsertUserRole(42L, null, true);
         verifyNoInteractions(roleMapper, userRoleMapper);
+    }
+
+    @Test
+    void emptyRolesPassRequestValidationBeforeBaselineAssignment() {
+        SysUserBo user = new SysUserBo();
+        user.setRoleIds(new Long[0]);
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            assertEquals(0, factory.getValidator().validateProperty(user,"roleIds").size());
+        }
     }
 
     @Test
