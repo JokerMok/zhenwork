@@ -69,6 +69,7 @@ atomic('monitor.env', (
     'ZHENWORK_MONITOR_ADDRESS=127.0.0.1\n'
     'ZHENWORK_MONITOR_PORT=18909\n'
     'ZHENWORK_MONITOR_CONTEXT_PATH=/monitor\n'
+    'ZHENWORK_MONITOR_UI_PUBLIC_URL=https://zhenwork-admin.shizibandu.icu/monitor/\n'
     'ZHENWORK_MONITOR_PUBLIC_URL=http://127.0.0.1:18909/monitor\n'
     f'ZHENWORK_SPRING_SECURITY_USER_PASSWORD={monitor_password}\n'
     f'ZHENWORK_SPRING_BOOT_ADMIN_CLIENT_PASSWORD={monitor_password}\n'

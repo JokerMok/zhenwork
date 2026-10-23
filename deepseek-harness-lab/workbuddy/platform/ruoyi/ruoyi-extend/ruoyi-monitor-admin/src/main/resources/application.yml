@@ -20,6 +20,9 @@ spring:
     admin:
       ui:
         title: ZhenWork 服务监控
+        # Browser assets and API calls must stay on the public Admin origin.
+        # Keep this separate from the loopback client registration URL below.
+        public-url: ${ZHENWORK_MONITOR_UI_PUBLIC_URL:/monitor/}
       context-path: ${ZHENWORK_MONITOR_CONTEXT_PATH:/admin}
   # 忽略无用警告
   thymeleaf:

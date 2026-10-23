@@ -45,7 +45,10 @@ monitor_unit = text("zhenwork-monitor.service")
 restage = text("restage-host.sh")
 configure = text("configure.py")
 office_dependencies = text("prepare-office-host.sh")
+prepare_monitor = text("prepare-monitor.py")
 assert 'bash "$root/deploy/prepare-office-host.sh"' in activate
+assert 'ZHENWORK_MONITOR_UI_PUBLIC_URL=https://zhenwork-admin.shizibandu.icu/monitor/' in prepare_monitor
+assert 'ZHENWORK_MONITOR_PUBLIC_URL=http://127.0.0.1:18909/monitor' in prepare_monitor
 assert "--index-url https://pypi.org/simple python-pptx==1.0.2" in office_dependencies
 assert "--system-site-packages /opt/zhenwork-office" in office_dependencies
 assert "git archive" in stage and "cmp -s" in stage
