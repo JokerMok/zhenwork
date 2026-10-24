@@ -1110,7 +1110,7 @@ test('coalesces readiness polling and exposes only safe startup diagnostics befo
           timings: { totalMs: 20, phaseMs: 10 }, trace: [{ phase: 'CORE_START_FAILED', atMs: 20 }] }) };
         return retriedResponse;
       },
-      location: { replace: (target: string) => replacements.push(target) }, AbortSignal, Intl, Date, Promise,
+      location: { hash: '#/guid?from=refresh', replace: (target: string) => replacements.push(target) }, AbortSignal, Intl, Date, Promise,
       setTimeout: (callback: () => void) => { callback();return 0; },
     });
     expect(retryElement('trace').textContent).toContain('CORE_START_FAILED');
@@ -1122,6 +1122,7 @@ test('coalesces readiness polling and exposes only safe startup diagnostics befo
     resolveRetry({ ok: true, status: 200, json: async () => ({ ready: true, phase: 'ready',
       timings: { totalMs: 5, phaseMs: 0 }, trace: [{ phase: 'ready', atMs: 5 }] }) });
     await new Promise((resolve) => setImmediate(resolve));
+    expect(replacements.at(-1)).toBe('/#/guid?from=refresh');
     expect(retryElement('failure').hidden).toBe(true);
     expect(retryElement('trace').textContent).not.toContain('CORE_START_FAILED');
     expect((await call('/enterprise/ready', cookie)).status).toBe(202);
