@@ -5,6 +5,7 @@
  */
 
 import { ipcBridge } from '@/common';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { TEAM_MODE_ENABLED } from '@/common/config/constants';
 import PwaPullToRefresh from '@/renderer/components/layout/PwaPullToRefresh';
 import Titlebar from '@/renderer/components/layout/Titlebar';
@@ -163,7 +164,7 @@ const Layout: React.FC<{
       window.removeEventListener('focus', refreshBrand);
     };
   }, []);
-  const brandName = enterpriseBrand?.productName || 'AionUi';
+  const brandName = enterpriseBrand?.productName || (isEnterpriseWeb() ? document.title.trim() || 'ZhenWork' : 'AionUi');
   const brandLogo = enterpriseBrand?.logoDataUrl?.startsWith('data:image/png;base64,')
     ? enterpriseBrand.logoDataUrl
     : null;

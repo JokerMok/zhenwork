@@ -1162,7 +1162,8 @@ test('coalesces readiness polling and exposes only safe startup diagnostics befo
       const progress = { hidden: false };
       const error = { hidden: true };
       const retry = { addEventListener: (_event: string, callback: () => void) => { retryCallback = callback; } };
-      const root = { querySelector: () => shellPresent ? {} : null };
+      let removed = false;const shell = { remove: () => { removed = true; } };
+      const root = { querySelector: () => shellPresent ? shell : null, childElementCount: 0, textContent: '' };
       const infos: unknown[][] = [];const warnings: unknown[][] = [];
       class Observer {
         constructor(callback: () => void) { observerCallback = callback; }
@@ -1170,7 +1171,7 @@ test('coalesces readiness polling and exposes only safe startup diagnostics befo
         disconnect() { disconnected += 1; }
       }
       vm.runInNewContext(shellScript!, {
-        document: { getElementById: (id: string) => id === 'root' ? root
+        document: { body: { appendChild: () => {} }, getElementById: (id: string) => id === 'root' ? root
           : id === 'enterprise-bootstrap-status' ? status : progress,
         querySelector: (selector: string) => selector.includes('error') ? error : retry },
         window: { addEventListener: (event: string, callback: Listener) => listeners.set(event, callback),
@@ -1184,7 +1185,8 @@ test('coalesces readiness polling and exposes only safe startup diagnostics befo
       return { status, progress, error, infos, warnings,
         imageError: () => listeners.get('error')?.({ target: new ImageElement() }),
         scriptError: () => listeners.get('error')?.({ target: new ScriptElement() }),
-        mount: () => { shellPresent = false;observerCallback(); },
+        emptyMount: () => { shellPresent = false;observerCallback();return removed; },
+        mount: () => { shellPresent = false;root.childElementCount = 1;root.textContent = 'Acme Workspace';observerCallback(); },
         retry: () => retryCallback(), reloaded: () => reloaded, disconnected: () => disconnected };
     };
     const brokenShell = bootstrapMonitor();
@@ -1198,7 +1200,8 @@ test('coalesces readiness polling and exposes only safe startup diagnostics befo
     expect(JSON.stringify(brokenShell.warnings)).not.toContain('do-not-log');
     brokenShell.retry();expect(brokenShell.reloaded()).toBe(1);
     brokenShell.mount();expect(brokenShell.warnings).toHaveLength(1);
-    const mountedShell = bootstrapMonitor();mountedShell.mount();
+    const mountedShell = bootstrapMonitor();expect(mountedShell.emptyMount()).toBe(false);
+    expect(mountedShell.infos).toHaveLength(0);mountedShell.mount();
     expect(mountedShell.error.hidden).toBe(true);expect(mountedShell.progress.hidden).toBe(false);
     expect(mountedShell.warnings).toHaveLength(0);expect(mountedShell.infos).toHaveLength(1);
     expect(mountedShell.infos[0]?.[1]).toContain('"phase":"mounted"');
