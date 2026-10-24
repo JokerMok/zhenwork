@@ -14,6 +14,7 @@ public class WorkspaceResourceController {
     private final WorkspaceResources resources;
     private final WorkspacePublication publication;
     private final WorkspaceAssistantReadiness readiness;
+    private final WorkspaceShareSupport shareSupport;
     private final WorkspacePrincipal principals;
     public record Create(@NotBlank String resourceType,@NotBlank @Size(max=100) String name,@Size(max=500) String description,Boolean enterprise,@NotNull Map<String,Object> config,@NotNull UUID idempotencyKey){}
     public record Edit(@Min(1) int expectedVersion,@NotBlank @Size(max=100) String name,@Size(max=500) String description,@NotNull Map<String,Object> config){}
@@ -33,6 +34,7 @@ public class WorkspaceResourceController {
     @PutMapping("/resources/{id}") public R<?> edit(@PathVariable UUID id,@Valid @RequestBody Edit input){return R.ok(resources.edit(id,actor(),input.expectedVersion(),input.name(),Objects.toString(input.description(),""),input.config()));}
     @PostMapping("/resources/{id}/activate") public R<?> activate(@PathVariable UUID id,@Valid @RequestBody Activate input){return R.ok(resources.activate(id,actor(),input.version()));}
     @PostMapping("/resources/{id}/shares") public R<?> share(@PathVariable UUID id,@Valid @RequestBody Share input){return R.ok(resources.share(id,actor(),input.subjectType(),subject(input.subjectId()),input.actions()));}
+    @GetMapping("/resources/{id}/shares/preflight") public R<?> sharePreflight(@PathVariable UUID id,@RequestParam String subjectType,@RequestParam @Pattern(regexp="[0-9]{1,19}") String subjectId,@RequestParam(defaultValue="true") boolean use){return R.ok(shareSupport.preflight(id,actor(),subjectType,subject(subjectId),use));}
     @DeleteMapping("/resources/{id}/shares/{share}") public R<?> revoke(@PathVariable UUID id,@PathVariable UUID share){resources.revoke(id,share,actor());return R.ok();}
     @GetMapping("/resources/{id}/shares") public R<?> shares(@PathVariable UUID id){return R.ok(publication.shares(id,actor()));}
     @GetMapping("/share-targets") public R<?> targets(@RequestParam String type,@RequestParam String query){return R.ok(publication.targets(type,query,actor()));}

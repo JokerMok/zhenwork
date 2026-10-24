@@ -17,7 +17,8 @@ public class WorkspaceResources {
     private final AiResourceGuard guard;
     private final WorkspaceConversations conversations;
     private final WorkspaceAssistantReadiness readiness;
-    public WorkspaceResources(JdbcTemplate jdbc,TransactionTemplate tx,WorkspacePermissions permissions,AiResourceGuard guard,WorkspaceConversations conversations,WorkspaceAssistantReadiness readiness){this.jdbc=jdbc;this.tx=tx;this.permissions=permissions;this.guard=guard;this.conversations=conversations;this.readiness=readiness;}
+    private final WorkspaceShareSupport shareSupport;
+    public WorkspaceResources(JdbcTemplate jdbc,TransactionTemplate tx,WorkspacePermissions permissions,AiResourceGuard guard,WorkspaceConversations conversations,WorkspaceAssistantReadiness readiness,WorkspaceShareSupport shareSupport){this.jdbc=jdbc;this.tx=tx;this.permissions=permissions;this.guard=guard;this.conversations=conversations;this.readiness=readiness;this.shareSupport=shareSupport;}
     private static String hash(String content){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException();}}
     private String config(String type,Map<String,Object> data){
         if(data==null)throw new WorkspaceDenied(400,"ConfigurationRequired");
@@ -83,13 +84,27 @@ public class WorkspaceResources {
     }
     public Map<String,Object> share(UUID id,long actor,String subject,long subjectId,Set<String> actions){
         if(!Set.of("USER","ROLE","DEPARTMENT").contains(subject)||actions.isEmpty()||!Set.of("VIEW","USE","EDIT").containsAll(actions)||!actions.contains("VIEW"))throw new WorkspaceDenied(400,"InvalidShareActions");
-        return tx.execute(status->{jdbc.queryForList("SELECT id FROM ai_resource WHERE id=? FOR UPDATE",id);var r=guard.require(id,actor,AiResourceGuard.Action.SHARE);if(!guard.owner(r,actor))throw new WorkspaceDenied(403,"OwnerSharingRequired");if(r.get("published_version")==null)throw new WorkspaceDenied(400,"ActivateBeforeSharing");
+        boolean[] revoke={false};Map<String,Object> result=tx.execute(status->{jdbc.queryForList("SELECT id FROM ai_resource WHERE id=? FOR UPDATE",id);var r=guard.require(id,actor,AiResourceGuard.Action.SHARE);if(!guard.owner(r,actor))throw new WorkspaceDenied(403,"OwnerSharingRequired");if(r.get("published_version")==null)throw new WorkspaceDenied(400,"ActivateBeforeSharing");
             String table=switch(subject){case "USER"->"sys_user";case "ROLE"->"sys_role";default->"sys_dept";};String column=switch(subject){case "USER"->"user_id";case "ROLE"->"role_id";default->"dept_id";};if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM "+table+" WHERE "+column+"=? AND status='0' AND del_flag='0')",Boolean.class,subjectId)))throw new WorkspaceDenied(400,"ShareTargetUnavailable");
-            if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_resource_share WHERE resource_id=? AND subject_type=? AND subject_id=? AND status='ACTIVE')",Boolean.class,id,subject,subjectId)))throw new WorkspaceDenied(409,"ShareAlreadyExists");
+            if(actions.contains("USE")&&!Boolean.TRUE.equals(shareSupport.preflight(id,actor,subject,subjectId,true).get("ready")))throw new WorkspaceDenied(409,"ShareDependenciesUnavailable");
+            String array="{"+String.join(",",new TreeSet<>(actions))+"}";
+            var existing=jdbc.queryForList("SELECT id::text,(actions @> ?::text[] AND actions <@ ?::text[]) AS same,NOT(actions <@ ?::text[]) AS reduced FROM ai_resource_share WHERE resource_id=? AND subject_type=? AND subject_id=? AND status='ACTIVE'",array,array,array,id,subject,subjectId);
+            if(!existing.isEmpty()){
+                UUID share=UUID.fromString(existing.getFirst().get("id").toString());
+                if(Boolean.TRUE.equals(existing.getFirst().get("same")))return Map.of("id",share.toString(),"mode","REFERENCE","changed",false);
+                revoke[0]=Boolean.TRUE.equals(existing.getFirst().get("reduced"));
+                jdbc.update("UPDATE ai_resource_share SET actions=?::text[],shared_by=? WHERE id=?",array,actor,share);
+                jdbc.update("DELETE FROM ai_resource_acl WHERE resource_id=? AND subject_type=? AND subject_id=?",id,subject,subjectId);
+                for(String action:actions)jdbc.update("INSERT INTO ai_resource_acl(resource_id,subject_type,subject_id,action,granted_by) VALUES(?,?,?,?,?)",id,subject,subjectId,action,actor);
+                if(revoke[0])jdbc.update("UPDATE ai_resource SET auth_version=auth_version+1,updated_by=?,updated_at=NOW() WHERE id=?",actor,id);else jdbc.update("UPDATE ai_resource SET updated_by=?,updated_at=NOW() WHERE id=?",actor,id);
+                audit(actor,"resource.share.changed",id,Map.of("shareId",share.toString(),"mode","REFERENCE","actions",actions));
+                return Map.of("id",share.toString(),"mode","REFERENCE","changed",true);
+            }
             UUID share=UUID.randomUUID();jdbc.update("INSERT INTO ai_resource_share(id,resource_id,subject_type,subject_id,actions,shared_by) VALUES(?,?,?,?,?::text[],?)",share,id,subject,subjectId,"{"+String.join(",",new TreeSet<>(actions))+"}",actor);
             for(String action:actions)jdbc.update("INSERT INTO ai_resource_acl(resource_id,subject_type,subject_id,action,granted_by) VALUES(?,?,?,?,?)",id,subject,subjectId,action,actor);
-            jdbc.update("UPDATE ai_resource SET visibility=CASE WHEN visibility='PRIVATE' THEN 'SHARED' ELSE visibility END,updated_by=?,updated_at=NOW() WHERE id=?",actor,id);audit(actor,"resource.shared",id,Map.of("shareId",share.toString(),"mode","REFERENCE","actions",actions));return Map.of("id",share.toString(),"mode","REFERENCE");
+            jdbc.update("UPDATE ai_resource SET visibility=CASE WHEN visibility='PRIVATE' THEN 'SHARED' ELSE visibility END,updated_by=?,updated_at=NOW() WHERE id=?",actor,id);audit(actor,"resource.shared",id,Map.of("shareId",share.toString(),"mode","REFERENCE","actions",actions));return Map.of("id",share.toString(),"mode","REFERENCE","changed",true);
         });
+        if(revoke[0])conversations.revokeResource(id);return result;
     }
     public void revoke(UUID id,UUID share,long actor){tx.executeWithoutResult(status->{jdbc.queryForList("SELECT id FROM ai_resource WHERE id=? FOR UPDATE",id);var r=guard.require(id,actor,AiResourceGuard.Action.SHARE);if(!guard.owner(r,actor))throw new WorkspaceDenied(403,"OwnerSharingRequired");var rows=jdbc.queryForList("UPDATE ai_resource_share SET status='REVOKED',revoked_at=NOW() WHERE id=? AND resource_id=? AND status='ACTIVE' RETURNING subject_type,subject_id",share,id);if(rows.isEmpty())return;var recipient=rows.getFirst();jdbc.update("DELETE FROM ai_resource_acl WHERE resource_id=? AND subject_type=? AND subject_id=?",id,recipient.get("subject_type"),recipient.get("subject_id"));jdbc.update("UPDATE ai_resource SET auth_version=auth_version+1,updated_by=?,updated_at=NOW() WHERE id=?",actor,id);audit(actor,"resource.share.revoked",id,Map.of("shareId",share.toString()));});conversations.revokeResource(id);}
     public void enable(UUID id,long actor,boolean enabled,boolean govern,String reason){

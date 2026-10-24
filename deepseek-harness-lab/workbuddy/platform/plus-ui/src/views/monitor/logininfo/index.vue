@@ -103,7 +103,7 @@
         @sort-change="handleSortChange"
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="访问编号" align="center" prop="infoId" />
+        <el-table-column label="访问编号" align="center" prop="infoId" min-width="190" show-overflow-tooltip />
         <el-table-column
           label="用户名称"
           align="center"

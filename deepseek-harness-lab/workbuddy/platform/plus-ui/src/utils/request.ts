@@ -35,6 +35,7 @@ function normalizeErrorMessage(message?: string) {
   if (!message) {
     return undefined;
   }
+  if (errorCode[message]) return errorCode[message];
   if (message === 'Network Error') {
     return '后端接口连接异常';
   }
@@ -74,7 +75,7 @@ async function parseResponseErrorData(data: unknown): Promise<string | undefined
 
   if (typeof data === 'object') {
     const payload = data as Record<string, any>;
-    return payload.msg || payload.message || errorCode[payload.code] || errorCode['default'];
+    return normalizeErrorMessage(payload.msg || payload.message) || errorCode[payload.code] || errorCode['default'];
   }
 
   return undefined;
@@ -195,7 +196,7 @@ service.interceptors.response.use(
     // 未设置状态码则默认成功状态
     const code = res.data.code || HttpStatus.SUCCESS;
     // 获取错误信息
-    const msg = res.data.msg || errorCode[code] || errorCode['default'];
+    const msg = normalizeErrorMessage(res.data.msg) || errorCode[code] || errorCode['default'];
     // 二进制数据则直接返回
     if (res.request.responseType === 'blob' || res.request.responseType === 'arraybuffer') {
       return res.data;

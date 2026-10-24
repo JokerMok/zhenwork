@@ -11,7 +11,7 @@ import { enterpriseCoreBase, enterpriseCoreHost, enterpriseProxyHost } from './e
 import { OfficeStore } from './office/office-store.js';
 import { previewOfficeFile } from './office/preview/index.js';
 import { enterpriseProfilePath } from './enterprise-core.js';
-import { enterpriseReadinessPage } from './enterprise-readiness-page.js';
+import { enterpriseBootstrapShell, enterpriseReadinessPage } from './enterprise-readiness-page.js';
 
 export type EnterpriseResourceState = { state: 'ready' | 'pending' | 'refreshing'; reason?: 'TASK_ACTIVE' | 'CHECK_FAILED' };
 export type EnterpriseActor = { serverId: string; userId: string };
@@ -83,6 +83,12 @@ type Session = EnterpriseLogin & {
   validating?: Promise<boolean>;
 };
 class CoreCapacityError extends Error {}
+type PreparationPhase = 'queued' | 'starting' | 'ready';
+type PreparationAttempt = { traceId: string; startedAt: number; phase: PreparationPhase; phaseStartedAt: number;
+  trace: Array<{ phase: PreparationPhase | 'failed'; atMs: number }>; outcomeLogged?: true };
+type PreparationFailure = { error: 'AUTHENTICATION_REQUIRED' | 'CAPABILITY_FORBIDDEN' |
+  'DEFAULT_MODEL_UNAVAILABLE' | 'CORE_START_FAILED';
+  attempt: PreparationAttempt; failedAt: number };
 const COOKIE_NAME = '__Host-aion-enterprise-web';
 const DEV_COOKIE_NAME = 'aion-enterprise-web-dev';
 // Core creates conversation IDs with generate_short_id() (8 hex chars), while
@@ -425,9 +431,11 @@ export async function startEnterpriseGateway(
   }
   const sessions = new Map<string, Session>();
   type CoreEntry = { actor: EnterpriseActor; started: Promise<EnterpriseCore>; lastUsed: number;
-    ready: boolean; abort: AbortController };
+    ready: boolean; abort: AbortController; preparation: PreparationAttempt };
   const cores = new Map<string, CoreEntry>();
   const stopping = new Map<string, Promise<void>>();
+  const preparationAttempts = new Map<string, PreparationAttempt>();
+  const preparationFailures = new Map<string, PreparationFailure>();
   const maxSessions = opts.maxSessions ?? 100;
   const maxCores = opts.maxCores ?? 50;
   const maxStartingCores = opts.maxStartingCores ?? 4;
@@ -445,6 +453,67 @@ export async function startEnterpriseGateway(
     timeout: ReturnType<typeof setTimeout>; signal: AbortSignal; onAbort: () => void };
   const queuedStarts: StartWaiter[] = [];
   let shuttingDown = false;
+  const preparationFor = (key: string): PreparationAttempt => {
+    const existing = preparationAttempts.get(key);
+    if (existing) return existing;
+    const now = Date.now();
+    const attempt: PreparationAttempt = { traceId: randomBytes(8).toString('hex'),
+      startedAt: now, phase: 'queued', phaseStartedAt: now,
+      trace: [{ phase: 'queued', atMs: 0 }] };
+    preparationAttempts.set(key, attempt);
+    return attempt;
+  };
+  const transitionPreparation = (attempt: PreparationAttempt, phase: PreparationPhase): void => {
+    if (attempt.phase === phase) return;
+    const now = Date.now();
+    attempt.phase = phase;attempt.phaseStartedAt = now;
+    attempt.trace.push({ phase, atMs: now - attempt.startedAt });
+  };
+  const preparationTimings = (attempt: PreparationAttempt, endedAt: number): Record<string, number> => {
+    const totalMs = endedAt - attempt.startedAt;
+    const timings: Record<string, number> = { totalMs };
+    for (let index = 0; index < attempt.trace.length; index += 1) {
+      const current = attempt.trace[index];
+      if (!current || current.phase === 'failed') continue;
+      const next = attempt.trace[index + 1];
+      timings[`${current.phase}Ms`] = Math.max(0, (next?.atMs ?? totalMs) - current.atMs);
+    }
+    return timings;
+  };
+  const logPreparationOutcome = (attempt: PreparationAttempt, outcome: 'success' | 'failure',
+    code: PreparationFailure['error'] | 'READY', endedAt: number): void => {
+    if (attempt.outcomeLogged) return;
+    attempt.outcomeLogged = true;
+    const entry = JSON.stringify({ event: 'enterprise_core_initialization', outcome,
+      traceId: attempt.traceId, phase: outcome === 'success' ? 'ready' : 'failed',
+      timings: preparationTimings(attempt, endedAt), code });
+    if (outcome === 'success') console.info('[Enterprise preparation]', entry);
+    else console.warn('[Enterprise preparation]', entry);
+  };
+  const preparationError = (error: unknown): PreparationFailure['error'] => {
+    if (error instanceof Error && 'code' in error && error.code === 'AUTHENTICATION_REQUIRED')
+      return 'AUTHENTICATION_REQUIRED';
+    if (error instanceof Error && 'code' in error && error.code === 'CAPABILITY_FORBIDDEN')
+      return 'CAPABILITY_FORBIDDEN';
+    if (error instanceof Error && error.message === 'DEFAULT_MODEL_UNAVAILABLE')
+      return 'DEFAULT_MODEL_UNAVAILABLE';
+    return 'CORE_START_FAILED';
+  };
+  const recordPreparationFailure = (key: string, attempt: PreparationAttempt, error: unknown): void => {
+    if (error instanceof CoreCapacityError || shuttingDown) return;
+    const failedAt = Date.now();
+    if (attempt.trace.at(-1)?.phase !== 'failed')
+      attempt.trace.push({ phase: 'failed', atMs: failedAt - attempt.startedAt });
+    const safeError = preparationError(error);
+    preparationFailures.set(key, { error: safeError, attempt, failedAt });
+    logPreparationOutcome(attempt, 'failure', safeError, failedAt);
+  };
+  const preparationPayload = (attempt: PreparationAttempt, now = Date.now()) => ({
+    traceId: attempt.traceId,
+    phase: attempt.phase,
+    timings: { totalMs: now - attempt.startedAt, phaseMs: now - attempt.phaseStartedAt },
+    trace: attempt.trace,
+  });
   const acquireStart = async (signal: AbortSignal): Promise<void> => {
     if (shuttingDown || signal.aborted) throw new Error('Enterprise Core startup cancelled');
     if (starting < maxStartingCores) { starting += 1; return; }
@@ -484,6 +553,8 @@ export async function startEnterpriseGateway(
     const entry = cores.get(key);
     if (!entry) return;
     cores.delete(key);
+    preparationAttempts.delete(key);
+    preparationFailures.delete(key);
     entry.abort.abort();
     const done = entry.started.then((core) => core.stop(), () => {});
     stopping.set(key, done);
@@ -564,6 +635,10 @@ export async function startEnterpriseGateway(
       catch { backgroundReady = false; }
     }
     await session.close().catch(() => {});
+    if (last) {
+      preparationAttempts.delete(key);
+      preparationFailures.delete(key);
+    }
     if (last && !(await authorizedBackground(session.actor))) {
       try { await stopCore(key); }
       catch { backgroundReady = false; }
@@ -596,6 +671,7 @@ export async function startEnterpriseGateway(
         !(allowBackground && await authorizedBackground(actor))) {
       throw new Error('Employee session closed');
     }
+    const preparation = preparationFor(key);
     let entry = cores.get(key);
     if (!entry) {
       if (cores.size >= maxCores) await reclaimIdleCores(true);
@@ -603,6 +679,7 @@ export async function startEnterpriseGateway(
       const abort = new AbortController();
       const started = (async () => {
         await acquireStart(abort.signal);
+        transitionPreparation(preparation, 'starting');
         try {
           if (abort.signal.aborted || cores.get(key) !== entry ||
               (![...sessions.values()].some((session) => actorKey(session.actor) === key) &&
@@ -615,14 +692,19 @@ export async function startEnterpriseGateway(
         try {
           enterpriseCoreHost(core);
           enterpriseProxyHost(core);
-          if (entry) entry.ready = true;
+          if (entry) {
+            entry.ready = true;
+            transitionPreparation(preparation, 'ready');
+            preparationFailures.delete(key);
+            logPreparationOutcome(preparation, 'success', 'READY', Date.now());
+          }
           return core;
         } catch (error) {
           await core.stop();
           throw error;
         }
       });
-      entry = { actor, started, lastUsed: Date.now(), ready: false, abort };
+      entry = { actor, started, lastUsed: Date.now(), ready: false, abort, preparation };
       cores.set(key, entry);
       void started.then((core) => core.invalidated?.then(async () => {
         const affected = [...sessions].filter(([, session]) => actorKey(session.actor) === key).map(([id]) => id);
@@ -635,8 +717,9 @@ export async function startEnterpriseGateway(
           if (stopping.get(key) === done) stopping.delete(key);
         }
       })).catch(() => {});
-      started.catch(() => {
+      started.catch((error) => {
         if (cores.get(key)?.started === started) cores.delete(key);
+        if (!abort.signal.aborted) recordPreparationFailure(key, preparation, error);
       });
     }
     entry.lastUsed = Date.now();
@@ -762,14 +845,31 @@ export async function startEnterpriseGateway(
       }
       return reply(res, 401, { error: 'UNAUTHENTICATED' });
     }
-    if (req.url === '/enterprise/ready' && req.method === 'GET') {
-      auth.session.responses.add(res);res.once('close', () => auth.session.responses.delete(res));
-      try {
-        await getCore(auth.session.actor);
-        if (!(await validateSession(auth.session))) { await revoke(auth.id); return reply(res, 401, { error: 'UNAUTHENTICATED' }); }
-        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
-        return reply(res, 200, { ready: true });
-      } catch (error) { if (!res.destroyed) return replyCoreFailure(res, error); return; }
+    if (/^\/enterprise\/ready(?:\?retry=1)?$/.test(req.url) && req.method === 'GET') {
+      const key = actorKey(auth.session.actor);
+      if (req.url.endsWith('?retry=1') && preparationFailures.has(key)) {
+        preparationFailures.delete(key);preparationAttempts.delete(key);
+      }
+      const failure = preparationFailures.get(key);
+      if (failure) {
+        const status = failure.error === 'AUTHENTICATION_REQUIRED' ? 401
+          : failure.error === 'CAPABILITY_FORBIDDEN' ? 403 : 503;
+        return reply(res, status, { ready: false, phase: 'failed', error: failure.error,
+          traceId: failure.attempt.traceId,
+          timings: { totalMs: failure.failedAt - failure.attempt.startedAt,
+            phaseMs: failure.failedAt - failure.attempt.phaseStartedAt },
+          trace: [...failure.attempt.trace,
+            { phase: failure.error, atMs: failure.failedAt - failure.attempt.startedAt }] });
+      }
+      const attempt = preparationFor(key);
+      const current = cores.get(key);
+      if (current?.ready) return reply(res, 200,
+        { ready: true, ...preparationPayload(current.preparation) });
+      // The actor-scoped Core entry coalesces refreshes, retries and multiple tabs.
+      void getCore(auth.session.actor).catch((error) => recordPreparationFailure(key, attempt, error));
+      res.setHeader('retry-after', '1');
+      return reply(res, 202,
+        { ready: false, ...preparationPayload(cores.get(key)?.preparation || attempt) });
     }
     if (req.url === '/enterprise/brand' && req.method === 'GET') {
       try {
@@ -1288,14 +1388,19 @@ export async function startEnterpriseGateway(
         req.headers.accept?.includes('text/html'))) {
       if (!cores.get(actorKey(auth.session.actor))?.ready || stopping.has(actorKey(auth.session.actor))) {
         const nonce = randomBytes(16).toString('base64');
-        const english = /\ben(?:-|,|;|$)/i.test(req.headers['accept-language'] || '') && !/^zh\b/i.test(req.headers['accept-language'] || '');
+        const brand = loginBrand(await auth.session.brand?.().catch((): null => null));
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
-          'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'` });
-        res.end(enterpriseReadinessPage(english, nonce));return;
+          'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; img-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'` });
+        res.end(enterpriseReadinessPage(req.headers['accept-language'] || '', nonce, brand));return;
       }
       const html = await readFile(path.join(opts.staticDir, 'index.html'), 'utf8');
       const nonce = randomBytes(16).toString('base64');
-      const content = html.replace('</head>', '<script>window.__AION_ENTERPRISE_WEB__=true;</script></head>')
+      const brand = loginBrand(await auth.session.brand?.().catch((): null => null));
+      const bootstrap = enterpriseBootstrapShell(req.headers['accept-language'] || '', nonce, brand);
+      const content = html.replace(/<title>[\s\S]*?<\/title>/i, '')
+        .replace('</head>', `${bootstrap.head}<script>window.__AION_ENTERPRISE_WEB__=true;</script></head>`)
+        .replace(/(<div\s+id=["']root["'][^>]*>)[\s\S]*?(<\/div>)/i,
+          (_match, open: string, close: string) => `${open}${bootstrap.body}${close}`)
         .replace(/<script\b/g, `<script nonce="${nonce}"`);
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
         'content-security-policy': [

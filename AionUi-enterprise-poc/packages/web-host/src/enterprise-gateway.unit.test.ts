@@ -3,6 +3,7 @@ import http from 'node:http';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import vm from 'node:vm';
 import WebSocket, { WebSocketServer } from 'ws';
 import { startEnterpriseGateway } from './enterprise-gateway.js';
 
@@ -987,11 +988,234 @@ test('a second employee gets a bounded preparation page instead of a blank SPA a
     expect((await call('GET', '/enterprise/ready')).status).toBe(401);
     const first = (await call('POST', '/enterprise/login', undefined, { username: '1', password: 'test' })).cookie;
     const second = (await call('POST', '/enterprise/login', undefined, { username: '2', password: 'test' })).cookie;
+    expect((await call('GET', '/enterprise/ready', first)).status).toBe(202);
+    await new Promise((resolve) => setImmediate(resolve));
     expect((await call('GET', '/enterprise/ready', first)).status).toBe(200);
     const page = await call('GET', '/', second);expect(page.status).toBe(200);expect(page.body).toContain('data-enterprise-readiness');expect(page.body).toContain('180000');
-    expect((await call('GET', '/enterprise/ready', second)).status).toBe(503);
+    expect(page.body).toContain('<title>ZhenWork');expect(page.body).toContain('data:image/svg+xml');
+    const queued = await call('GET', '/enterprise/ready', second);
+    expect(queued.status).toBe(202);expect(JSON.parse(queued.body).phase).toBe('queued');
     await call('POST', '/enterprise/logout', first, {});
+    expect((await call('GET', '/enterprise/ready', second)).status).toBe(202);
+    await new Promise((resolve) => setImmediate(resolve));
     expect((await call('GET', '/enterprise/ready', second)).status).toBe(200);
-    expect((await call('GET', '/', second)).body).toContain('window.__AION_ENTERPRISE_WEB__=true');
+    const bootstrap = (await call('GET', '/', second)).body;
+    expect(bootstrap).toContain('window.__AION_ENTERPRISE_WEB__=true');
+    expect(bootstrap).toContain('<title>ZhenWork</title>');expect(bootstrap).toContain('data:image/svg+xml');
   } finally { await gateway.stop();await rm(dir, { recursive: true, force: true }); }
+});
+
+test('coalesces readiness polling and exposes only safe startup diagnostics before retry', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'enterprise-ready-retry-'));
+  const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  await writeFile(path.join(dir, 'index.html'),
+    '<html><head><title>AionUi</title></head><body><div id="root"></div><script src="app.js"></script></body></html>');
+  let starts = 0;
+  let releaseStart!: () => void;
+  const startGate = new Promise<void>((resolve) => { releaseStart = resolve; });
+  const gateway = await startEnterpriseGateway({ staticDir: dir, publicOrigin: 'https://workspace.example', port: 0,
+    login: async () => ({ actor: { serverId: 'rc2', userId: '1' },
+      brand: async () => ({ productName: 'Acme Workspace', primaryColor: '#123abc',
+        logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=' }),
+      validate: async () => true, close: async () => {} }),
+    startCore: async () => {
+      starts += 1;
+      if (starts === 1) throw Object.assign(new Error('DEFAULT_MODEL_UNAVAILABLE'),
+        { secret: 'never-expose' });
+      await startGate;
+      return { port: 9, localToken: 'local-test', stop: async () => {} };
+    },
+  });
+  const call = (route: string, cookie?: string, method = 'GET', payload?: object) =>
+    new Promise<{ status: number; cookie?: string; body: string }>((resolve, reject) => {
+      const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method,
+        headers: { host: 'workspace.example', origin: 'https://workspace.example',
+          ...(cookie ? { cookie } : {}), ...(payload ? { 'content-type': 'application/json' } : {}),
+          'accept-language': 'zh-TW' } }, res => {
+        const chunks: Buffer[] = [];res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => resolve({ status: res.statusCode || 0,
+          cookie: res.headers['set-cookie']?.[0].split(';')[0],
+          body: Buffer.concat(chunks).toString() }));
+      });req.once('error', reject);req.end(payload ? JSON.stringify(payload) : undefined);
+    });
+  try {
+    const cookie = (await call('/enterprise/login', undefined, 'POST',
+      { username: '1', password: 'test' })).cookie;
+    const page = await call('/', cookie);
+    expect(page.body).toContain('<html lang="zh-TW"');
+    expect(page.body).toContain('<title>Acme Workspace · 正在準備執行環境</title>');
+    expect(page.body).toContain('<link rel="icon" href="data:image/png;base64,iVBORw0KGgo=">');
+    expect(page.body).toContain('目前帳號沒有可用模型，請聯絡組織管理員檢查預設模型與授權。');
+    const script = /<script nonce="[^"]+">([\s\S]+)<\/script>/.exec(page.body)?.[1];
+    expect(script).toBeTruthy();
+    const elements = new Map<string, { textContent: string; hidden: boolean; disabled: boolean;
+      addEventListener: () => void }>();
+    const element = (id: string) => {
+      if (!elements.has(id)) elements.set(id,
+        { textContent: '', hidden: false, disabled: false, addEventListener: () => {} });
+      return elements.get(id)!;
+    };
+    let fetches = 0;
+    let resolveReady!: (value: { ok: boolean; status: number; json: () => Promise<object> }) => void;
+    const readyResponse = new Promise<{ ok: boolean; status: number; json: () => Promise<object> }>(
+      (resolve) => { resolveReady = resolve; });
+    const replacements: string[] = [];
+    const runningPage = vm.runInNewContext(script!, {
+      document: { getElementById: element },
+      fetch: async () => {
+        fetches += 1;
+        if (fetches <= 3) throw new Error('temporary network error');
+        return readyResponse;
+      },
+      location: { replace: (target: string) => replacements.push(target) },
+      AbortSignal,
+      Intl,
+      Date,
+      Promise,
+      setTimeout: (callback: () => void) => { callback();return 0; },
+    }) as Promise<void>;
+    for (let turn = 0; turn < 10 && fetches < 4; turn += 1)
+      await new Promise((resolve) => setImmediate(resolve));
+    expect(fetches).toBe(4);
+    expect(element('failure').hidden).toBe(false);expect(element('progress').hidden).toBe(false);
+    expect(element('reason').textContent).toBe('連線暫時中斷，正在嘗試恢復…');
+    expect(element('status').textContent).toBe('正在等待可用容量');
+    expect(element('trace').textContent).toContain('CONNECTION_UNAVAILABLE');
+    resolveReady({ ok: true, status: 200, json: async () => ({ ready: true, phase: 'ready',
+      timings: { totalMs: 4000, phaseMs: 0 }, trace: [{ phase: 'ready', atMs: 4000 }] }) });
+    await runningPage;
+    expect(replacements).toEqual(['/']);expect(element('failure').hidden).toBe(true);
+    expect(element('status').textContent).toBe('執行環境已就緒');
+    expect(element('trace').textContent).not.toContain('CONNECTION_UNAVAILABLE');
+
+    const retryListeners: Array<() => void> = [];
+    const retryElements = new Map<string, { textContent: string; hidden: boolean; disabled: boolean;
+      addEventListener: (event: string, callback: () => void) => void }>();
+    const retryElement = (id: string) => {
+      if (!retryElements.has(id)) retryElements.set(id, { textContent: '', hidden: false, disabled: false,
+        addEventListener: (_event, callback) => retryListeners.push(callback) });
+      return retryElements.get(id)!;
+    };
+    let resolveRetry!: (value: { ok: boolean; status: number; json: () => Promise<object> }) => void;
+    const retriedResponse = new Promise<{ ok: boolean; status: number; json: () => Promise<object> }>(
+      (resolve) => { resolveRetry = resolve; });
+    const retryRoutes: string[] = [];
+    await vm.runInNewContext(script!, {
+      document: { getElementById: retryElement },
+      fetch: async (route: string) => {
+        retryRoutes.push(route);
+        if (retryRoutes.length === 1) return { ok: false, status: 503, json: async () => ({ ready: false,
+          phase: 'failed', error: 'CORE_START_FAILED', traceId: 'old-attempt',
+          timings: { totalMs: 20, phaseMs: 10 }, trace: [{ phase: 'CORE_START_FAILED', atMs: 20 }] }) };
+        return retriedResponse;
+      },
+      location: { replace: (target: string) => replacements.push(target) }, AbortSignal, Intl, Date, Promise,
+      setTimeout: (callback: () => void) => { callback();return 0; },
+    });
+    expect(retryElement('trace').textContent).toContain('CORE_START_FAILED');
+    retryListeners[0]!();
+    expect(retryRoutes).toEqual(['/enterprise/ready', '/enterprise/ready?retry=1']);
+    expect(retryElement('trace').textContent).toBe('');expect(retryElement('reason').textContent).toBe('');
+    expect(retryElement('timing').textContent).toBe('');
+    expect(retryElement('status').textContent).toBe('正在等待可用容量');
+    resolveRetry({ ok: true, status: 200, json: async () => ({ ready: true, phase: 'ready',
+      timings: { totalMs: 5, phaseMs: 0 }, trace: [{ phase: 'ready', atMs: 5 }] }) });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(retryElement('failure').hidden).toBe(true);
+    expect(retryElement('trace').textContent).not.toContain('CORE_START_FAILED');
+    expect((await call('/enterprise/ready', cookie)).status).toBe(202);
+    await new Promise((resolve) => setImmediate(resolve));
+    const failed = await call('/enterprise/ready', cookie);
+    expect(failed.status).toBe(503);expect(failed.body).toContain('DEFAULT_MODEL_UNAVAILABLE');
+    expect(failed.body).not.toContain('never-expose');
+    const failedData = JSON.parse(failed.body);
+    expect(failedData.traceId).toMatch(/^[a-f0-9]{16}$/);
+    expect(failedData.trace.at(-1).phase).toBe('DEFAULT_MODEL_UNAVAILABLE');
+    const results = await Promise.all([
+      call('/enterprise/ready?retry=1', cookie), call('/enterprise/ready', cookie),
+    ]);
+    expect(results.every((result) => result.status === 202)).toBe(true);expect(starts).toBe(2);
+    releaseStart();await new Promise((resolve) => setImmediate(resolve));
+    const ready = await call('/enterprise/ready', cookie);
+    expect([ready.status, JSON.parse(ready.body).phase]).toEqual([200, 'ready']);
+    const bootstrap = await call('/', cookie);
+    expect(bootstrap.body).toContain('data-enterprise-bootstrap');
+    expect(bootstrap.body).toContain('<title>Acme Workspace</title>');
+    expect(bootstrap.body).toContain('執行環境已就緒');
+    expect(bootstrap.body).toContain('nonce=');
+    expect(bootstrap.body).toContain('data-testid="enterprise-bootstrap-error"');
+    expect(bootstrap.body).toContain('data-testid="enterprise-bootstrap-retry"');
+    const shellScript = /<script nonce="[^"]+" data-enterprise-bootstrap-shell>([\s\S]*?)<\/script>/.exec(
+      bootstrap.body)?.[1];
+    expect(shellScript).toBeTruthy();
+    const bootstrapMonitor = () => {
+      class ScriptElement { src = '/boot.js?token=do-not-log'; }
+      class LinkElement { href = '/app.css?key=do-not-log'; }
+      class ImageElement { src = '/logo.png'; }
+      type Listener = (event: { target?: object; reason?: unknown }) => void;
+      const listeners = new Map<string, Listener>();
+      let shellPresent = true;let observerCallback = () => {};let retryCallback = () => {};
+      let reloaded = 0;let disconnected = 0;let now = 0;
+      const status = { textContent: '執行環境已就緒' };
+      const progress = { hidden: false };
+      const error = { hidden: true };
+      const retry = { addEventListener: (_event: string, callback: () => void) => { retryCallback = callback; } };
+      const root = { querySelector: () => shellPresent ? {} : null };
+      const infos: unknown[][] = [];const warnings: unknown[][] = [];
+      class Observer {
+        constructor(callback: () => void) { observerCallback = callback; }
+        observe() {}
+        disconnect() { disconnected += 1; }
+      }
+      vm.runInNewContext(shellScript!, {
+        document: { getElementById: (id: string) => id === 'root' ? root
+          : id === 'enterprise-bootstrap-status' ? status : progress,
+        querySelector: (selector: string) => selector.includes('error') ? error : retry },
+        window: { addEventListener: (event: string, callback: Listener) => listeners.set(event, callback),
+          removeEventListener: (event: string) => listeners.delete(event) },
+        HTMLScriptElement: ScriptElement, HTMLLinkElement: LinkElement,
+        MutationObserver: Observer, performance: { now: () => { now += 7;return now; } },
+        location: { reload: () => { reloaded += 1; } },
+        console: { info: (...args: unknown[]) => infos.push(args), warn: (...args: unknown[]) => warnings.push(args) },
+        setTimeout: () => 1, clearTimeout: () => {},
+      });
+      return { status, progress, error, infos, warnings,
+        imageError: () => listeners.get('error')?.({ target: new ImageElement() }),
+        scriptError: () => listeners.get('error')?.({ target: new ScriptElement() }),
+        mount: () => { shellPresent = false;observerCallback(); },
+        retry: () => retryCallback(), reloaded: () => reloaded, disconnected: () => disconnected };
+    };
+    const brokenShell = bootstrapMonitor();
+    brokenShell.imageError();expect(brokenShell.error.hidden).toBe(true);
+    brokenShell.scriptError();
+    expect(brokenShell.status.textContent).toBe('頁面載入失敗，請重新載入後再試。');
+    expect(brokenShell.progress.hidden).toBe(true);expect(brokenShell.error.hidden).toBe(false);
+    expect(brokenShell.warnings).toHaveLength(1);expect(brokenShell.infos).toHaveLength(0);
+    expect(brokenShell.warnings[0]?.[1]).toContain('"phase":"asset_failed"');
+    expect(JSON.stringify(brokenShell.warnings)).not.toContain('boot.js');
+    expect(JSON.stringify(brokenShell.warnings)).not.toContain('do-not-log');
+    brokenShell.retry();expect(brokenShell.reloaded()).toBe(1);
+    brokenShell.mount();expect(brokenShell.warnings).toHaveLength(1);
+    const mountedShell = bootstrapMonitor();mountedShell.mount();
+    expect(mountedShell.error.hidden).toBe(true);expect(mountedShell.progress.hidden).toBe(false);
+    expect(mountedShell.warnings).toHaveLength(0);expect(mountedShell.infos).toHaveLength(1);
+    expect(mountedShell.infos[0]?.[1]).toContain('"phase":"mounted"');
+    expect(mountedShell.disconnected()).toBe(1);
+    const preparationWarnings = warn.mock.calls.filter(([label]) => label === '[Enterprise preparation]');
+    const preparationInfos = info.mock.calls.filter(([label]) => label === '[Enterprise preparation]');
+    expect(preparationWarnings).toHaveLength(1);expect(preparationInfos).toHaveLength(1);
+    const failedLog = JSON.parse(String(preparationWarnings[0]?.[1]));
+    const readyLog = JSON.parse(String(preparationInfos[0]?.[1]));
+    expect(failedLog).toMatchObject({ event: 'enterprise_core_initialization', outcome: 'failure',
+      phase: 'failed', code: 'DEFAULT_MODEL_UNAVAILABLE', traceId: failedData.traceId });
+    expect(readyLog).toMatchObject({ event: 'enterprise_core_initialization', outcome: 'success',
+      phase: 'ready', code: 'READY' });
+    expect(failedLog.timings).toMatchObject({ totalMs: expect.any(Number), queuedMs: expect.any(Number),
+      startingMs: expect.any(Number) });
+    expect(JSON.stringify([...preparationWarnings, ...preparationInfos])).not.toContain('never-expose');
+  } finally {
+    info.mockRestore();warn.mockRestore();releaseStart();await gateway.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
 });

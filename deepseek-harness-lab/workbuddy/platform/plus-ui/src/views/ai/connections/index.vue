@@ -13,7 +13,7 @@
 
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb-3" />
     <el-table v-loading="loading" :data="rows" row-key="id" empty-text="尚未配置外部业务连接">
-      <el-table-column prop="name" label="连接名称" min-width="150" />
+      <el-table-column prop="name" label="连接名称" min-width="150" show-overflow-tooltip />
       <el-table-column label="连接器" min-width="160">
         <template #default="{ row }">{{ connectorName(row.type) }}</template>
       </el-table-column>
@@ -28,16 +28,14 @@
       <el-table-column label="允许查询" min-width="170">
         <template #default="{ row }">{{ methodSummary(connectionRow(row)) }}</template>
       </el-table-column>
-      <el-table-column label="验证" min-width="130">
+      <el-table-column label="验证" min-width="230">
         <template #default="{ row }">
           <el-tag :type="row.configurationConsistent === false ? 'warning' : statusTag(row.testedStatus)">
             {{ validationTitle(connectionRow(row)) }}
           </el-tag>
           <div v-if="row.testedAt" class="subtle">{{ formatTime(row.testedAt) }}</div>
           <div class="subtle">接口适配：{{ row.adapterStatus === 'READY' ? '已有可用方法' : '尚未就绪' }}</div>
-          <div v-if="validationMessage(connectionRow(row))" class="connection-error">
-            {{ validationMessage(connectionRow(row)) }}
-          </div>
+          <el-tooltip v-if="validationMessage(connectionRow(row))" :content="validationMessage(connectionRow(row))" placement="top" :show-after="300"><div class="connection-error" tabindex="0">{{validationMessage(connectionRow(row))}}</div></el-tooltip>
         </template>
       </el-table-column>
       <el-table-column label="状态" width="100">
@@ -51,7 +49,10 @@
           <el-button link :disabled="!isReady(connectionRow(row))" @click="openExpert(connectionRow(row))">
             {{ row.assistantId ? '配置查询专家' : '创建查询专家' }}
           </el-button>
-          <el-button link :disabled="!row.resourceId" @click="openShares(connectionRow(row))">共享</el-button>
+          <el-dropdown :disabled="!row.resourceId" trigger="click" @command="openResourceShare">
+            <el-button link :disabled="!row.resourceId">共享授权</el-button>
+            <template #dropdown><el-dropdown-menu><el-dropdown-item v-for="item in shareResources(connectionRow(row))" :key="item.id" :command="item.id">{{item.label}}</el-dropdown-item></el-dropdown-menu></template>
+          </el-dropdown>
           <el-button link @click="openCalls(connectionRow(row))">调用审计</el-button>
         </template>
       </el-table-column>
@@ -281,46 +282,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="sharesVisible" title="查询专家共享" width="760px">
-      <el-alert v-if="dialogError" :title="dialogError" type="error" :closable="false" class="mb-3" />
-      <el-alert :title="shareDescription" type="info" :closable="false" class="mb-3" />
-      <template v-if="selected?.resourceId">
-        <div class="share-controls">
-          <el-select v-model="targetType" aria-label="共享对象类型" @change="targetChanged">
-            <el-option label="员工" value="USER" />
-            <el-option label="角色" value="ROLE" />
-            <el-option label="部门" value="DEPARTMENT" />
-          </el-select>
-          <el-input v-model="targetQuery" placeholder="至少输入两个字符" @keyup.enter="findTargets" />
-          <el-button :disabled="targetQuery.trim().length < 2" :loading="shareBusy" @click="findTargets">
-            查找
-          </el-button>
-        </div>
-        <el-select v-model="targetId" class="target-select" placeholder="选择共享对象">
-          <el-option v-for="item in targets" :key="item.id" :label="`${item.name} · ${item.id}`" :value="item.id" />
-        </el-select>
-        <el-button type="primary" :disabled="!targetId" :loading="shareBusy" @click="grantShare">
-          {{ selected.assistantId ? '授权全部绑定连接与查询专家' : '授权此连接' }}
-        </el-button>
-        <el-table v-loading="shareBusy" :data="shareRows" empty-text="当前资源尚未共享">
-          <el-table-column prop="resourceLabel" label="授权资源" min-width="130" />
-          <el-table-column prop="name" label="对象" min-width="160" />
-          <el-table-column prop="subjectType" label="类型" width="110" />
-          <el-table-column label="权限" min-width="150">
-            <template #default="{ row }">{{ actionsText(row.actions) }}</template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="100" />
-          <el-table-column label="操作" width="90">
-            <template #default="{ row }">
-              <el-button v-if="row.status === 'ACTIVE'" link type="danger" @click="revokeShare(row.id, row.resourceId)">
-                撤回
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </template>
-      <el-empty v-else description="此连接尚未生成可共享资源" :image-size="70" />
-    </el-dialog>
+    <ResourceShareDialog v-model="sharesVisible" :resource="shareResource" />
 
     <el-dialog v-model="callsVisible" title="外部调用审计" width="880px">
       <el-alert v-if="dialogError" :title="dialogError" type="error" :closable="false" class="mb-3" />
@@ -367,6 +329,7 @@
 </template>
 
 <script setup lang="ts">
+import ResourceShareDialog from '@/components/ResourceShareDialog/index.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   connectionApi,
@@ -379,17 +342,6 @@ import {
 } from '@/api/ai/connections';
 import request, { extractErrorMessage } from '@/utils/request';
 
-type ShareRow = {
-  id: string;
-  name?: string;
-  subjectType?: string;
-  subjectId?: string;
-  actions?: string[] | string;
-  status?: string;
-  resourceId?: string;
-  resourceLabel?: string;
-};
-type ShareTarget = { id: string; name: string };
 type FormState = {
   type: ConnectorType;
   name: string;
@@ -419,12 +371,7 @@ const editing = ref<ExternalConnection>();
 const selected = ref<ExternalConnection>();
 const form = ref<FormState>(emptyForm());
 
-const shareRows = ref<ShareRow[]>([]);
-const targetType = ref<'USER' | 'ROLE' | 'DEPARTMENT'>('USER');
-const targetQuery = ref('');
-const targets = ref<ShareTarget[]>([]);
-const targetId = ref('');
-const shareBusy = ref(false);
+const shareResource = ref<any>();
 
 const calls = ref<ConnectionCall[]>([]);
 const callsPage = ref(1);
@@ -442,12 +389,6 @@ const validationChanged = computed(
       form.value.credential.trim() !== '' ||
       form.value.clearCredential)
 );
-const shareDescription = computed(() =>
-  selected.value?.assistantId
-    ? '员工需要同时获得全部已绑定外部连接和查询专家的查看、使用权限。下方操作不会展示或复制外部系统凭据。'
-    : '此连接可独立共享给已有通用助手使用；授权不会创建专用专家，也不会展示或复制外部系统凭据。'
-);
-
 function emptyForm(): FormState {
   return {
     type: 'UFEI_DASHBOARD',
@@ -785,102 +726,13 @@ async function api<T>(url: string, data?: unknown, method = data ? 'post' : 'get
   return (await request({ url, method, data })).data;
 }
 
-async function openShares(row: ExternalConnection) {
-  if (!row.resourceId) return;
-  selected.value = row;
-  sharesVisible.value = true;
-  dialogError.value = '';
-  targetChanged();
-  await loadShares();
-}
-
-async function loadShares() {
-  if (!selected.value?.resourceId) return;
-  shareBusy.value = true;
-  try {
-    const resourceIds = shareResources(selected.value);
-    const results = await Promise.all(
-      resourceIds.map(async resource =>
-        (await api<Record<string, unknown>[]>(`/ai/resources/${resource.id}/shares`)).map(row => ({
-          id: String(row.id),
-          name: String(row.name || ''),
-          subjectType: String(row.subjectType || row.subject_type || ''),
-          subjectId: String(row.subjectId || row.subject_id || ''),
-          actions: parseActions(row.actions),
-          status: String(row.status || ''),
-          resourceId: resource.id,
-          resourceLabel: resource.label
-        }))
-      )
-    );
-    shareRows.value = results.flat();
-  } catch (cause) {
-    dialogError.value = await message(cause, '共享信息加载失败。');
-  } finally {
-    shareBusy.value = false;
-  }
-}
-
-function targetChanged() {
-  targetQuery.value = '';
-  targets.value = [];
-  targetId.value = '';
-}
-
-async function findTargets() {
-  if (targetQuery.value.trim().length < 2) return;
-  shareBusy.value = true;
-  dialogError.value = '';
-  try {
-    targets.value = await api<ShareTarget[]>(
-      `/ai/share-targets?type=${targetType.value}&query=${encodeURIComponent(targetQuery.value.trim())}`
-    );
-    targetId.value = '';
-  } catch (cause) {
-    dialogError.value = await message(cause, '共享对象查询失败。');
-  } finally {
-    shareBusy.value = false;
-  }
-}
-
-async function grantShare() {
-  if (!selected.value?.resourceId || !targetId.value) return;
-  shareBusy.value = true;
-  dialogError.value = '';
-  try {
-    const payload = { subjectType: targetType.value, subjectId: targetId.value, actions: ['VIEW', 'USE'] };
-    const targetsToGrant = shareResources(selected.value)
-      .map(resource => resource.id)
-      .filter(
-        resourceId =>
-          !shareRows.value.some(
-            row =>
-              row.resourceId === resourceId &&
-              row.subjectType === targetType.value &&
-              String(row.subjectId) === targetId.value &&
-              row.status === 'ACTIVE'
-          )
-      );
-    const results = await Promise.allSettled(
-      targetsToGrant.map(resourceId => api(`/ai/resources/${resourceId}/shares`, payload))
-    );
-    if (results.some(result => result.status === 'rejected')) {
-      await loadShares();
-      dialogError.value = '授权只完成了一部分。请查看下方各项资源的状态后重试缺失授权。';
-      return;
-    }
-    ElMessage.success(selected.value.assistantId ? '全部绑定连接与查询专家均已共享' : '外部连接已共享');
-    targetId.value = '';
-    await loadShares();
-  } catch (cause) {
-    dialogError.value = await message(cause, '共享失败，请检查资源版本和管理权限。');
-  } finally {
-    shareBusy.value = false;
-  }
+async function openResourceShare(id:string) {
+  try {shareResource.value=await api('/ai/resources/'+id);sharesVisible.value=true;}
+  catch(cause){ElMessage.error(await message(cause,'共享资源加载失败，请重试。'));}
 }
 
 function shareResources(connection: ExternalConnection) {
-  if (!connection.assistantId) return [{ id: connection.resourceId as string, label: '外部连接' }];
+  if (!connection.assistantId) return [{ id: connection.resourceId as string, label: connection.name }];
   const storedResourceIds = connection.expertResourceIds?.length
     ? connection.expertResourceIds
     : (connection.expertConnectionIds || [])
@@ -890,55 +742,9 @@ function shareResources(connection: ExternalConnection) {
     ...new Set([connection.resourceId, ...storedResourceIds].filter((id): id is string => Boolean(id)))
   ];
   return [
-    ...connectionResourceIds.map(id => ({ id, label: id === connection.resourceId ? '主外部连接' : '绑定外部连接' })),
+    ...connectionResourceIds.map(id => ({ id, label: rows.value.find(row=>row.resourceId===id)?.name || (id===connection.resourceId?connection.name:'绑定外部连接') })),
     { id: connection.assistantId, label: '查询专家' }
   ];
-}
-
-async function revokeShare(id: string, resourceId?: string) {
-  if (!resourceId) return;
-  try {
-    await ElMessageBox.confirm('撤回后该对象将不能继续使用此项资源；其它有效授权不受影响。', '撤回共享', {
-      type: 'warning'
-    });
-  } catch {
-    return;
-  }
-  shareBusy.value = true;
-  try {
-    await api(`/ai/resources/${resourceId}/shares/${id}`, undefined, 'delete');
-    ElMessage.success('共享已撤回');
-    await loadShares();
-  } catch (cause) {
-    dialogError.value = await message(cause, '撤回共享失败。');
-  } finally {
-    shareBusy.value = false;
-  }
-}
-
-function actionsText(actions?: string[] | string) {
-  const value = parseActions(actions);
-  return (
-    value
-      .map(action => ({ VIEW: '查看', USE: '使用' })[action] || action)
-      .filter(Boolean)
-      .join('、') || '—'
-  );
-}
-
-function parseActions(actions: unknown): string[] {
-  if (Array.isArray(actions)) return actions.map(String);
-  const text = String(actions || '');
-  try {
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) return parsed.map(String);
-  } catch {
-    // Older responses may serialize the SQL array as comma-separated text.
-  }
-  return text
-    .split(',')
-    .map(item => item.replace(/[{}"\s]/g, ''))
-    .filter(Boolean);
 }
 
 async function openCalls(row: ExternalConnection) {
@@ -1017,6 +823,10 @@ onMounted(load);
   font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .method-list {
   display: grid;
@@ -1044,6 +854,10 @@ onMounted(load);
   color: var(--el-text-color-secondary);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .share-controls {
   display: grid;

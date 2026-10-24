@@ -19,6 +19,8 @@
           <el-form-item label="客户端秘钥" prop="clientSecret">
             <el-input
               v-model="queryParams.clientSecret"
+              type="password"
+              show-password
               placeholder="请输入客户端秘钥"
               clearable
               @keyup.enter="handleQuery"
@@ -84,9 +86,9 @@
       >
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column v-if="false" label="id" align="center" prop="id" />
-        <el-table-column label="客户端id" align="center" prop="clientId" />
-        <el-table-column label="客户端key" align="center" prop="clientKey" />
-        <el-table-column label="客户端秘钥" align="center" prop="clientSecret" />
+        <el-table-column label="客户端id" align="center" prop="clientId" min-width="190" show-overflow-tooltip />
+        <el-table-column label="客户端key" align="center" prop="clientKey" min-width="130" show-overflow-tooltip />
+        <el-table-column label="客户端密钥" align="center" width="100"><template #default="{row}">{{row.clientSecret?'已配置':'未配置'}}</template></el-table-column>
         <el-table-column label="授权类型" align="center">
           <template #default="scope">
             <dict-tag class="grant-type-tag" :options="sys_grant_type" :value="scope.row.grantTypeList" />
@@ -183,7 +185,7 @@
           <el-input v-model="form.clientKey" :disabled="form.id != null" placeholder="请输入客户端key" />
         </el-form-item>
         <el-form-item label="客户端秘钥" prop="clientSecret">
-          <el-input v-model="form.clientSecret" :disabled="form.id != null" placeholder="请输入客户端秘钥" />
+          <el-input v-model="form.clientSecret" type="password" show-password :disabled="form.id != null" placeholder="请输入客户端秘钥" />
         </el-form-item>
         <el-form-item label="授权类型" prop="grantTypeList">
           <el-select v-model="form.grantTypeList" multiple placeholder="请输入授权类型">

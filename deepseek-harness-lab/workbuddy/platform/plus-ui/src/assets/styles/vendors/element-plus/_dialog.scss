@@ -107,3 +107,20 @@
   justify-content: flex-end;
   gap: 12px;
 }
+
+// Keep modal actions visible while long forms scroll within their own body.
+.el-overlay .el-overlay-dialog .el-dialog {
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100dvh - 40px);
+
+  .el-dialog__header,
+  .el-dialog__footer { flex-shrink: 0; }
+  .el-dialog__body { min-height: 0; overflow: auto; max-height: none !important; }
+}
+@media (max-width: 760px) {
+  .el-overlay .el-overlay-dialog { padding: 12px; }
+  .el-overlay .el-overlay-dialog .el-dialog { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+  .el-dialog__footer { flex-wrap: wrap; }
+}

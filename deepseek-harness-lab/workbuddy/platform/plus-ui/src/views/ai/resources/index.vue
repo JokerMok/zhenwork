@@ -17,11 +17,11 @@
       <el-table-column v-if="scope === 'enterprise'" prop="name" label="名称" />
       <el-table-column v-else prop="id" label="资源 ID" />
       <el-table-column label="类型"><template #default="{row}">{{ types[row.resourceType] }}</template></el-table-column>
-      <el-table-column prop="ownerType" label="所有者类型" />
+      <el-table-column label="归属" min-width="100"><template #default="{row}">{{workspaceLabel(row.ownerType)}}</template></el-table-column>
       <el-table-column v-if="scope === 'enterprise'" label="版本">
         <template #default="{row}">草稿 v{{ row.version }}<span v-if="row.publishedVersion"> · 已激活 v{{ row.publishedVersion }}</span></template>
       </el-table-column>
-      <el-table-column v-if="scope === 'enterprise'" prop="visibility" label="范围" />
+      <el-table-column v-if="scope === 'enterprise'" label="范围" min-width="100"><template #default="{row}">{{workspaceLabel(row.visibility)}}</template></el-table-column>
       <el-table-column label="状态"><template #default="{row}">{{ row.securityDisabled ? '安全停用' : row.enabled ? '已启用' : '已停用' }}</template></el-table-column>
       <el-table-column label="操作" min-width="430">
         <template #default="{row}">
@@ -42,14 +42,14 @@
     </el-table>
     <div class="mt-4"><el-button :disabled="page===1||loading" @click="page--;load()">上一页</el-button>第 {{ page }} 页<el-button :disabled="rows.length<30||loading" @click="page++;load()">下一页</el-button></div>
 
-    <el-dialog v-model="dialog" :title="(editing?'编辑':'新建')+'企业'+types[type]" width="860px">
+    <el-dialog v-model="dialog" :title="(editing?'编辑':'新建')+'企业'+types[type]" width="860px" :before-close="closeEditor" :close-on-click-modal="false">
       <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb-3" />
       <el-form label-position="top">
-        <el-form-item label="名称"><el-input v-model="form.name" maxlength="100" /></el-form-item>
+        <el-form-item label="名称" required><el-input v-model="form.name" maxlength="100" /></el-form-item>
         <el-form-item label="说明"><el-input v-model="form.description" maxlength="500" /></el-form-item>
         <template v-if="type === 'ASSISTANT'">
           <el-form-item label="头像符号"><el-input v-model="form.avatar" maxlength="12" /></el-form-item>
-          <el-form-item label="授权模型"><el-select v-model="form.modelId"><el-option v-for="m in models" :key="m.id" :label="m.name" :value="m.id" /></el-select></el-form-item>
+          <el-form-item label="授权模型" required><el-select v-model="form.modelId"><el-option v-for="m in models" :key="m.id" :label="m.name" :value="m.id" /></el-select></el-form-item>
           <el-form-item label="助手指令"><el-input v-model="form.instruction" type="textarea" :rows="5" maxlength="4000" /></el-form-item>
           <el-form-item v-for="kind in dependencyKinds" :key="kind.type" :label="kind.label">
             <el-select v-model="form[kind.key]" multiple :multiple-limit="kind.type==='TOOL'?16:8"><el-option v-for="r in choices[kind.type]||[]" :key="r.id" :label="r.name" :value="r.id" /></el-select>
@@ -103,7 +103,7 @@
         </template>
         <p v-else>支持 Word、Excel、PPT、PDF、扫描件、图片和 UTF-8 文本。保存后进入文档管理上传、解析和索引。</p>
       </el-form>
-      <template #footer><el-button @click="dialog=false">取消</el-button><el-button type="primary" :loading="busy" @click="save">保存企业资源</el-button></template>
+      <template #footer><el-button @click="closeEditor()">取消</el-button><el-button type="primary" :loading="busy" @click="save">保存企业资源</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="versionsVisible" title="资源版本" width="820px">
@@ -111,7 +111,7 @@
       <p v-if="selected">{{ selected.name }} · 最新 v{{ selected.version }} · 当前激活 {{ selected.publishedVersion ? 'v'+selected.publishedVersion : '无' }}</p>
       <el-table :data="versions">
         <el-table-column prop="version" label="版本" width="90" />
-        <el-table-column prop="review_state" label="审核状态" />
+        <el-table-column label="审核状态"><template #default="{row}">{{workspaceLabel(row.review_state)}}</template></el-table-column>
         <el-table-column prop="created_at" label="创建时间" />
         <el-table-column label="操作" width="220"><template #default="{row}"><el-button link @click="previewVersion(row.version)">查看</el-button><el-button v-if="selected?.resourceType==='SKILL'" link :disabled="selected.visibility==='ENTERPRISE_PUBLIC'||selected.publishedVersion===row.version" @click="activate(selected,row.version)">回退/激活</el-button></template></el-table-column>
       </el-table>
@@ -133,16 +133,18 @@
       <el-switch v-model="connectionEnabled" active-text="启用连接" />
       <div class="mt-4"><el-button :loading="busy" @click="saveConnection">保存并绑定当前激活版本</el-button><el-button :disabled="!connection?.enabled||busy" @click="testConnection">测试与发现工具</el-button></div>
       <el-table :data="connection?.tools||[]"><el-table-column prop="name" label="工具名称" /><el-table-column prop="description" label="说明" /><el-table-column label="影响"><template #default="{row}">{{ effectLabels[row.effect]||row.effect||'必须确认' }}</template></el-table-column></el-table>
-      <el-table v-if="connectionTests.length" :data="connectionTests" class="mt-3"><el-table-column prop="status" label="测试结果" /><el-table-column prop="latency_ms" label="延迟(ms)" /><el-table-column prop="error_code" label="错误" /><el-table-column prop="created_at" label="时间" /></el-table>
+      <el-table v-if="connectionTests.length" :data="connectionTests" class="mt-3"><el-table-column label="测试结果"><template #default="{row}">{{workspaceLabel(row.status)}}</template></el-table-column><el-table-column prop="latency_ms" label="延迟(ms)" /><el-table-column prop="error_code" label="错误" /><el-table-column prop="created_at" label="时间" /></el-table>
     </el-dialog>
 
-    <el-dialog v-model="sharesVisible" title="企业资源共享" width="750px">
-      <el-alert v-if="error" :title="error" type="error" :closable="false" /><p>按引用授权，依赖和连接凭据不自动继承。撤回一条分享后，其它有效授权仍然适用。</p><el-select v-model="targetType" @change="targets=[];targetId=''" aria-label="分享对象类型"><el-option label="员工" value="USER" /><el-option label="部门" value="DEPARTMENT" /><el-option label="角色" value="ROLE" /></el-select><el-input v-model="targetQuery" placeholder="至少输入两个字符" /><el-button :disabled="targetQuery.length<2||busy" @click="findTargets">查找对象</el-button><el-select v-model="targetId"><el-option v-for="t in targets" :key="t.id" :value="t.id" :label="t.name+' · '+t.id" /></el-select><el-checkbox v-model="shareUse">允许使用</el-checkbox><el-checkbox v-model="shareEdit">允许编辑草稿</el-checkbox><el-button :disabled="!targetId||busy" @click="grantShare">确认分享</el-button><el-table :data="shareRows"><el-table-column prop="name" label="对象" /><el-table-column prop="actions" label="动作" /><el-table-column prop="status" label="状态" /><el-table-column label="操作"><template #default="{row}"><el-button v-if="row.status==='ACTIVE'" @click="revokeShare(row.id)">撤回分享</el-button></template></el-table-column></el-table>
-    </el-dialog>
+    <ResourceShareDialog v-model="sharesVisible" :resource="selected" />
+
   </div>
 </template>
 
 <script setup lang="ts">
+import {useUnsavedDialog} from '@/hooks/dialog/useUnsavedDialog';
+import {workspaceLabel} from '@/utils/workspacePresentation';
+import ResourceShareDialog from '@/components/ResourceShareDialog/index.vue';
 import request, { extractErrorMessage } from '@/utils/request';
 
 type SkillFile={path:string;content:string;encoding:'utf8'|'base64';executable:boolean;sha256?:string};
@@ -157,7 +159,8 @@ const type=ref('ASSISTANT'),scope=ref('enterprise'),rows=ref<any[]>([]),page=ref
 const documentsVisible=ref(false),documents=ref<any[]>([]),documentJobs=ref<any[]>([]),source=ref(''),documentPage=ref(1);
 const connectionVisible=ref(false),connection=ref<any>(),connectionTests=ref<any[]>([]),secret=ref(''),clearSecret=ref(false),connectionEnabled=ref(true);
 const versionsVisible=ref(false),versions=ref<any[]>([]),versionPreview=ref('');
-const sharesVisible=ref(false),shareRows=ref<any[]>([]),targetType=ref('USER'),targetQuery=ref(''),targets=ref<any[]>([]),targetId=ref(''),shareUse=ref(true),shareEdit=ref(false),ignoredFiles=ref<string[]>([]);
+const sharesVisible=ref(false),ignoredFiles=ref<string[]>([]);
+const closeEditor=useUnsavedDialog(dialog,()=>form.value,busy);
 const skillDependencyChoices=computed(()=> (choices.value.SKILL||[]).filter((r:any)=>r.id!==editing.value?.id));
 const knownDependencyIds=computed(()=>new Set([...skillDependencyChoices.value,...(choices.value.TOOL||[])].map((r:any)=>r.id)));
 const missingSkillDependencies=computed(()=>[...(form.value.skillDependencies||[]),...(form.value.skillRequiredTools||[])].filter((id:string)=>!knownDependencyIds.value.has(id)));
@@ -167,13 +170,14 @@ const packageDependencyNames=computed(()=>packageDependencyFiles.value.map(file=
 
 async function api(url:string,data?:unknown,method=data?'post':'get'){return(await request({url,method,data,headers:data instanceof FormData?{repeatSubmit:false}:{}})).data;}
 async function fail(e:unknown,fallback:string){error.value=(await extractErrorMessage(e))||fallback;}
-async function load(){loading.value=true;error.value='';try{rows.value=await api(scope.value==='govern'?'/ai/govern/resources?page='+page.value:'/ai/resources?scope=enterprise&type='+type.value+'&page='+page.value);}catch(e){await fail(e,'资源加载失败，请刷新重试。');}finally{loading.value=false;}}
+let listGeneration=0;
+async function load(){const g=++listGeneration;loading.value=true;error.value='';try{const result=await api(scope.value==='govern'?'/ai/govern/resources?page='+page.value:'/ai/resources?scope=enterprise&type='+type.value+'&page='+page.value);if(g===listGeneration)rows.value=result;}catch(e){if(g===listGeneration)await fail(e,'资源加载失败，请刷新重试。');}finally{if(g===listGeneration)loading.value=false;}}
 async function act(fn:()=>Promise<unknown>,reload=true){busy.value=true;error.value='';try{await fn();if(reload)await load();return true;}catch(e){await fail(e,'操作未完成，请核对资源版本、状态及权限。');return false;}finally{busy.value=false;}}
 async function loadChoices(kinds:string[]){for(const kind of kinds){const groups=await Promise.all(['enterprise','public'].map(s=>api('/ai/resources?scope='+s+'&type='+kind+'&page=1')));choices.value[kind]=[...new Map(groups.flat().filter((r:any)=>r.actions?.includes('USE')).map((r:any)=>[r.id,r])).values()];}}
 function defaultSkill(){return '---\nname: enterprise-method\ndescription: 企业工作方法\nversion: 1.0.0\nrequiredTools: []\ndependencies: []\n---\n请清晰区分结论和依据。';}
 async function edit(id?:string){await act(async()=>{editing.value=id?await api('/ai/resources/'+id):null;const c=editing.value?.config||{};const effects=c.toolEffects||{};form.value={name:editing.value?.name||'',description:editing.value?.description||'',avatar:c.avatar||'✦',instruction:c.instruction||'根据已授权资料和工具完成任务。',modelId:c.modelId||'',skillIds:c.skillIds||[],mcpIds:c.mcpIds||[],toolIds:c.toolIds||[],knowledgeIds:c.knowledgeIds||[],source:c.source||defaultSkill(),files:(c.files||[]).map((f:any)=>({...f,encoding:f.encoding||'utf8',executable:f.executable===true})),skillDependencies:c.manifest?.dependencies||[],skillRequiredTools:c.manifest?.requiredTools||[],toolType:c.toolType||'CALCULATOR',precision:c.precision??4,managedProfile:c.managedProfile||'',endpoint:c.endpoint||'',authType:c.authType||'BEARER',timeoutSeconds:c.timeoutSeconds||30,mcpTools:(c.allowedTools||['search']).map((name:string)=>({name,effect:effects[name]||(c.managedProfile==='acceptance-catalog'&&name==='search'?'READ':'APPROVAL')}))};ignoredFiles.value=[];if(type.value==='ASSISTANT'){models.value=await api('/ai/models/available');await loadChoices(dependencyKinds.map(k=>k.type));}if(type.value==='SKILL')await loadChoices(['SKILL','TOOL']);if(type.value==='TOOL')toolTypes.value=await api('/ai/tool-types');dialog.value=true;},false);}
 function setManifestList(sourceText:string,key:string,ids:string[]){const lines=sourceText.replace(/\r\n/g,'\n').split('\n');if(lines[0]!=='---')throw new Error('SkillFrontmatterRequired');const end=lines.indexOf('---',1);if(end<0)throw new Error('SkillFrontmatterRequired');const next=`${key}: [${ids.join(', ')}]`;const index=lines.slice(1,end).findIndex(line=>new RegExp(`^${key}\\s*:`).test(line));if(index>=0)lines[index+1]=next;else lines.splice(end,0,next);return lines.join('\n');}
-async function save(){if(!form.value.name?.trim()){error.value='请填写名称。';return;}if(type.value==='SKILL'&&missingSkillDependencies.value.length){error.value='请先解决无权使用或未激活的依赖。';return;}await act(async()=>{const f=form.value;let config:any;if(type.value==='ASSISTANT')config={avatar:f.avatar,instruction:f.instruction,modelId:f.modelId,skillIds:f.skillIds,mcpIds:f.mcpIds,toolIds:f.toolIds,knowledgeIds:f.knowledgeIds};else if(type.value==='SKILL'){let skillSource=setManifestList(f.source,'dependencies',f.skillDependencies);skillSource=setManifestList(skillSource,'requiredTools',f.skillRequiredTools);config={source:skillSource,files:f.files.map(({sha256,...file}:SkillFile)=>file)};}else if(type.value==='TOOL')config={toolType:f.toolType,precision:f.precision};else if(type.value==='KNOWLEDGE')config={format:'TEXT_V1'};else{const tools=f.mcpTools.map((item:any)=>({name:item.name.trim(),effect:item.effect}));if(!tools.length||tools.some((item:any)=>!/^[a-zA-Z0-9_-]{1,64}$/.test(item.name))||new Set(tools.map((item:any)=>item.name)).size!==tools.length)throw new Error('请填写不重复的合法 MCP 工具名称。');config={transport:'STREAMABLE_HTTP',...(f.managedProfile?{managedProfile:f.managedProfile}:{endpoint:f.endpoint}),authType:f.authType,allowedTools:tools.map((item:any)=>item.name),toolEffects:Object.fromEntries(tools.map((item:any)=>[item.name,item.effect])),timeoutSeconds:f.timeoutSeconds};}await api('/ai/resources'+(editing.value?'/'+editing.value.id:''),{name:f.name.trim(),description:f.description.trim(),config,...(editing.value?{expectedVersion:editing.value.version}:{resourceType:type.value,enterprise:true,idempotencyKey:crypto.randomUUID()})},editing.value?'put':'post');dialog.value=false;});}
+async function save(){if(busy.value)return;if(!form.value.name?.trim()){error.value='请填写名称。';return;}if(type.value==='SKILL'&&missingSkillDependencies.value.length){error.value='请先解决无权使用或未激活的依赖。';return;}await act(async()=>{const f=form.value;let config:any;if(type.value==='ASSISTANT')config={avatar:f.avatar,instruction:f.instruction,modelId:f.modelId,skillIds:f.skillIds,mcpIds:f.mcpIds,toolIds:f.toolIds,knowledgeIds:f.knowledgeIds};else if(type.value==='SKILL'){let skillSource=setManifestList(f.source,'dependencies',f.skillDependencies);skillSource=setManifestList(skillSource,'requiredTools',f.skillRequiredTools);config={source:skillSource,files:f.files.map(({sha256,...file}:SkillFile)=>file)};}else if(type.value==='TOOL')config={toolType:f.toolType,precision:f.precision};else if(type.value==='KNOWLEDGE')config={format:'TEXT_V1'};else{const tools=f.mcpTools.map((item:any)=>({name:item.name.trim(),effect:item.effect}));if(!tools.length||tools.some((item:any)=>!/^[a-zA-Z0-9_-]{1,64}$/.test(item.name))||new Set(tools.map((item:any)=>item.name)).size!==tools.length)throw new Error('请填写不重复的合法 MCP 工具名称。');config={transport:'STREAMABLE_HTTP',...(f.managedProfile?{managedProfile:f.managedProfile}:{endpoint:f.endpoint}),authType:f.authType,allowedTools:tools.map((item:any)=>item.name),toolEffects:Object.fromEntries(tools.map((item:any)=>[item.name,item.effect])),timeoutSeconds:f.timeoutSeconds};}await api('/ai/resources'+(editing.value?'/'+editing.value.id:''),{name:f.name.trim(),description:f.description.trim(),config,...(editing.value?{expectedVersion:editing.value.version}:{resourceType:type.value,enterprise:true,idempotencyKey:crypto.randomUUID()})},editing.value?'put':'post');dialog.value=false;});}
 function validPackagePath(path:string){if(!path||path.length>400||path.startsWith('/')||path.endsWith('/')||path.includes('\\')||[...path].some(character=>character.charCodeAt(0)<32||character.charCodeAt(0)===127))return false;const parts=path.split('/');if(parts.some(p=>!p||p==='.'||p==='..'||/[<>:"|?*]/.test(p)||p.endsWith('.')||p.endsWith(' ')))return false;return parts.length===1?allowedRootFiles.has(path):allowedRoots.has(parts[0]);}
 function ignoredPackagePath(path:string){return path.split('/').some(part=>ignoredNames.has(part)||part==='.git'||part==='node_modules'||part==='__pycache__'||part.endsWith('.pyc'));}
 async function utf8(file:File){const bytes=await file.arrayBuffer();return new TextDecoder('utf-8',{fatal:true}).decode(bytes);}
@@ -199,10 +203,7 @@ async function openConnection(row:any){selected.value=row;secret.value='';clearS
 function clearSecretChanged(value:unknown){if(value){secret.value='';connectionEnabled.value=false;}}
 async function saveConnection(){await act(async()=>{connection.value=await api('/ai/mcp/connections'+(connection.value?'/'+connection.value.id:''),{resourceId:selected.value.id,scope:'ENTERPRISE',templateVersion:selected.value.publishedVersion,secret:secret.value||null,clearSecret:clearSecret.value,enabled:connectionEnabled.value,...(connection.value?{expectedVersion:connection.value.version}:{})},connection.value?'put':'post');secret.value='';clearSecret.value=false;connectionTests.value=await api('/ai/mcp/connections/'+connection.value.id+'/tests');},false);}
 async function testConnection(){await act(async()=>{await api('/ai/mcp/connections/'+connection.value.id+'/tests',{});const list=await api('/ai/mcp/connections?resourceId='+selected.value.id);connection.value=list.find((c:any)=>c.scope==='ENTERPRISE');connectionTests.value=await api('/ai/mcp/connections/'+connection.value.id+'/tests');if(connection.value?.status==='READY')ElMessage.success('企业 MCP 已验证，可供授权员工使用。');else throw new Error(connection.value?.last_error||'连接测试失败');},false);}
-async function openShares(row:any){selected.value=row;targetId.value='';targets.value=[];await act(async()=>{shareRows.value=await api('/ai/resources/'+row.id+'/shares');sharesVisible.value=true;},false);}
-async function findTargets(){await act(async()=>{targets.value=await api('/ai/share-targets?type='+targetType.value+'&query='+encodeURIComponent(targetQuery.value));targetId.value='';},false);}
-async function grantShare(){await act(async()=>{await api('/ai/resources/'+selected.value.id+'/shares',{subjectType:targetType.value,subjectId:targetId.value,actions:['VIEW',...(shareUse.value?['USE']:[]),...(shareEdit.value?['EDIT']:[])]});shareRows.value=await api('/ai/resources/'+selected.value.id+'/shares');},false);}
-async function revokeShare(id:string){try{await ElMessageBox.confirm('撤回当前分享会停止相关任务；其它有效授权仍适用。','撤回分享');}catch{return;}await act(async()=>{await api('/ai/resources/'+selected.value.id+'/shares/'+id,undefined,'delete');shareRows.value=await api('/ai/resources/'+selected.value.id+'/shares');},false);}
+function openShares(row:any){selected.value=row;sharesVisible.value=true;}
 onMounted(load);
 </script>
 
