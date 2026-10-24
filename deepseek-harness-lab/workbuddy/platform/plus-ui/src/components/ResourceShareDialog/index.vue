@@ -127,6 +127,7 @@
         <template #default="{ row }">
           {{ row.name || '对象已删除' }}
           <span v-if="row.username">（{{ row.username }}）</span>
+          <span v-if="row.roleKey"> · {{row.roleKey}}</span>
           <small v-if="row.department" class="object-context">{{ row.department }}</small>
         </template>
       </el-table-column>
@@ -194,6 +195,7 @@ type Share = {
   status: string;
   username?: string;
   department?: string;
+  roleKey?: string;
 };
 type Resource = { id: string; name: string; resourceType: string; publishedVersion?: number; enabled?: boolean };
 const props = defineProps<{ modelValue: boolean; resource?: Resource }>(),
