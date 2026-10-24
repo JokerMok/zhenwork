@@ -59,6 +59,8 @@
         />
         <el-select
           v-else
+          ref="targetSelect"
+          automatic-dropdown
           v-model="selectedIds"
           multiple
           filterable
@@ -85,7 +87,8 @@
         <el-button
           v-if="searchError"
           link
-          @click="subjectType === 'DEPARTMENT' ? loadDepartments() : searchTargets(lastQuery)"
+          @mousedown.prevent
+          @click="subjectType === 'DEPARTMENT' ? loadDepartments() : retryTargets()"
         >
           重试搜索
         </el-button>
@@ -127,7 +130,7 @@
         <template #default="{ row }">
           {{ row.name || '对象已删除' }}
           <span v-if="row.username">（{{ row.username }}）</span>
-          <span v-if="row.roleKey"> · {{row.roleKey}}</span>
+          <span v-if="row.roleKey">· {{ row.roleKey }}</span>
           <small v-if="row.department" class="object-context">{{ row.department }}</small>
         </template>
       </el-table-column>
@@ -173,7 +176,7 @@
 </template>
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import request, { extractErrorMessage } from '@/utils/request';
 type Target = {
@@ -210,6 +213,8 @@ const types: Record<string, string> = {
   },
   subjectLabels: Record<string, string> = { USER: '员工', ROLE: '角色', DEPARTMENT: '部门' },
   permissionLabels: Record<string, string> = { VIEW: '查看', USE: '使用', EDIT: '编辑草稿' };
+const targetSelect = ref<{ focus: () => void }>();
+const failedQuery = ref('');
 const shares = ref<Share[]>([]),
   subjectType = ref('DEPARTMENT'),
   selectedIds = ref<string[]>([]),
@@ -292,6 +297,8 @@ function resetSearch() {
   searching.value = false;
   searchError.value = '';
   lastQuery.value = '';
+  failedQuery.value = '';
+  searchHint.value = '输入至少2个字符搜索';
   options.value = [];
   known.value = {};
   selectedIds.value = [];
@@ -317,7 +324,17 @@ function changeType() {
   resetSearch();
   if (subjectType.value === 'DEPARTMENT') void loadDepartments();
 }
+async function retryTargets() {
+  const query = failedQuery.value || lastQuery.value;
+  targetSelect.value?.focus();
+  await nextTick();
+  searchTargets(query);
+}
 function searchTargets(query: string) {
+  if (query.trim().length < 2 && failedQuery.value) {
+    searching.value = false;
+    return;
+  }
   clearTimeout(timer);
   controller?.abort();
   const g = ++generation;
@@ -329,12 +346,14 @@ function searchTargets(query: string) {
     searchHint.value = '输入至少2个字符搜索';
     return;
   }
+  failedQuery.value = '';
+  const requestedQuery = lastQuery.value;
   searching.value = true;
   timer = setTimeout(async () => {
     const current = (controller = new AbortController());
     try {
       const list = await api(
-        '/ai/share-targets?type=' + subjectType.value + '&query=' + encodeURIComponent(lastQuery.value),
+        '/ai/share-targets?type=' + subjectType.value + '&query=' + encodeURIComponent(requestedQuery),
         'get',
         undefined,
         current.signal
@@ -348,8 +367,10 @@ function searchTargets(query: string) {
       ];
       searchHint.value = list.length ? '' : '没有匹配的对象，请更换关键词';
     } catch (e) {
-      if (g === generation && !current.signal.aborted)
-        searchError.value = (await extractErrorMessage(e)) || '搜索失败，请重试';
+      if (g === generation && !current.signal.aborted) {
+        failedQuery.value = requestedQuery;
+        searchError.value = '搜索“' + requestedQuery + '”失败：' + ((await extractErrorMessage(e)) || '请重试');
+      }
     } finally {
       if (g === generation) searching.value = false;
     }
