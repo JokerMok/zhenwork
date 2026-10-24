@@ -3,6 +3,7 @@ package org.dromara.ai.workspace;
 import org.dromara.common.json.utils.JsonUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Tag;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -17,7 +18,7 @@ class WorkspaceShareSupportTest {
     @BeforeAll
     static void configureJsonMapper() {
         var context=new org.springframework.context.support.GenericApplicationContext();
-        context.registerBean(tools.jackson.databind.json.JsonMapper.class,()->tools.jackson.databind.json.JsonMapper.builder().build());
+        context.registerBean(JsonMapper.class,()->JsonMapper.builder().build());
         context.refresh();
         new cn.hutool.extra.spring.SpringUtil().postProcessBeanFactory(context.getBeanFactory());
     }
