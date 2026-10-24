@@ -8,6 +8,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { requestEnterpriseBrand } from './enterpriseBrand';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 
 /**
  * Single owner of `document.title`.
@@ -25,7 +26,7 @@ export function titleForPath(pathname: string, t: (key: string) => string, brand
 const DocumentTitle: React.FC = () => {
   const { pathname } = useLocation();
   const { t, i18n } = useTranslation();
-  const [brandName, setBrandName] = useState('AionUi');
+  const [brandName, setBrandName] = useState(() => isEnterpriseWeb() ? document.title.trim() || 'ZhenWork' : 'AionUi');
 
   useEffect(() => {
     let active = true;
