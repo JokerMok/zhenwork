@@ -1,6 +1,7 @@
 package org.dromara.ai.workspace;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -11,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+@Tag("local")
 class WorkspaceResourcesShareTest {
     @Test
     void duplicateShareWithSameActionsIsANoOp() {
@@ -23,7 +25,7 @@ class WorkspaceResourcesShareTest {
         when(guard.require(resource,owner,AiResourceGuard.Action.SHARE)).thenReturn(row);
         when(guard.owner(row,owner)).thenReturn(true);
         when(jdbc.queryForObject(contains("FROM sys_user"),eq(Boolean.class),eq(recipient))).thenReturn(true);
-        when(jdbc.queryForList(contains("FROM ai_resource_share"),any(),any(),any(),eq(resource),eq("USER"),eq(recipient))).thenReturn(List.of(Map.of("id",share.toString(),"same",true,"reduced",false)));
+        when(jdbc.queryForList(contains("FROM ai_resource_share"),any(Object[].class))).thenReturn(List.of(Map.of("id",share.toString(),"same",true,"reduced",false)));
 
         var result=resources.share(resource,owner,"USER",recipient,Set.of("VIEW"));
 

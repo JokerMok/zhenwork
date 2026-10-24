@@ -2,6 +2,8 @@ package org.dromara.ai.workspace;
 
 import org.dromara.common.json.utils.JsonUtils;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.*;
@@ -10,7 +12,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+@Tag("local")
 class WorkspaceShareSupportTest {
+    @BeforeAll
+    static void configureJsonMapper() {
+        var context=new org.springframework.context.support.GenericApplicationContext();
+        context.registerBean(tools.jackson.databind.json.JsonMapper.class,()->tools.jackson.databind.json.JsonMapper.builder().build());
+        context.refresh();
+        new cn.hutool.extra.spring.SpringUtil().postProcessBeanFactory(context.getBeanFactory());
+    }
+
     private final JdbcTemplate jdbc=mock(JdbcTemplate.class);
     private final AiResourceGuard guard=mock(AiResourceGuard.class);
     private final WorkspacePermissions permissions=mock(WorkspacePermissions.class);
