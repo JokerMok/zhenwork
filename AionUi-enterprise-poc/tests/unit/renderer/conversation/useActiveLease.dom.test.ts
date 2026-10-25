@@ -97,3 +97,14 @@ describe('useActiveLease', () => {
     expect(conversationActiveLease).toHaveBeenCalledTimes(2);
   });
 });
+
+// Enterprise Core idleness is guarded by running work, not by a reader's browser focus.
+it('does not renew an enterprise worker for visible or hidden reading tabs', async () => {
+  vi.clearAllMocks();
+  (window as Window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__ = true;
+  try {
+    const hook = renderHook(() => useActiveLease({ type: 'conversation', id: 'conv-read-only' }));
+    expect(conversationActiveLease).not.toHaveBeenCalled();
+    hook.unmount();
+  } finally { delete (window as Window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__; }
+});

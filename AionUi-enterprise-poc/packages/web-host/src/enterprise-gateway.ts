@@ -157,6 +157,19 @@ const MAX_BODY = 50 * 1024 * 1024;
 const LOGIN_BODY = 4096;
 const MAX_PROVIDER_RESPONSE = 2 * 1024 * 1024;
 
+// These POST endpoints inspect or release runtime state; they are not execution intent.
+function passiveWorkerRequest(method: string, url: string): boolean {
+  if (['GET', 'HEAD'].includes(method)) return true;
+  const route = url.split('?')[0];
+  return method === 'POST' && (
+    /^\/api\/fs\/(dir|list|read|metadata|content|content\/metadata|image-base64)$/.test(route) ||
+    route === '/api/shell/check-tool-installed' ||
+    /^\/api\/conversations\/[^/]+\/runtime\/ensure$/.test(route) ||
+    /^\/api\/(word|excel|ppt)-preview\/stop$/.test(route) ||
+    /^\/api\/extensions\/(i18n|permissions|risk-level)$/.test(route)
+  );
+}
+
 function sameSecret(actual: string | undefined, expected: string): boolean {
   if (!actual) return false;
   const actualBytes = Buffer.from(actual);
@@ -745,7 +758,7 @@ export async function startEnterpriseGateway(
     if (sessions.get(id) !== session) return null;
     return { id, session };
   };
-  const getCore = async (actor: EnterpriseActor, allowBackground = false, activity = true): Promise<EnterpriseCore> => {
+  const getCore = async (actor: EnterpriseActor, allowBackground = false, activity = true, source = 'user_operation'): Promise<EnterpriseCore> => {
     const key = actorKey(actor);
     await stopping.get(key);
     if (
@@ -758,6 +771,8 @@ export async function startEnterpriseGateway(
     let entry = cores.get(key);
     if (!entry) {
       const abort = new AbortController();
+      console.info('[Enterprise Core]', JSON.stringify({ event: 'core_requested', source,
+        actorHash: createHash('sha256').update(key).digest('hex').slice(0, 16), traceId: preparation.traceId }));
       const started = (async () => {
         if (occupied >= maxCores) await reclaimIdleCores(true);
         await acquireStart(abort.signal);
@@ -964,7 +979,7 @@ export async function startEnterpriseGateway(
       if (current?.ready) return reply(res, 200,
         { ready: true, ...preparationPayload(current.preparation) });
       // The actor-scoped Core entry coalesces refreshes, retries and multiple tabs.
-      void getCore(auth.session.actor, false, false).catch((error) => recordPreparationFailure(key, attempt, error));
+      void getCore(auth.session.actor, false, false, 'interactive_prepare').catch((error) => recordPreparationFailure(key, attempt, error));
       res.setHeader('retry-after', '1');
       return reply(res, 202,
         { ready: false, ...preparationPayload(cores.get(key)?.preparation || attempt) });
@@ -1169,13 +1184,20 @@ export async function startEnterpriseGateway(
       return reply(res, 200, { success: true,
         user: { id: auth.session.actor.userId, username: auth.session.username || auth.session.actor.userId } });
     }
+    if (opts.profileRoot && req.url.startsWith('/api/') &&
+        passiveWorkerRequest(req.method || 'GET', req.url) &&
+        !cores.get(actorKey(auth.session.actor))?.ready) {
+      if (req.method === 'POST' && /^\/api\/(word|excel|ppt)-preview\/stop$/.test(req.url.split('?')[0]))
+        return reply(res, 200, { success: true });
+      return reply(res, 409, { error: 'CORE_NOT_RUNNING' });
+    }
     if (req.url.startsWith('/enterprise/conversations') && req.method === 'GET') {
       const query = new URL(req.url, origin);
       if (query.pathname !== '/enterprise/conversations') return reply(res, 404, { error: 'NOT_FOUND' });
       const cursor = query.searchParams.get('cursor');
       if (cursor && !isConversationId(cursor)) return reply(res, 400, { error: 'BAD_REQUEST' });
       try {
-        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
+        const core = await getCore(auth.session.actor, false, !passiveWorkerRequest(req.method || 'GET', req.url || ''));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const route = `/api/conversations?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
         const upstream = await fetch(`${enterpriseCoreBase(core)}${route}`, {
@@ -1267,7 +1289,7 @@ export async function startEnterpriseGateway(
         return reply(res, 400, { error: 'BAD_REQUEST' });
       }
       try {
-        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
+        const core = await getCore(auth.session.actor, false, !passiveWorkerRequest(req.method || 'GET', req.url || ''));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const route = `/api/messages/search?keyword=${encodeURIComponent(keyword)}&page=${page}&page_size=20`;
         const upstream = await fetch(`${enterpriseCoreBase(core)}${route}`, {
@@ -1309,7 +1331,7 @@ export async function startEnterpriseGateway(
       try {
         const input = JSON.parse((await body(req, 65536)).toString('utf8')) as Record<string, unknown>;
         const transport = input.transport as Record<string, unknown> | undefined;
-        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
+        const core = await getCore(auth.session.actor, false, !passiveWorkerRequest(req.method || 'GET', req.url || ''));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const base = enterpriseCoreBase(core);
         const headers = { 'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken };
@@ -1350,7 +1372,7 @@ export async function startEnterpriseGateway(
         if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
           return reply(res, 400, { error: 'BAD_REQUEST' });
         }
-        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
+        const core = await getCore(auth.session.actor, false, !passiveWorkerRequest(req.method || 'GET', req.url || ''));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const base = `${enterpriseCoreBase(core)}/api/settings/client`;
         const current = await fetch(base, { headers: { 'x-aion-enterprise-local-token': core.localToken },
@@ -1386,7 +1408,7 @@ export async function startEnterpriseGateway(
         if (typeof input.dir !== 'string' || !path.isAbsolute(input.dir) || input.dir.length > 4096) {
           return reply(res, 400, { error: 'BAD_REQUEST' });
         }
-        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
+        const core = await getCore(auth.session.actor, false, !passiveWorkerRequest(req.method || 'GET', req.url || ''));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         if (!core.workspaceRoot) return reply(res, 503, { error: 'WORKSPACE_UNAVAILABLE' });
         const [root, directory] = await Promise.all([realpath(core.workspaceRoot), realpath(input.dir)]);
@@ -1417,7 +1439,7 @@ export async function startEnterpriseGateway(
       res.once('close', () => auth.session.responses.delete(res));
       try {
         const requestBody = req.method === 'DELETE' ? undefined : await body(req, 1024 * 1024);
-        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
+        const core = await getCore(auth.session.actor, false, !passiveWorkerRequest(req.method || 'GET', req.url || ''));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const base = enterpriseCoreBase(core);
         const headers = { 'x-aion-enterprise-local-token': core.localToken, 'content-type': 'application/json' };
@@ -1464,7 +1486,8 @@ export async function startEnterpriseGateway(
       try {
         if (opts.profileRoot && req.method === 'GET' && !cores.has(actorKey(auth.session.actor)))
           return reply(res, 409, { error: 'CORE_NOT_RUNNING' });
-        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
+        const core = await getCore(auth.session.actor, false, !passiveWorkerRequest(req.method || 'GET', req.url || ''),
+          req.method === 'POST' && /^\/api\/conversations(?:\/[^/]+\/messages)?$/.test(req.url) ? 'task_request' : 'user_operation');
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const upstream = http.request(
           {
@@ -1677,7 +1700,7 @@ export async function startEnterpriseGateway(
     startBackgroundCore: async (actor) => {
       if (!(await authorizedBackground(actor))) throw new Error('Background Core authorization unavailable');
       if (opts.backgroundDue && !(await opts.backgroundDue(actor))) return;
-      await getCore(actor, true);
+      await getCore(actor, true, true, 'background_due');
     },
     stop: async () => {
       shuttingDown = true;

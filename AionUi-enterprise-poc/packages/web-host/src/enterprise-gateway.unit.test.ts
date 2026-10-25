@@ -1348,6 +1348,9 @@ test('Host browsing and file reads do not start a worker; idle invalidation reta
     ]) {
       expect((await call(route, first)).status).toBe(200);
     }
+    expect((await call('/api/shell/check-tool-installed', first, { tool: 'python3' })).status).toBe(409);
+    expect((await call('/api/conversations/11111111/runtime/ensure', first, {})).status).toBe(409);
+    expect((await call('/api/excel-preview/stop', first, {})).status).toBe(200);
     expect(starts).toBe(0);
     await call('/enterprise/ready', first);
     await vi.waitFor(() => expect(gateway.capacity().cores).toBe(1));

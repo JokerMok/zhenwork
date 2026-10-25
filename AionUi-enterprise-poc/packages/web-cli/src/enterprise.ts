@@ -82,9 +82,15 @@ export async function startEnterpriseWebFromEnvironment() {
   }
   let stopping = false;
   let retrying: Promise<void> | null = null;
+  let lastCapacity = '';
+  let lastCapacityLogAt = 0;
   const retry = setInterval(() => {
     if (stopping || retrying) return;
-    console.info('[Enterprise Web] capacity:', gateway.capacity());
+    const capacity = JSON.stringify(gateway.capacity());
+    if (capacity !== lastCapacity || Date.now() - lastCapacityLogAt >= 600_000) {
+      console.info('[Enterprise Web] capacity:', capacity);
+      lastCapacity = capacity;lastCapacityLogAt = Date.now();
+    }
     retrying = (async () => {
       for (const actor of await runtime.backgroundActors()) {
         if (stopping) return;
