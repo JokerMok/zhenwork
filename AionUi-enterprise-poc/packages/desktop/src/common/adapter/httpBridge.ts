@@ -275,6 +275,9 @@ export async function httpRequest<T>(
     throw new BackendHttpError({ method, path, status: response.status, body: errorBody });
   }
 
+  if (response.headers.get('x-zhenwork-core-ready') === '1' && typeof window !== 'undefined') {
+    (window as Window & { __websocketWakeIfIdle?: () => void }).__websocketWakeIfIdle?.();
+  }
   console.debug(`[httpBridge] ${method} ${path} → ${response.status} OK`);
 
   const contentType = response.headers.get('Content-Type');

@@ -45,7 +45,11 @@ export default defineConfig({
         test: {
           name: 'dom',
           environment: 'jsdom',
-          include: ['tests/unit/**/*.dom.test.ts', 'tests/unit/**/*.dom.test.tsx'],
+          include: [
+            'tests/unit/**/*.dom.test.ts',
+            'tests/unit/**/*.dom.test.tsx',
+            'packages/desktop/src/renderer/components/layout/runtime/*.dom.test.tsx',
+          ],
           setupFiles: ['./tests/vitest.dom.setup.ts'],
         },
       },

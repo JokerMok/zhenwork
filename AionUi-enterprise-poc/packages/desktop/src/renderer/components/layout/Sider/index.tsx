@@ -1,4 +1,6 @@
 import classNames from 'classnames';
+import { Button } from '@arco-design/web-react';
+import { useTranslation } from 'react-i18next';
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePreviewContext } from '@renderer/pages/conversation/Preview/context/PreviewContext';
@@ -28,6 +30,7 @@ interface SiderProps {
 }
 
 const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
+  const { t } = useTranslation();
   const layout = useLayoutContext();
   const isMobile = layout?.isMobile ?? false;
   const location = useLocation();
@@ -43,6 +46,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
   const showLogout =
     typeof window !== 'undefined' && !(window as { electronAPI?: unknown }).electronAPI && status === 'authenticated';
   const showEnterpriseWorkspace = isEnterpriseWeb();
+  const browsing = showEnterpriseWorkspace && ['/', '/workspace'].includes(pathname);
 
   useEffect(() => {
     if (!pathname.startsWith('/settings')) {
@@ -208,8 +212,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
               onNewChat={handleNewChat}
               onToggleBatchMode={() => setIsBatchMode((prev) => !prev)}
             />
-            {/* Search entry — desktop moves this into the titlebar toolbar;
-                mobile keeps it here in the sidebar. */}
+            {/* Scrollable content: pinned → team (slot) → projects → conversations */}
             {isMobile && (
               <SiderSearchEntry
                 isMobile={isMobile}
@@ -228,7 +231,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
                 onClick={handleWorkspaceClick}
               />
             ) : null}
-            {/* Assistant nav entry - fixed above Scheduled */}
+            {/* Scrollable content: pinned → team (slot) → projects → conversations */}
             <SiderAssistantEntry
               isMobile={isMobile}
               isActive={pathname.startsWith('/assistants')}
@@ -236,7 +239,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
               siderTooltipProps={siderTooltipProps}
               onClick={handleAssistantClick}
             />
-            {/* Scheduled tasks nav entry - fixed above scroll */}
+            {/* Scrollable content: pinned → team (slot) → projects → conversations */}
             <SiderScheduledEntry
               isMobile={isMobile}
               isActive={pathname === '/scheduled'}
@@ -244,7 +247,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
               siderTooltipProps={siderTooltipProps}
               onClick={handleScheduledClick}
             />
-            {/* Divider between fixed top nav and scrollable content area */}
+            {/* Scrollable content: pinned → team (slot) → projects → conversations */}
             <div
               className={classNames(
                 'shrink-0 mt-6px mb-2px h-1px bg-[var(--color-border-2)]',
@@ -253,7 +256,12 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
             />
             {/* Scrollable content: pinned → team (slot) → projects → conversations */}
             <div className={classNames('flex-1 min-h-0 overflow-y-auto', siderStyles.scrollArea)}>
-              <Suspense fallback={<div className='min-h-200px' />}>
+              {browsing ? (
+                <Button type='text' long onClick={() => navigate('/workspace?section=tasks')}>
+                  {t('workspace.tabs.tasks')}
+                </Button>
+              ) : (
+                <Suspense fallback={<div className='min-h-200px' />}>
                 <WorkspaceGroupedHistory
                   {...workspaceHistoryProps}
                   afterPinnedContent={
@@ -268,6 +276,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
                   }
                 />
               </Suspense>
+              )}
             </div>
           </div>
         )}

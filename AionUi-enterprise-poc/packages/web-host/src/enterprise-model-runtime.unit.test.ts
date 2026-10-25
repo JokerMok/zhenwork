@@ -286,6 +286,10 @@ test('gateway accepts one deferred update without treating an active task as a c
     const status = await request('/enterprise/resources/status', cookie, undefined, 'GET');
     expect(status.status).toBe(200);
     expect(JSON.parse(status.body)).toEqual({ state: 'pending', reason: 'TASK_ACTIVE' });
+    const dormant = await request('/enterprise/resources/refresh', cookie);
+    expect(JSON.parse(dormant.body)).toMatchObject({ applyOnNextStart: true });
+    await request('/enterprise/ready', cookie, undefined, 'GET');
+    await new Promise((resolve) => setImmediate(resolve));
     const refresh = await request('/enterprise/resources/refresh', cookie);
     expect(refresh.status).toBe(202);
     expect(JSON.parse(refresh.body)).toEqual({ ok: true, state: 'pending', reason: 'TASK_ACTIVE' });

@@ -208,3 +208,28 @@ test('reserved provider collision is not overwritten or removed', async () => {
     /Personal provider conflicts/);
   assert.deepEqual(mutations, []);
 });
+
+test('concurrent identity checks coalesce only in flight and recheck revocation and identity changes', async () => {
+  let calls = 0;
+  let allowed = true;
+  const client = new Rc2Client('https://rc2.example', 'https://workspace.example', async () => {
+    calls += 1;
+    await new Promise((resolve) => setImmediate(resolve));
+    return Response.json(allowed ? { code: 200, data: { userId: '7' } } : { code: 401 }, {
+      status: allowed ? 200 : 401,
+    });
+  });
+  client.cookie = 'first';
+  const identities = await Promise.all([client.me(), client.me(), client.me()]);
+  assert.equal(calls, 1);
+  assert(identities.every((item) => item.userId === '7'));
+  allowed = false;
+  await assert.rejects(client.me(), /revoked/);
+  assert.equal(calls, 2);
+  allowed = true;
+  const inFlight = client.me();
+  client.cookie = 'second';
+  await assert.rejects(inFlight, /revoked/);
+  await client.me();
+  assert.equal(calls, 4);
+});

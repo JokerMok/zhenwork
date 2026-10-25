@@ -12,7 +12,8 @@ import zhLogin from '../../desktop/src/renderer/services/i18n/locales/zh-CN/logi
 import { enterpriseCoreBase, enterpriseCoreHost, enterpriseProxyHost } from './enterprise-core-address.js';
 import { OfficeStore } from './office/office-store.js';
 import { previewOfficeFile } from './office/preview/index.js';
-import { enterpriseProfilePath } from './enterprise-core.js';
+import { enterpriseProfilePath, prepareEnterpriseProfile } from './enterprise-core.js';
+import { readProfile } from './read-model/profile.js';
 import { enterpriseBootstrapShell, enterpriseReadinessPage } from './enterprise-readiness-page.js';
 
 // Only content-addressed, release-owned code/assets may use the browser cache.
@@ -41,7 +42,7 @@ async function serveReleaseAsset(req: IncomingMessage, res: ServerResponse, stat
   let encoding = '';
   for (const candidate of ['br', 'gzip'].sort((a, b) => quality(b) - quality(a))) {
     const compressed = filename + (candidate === 'br' ? '.br' : '.gz');
-    if (quality(candidate) > 0 && await allowed(compressed)) { selected = compressed;encoding = candidate;break; }
+    if (quality(candidate) > 0 && (await allowed(compressed))) { selected = compressed;encoding = candidate;break; }
   }
   if (!encoding && (accepted.get('identity') ?? (accepted.get('*') === 0 ? 0 : 1)) === 0) {
     reply(res, 406, { error: 'ENCODING_NOT_ACCEPTABLE' });return true;
@@ -357,7 +358,7 @@ function mergeClientSettingsSecrets(next: unknown, previous: unknown): unknown {
   }
   if (!next || typeof next !== 'object') return next;
   const object = next as Record<string, unknown>;
-  const old = previous && typeof previous === 'object' ? previous as Record<string, unknown> : {};
+  const old = previous && typeof previous === 'object' ? (previous as Record<string, unknown>) : {};
   const merged: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(object)) {
     if (key.endsWith('_configured') || key === 'credentials_configured' || key === 'api_key_count') continue;
@@ -483,8 +484,15 @@ export async function startEnterpriseGateway(
     throw new Error('Enterprise web requires a fixed HTTPS origin');
   }
   const sessions = new Map<string, Session>();
-  type CoreEntry = { actor: EnterpriseActor; started: Promise<EnterpriseCore>; lastUsed: number;
-    ready: boolean; abort: AbortController; preparation: PreparationAttempt };
+  type CoreEntry = {
+    actor: EnterpriseActor;
+    started: Promise<EnterpriseCore>;
+    lastUsed: number;
+    ready: boolean;
+    admitted: boolean;
+    abort: AbortController;
+    preparation: PreparationAttempt;
+  };
   const cores = new Map<string, CoreEntry>();
   const stopping = new Map<string, Promise<void>>();
   const preparationAttempts = new Map<string, PreparationAttempt>();
@@ -501,6 +509,7 @@ export async function startEnterpriseGateway(
     throw new Error('Enterprise Core capacity configuration invalid');
   }
   let starting = 0;
+  let occupied = 0;
   let pendingSessions = 0;
   type StartWaiter = { resolve: () => void; reject: (error: Error) => void;
     timeout: ReturnType<typeof setTimeout>; signal: AbortSignal; onAbort: () => void };
@@ -569,7 +578,11 @@ export async function startEnterpriseGateway(
   });
   const acquireStart = async (signal: AbortSignal): Promise<void> => {
     if (shuttingDown || signal.aborted) throw new Error('Enterprise Core startup cancelled');
-    if (starting < maxStartingCores) { starting += 1; return; }
+    if (starting < maxStartingCores && occupied < maxCores) {
+      starting += 1;
+      occupied += 1;
+      return;
+    }
     if (queuedStarts.length >= maxQueuedCoreStarts) throw new CoreCapacityError('Core startup queue is full');
     await new Promise<void>((resolve, reject) => {
       const onAbort = () => {
@@ -589,19 +602,24 @@ export async function startEnterpriseGateway(
       signal.addEventListener('abort', onAbort, { once: true });
     });
   };
-  const releaseStart = (): void => {
-    const next = queuedStarts.shift();
-    if (next) {
+  const advanceStarts = (): void => {
+    while (starting < maxStartingCores && occupied < maxCores && queuedStarts.length) {
+      const next = queuedStarts.shift()!;
       clearTimeout(next.timeout);
       next.signal.removeEventListener('abort', next.onAbort);
+      starting += 1;
+      occupied += 1;
       next.resolve();
     }
-    else starting -= 1;
+  };
+  const releaseStart = (): void => {
+    starting -= 1;
+    advanceStarts();
   };
   const loginAttempts: number[] = [];
   const authorizedBackground = async (actor: EnterpriseActor): Promise<boolean> =>
     opts.hasBackgroundJobs?.(actor) === true &&
-    (!opts.authorizeBackground || await opts.authorizeBackground(actor).catch(() => false));
+    (!opts.authorizeBackground || (await opts.authorizeBackground(actor).catch(() => false)));
   const stopCore = async (key: string): Promise<void> => {
     const entry = cores.get(key);
     if (!entry) return;
@@ -611,8 +629,14 @@ export async function startEnterpriseGateway(
     entry.abort.abort();
     const done = entry.started.then((core) => core.stop(), () => {});
     stopping.set(key, done);
-    try { await done; }
-    finally { if (stopping.get(key) === done) stopping.delete(key); }
+    try {
+      await done;
+      if (entry.admitted) {
+        entry.admitted = false;
+        occupied -= 1;
+        advanceStarts();
+      }
+    } finally { if (stopping.get(key) === done) stopping.delete(key); }
   };
 
   const actorSessions = (key: string): Session[] => [...sessions.values()].filter((session) =>
@@ -630,7 +654,11 @@ export async function startEnterpriseGateway(
   });
   const stopIdleCore = async (key: string, entry: CoreEntry): Promise<boolean> => {
     if (!idleCandidate(key, entry, true)) return false;
-    if (opts.hasBackgroundJobs?.(entry.actor) && (!opts.backgroundDue || await opts.backgroundDue(entry.actor).catch(() => true))) return false;
+    if (
+      opts.hasBackgroundJobs?.(entry.actor) &&
+      (!opts.backgroundDue || (await opts.backgroundDue(entry.actor).catch(() => true)))
+    )
+      return false;
     let idle = false;
     try {
       const core = await entry.started;
@@ -717,30 +745,36 @@ export async function startEnterpriseGateway(
     if (sessions.get(id) !== session) return null;
     return { id, session };
   };
-  const getCore = async (actor: EnterpriseActor, allowBackground = false): Promise<EnterpriseCore> => {
+  const getCore = async (actor: EnterpriseActor, allowBackground = false, activity = true): Promise<EnterpriseCore> => {
     const key = actorKey(actor);
     await stopping.get(key);
-    if (![...sessions.values()].some((session) => actorKey(session.actor) === key) &&
-        !(allowBackground && await authorizedBackground(actor))) {
-      throw new Error('Employee session closed');
-    }
+    if (
+      ![...sessions.values()].some((session) => actorKey(session.actor) === key) &&
+      !(allowBackground && (await authorizedBackground(actor)))
+    ) {
+            throw new Error('Employee session closed');
+          }
     const preparation = preparationFor(key);
     let entry = cores.get(key);
     if (!entry) {
-      if (cores.size >= maxCores) await reclaimIdleCores(true);
-      if (cores.size >= maxCores) throw new CoreCapacityError('Core capacity reached');
       const abort = new AbortController();
       const started = (async () => {
+        if (occupied >= maxCores) await reclaimIdleCores(true);
         await acquireStart(abort.signal);
+        if (entry) entry.admitted = true;
         transitionPreparation(preparation, 'starting');
         try {
-          if (abort.signal.aborted || cores.get(key) !== entry ||
-              (![...sessions.values()].some((session) => actorKey(session.actor) === key) &&
-                !(allowBackground && await authorizedBackground(actor)))) {
+          if (
+            abort.signal.aborted || cores.get(key) !== entry ||
+            (![...sessions.values()].some((session) => actorKey(session.actor) === key) &&
+              !(allowBackground && (await authorizedBackground(actor))))
+          ) {
             throw new Error('Employee session closed');
           }
           return await opts.startCore(actor);
-        } finally { releaseStart(); }
+        } finally {
+          releaseStart();
+        }
       })().then(async (core) => {
         try {
           enterpriseCoreHost(core);
@@ -757,25 +791,31 @@ export async function startEnterpriseGateway(
           throw error;
         }
       });
-      entry = { actor, started, lastUsed: Date.now(), ready: false, abort, preparation };
+      entry = { actor, started, lastUsed: Date.now(), ready: false, admitted: false, abort, preparation };
       cores.set(key, entry);
-      void started.then((core) => core.invalidated?.then(async () => {
-        const affected = [...sessions].filter(([, session]) => actorKey(session.actor) === key).map(([id]) => id);
-        await Promise.all(affected.map(revoke));
-        if (cores.get(key)?.started === started) {
-          cores.delete(key);
-          const done = core.stop().catch(() => {});
-          stopping.set(key, done);
-          await done;
-          if (stopping.get(key) === done) stopping.delete(key);
-        }
-      })).catch(() => {});
+      void started
+        .then((core) =>
+          core.invalidated?.then(async () => {
+            // Intentional idle reclamation removes the entry before stopping its worker.
+            // Only unexpected invalidation of the CURRENT worker can revoke identity.
+            if (cores.get(key)?.started !== started) return;
+            const affected = [...sessions].filter(([, session]) => actorKey(session.actor) === key).map(([id]) => id);
+            await Promise.all(affected.map(revoke));
+            if (cores.get(key)?.started === started) await stopCore(key);
+          })
+        )
+        .catch(() => {});
       started.catch((error) => {
         if (cores.get(key)?.started === started) cores.delete(key);
+        if (entry?.admitted) {
+          entry.admitted = false;
+          occupied -= 1;
+          advanceStarts();
+        }
         if (!abort.signal.aborted) recordPreparationFailure(key, preparation, error);
       });
     }
-    entry.lastUsed = Date.now();
+    if (activity) entry.lastUsed = Date.now();
     return entry.started;
   };
 
@@ -924,7 +964,7 @@ export async function startEnterpriseGateway(
       if (current?.ready) return reply(res, 200,
         { ready: true, ...preparationPayload(current.preparation) });
       // The actor-scoped Core entry coalesces refreshes, retries and multiple tabs.
-      void getCore(auth.session.actor).catch((error) => recordPreparationFailure(key, attempt, error));
+      void getCore(auth.session.actor, false, false).catch((error) => recordPreparationFailure(key, attempt, error));
       res.setHeader('retry-after', '1');
       return reply(res, 202,
         { ready: false, ...preparationPayload(cores.get(key)?.preparation || attempt) });
@@ -955,15 +995,15 @@ export async function startEnterpriseGateway(
     res.once('close', () => auth.session.responses.delete(res));
     if (req.url === '/enterprise/resources/status' && req.method === 'GET') {
       try {
-        await getCore(auth.session.actor);
         return reply(res, 200, opts.resourceStatus?.(auth.session.actor) || { state: 'ready' });
       } catch (error) { return replyCoreFailure(res, error); }
     }
     if (req.url === '/enterprise/resources/refresh' && req.method === 'POST') {
       if (!opts.refreshResources) return reply(res, 503, { error: 'RESOURCE_REFRESH_UNAVAILABLE' });
       try {
-        await getCore(auth.session.actor);
-        const status = await opts.refreshResources(auth.session.actor) || { state: 'ready' };
+        if (!cores.get(actorKey(auth.session.actor))?.ready)
+          return reply(res, 200, { ok: true, state: 'ready', applyOnNextStart: true });
+        const status = (await opts.refreshResources(auth.session.actor)) || { state: 'ready' };
         return reply(res, status.state === 'pending' ? 202 : 200, { ok: true, ...status });
       } catch (error) { return replyCoreFailure(res, error); }
     }
@@ -999,9 +1039,10 @@ export async function startEnterpriseGateway(
           if (req.method === 'DELETE') { await store.forget(url.searchParams.get('id') || '');return reply(res, 200, { ok: true }); }
           return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
         }
-        const core = await getCore(auth.session.actor);
-        if (!core.workspaceRoot) return reply(res, 503, { error: 'WORKSPACE_UNAVAILABLE' });
-        if (url.pathname === '/enterprise/files' && req.method === 'GET') return reply(res, 200, await store.files(core.workspaceRoot));
+        const { workDir: workspaceRoot } = await prepareEnterpriseProfile(opts.profileRoot, auth.session.actor);
+        if (!workspaceRoot) return reply(res, 503, { error: 'WORKSPACE_UNAVAILABLE' });
+        if (url.pathname === '/enterprise/files' && req.method === 'GET')
+          return reply(res, 200, await store.files(workspaceRoot));
         const requested = url.searchParams.get('path') || '';
         const uploadRoot = path.join(
           enterpriseProfilePath(opts.profileRoot, auth.session.actor),
@@ -1009,7 +1050,7 @@ export async function startEnterpriseGateway(
           'aionui'
         );
         const attachment = path.isAbsolute(requested) && requested.startsWith(uploadRoot + path.sep);
-        const inputRoot = attachment ? uploadRoot : core.workspaceRoot;
+        const inputRoot = attachment ? uploadRoot : workspaceRoot;
         const name = path.isAbsolute(requested) ? path.relative(inputRoot, requested) : requested;
         const version = url.searchParams.get('version') || undefined;
         if (attachment && version) return reply(res, 400, { error: 'ATTACHMENT_HISTORY_UNAVAILABLE' });
@@ -1047,10 +1088,12 @@ export async function startEnterpriseGateway(
           res.end(bytes);
           return;
         }
-        if (url.pathname === '/enterprise/files/diff' && req.method === 'GET') return reply(res, 200, await store.diff(core.workspaceRoot, name, url.searchParams.get('version') || ''));
+        if (url.pathname === '/enterprise/files/diff' && req.method === 'GET')
+          return reply(res, 200, await store.diff(workspaceRoot, name, url.searchParams.get('version') || ''));
         if (url.pathname === '/enterprise/files/restore' && req.method === 'POST') {
           const input = JSON.parse((await body(req, 8192)).toString()) as { path: string; version: string };
-          await store.restore(core.workspaceRoot, input.path, input.version);return reply(res, 200, { ok: true });
+          await store.restore(workspaceRoot, input.path, input.version);
+          return reply(res, 200, { ok: true });
         }
         if (url.pathname === '/enterprise/files/upload' && req.method === 'POST') {
           const raw = await body(req, MAX_BODY + 1024 * 1024);
@@ -1061,8 +1104,10 @@ export async function startEnterpriseGateway(
           const uploaded: string[] = [], failed: Array<{ path: string; error: string }> = [];
           for (let i = 0; i < files.length; i += 1) {
             const destination = '资料/' + (paths[i] || files[i].name);
-            try { await store.upload(core.workspaceRoot, destination, Buffer.from(await files[i].arrayBuffer()));uploaded.push(destination); }
-            catch (error) { failed.push({ path: destination, error: (error as Error).message }); }
+            try {
+              await store.upload(workspaceRoot, destination, Buffer.from(await files[i].arrayBuffer()));
+              uploaded.push(destination);
+            } catch (error) { failed.push({ path: destination, error: (error as Error).message }); }
           }
           return reply(res, 200, { uploaded, failed });
         }
@@ -1070,6 +1115,54 @@ export async function startEnterpriseGateway(
       } catch (error) {
         if (error instanceof CoreCapacityError) return replyCoreFailure(res, error);
         return reply(res, 400, { error: (error as Error).message.slice(0, 200) });
+      }
+    }
+    if (
+      opts.profileRoot &&
+      req.method === 'GET' &&
+      !cores.get(actorKey(auth.session.actor))?.ready &&
+      (clientSettingsRoute(req.url) || req.url === '/api/settings' || req.url.startsWith('/enterprise/conversations'))
+    ) {
+      const query = new URL(req.url, origin);
+      const history = query.pathname === '/enterprise/conversations';
+      if (!history && !['/api/settings/client', '/api/settings'].includes(query.pathname))
+        return reply(res, 404, { error: 'NOT_FOUND' });
+      const cursor = query.searchParams.get('cursor') || '';
+      if (history && cursor && !isConversationId(cursor)) return reply(res, 400, { error: 'BAD_REQUEST' });
+      try {
+        const data = await readProfile(
+          opts.profileRoot,
+          auth.session.actor,
+          history ? 'history' : query.pathname === '/api/settings' ? 'settings' : 'preferences',
+          history ? cursor : JSON.stringify((query.searchParams.get('keys') || '').split(',').filter(Boolean))
+        );
+        if (!(await validateSession(auth.session))) {
+            await revoke(auth.id);
+            return reply(res, 401, { error: 'UNAUTHENTICATED' });
+          }
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        if (history) {
+          const page = data as {
+            items: Array<{ id: string; name: string; updated_at: number; pinned: number; status: string }>;
+            next_cursor: string | null;
+          };
+          return reply(res, 200, {
+            ...page,
+            items: page.items.map((item) => ({
+              key: `enterprise_web:${auth.session.actor.serverId}:${auth.session.actor.userId}:${item.id}`,
+              id: item.id,
+              name: item.name,
+              source: 'enterprise_web',
+              modified_at: item.updated_at,
+              pinned: !!item.pinned,
+              status: item.status,
+              runtime: { state: 'idle', is_processing: false },
+            })),
+          });
+        }
+        return reply(res, 200, scrubClientSettings({ success: true, data }));
+      } catch {
+        return reply(res, 503, { error: 'PROFILE_READ_UNAVAILABLE' });
       }
     }
     if (req.url === '/api/auth/user' && req.method === 'GET') {
@@ -1082,12 +1175,11 @@ export async function startEnterpriseGateway(
       const cursor = query.searchParams.get('cursor');
       if (cursor && !isConversationId(cursor)) return reply(res, 400, { error: 'BAD_REQUEST' });
       try {
-        const core = await getCore(auth.session.actor);
+        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const route = `/api/conversations?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
         const upstream = await fetch(`${enterpriseCoreBase(core)}${route}`, {
-          headers: { 'x-aion-enterprise-local-token': core.localToken },
-          signal: AbortSignal.timeout(10_000),
+          headers: { 'x-aion-enterprise-local-token': core.localToken }, signal: AbortSignal.timeout(10_000),
         });
         if (!upstream.ok || Number(upstream.headers.get('content-length') || 0) > MAX_PROVIDER_RESPONSE) {
           return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
@@ -1175,7 +1267,7 @@ export async function startEnterpriseGateway(
         return reply(res, 400, { error: 'BAD_REQUEST' });
       }
       try {
-        const core = await getCore(auth.session.actor);
+        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const route = `/api/messages/search?keyword=${encodeURIComponent(keyword)}&page=${page}&page_size=20`;
         const upstream = await fetch(`${enterpriseCoreBase(core)}${route}`, {
@@ -1217,7 +1309,7 @@ export async function startEnterpriseGateway(
       try {
         const input = JSON.parse((await body(req, 65536)).toString('utf8')) as Record<string, unknown>;
         const transport = input.transport as Record<string, unknown> | undefined;
-        const core = await getCore(auth.session.actor);
+        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const base = enterpriseCoreBase(core);
         const headers = { 'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken };
@@ -1230,7 +1322,7 @@ export async function startEnterpriseGateway(
           if (!stored.ok) return reply(res, stored.status, { error: 'MCP_SERVER_UNAVAILABLE' });
           const raw = await stored.text();
           if (raw.length > MAX_PROVIDER_RESPONSE) throw new Error('Invalid Core response');
-          const server = (JSON.parse(raw) as { success?: boolean; data?: Record<string, unknown> });
+          const server = JSON.parse(raw) as { success?: boolean; data?: Record<string, unknown> };
           if (!server.success || !server.data?.transport) throw new Error('Invalid Core response');
           input.name = server.data.name;
           input.transport = server.data.transport;
@@ -1258,7 +1350,7 @@ export async function startEnterpriseGateway(
         if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
           return reply(res, 400, { error: 'BAD_REQUEST' });
         }
-        const core = await getCore(auth.session.actor);
+        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const base = `${enterpriseCoreBase(core)}/api/settings/client`;
         const current = await fetch(base, { headers: { 'x-aion-enterprise-local-token': core.localToken },
@@ -1294,7 +1386,7 @@ export async function startEnterpriseGateway(
         if (typeof input.dir !== 'string' || !path.isAbsolute(input.dir) || input.dir.length > 4096) {
           return reply(res, 400, { error: 'BAD_REQUEST' });
         }
-        const core = await getCore(auth.session.actor);
+        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         if (!core.workspaceRoot) return reply(res, 503, { error: 'WORKSPACE_UNAVAILABLE' });
         const [root, directory] = await Promise.all([realpath(core.workspaceRoot), realpath(input.dir)]);
@@ -1325,7 +1417,7 @@ export async function startEnterpriseGateway(
       res.once('close', () => auth.session.responses.delete(res));
       try {
         const requestBody = req.method === 'DELETE' ? undefined : await body(req, 1024 * 1024);
-        const core = await getCore(auth.session.actor);
+        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const base = enterpriseCoreBase(core);
         const headers = { 'x-aion-enterprise-local-token': core.localToken, 'content-type': 'application/json' };
@@ -1358,12 +1450,21 @@ export async function startEnterpriseGateway(
       }
       return;
     }
+    if (
+      opts.profileRoot &&
+      req.method === 'POST' &&
+      /^\/api\/(conversations|teams)\/[^/]+\/active-lease$/.test(req.url)
+    ) {
+      return reply(res, 200, { success: true });
+    }
     if (req.url.startsWith('/api/') || req.url.startsWith('/api?')) {
       if (Number(req.headers['content-length'] || 0) > MAX_BODY) return reply(res, 413, { error: 'PAYLOAD_TOO_LARGE' });
       auth.session.responses.add(res);
       res.once('close', () => auth.session.responses.delete(res));
       try {
-        const core = await getCore(auth.session.actor);
+        if (opts.profileRoot && req.method === 'GET' && !cores.has(actorKey(auth.session.actor)))
+          return reply(res, 409, { error: 'CORE_NOT_RUNNING' });
+        const core = await getCore(auth.session.actor, false, !['GET', 'HEAD'].includes(req.method || 'GET'));
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const upstream = http.request(
           {
@@ -1374,7 +1475,11 @@ export async function startEnterpriseGateway(
             headers: proxyHeaders(req, core),
           },
           (upstreamRes) => {
-            const headers: http.IncomingHttpHeaders = { ...upstreamRes.headers, 'cache-control': 'no-store' };
+            const headers: http.IncomingHttpHeaders = {
+              ...upstreamRes.headers,
+              'cache-control': 'no-store',
+              'x-zhenwork-core-ready': '1',
+            };
             delete headers['set-cookie'];
             const scrubProviders = providerRoute(req.url || '');
             const scrubMcpServers = mcpServerRoute(req.url || '');
@@ -1442,9 +1547,14 @@ export async function startEnterpriseGateway(
     }
     if (req.url === '/login' || req.url === '/logout') return reply(res, 404, { error: 'NOT_FOUND' });
     if (req.url === '/sw.js') return reply(res, 404, { error: 'OFFLINE_MODE_DISABLED' });
-    if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html' ||
-        req.headers.accept?.includes('text/html'))) {
-      if (!cores.get(actorKey(auth.session.actor))?.ready || stopping.has(actorKey(auth.session.actor))) {
+    if (
+      req.method === 'GET' && (req.url === '/' || req.url === '/index.html' ||
+        req.headers.accept?.includes('text/html'))
+    ) {
+      if (
+        !opts.profileRoot &&
+        (!cores.get(actorKey(auth.session.actor))?.ready || stopping.has(actorKey(auth.session.actor)))
+      ) {
         const nonce = randomBytes(16).toString('base64');
         const brand = loginBrand(await auth.session.brand?.().catch((): null => null));
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
@@ -1487,7 +1597,23 @@ export async function startEnterpriseGateway(
         socket.destroy();
         return;
       }
-      const core = await getCore(auth.session.actor);
+      if (!cores.has(actorKey(auth.session.actor))) {
+        const key = req.headers['sec-websocket-key'];
+        if (typeof key !== 'string') {
+        socket.destroy();
+        return;
+      }
+        const accept = createHash('sha1')
+          .update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
+          .digest('base64');
+        socket.write(
+          `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`
+        );
+        // The close frame follows the successful upgrade, preserving the browser's idle protocol.
+        socket.end(IDLE_CORE_WS_CLOSE);
+        return;
+      }
+      const core = await getCore(auth.session.actor, false, false);
       if (sessions.get(auth.id) !== auth.session) {
         socket.destroy();
         return;
@@ -1541,8 +1667,13 @@ export async function startEnterpriseGateway(
     port: (server.address() as { port: number }).port,
     reconcileAuthorization,
     reapIdleCores,
-    capacity: () => ({ sessions: sessions.size, pendingSessions, cores: cores.size,
-      starting, queuedStarts: queuedStarts.length }),
+    capacity: () => ({
+      sessions: sessions.size,
+      pendingSessions,
+      cores: occupied,
+      starting,
+      queuedStarts: queuedStarts.length,
+    }),
     startBackgroundCore: async (actor) => {
       if (!(await authorizedBackground(actor))) throw new Error('Background Core authorization unavailable');
       if (opts.backgroundDue && !(await opts.backgroundDue(actor))) return;

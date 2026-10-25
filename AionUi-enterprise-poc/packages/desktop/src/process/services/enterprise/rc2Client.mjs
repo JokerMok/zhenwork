@@ -161,11 +161,26 @@ export class Rc2Client {
 
   async me() {
     if (!this.cookie) throw new Error('No RC2 session');
-    const { response, body } = await this.request('/ai/me');
-    if (!response.ok || body?.code !== 200 || !/^[0-9]+$/.test(String(body?.data?.userId ?? ''))) {
+    const identity = this.cookie;
+    if (this.mePending?.identity === identity) return this.mePending.promise;
+    const promise = (async () => {
+      const { response, body } = await this.request('/ai/me');
+      if (
+        this.cookie !== identity ||
+        !response.ok ||
+        body?.code !== 200 ||
+        !/^[0-9]+$/.test(String(body?.data?.userId ?? ''))
+      ) {
       throw new Error('RC2 session revoked or user disabled');
     }
-    return { userId: String(body.data.userId), mustChangePassword: body.data.mustChangePassword === true };
+      return { userId: String(body.data.userId), mustChangePassword: body.data.mustChangePassword === true };
+    })();
+    this.mePending = { identity, promise };
+    try {
+      return await promise;
+    } finally {
+      if (this.mePending?.promise === promise) this.mePending = null;
+    }
   }
 
   async availableModels() {

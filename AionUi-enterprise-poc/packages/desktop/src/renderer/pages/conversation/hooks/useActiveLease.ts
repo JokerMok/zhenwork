@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { ipcBridge } from '@/common';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 
 export const ACTIVE_LEASE_RENEW_INTERVAL_MS = 30_000;
 
@@ -8,7 +9,7 @@ export type ActiveLeaseTarget = { type: 'conversation'; id?: string | null } | {
 export function useActiveLease(target: ActiveLeaseTarget): void {
   useEffect(() => {
     const id = target.id;
-    if (!id) return;
+    if (!id || isEnterpriseWeb()) return;
 
     let intervalId: ReturnType<typeof setInterval> | undefined;
 

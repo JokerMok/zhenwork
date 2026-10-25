@@ -93,6 +93,9 @@ import { isRtlLanguage } from './services/i18n/direction';
 import { registerPwa } from './services/registerPwa';
 
 import { ipcBridge } from '@/common';
+import { useLocation } from 'react-router-dom';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import EnterpriseRuntimeGate from './components/layout/runtime/EnterpriseRuntimeGate';
 import { repairAllCronJobTimeZonesOnce } from '@renderer/pages/cron/repairCronJobTimeZone';
 import { bootstrapRendererConfig } from '@renderer/services/bootstrapRenderer';
 
@@ -339,6 +342,16 @@ const Config: React.FC<PropsWithChildren> = ({ children }) => {
   );
 };
 
+const RoutedLayout = () => {
+  const location = useLocation();
+  const enterprise = isEnterpriseWeb();
+  const browsing = enterprise && ['/', '/workspace'].includes(location.pathname);
+  const content = <Layout sider={<Sider />} />;
+  if (browsing) return content;
+  const execution = <ConversationHistoryProvider>{content}</ConversationHistoryProvider>;
+  return enterprise ? <EnterpriseRuntimeGate>{execution}</EnterpriseRuntimeGate> : execution;
+};
+
 const Main = () => {
   const { ready } = useAuth();
   const [configReady, setConfigReady] = useState(false);
@@ -350,22 +363,22 @@ const Main = () => {
 
   useEffect(() => {
     if (!ready) return;
-    void repairAllCronJobTimeZonesOnce();
+    if (!isEnterpriseWeb()) {
+      void repairAllCronJobTimeZonesOnce();
+      return;
+    }
+    const repair = () => {
+      void repairAllCronJobTimeZonesOnce();
+    };
+    window.addEventListener('enterprise:core-ready', repair);
+    return () => window.removeEventListener('enterprise:core-ready', repair);
   }, [ready]);
 
   if (!ready || !configReady) {
     return null;
   }
 
-  return (
-    <Router
-      layout={
-        <ConversationHistoryProvider>
-          <Layout sider={<Sider />} />
-        </ConversationHistoryProvider>
-      }
-    />
-  );
+  return <Router layout={<RoutedLayout />} />;
 };
 
 const App = HOC.Wrapper(Config)(Main);

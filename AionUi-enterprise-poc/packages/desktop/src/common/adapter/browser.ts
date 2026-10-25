@@ -13,6 +13,7 @@ interface CustomWindow extends Window {
   electronAPI?: ElectronBridgeAPI;
   __bridgeEmitter?: { emit: (name: string, data: unknown) => void };
   __websocketReconnect?: () => void;
+  __websocketWakeIfIdle?: () => void;
 }
 
 type BrowserWebSocketPayload = { name: string; data?: unknown };
@@ -318,9 +319,15 @@ if (win.electronAPI) {
     reconnectDelay = BASE_RECONNECT_DELAY;
     connect();
   };
-  window.addEventListener('pointerdown', wakeIdle, { passive: true });
-  window.addEventListener('keydown', wakeIdle);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeIdle(); });
+  win.__websocketWakeIfIdle = wakeIdle;
+  // Browsing and tab visibility never start or revive an execution subscription.
+  const enterprise = (window as Window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__;
+  if (!enterprise) window.addEventListener('pointerdown', wakeIdle, { passive: true });
+  if (!enterprise) window.addEventListener('keydown', wakeIdle);
+  if (typeof document !== 'undefined')
+    document.addEventListener('visibilitychange', () => {
+      if (!enterprise && !document.hidden) wakeIdle();
+    });
 
   // Expose reconnection control for login flow
   win.__websocketReconnect = () => {

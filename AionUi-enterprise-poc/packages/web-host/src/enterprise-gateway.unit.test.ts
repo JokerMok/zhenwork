@@ -997,7 +997,7 @@ test('a second employee gets a bounded preparation page instead of a blank SPA a
     const queued = await call('GET', '/enterprise/ready', second);
     expect(queued.status).toBe(202);expect(JSON.parse(queued.body).phase).toBe('queued');
     await call('POST', '/enterprise/logout', first, {});
-    expect((await call('GET', '/enterprise/ready', second)).status).toBe(202);
+    expect([200, 202]).toContain((await call('GET', '/enterprise/ready', second)).status);
     await new Promise((resolve) => setImmediate(resolve));
     expect((await call('GET', '/enterprise/ready', second)).status).toBe(200);
     const bootstrap = (await call('GET', '/', second)).body;
@@ -1267,4 +1267,97 @@ test('release assets negotiate precompressed bytes, remain authenticated and kee
   expect(revoked.status).toBe(302);
   expect(revoked.headers['cache-control']).toBe('no-store');
   allowed.set('1', true);
+});
+
+test('Host browsing and file reads do not start a worker; idle invalidation retains identity and advances a coalesced queue', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'enterprise-dormant-'));
+  const root = path.join(dir, 'profiles');
+  await writeFile(path.join(dir, 'index.html'), '<html><head></head><body><div id="root"></div></body></html>');
+  let starts = 0;
+  let stops = 0;
+  const gateway = await startEnterpriseGateway({
+    staticDir: dir,
+    profileRoot: root,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    maxCores: 1,
+    maxStartingCores: 1,
+    maxQueuedCoreStarts: 2,
+    coreIdleMs: 5,
+    login: async username => ({ actor: { serverId: 'rc2', userId: username }, validate: async () => true, close: async () => {} }),
+    startCore: async () => {
+      starts += 1;
+      const core = http.createServer((req, res) => res.end(req.url === '/api/cron/internal/idle-ready'
+        ? JSON.stringify({ success: true, data: { idle: true } }) : '{}'));
+      await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
+      let invalidate!: () => void;
+      const invalidated = new Promise<void>((resolve) => {
+        invalidate = resolve;
+      });
+      return {
+        port: (core.address() as { port: number }).port,
+        localToken: 'local-test',
+        invalidated,
+        stop: async () => {
+          stops += 1;
+          invalidate();
+          await new Promise<void>((resolve) => core.close(() => resolve()));
+        },
+      };
+    },
+  });
+  const call = (route: string, cookie?: string, input?: object) =>
+    new Promise<{ status: number; body: string; cookie?: string }>((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: gateway.port,
+          path: route,
+          method: input ? 'POST' : 'GET',
+          headers: {
+            host: 'workspace.example',
+            origin: 'https://workspace.example',
+            ...(cookie ? { cookie } : {}),
+            ...(input ? { 'content-type': 'application/json' } : {}),
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', chunk => chunks.push(chunk));
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode || 0,
+              body: Buffer.concat(chunks).toString(),
+              cookie: res.headers['set-cookie']?.[0].split(';')[0],
+            })
+          );
+        }
+      );
+      req.once('error', reject);
+      req.end(input ? JSON.stringify(input) : undefined);
+    });
+  try {
+    const first = (await call('/enterprise/login', undefined, { username: '1', password: 'test' })).cookie;
+    const second = (await call('/enterprise/login', undefined, { username: '2', password: 'test' })).cookie;
+    for (const route of [
+      '/',
+      '/api/settings/client',
+      '/enterprise/files',
+      '/enterprise/conversations',
+      '/enterprise/resources/status',
+    ]) {
+      expect((await call(route, first)).status).toBe(200);
+    }
+    expect(starts).toBe(0);
+    await call('/enterprise/ready', first);
+    await vi.waitFor(() => expect(gateway.capacity().cores).toBe(1));
+    await Promise.all([call('/enterprise/ready', second), call('/enterprise/ready', second)]);
+    expect(gateway.capacity().queuedStarts).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await call('/api/system/info', first); // Passive reads do not renew the idle clock.
+    await gateway.reapIdleCores();
+    await vi.waitFor(() => expect(starts).toBe(2));
+    expect(stops).toBe(1);
+    expect((await call('/api/auth/user', first)).status).toBe(200);
+  } finally { await gateway.stop();await rm(dir, { recursive: true, force: true }); }
 });

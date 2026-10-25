@@ -106,6 +106,7 @@ function setupBrowserGlobals() {
 
   vi.stubGlobal('window', {
     location,
+    addEventListener: vi.fn(),
     setTimeout: setTimeout as unknown as Window['setTimeout'],
     clearTimeout: clearTimeout as unknown as Window['clearTimeout'],
   });

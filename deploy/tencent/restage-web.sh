@@ -36,9 +36,9 @@ changed=0
 while IFS= read -r -d '' path; do
   changed=1
   case "$path" in
-    AionUi-enterprise-poc/packages/web-host/src/*|AionUi-enterprise-poc/packages/web-cli/src/*|AionUi-enterprise-poc/packages/desktop/src/renderer/*|AionUi-enterprise-poc/packages/desktop/src/common/chat/normalizeToolCall.ts)
+    AionUi-enterprise-poc/packages/web-host/src/*|AionUi-enterprise-poc/packages/web-cli/src/*|AionUi-enterprise-poc/packages/desktop/src/renderer/*|AionUi-enterprise-poc/packages/desktop/src/common/chat/normalizeToolCall.ts|AionUi-enterprise-poc/packages/desktop/src/common/adapter/browser.ts|AionUi-enterprise-poc/packages/desktop/src/common/adapter/httpBridge.ts)
       host_change=1 ;;
-    AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.mjs|AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.d.mts)
+    AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.mjs|AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.d.mts|AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/rc2Client.mjs)
       # This shared Node adapter is bundled into Host; it is never imported by renderer code.
       host_change=1 ;;
     scripts/office/parse_toll_summaries.py|scripts/office/test_parse_toll_summaries.py)
@@ -47,7 +47,7 @@ while IFS= read -r -d '' path; do
       ;;
     deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/index.vue|deepseek-harness-lab/workbuddy/platform/plus-ui/src/components/ResourceShareDialog/index.vue)
       host_change=1 ;;
-    AionUi-enterprise-poc/tests/*|AionUi-enterprise-poc/docs/*|deploy/tencent/*|docs/*|PROJECT.md|README.md|justfile)
+    AionUi-enterprise-poc/vitest.config.ts|AionUi-enterprise-poc/tests/*|AionUi-enterprise-poc/docs/*|deploy/tencent/*|docs/*|PROJECT.md|README.md|justfile)
       ;;
     *)
       echo "Web/Host restage refused changed path: $path" >&2
