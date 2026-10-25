@@ -52,6 +52,7 @@ vi.mock('@arco-design/web-react', () => ({
   ),
   Message: {
     error: vi.fn(),
+    success: vi.fn(),
   },
   Tooltip: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
@@ -94,7 +95,7 @@ describe('MarkdownView local file links', () => {
     expect(copyTextMock).toHaveBeenCalledWith('C:/Users/Administrator/AppData/Roaming/AionUi/report.xlsx');
   });
 
-  it('renders line references as file chips and copies the full reference', () => {
+  it('renders line references as file chips and copies their file path', () => {
     const onLocalFileLink = vi.fn();
 
     render(
@@ -116,10 +117,10 @@ describe('MarkdownView local file links', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
-    expect(copyTextMock).toHaveBeenCalledWith('C:/Users/Administrator/AppData/Roaming/AionUi/logs/2026-06-19.log:1421');
+    expect(copyTextMock).toHaveBeenCalledWith('C:/Users/Administrator/AppData/Roaming/AionUi/logs/2026-06-19.log');
   });
 
-  it('renders line and column references as file chips and copies the full reference', () => {
+  it('renders line and column references as file chips and copies their file path', () => {
     const onLocalFileLink = vi.fn();
 
     render(
@@ -142,10 +143,10 @@ describe('MarkdownView local file links', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
-    expect(copyTextMock).toHaveBeenCalledWith('C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log:1421:7');
+    expect(copyTextMock).toHaveBeenCalledWith('C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log');
   });
 
-  it('renders hash range references as file chips and copies normalized local references', () => {
+  it('renders hash range references as file chips and copies their file path', () => {
     const onLocalFileLink = vi.fn();
 
     render(
@@ -170,7 +171,7 @@ describe('MarkdownView local file links', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
-    expect(copyTextMock).toHaveBeenCalledWith('/Users/demo/project/user.js#L1-L260');
+    expect(copyTextMock).toHaveBeenCalledWith('/Users/demo/project/user.js');
   });
 
   it('does not render a no-op open button when no local file handler is provided', () => {
