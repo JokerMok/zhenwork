@@ -34,6 +34,10 @@ export const ConversationHistoryProvider: React.FC<React.PropsWithChildren> = ({
   return <ConversationHistoryContext.Provider value={value}>{children}</ConversationHistoryContext.Provider>;
 };
 
+/** Optional for layout-only consumers such as desktop shortcuts on a Host-only web route. */
+export const useOptionalConversationHistoryContext = (): ConversationHistoryContextValue | null =>
+  useContext(ConversationHistoryContext);
+
 export const useConversationHistoryContext = (): ConversationHistoryContextValue => {
   const context = useContext(ConversationHistoryContext);
 

@@ -349,7 +349,7 @@ const RoutedLayout = () => {
   const content = <Layout sider={<Sider />} />;
   if (browsing) return content;
   const execution = <ConversationHistoryProvider>{content}</ConversationHistoryProvider>;
-  return enterprise ? <EnterpriseRuntimeGate>{execution}</EnterpriseRuntimeGate> : execution;
+  return enterprise ? <EnterpriseRuntimeGate key={location.pathname}>{execution}</EnterpriseRuntimeGate> : execution;
 };
 
 const Main = () => {

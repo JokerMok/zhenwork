@@ -1,7 +1,10 @@
 import React from 'react';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import EnterpriseRuntimeGate from './EnterpriseRuntimeGate';
+import { useVisibleConversationIds } from '@/renderer/pages/conversation/GroupedHistory/hooks/useVisibleConversationIds';
+vi.mock('@/renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync', () => ({ useConversationListSync: () => { throw new Error('Host-only browse must not initialize a worker history store'); } }));
+vi.mock('@/renderer/hooks/context/LayoutContext', () => ({ useLayoutContext: () => null }));
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
@@ -52,4 +55,9 @@ test('a final failure offers an explicit retry without starting an infinite prep
   await screen.findByText('workspace.status.environmentUnavailable');
   expect(screen.queryByText('execution')).toBeNull();
   expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+test('Host-only layout shortcuts can mount before an execution history provider exists', () => {
+  const hook = renderHook(() => useVisibleConversationIds());
+  expect(hook.result.current).toEqual([]);
 });

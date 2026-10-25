@@ -1155,7 +1155,7 @@ export async function startEnterpriseGateway(
               source: 'enterprise_web',
               modified_at: item.updated_at,
               pinned: !!item.pinned,
-              status: item.status,
+              status: item.status === 'running' ? 'idle' : item.status,
               runtime: { state: 'idle', is_processing: false },
             })),
           });
