@@ -1364,3 +1364,38 @@ test('Host browsing and file reads do not start a worker; idle invalidation reta
     expect((await call('/api/auth/user', first)).status).toBe(200);
   } finally { await gateway.stop();await rm(dir, { recursive: true, force: true }); }
 });
+
+test('capacity and startup waiting do not consume the usable worker idle budget', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'enterprise-idle-budget-'));
+  const worker = http.createServer((_req, res) => res.end(JSON.stringify({ success: true, data: { idle: true } })));
+  await new Promise<void>((resolve) => worker.listen(0, '127.0.0.1', resolve));
+  let stops = 0;
+  const gateway = await startEnterpriseGateway({ staticDir: dir, publicOrigin: 'https://workspace.example', port: 0,
+    coreIdleMs: 100, login: async () => ({ actor: { serverId: 'rc2', userId: '1' }, validate: async () => true, close: async () => {} }),
+    startCore: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return { port: (worker.address() as { port: number }).port, localToken: 'unit-local-token', stop: async () => { stops += 1; } };
+    } });
+  const call = (url: string, cookie?: string) => new Promise<{ data: { ready?: boolean }; cookie?: string }>((resolve, reject) => {
+    const login = url === '/enterprise/login';
+    const req = http.request({ host: '127.0.0.1', port: gateway.port, path: url, method: login ? 'POST' : 'GET',
+      headers: { host: 'workspace.example', origin: 'https://workspace.example', ...(cookie ? { cookie } : {}),
+        ...(login ? { 'content-type': 'application/json' } : {}) } }, (res) => {
+      const chunks: Buffer[] = [];res.on('data', (chunk) => chunks.push(chunk));res.on('end', () => resolve({
+        data: JSON.parse(Buffer.concat(chunks).toString()), cookie: res.headers['set-cookie']?.[0].split(';')[0] }));
+    });req.once('error', reject);req.end(login ? JSON.stringify({ username: '1', password: 'test' }) : undefined);
+  });
+  try {
+    const cookie = (await call('/enterprise/login')).cookie;
+    await call('/enterprise/ready', cookie);
+    await vi.waitFor(async () => expect((await call('/enterprise/ready', cookie)).data.ready).toBe(true));
+    await gateway.reapIdleCores();
+    expect(stops).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 110));
+    await gateway.reapIdleCores();
+    expect(stops).toBe(1);
+  } finally {
+    await gateway.stop();await new Promise<void>((resolve) => worker.close(() => resolve()));
+    await rm(dir, { recursive: true, force: true });
+  }
+});

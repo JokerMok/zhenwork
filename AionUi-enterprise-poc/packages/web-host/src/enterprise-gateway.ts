@@ -796,6 +796,8 @@ export async function startEnterpriseGateway(
           enterpriseProxyHost(core);
           if (entry) {
             entry.ready = true;
+            // Capacity wait is not worker idle time. Start the idle budget when usable.
+            entry.lastUsed = Date.now();
             transitionPreparation(preparation, 'ready');
             preparationFailures.delete(key);
             logPreparationOutcome(preparation, 'success', 'READY', Date.now());
