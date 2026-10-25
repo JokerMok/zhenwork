@@ -1,11 +1,11 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-25。当前范围：员工资源效率与按需Core生命周期；保留既有交互、组织能力和办公功能。实际验证边界见资源效率记录，不制作桌面安装包。
+核对日期：2026-10-25。当前范围：企业知识库与业务专家完整网页流程；保留按需Core、组织能力、外部查询和办公功能。实际验证边界见知识与专家记录，不制作桌面安装包。
 
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261025-resource-efficiency-v4`；准确应用 SHA：`8a913209a41758cfd13d34e0530911194a218aa6`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
+- 激活 release：`20261025-knowledge-experts-v3`；准确应用 SHA：`76806bb96381b07523ebc3d9215325bb1532d354`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
@@ -174,3 +174,20 @@ Admin/Java/control/23迁移/amd64镜像和Caddy模板逐字节复用v6。备份�
 收口2026-10-25T11:43:35Z：Core0，Host/RC2/monitor/拼豆/Caddy active，员工/管理/拼豆公网TLS200，ops-check200；可用内存4.97GiB、磁盘2.91GiB。最新一致备份20261025T112200058025Z.tar.gz(752521336字节)，2份共1504819348字节；未生产还原。Core1/启动1/队列2/等180秒/闲120秒不变，回收安全检查60秒。无新常驻服务、无内存限额调整。只归档移除未验收失败候选v1/v2，所有有效发布/备份/用户数据保持。
 
 当前previous为startup-v1，回滚审核 `shared/config/rollback-reviews/20261025-resource-v4-to-startup-v1.json`；仅退应用/配置，保留数据库/员工文件/历史/授权。原生会话、执行及高级配置仍依赖用户独立Core；跨员工等待实测125.818秒，不声称并行执行能力。独立客户符合性仍待独立需求资料。
+
+
+## 2026-10-25 企业知识与业务专家当前发布
+
+`20261025-knowledge-experts-v3` / 应用 `76806bb96381b07523ebc3d9215325bb1532d354`。实现及路径见 [企业知识与业务专家](docs/knowledge-experts.md)。复用既有解析、PostgreSQL索引、版本、权限、预览、专家及Office；无新增常驻服务、付费依赖、数据库迁移、Rust或桌面产物。最终v3重建员工网页及Host，按不可变哈希复用v2管理端/Java/control/native；23迁移和精确amd64镜像保持。
+
+员工工作台“知识库”可管理私有及已授权组织资料、查看索引状态/失败并重试；相同上传按库/文件名/SHA复用，删除清理派生索引。输入区“本次知识范围”支持整库当前索引或固定文档版本，保存于当前员工/会话，检索、引用成果及继续发送均按当前授权复核。本站引用使用正常标签页打开固定版本/真实块，旧引用不自动转向新内容。
+
+管理员“AI资源管理→企业资源→知识库/助手”复用一条配置、依赖检查、激活、共享链。修复异步目录到达前过早清除所选专家、静默回落通用助手的问题；明确所选专家匹配前不能代发任务。另修本站知识引用被错误送进内置浏览面板、窄聊天栏范围摘要挤排等实际阻断。
+
+定向公网真实网页覆盖普通员工个人上传/索引/失败重试/重复导入、管理员知识与专家激活共享更新、专家实际绑定/检索/引用打开、同任务报告+表格/预览/下载/续改/刷新、文档v1→v2及旧引用固定、第二账号/撤权/停用拒绝及恢复。已授权真实扫描PDF完成检索、页码定位和原件下载SHA核对；参数变更和对比成果使用明确合成功能样例，不是独立客户符合性验收。实际产物和逐项边界见私有 `.codex/knowledge-experts/acceptance-report.md`、服务器 `shared/config/acceptance/20261025-knowledge-experts.md` 及当前VERIFIED。
+
+v1引用缺陷及v2误用默认助手的原始失败保留，不当专家通过证据。QA还纠正了把等待单次工具确认的turn.completed事件当成任务结束的判断，最终等待真实idle/无待确认并重读下载内容。模型曾误报扫描PDF总页数，专家补通用定位/无依据不报总页数规则后真实重验；OCR、模型措辞和资料事实仍需原文复核，不能外推为所有产品建议正确。工具双产物使用单一basename，聊天显示名偶有差异，以返回的下载地址和文件页实际文件为准。
+
+previous保留已验证 `20261025-resource-efficiency-v4`。回滚审核 `shared/config/rollback-reviews/20261025-knowledge-v3-to-resource-v4.json`，仅退应用/配置，保留DB、原文、索引、授权、成果/历史及可选任务范围元数据；回退后旧应用不具备本轮范围UI/执行限制。未执行回滚。仅归档清理未引用且无VERIFIED的失败knowledge-v1候选，保留manifest及配置；未清库、改密码、全局清Docker或改其他项目。Core1/启动1/队列2/等待180秒/闲120秒与既有备份预算保持。
+
+共享目录仍缺明确真实路径/访问范围；独立客户符合性仍缺独立需求资料。本轮无新业务接口、桌面/小程序、后台全巡检或无关全量测试。

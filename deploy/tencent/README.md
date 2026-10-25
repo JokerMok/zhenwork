@@ -8,7 +8,17 @@
 
 应用版本看 `current/RELEASE.json`、实际验收看 `current/VERIFIED.json`。初次源码 SHA 为 `42d834a75722bdbe6331dba226d0febdc6179383`，额外保留 Core 依赖锁及空会话回收补丁，各自 SHA256 在 manifest 中。补丁只用于该准确源码版本；不关闭身份复核、目录隔离、后台授权或单次工具审批。
 
-## 2026-10-25 资源效率当前发布
+## 2026-10-25 知识与专家当前发布
+
+`20261025-knowledge-experts-v3` / 应用 `76806bb96381b07523ebc3d9215325bb1532d354`。本机构建员工网页/Host及预压缩，最终v3按manifest复用v2管理端、Java/control、23迁移和精确amd64镜像。功能与验收边界见 `docs/knowledge-experts.md`、私有 `.codex/knowledge-experts/acceptance-report.md` 及服务器VERIFIED。维护文档HEAD不等于应用SHA。
+
+管理员在AI资源管理→企业资源→知识库/助手配置资料、专家依赖和对象共享；员工在工作台知识库及输入区本次知识范围使用。目录、索引状态、原文、已有成果读取不需Core；任务仍独立按需启动。企业凭据未进入个人配置。
+
+保持Core1/启动1/队列2/等180秒/闲120秒和备份预算。previous为已验证resource-efficiency-v4，回滚审核 `shared/config/rollback-reviews/20261025-knowledge-v3-to-resource-v4.json`。仅退应用/配置，保留数据库、索引、文件、版本、授权和Host范围元数据；回退会失去新范围UI/执行限制。没有实际回滚。
+
+更新：`sudo bash /srv/apps/zhenwork/deploy/finalize-release.sh NEW_RELEASE`；状态/重启/日志：`sudo bash /srv/apps/zhenwork/deploy/manage.sh status|restart|logs 100`；回滚：`sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261025-knowledge-v3-to-resource-v4.json`。更新前按manifest检查代码范围/依赖复用和磁盘预算，不覆盖shared。
+
+## 2026-10-25 资源效率历史发布
 
 `20261025-resource-efficiency-v4` / 应用 `8a913209a41758cfd13d34e0530911194a218aa6`。员工网页/Host本机构建和预压缩；最终v4仅重建Host，精确复用v3网页/Admin/Java/监控/control及23迁移、amd64镜像。说明及测量见 `docs/employee-resource-efficiency.md`，实际范围见 `current/VERIFIED.json` 和私有验收记录。后续维护提交不改变应用SHA。
 
