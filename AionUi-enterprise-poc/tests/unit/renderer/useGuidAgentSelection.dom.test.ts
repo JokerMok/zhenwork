@@ -5,6 +5,7 @@
  */
 
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { useEffect, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Assistant } from '@/common/types/agent/assistantTypes';
 import type { ManagedAgent } from '@/renderer/utils/model/agentTypes';
@@ -13,6 +14,7 @@ import {
   buildAgentRuntimeModelInfo,
   buildAgentRuntimeSlashCommands,
   buildAssistantModelInfo,
+  isGuidNavigationSelectionReady,
   resolveInitialAssistantModel,
   useGuidAssistantSelection,
 } from '@/renderer/pages/guid/hooks/useGuidAssistantSelection';
@@ -70,6 +72,35 @@ describe('useGuidAssistantSelection', () => {
         deletable: false,
       } satisfies Assistant,
     ];
+  });
+
+  it('retains an expert navigation request until a refreshed catalog contains it', async () => {
+    mockAssistants = [
+      assistantFixture({ id: 'zhenwork-general-office', runtimeKey: 'aionrs', source: 'generated', sortOrder: 1 }),
+    ];
+    const { result, rerender } = renderHook(() => {
+      const [requested, setRequested] = useState<string | undefined>('rc2-product-expert');
+      const selection = useGuidAssistantSelection({
+        preselectAssistantId: requested,
+        preferredDefaultAssistantId: 'zhenwork-general-office',
+      });
+      const ready = isGuidNavigationSelectionReady(requested, selection.selectedAssistantId);
+      useEffect(() => {
+        if (ready) setRequested(undefined);
+      }, [ready]);
+      return { requested, ready, selection };
+    });
+    await waitFor(() => expect(result.current.selection.selectedAssistantId).toBe('zhenwork-general-office'));
+    expect(result.current.ready).toBe(false);
+    expect(result.current.requested).toBe('rc2-product-expert');
+    mockAssistants = [
+      ...mockAssistants,
+      assistantFixture({ id: 'rc2-product-expert', runtimeKey: 'aionrs', source: 'generated', sortOrder: 2 }),
+    ];
+    rerender();
+    await waitFor(() => expect(result.current.requested).toBeUndefined());
+    expect(result.current.selection.selectedAssistantId).toBe('rc2-product-expert');
+    expect(result.current.ready).toBe(true);
   });
 
   it('derives availability and model info from assistant catalog data', async () => {

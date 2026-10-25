@@ -64,6 +64,11 @@ export function resolveInitialAssistantModel(models: string[]): string | null {
   return null;
 }
 
+/** Navigation is consumed only after its explicit assistant reached the catalog. */
+export function isGuidNavigationSelectionReady(requested: string | undefined, selected: string | null): boolean {
+  return selected !== null && (!requested || requested === selected);
+}
+
 export function buildAssistantModelInfo(models: string[]): AcpModelInfo | null {
   if (models.length > 0) {
     return {
@@ -132,7 +137,8 @@ export const useGuidAssistantSelection = ({
   const [selectedMode, _setSelectedMode] = useState<string>('default');
   const [selectedAcpModel, _setSelectedAcpModel] = useState<string | null>(null);
   const [selectedThoughtLevelValue, _setSelectedThoughtLevelValue] = useState<string>('');
-  const { assistants, catalogError, catalogLoading, catalogRevision, resourceState, retryCatalog } = useCustomAgentsLoader();
+  const { assistants, catalogError, catalogLoading, catalogRevision, resourceState, retryCatalog } =
+    useCustomAgentsLoader();
   const managedAgentRuntimeCatalog = useManagedAgentRuntimeCatalog();
   const resolveDefaultAssistantId = useCallback(
     () =>
