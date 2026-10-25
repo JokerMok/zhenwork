@@ -114,7 +114,11 @@ web_restage = text("restage-web.sh")
 assert "git archive" in web_restage and "build-web.mjs" in web_restage
 assert "['control-source','deploy-assets','monitor.jar','rc2.jar']" in web_restage
 assert 'packages/desktop/src/renderer/*' in web_restage
-assert 'packages/desktop/src/common/chat/normalizeToolCall.ts)' in web_restage
+for allowed in ['packages/desktop/src/common/chat/normalizeToolCall.ts',
+                'packages/desktop/src/common/adapter/browser.ts',
+                'packages/desktop/src/common/adapter/httpBridge.ts',
+                'packages/desktop/src/process/services/enterprise/rc2Client.mjs']:
+    assert allowed in web_restage, allowed
 assert 'full reviewed stage' in web_restage and '*)' in web_restage
 assert 'systemctl' not in web_restage and 'current.next' not in web_restage
 
