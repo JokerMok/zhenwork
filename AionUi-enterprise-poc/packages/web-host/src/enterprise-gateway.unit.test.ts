@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
+import { brotliCompressSync, brotliDecompressSync, gzipSync, gunzipSync } from 'node:zlib';
 import WebSocket, { WebSocketServer } from 'ws';
 import { startEnterpriseGateway } from './enterprise-gateway.js';
 
@@ -35,7 +36,7 @@ function request(
   origin = 'https://workspace.example',
   extraHeaders: Record<string, string> = {}
 ) {
-  return new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }>((resolve, reject) => {
+  return new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string; bytes: Buffer }>((resolve, reject) => {
     const req = http.request(
       {
         hostname: '127.0.0.1',
@@ -58,7 +59,7 @@ function request(
         const chunks: Buffer[] = [];
         res.on('data', (chunk: Buffer) => chunks.push(chunk));
         res.on('end', () =>
-          resolve({ status: res.statusCode || 0, headers: res.headers, body: Buffer.concat(chunks).toString() })
+          resolve({ status: res.statusCode || 0, headers: res.headers, body: Buffer.concat(chunks).toString(), bytes: Buffer.concat(chunks) })
         );
       }
     );
@@ -1222,4 +1223,48 @@ test('coalesces readiness polling and exposes only safe startup diagnostics befo
     info.mockRestore();warn.mockRestore();releaseStart();await gateway.stop();
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+
+test('release assets negotiate precompressed bytes, remain authenticated and keep user APIs uncached', async () => {
+  allowed.set('1', true);
+  const asset = '/assets/startup-Abcd1234.js';
+  const source = Buffer.from('console.log("startup");'.repeat(300));
+  await mkdir(path.join(tempDir, 'assets'), { recursive: true });
+  await writeFile(path.join(tempDir, asset), source);
+  await writeFile(path.join(tempDir, asset + '.br'), brotliCompressSync(source));
+  await writeFile(path.join(tempDir, asset + '.gz'), gzipSync(source));
+  expect((await request('GET', asset)).status).toBe(302);
+  const login = await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' });
+  const cookie = login.headers['set-cookie']?.[0].split(';')[0];
+  expect(login.headers['server-timing']).toMatch(/^login;dur=/);
+  const br = await request('GET', asset, cookie, undefined, undefined, { 'accept-encoding': 'gzip, br' });
+  expect(br.status).toBe(200);
+  expect(br.headers['content-encoding']).toBe('br');
+  expect(brotliDecompressSync(br.bytes)).toEqual(source);
+  expect(br.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+  expect(br.headers.vary).toBe('Accept-Encoding');
+  expect(br.headers['content-type']).toContain('text/javascript');
+  const gz = await request('GET', asset, cookie, undefined, undefined, { 'accept-encoding': 'br;q=0,gzip' });
+  expect(gz.headers['content-encoding']).toBe('gzip');
+  expect(gunzipSync(gz.bytes)).toEqual(source);
+  const plain = await request('GET', asset, cookie, undefined, undefined, { 'accept-encoding': 'br;q=0,gzip;q=0' });
+  expect(plain.headers['content-encoding']).toBeUndefined();
+  expect(plain.bytes).toEqual(source);
+  const unchanged = await request('GET', asset, cookie, undefined, undefined,
+    { 'accept-encoding': 'br', 'if-none-match': String(br.headers.etag) });
+  expect(unchanged.status).toBe(304);
+  expect(unchanged.bytes.length).toBe(0);
+  const head = await request('HEAD', asset, cookie, undefined, undefined, { 'accept-encoding': 'br' });
+  expect(head.bytes.length).toBe(0);
+  expect(head.headers['content-length']).toBe(br.headers['content-length']);
+  expect((await request('GET', '/assets/missing-Abcd1234.js', cookie)).status).toBe(404);
+  const api = await request('GET', '/api/settings/client', cookie);
+  expect(api.headers['cache-control']).toBe('no-store');
+  allowed.set('1', false);
+  const revoked = await request('GET', asset, cookie, undefined, undefined,
+    { 'accept-encoding': 'br', 'if-none-match': String(br.headers.etag) });
+  expect(revoked.status).toBe(302);
+  expect(revoked.headers['cache-control']).toBe('no-store');
+  allowed.set('1', true);
 });

@@ -1,9 +1,11 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { readFile, realpath } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import serveHandler from 'serve-handler';
 import enLogin from '../../desktop/src/renderer/services/i18n/locales/en-US/login.json' with { type: 'json' };
 import zhLogin from '../../desktop/src/renderer/services/i18n/locales/zh-CN/login.json' with { type: 'json' };
@@ -12,6 +14,57 @@ import { OfficeStore } from './office/office-store.js';
 import { previewOfficeFile } from './office/preview/index.js';
 import { enterpriseProfilePath } from './enterprise-core.js';
 import { enterpriseBootstrapShell, enterpriseReadinessPage } from './enterprise-readiness-page.js';
+
+// Only content-addressed, release-owned code/assets may use the browser cache.
+// Authentication still runs before this handler; user data never enters it.
+async function serveReleaseAsset(req: IncomingMessage, res: ServerResponse, staticDir: string): Promise<boolean> {
+  const pathname = (req.url || '').split('?')[0];
+  const match = /^\/assets\/([A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.(js|css|svg|json|woff2?|png|jpe?g|webp|gif|ico))$/.exec(pathname);
+  if (!match || !['GET', 'HEAD'].includes(req.method || '')) return false;
+  const root = await realpath(staticDir);
+  const filename = path.join(root, 'assets', match[1]);
+  const allowed = async (file: string): Promise<boolean> => {
+    try { return (await realpath(file)).startsWith(root + path.sep) && (await stat(file)).isFile(); }
+    catch { return false; }
+  };
+  if (!(await allowed(filename))) { reply(res, 404, { error: 'NOT_FOUND' });return true; }
+  const accepted = new Map<string, number>();
+  for (const part of String(req.headers['accept-encoding'] || '').split(',')) {
+    const [name, ...parameters] = part.trim().split(';');
+    if (!name) continue;
+    const parameter = parameters.map((value) => value.trim()).find((value) => value.startsWith('q='));
+    const quality = parameter ? Number(parameter.slice(2)) : 1;
+    accepted.set(name.toLowerCase(), Number.isFinite(quality) && quality >= 0 && quality <= 1 ? quality : 0);
+  }
+  const quality = (encoding: string): number => accepted.get(encoding) ?? accepted.get('*') ?? 0;
+  let selected = filename;
+  let encoding = '';
+  for (const candidate of ['br', 'gzip'].sort((a, b) => quality(b) - quality(a))) {
+    const compressed = filename + (candidate === 'br' ? '.br' : '.gz');
+    if (quality(candidate) > 0 && await allowed(compressed)) { selected = compressed;encoding = candidate;break; }
+  }
+  if (!encoding && (accepted.get('identity') ?? (accepted.get('*') === 0 ? 0 : 1)) === 0) {
+    reply(res, 406, { error: 'ENCODING_NOT_ACCEPTABLE' });return true;
+  }
+  const file = await stat(selected);
+  const etag = `W/"${match[1]}-${encoding || 'identity'}"`;
+  res.setHeader('cache-control', 'private, max-age=31536000, immutable');
+  res.setHeader('vary', 'Accept-Encoding');
+  res.setHeader('etag', etag);
+  res.setHeader('last-modified', file.mtime.toUTCString());
+  res.setHeader('x-content-type-options', 'nosniff');
+  if (encoding) res.setHeader('content-encoding', encoding);
+  if (String(req.headers['if-none-match'] || '').split(',').map((value) => value.trim()).some((value) => value === etag || value === '*')) {
+    res.writeHead(304);res.end();return true;
+  }
+  const types: Record<string, string> = { js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml', json: 'application/json', woff: 'font/woff', woff2: 'font/woff2', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', ico: 'image/x-icon' };
+  res.setHeader('content-type', types[match[2]]);
+  res.setHeader('content-length', file.size);
+  res.writeHead(200);
+  if (req.method === 'HEAD') res.end();
+  else await pipeline(createReadStream(selected), res).catch(() => res.destroy());
+  return true;
+}
 
 export type EnterpriseResourceState = { state: 'ready' | 'pending' | 'refreshing'; reason?: 'TASK_ACTIVE' | 'CHECK_FAILED' };
 export type EnterpriseActor = { serverId: string; userId: string };
@@ -757,6 +810,7 @@ export async function startEnterpriseGateway(
   reap.unref();
 
   const server = http.createServer(async (req, res) => {
+    const requestStarted = performance.now();
     res.setHeader('x-aion-enterprise-web', '1');
     const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(req.method || '');
     if (!validOrigin(req, unsafe)) return reply(res, 403, { error: 'ORIGIN_DENIED' });
@@ -803,6 +857,7 @@ export async function startEnterpriseGateway(
           return reply(res, 200, { ok: true });
         }
         const login = await opts.login(input.username, input.password, client);
+        res.setHeader('server-timing', `login;dur=${(performance.now() - requestStarted).toFixed(1)}`);
         actorKey(login.actor);
         const id = randomBytes(32).toString('hex');
         sessions.set(id, { ...login, sockets: new Set(), requests: new Set(), responses: new Set(), expiresAt: Date.now() + SESSION_MS });
@@ -834,7 +889,10 @@ export async function startEnterpriseGateway(
         return reply(res, 401, { error: 'UNAUTHENTICATED' });
       } finally { pendingSessions -= 1; }
     }
+    const authStarted = performance.now();
     const auth = await authenticate(req);
+    const authDuration = performance.now() - authStarted;
+    res.setHeader('server-timing', `auth;dur=${authDuration.toFixed(1)}`);
     if (!auth) {
       // API consumers need a 401, never a followed redirect containing login HTML.
       // Public enterprise login/password/bootstrap routes have already returned.
@@ -1316,7 +1374,7 @@ export async function startEnterpriseGateway(
             headers: proxyHeaders(req, core),
           },
           (upstreamRes) => {
-            const headers = { ...upstreamRes.headers };
+            const headers: http.IncomingHttpHeaders = { ...upstreamRes.headers, 'cache-control': 'no-store' };
             delete headers['set-cookie'];
             const scrubProviders = providerRoute(req.url || '');
             const scrubMcpServers = mcpServerRoute(req.url || '');
@@ -1413,6 +1471,8 @@ export async function startEnterpriseGateway(
       res.end(content);
       return;
     }
+    if (await serveReleaseAsset(req, res, opts.staticDir)) return;
+    res.setHeader('cache-control', 'no-store');
     await serveHandler(req, res, { public: opts.staticDir, rewrites: [{ source: '**', destination: '/index.html' }] });
   });
 
