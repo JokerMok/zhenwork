@@ -1,3 +1,4 @@
+import { isEnterpriseKnowledgeSourceLink } from '@/renderer/components/Markdown/markdownUtils';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -148,4 +149,11 @@ describe('resolveLocalFileLinkPath', () => {
     );
     expect(toLocalFileHref('/var/folders/demo/report.xlsx')).toBe('file:///var/folders/demo/report.xlsx');
   });
+});
+
+it('accepts only same-origin pinned knowledge links as normal application tabs', () => {
+  const path='/#/workspace?section=knowledge&documentId=11111111-1111-4111-8111-111111111111&version=2&chunk=3';
+  expect(isEnterpriseKnowledgeSourceLink('https://work.example'+path,'https://work.example')).toBe(true);
+  expect(isEnterpriseKnowledgeSourceLink('https://other.example'+path,'https://work.example')).toBe(false);
+  expect(isEnterpriseKnowledgeSourceLink('https://work.example'+path.replace('version=2','version=0'),'https://work.example')).toBe(false);
 });

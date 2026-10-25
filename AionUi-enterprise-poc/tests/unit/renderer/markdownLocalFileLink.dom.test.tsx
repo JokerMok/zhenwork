@@ -32,6 +32,7 @@ vi.mock('@/renderer/utils/chat/latexDelimiters', () => ({
 
 vi.mock('@/renderer/utils/platform', () => ({
   openExternalUrl: vi.fn(),
+  isEnterpriseWeb: (): boolean => true,
 }));
 
 vi.mock('@/renderer/utils/ui/clipboard', () => ({
@@ -61,7 +62,7 @@ vi.mock('@icon-park/react', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key,
+    t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? (key === 'preview.copyPath' ? 'Copy' : key),
   }),
 }));
 
@@ -180,6 +181,16 @@ describe('MarkdownView local file links', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     expect(copyTextMock).toHaveBeenCalledWith('C:/Users/Administrator/AppData/Roaming/AionUi/report.xlsx');
+  });
+
+  it('allows an authenticated knowledge citation to open as a normal browser tab', () => {
+    const href=window.location.origin+'/#/workspace?section=knowledge&documentId=11111111-1111-4111-8111-111111111111&version=1';
+    render(<MarkdownView>{`[source](${href})`}</MarkdownView>);
+    const link=screen.getByRole('link',{name:'source'});
+    const event=new MouseEvent('click',{bubbles:true,cancelable:true});
+    link.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(link).toHaveAttribute('target','_blank');
   });
 
   it('keeps ordinary http links as browser anchors', () => {

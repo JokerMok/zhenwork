@@ -117,17 +117,9 @@ export default function WebKnowledgePicker({ conversationId }: { conversationId?
   };
   return (
     <>
-      <Button size='mini' type='text' onClick={() => void open()}>
+      <Button size='mini' type='text' className='shrink-0 whitespace-nowrap' title={scope ? t('workspace.knowledge.scopeCount', { bases: scope.baseIds.length, documents: scope.documents.length }) : t('workspace.knowledge.scopeDefault')} onClick={() => void open()}>
         {t('workspace.knowledge.taskScope')}
       </Button>
-      <span className='text-12px text-t-secondary'>
-        {scope
-          ? t('workspace.knowledge.scopeCount', {
-              bases: scope.baseIds.length,
-              documents: scope.documents.length,
-            })
-          : t('workspace.knowledge.scopeDefault')}
-      </span>
       <Modal
         visible={visible}
         title={t('workspace.knowledge.taskScope')}

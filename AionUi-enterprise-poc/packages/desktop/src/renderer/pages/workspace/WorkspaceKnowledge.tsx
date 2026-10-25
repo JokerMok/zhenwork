@@ -101,6 +101,7 @@ const WorkspaceKnowledge: React.FC = () => {
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string>();
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const sourceId = params.get('documentId');
   const sourceVersion = Number(params.get('version'));
   const sourceChunk = Number(params.get('chunk'));
@@ -226,7 +227,8 @@ const WorkspaceKnowledge: React.FC = () => {
     const generation = ++previewGeneration.current;
     setPreview(null);
     setPreviewError(undefined);
-    if (!sourceId || !Number.isInteger(sourceVersion) || sourceVersion < 1) return;
+    if (!sourceId) return;
+    if (!/^[0-9a-f-]{36}$/i.test(sourceId) || !Number.isInteger(sourceVersion) || sourceVersion < 1) { setPreviewError('INVALID_DOCUMENT_VERSION');setPreviewLoading(false);return; }
     setPreviewLoading(true);
     void enterpriseControl<Preview>(`/ai/knowledge/documents/${sourceId}/versions/${sourceVersion}`)
       .then((value) => {
@@ -241,7 +243,7 @@ const WorkspaceKnowledge: React.FC = () => {
     return () => {
       previewGeneration.current += 1;
     };
-  }, [sourceId, sourceVersion]);
+  }, [sourceId, sourceVersion, previewAttempt]);
   useEffect(() => {
     if (preview && params.has('chunk'))
       document.querySelector(`[data-knowledge-chunk="${sourceChunk}"]`)?.scrollIntoView({ block: 'center' });

@@ -349,3 +349,15 @@ export const getSvgIntrinsicSize = (svg: string): DiagramSize | null => {
   }
   return null;
 };
+
+/** Only this app's exact versioned source route bypasses the desktop browser panel. */
+export function isEnterpriseKnowledgeSourceLink(href: string, origin: string): boolean {
+  try {
+    const url = new URL(href, origin);
+    if (url.origin !== origin || url.pathname !== '/' || !url.hash.startsWith('#/workspace?')) return false;
+    const params = new URLSearchParams(url.hash.slice('#/workspace?'.length));
+    const version = Number(params.get('version'));
+    return params.get('section') === 'knowledge' && /^[0-9a-f-]{36}$/i.test(params.get('documentId') || '') &&
+      Number.isInteger(version) && version > 0 && version <= 2147483647;
+  } catch { return false; }
+}

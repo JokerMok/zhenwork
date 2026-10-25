@@ -12,7 +12,7 @@ import rehypeRaw from 'rehype-raw';
 // Import KaTeX CSS to make it available in the document
 import 'katex/dist/katex.min.css';
 
-import { openExternalUrl } from '@/renderer/utils/platform';
+import { isEnterpriseWeb, openExternalUrl } from '@/renderer/utils/platform';
 import { parseHttpUrl } from '@/renderer/utils/url';
 import { useOptionalPreviewContext } from '@/renderer/pages/conversation/Preview/context/PreviewContext';
 import classNames from 'classnames';
@@ -22,6 +22,7 @@ import { convertLatexDelimiters } from '@renderer/utils/chat/latexDelimiters';
 import LocalImageView from '@renderer/components/media/LocalImageView';
 import CodeBlock from './CodeBlock';
 import LocalFileLink from './LocalFileLink';
+import { isEnterpriseKnowledgeSourceLink } from './markdownUtils';
 import ShadowView from './ShadowView';
 import { MARKDOWN_REMARK_PLUGINS, MarkdownTable, MarkdownTd } from './markdownComponents';
 import {
@@ -76,9 +77,13 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
 
     const handleLinkClick = useCallback(
       (e: React.MouseEvent<HTMLAnchorElement>) => {
+        const href = (e.currentTarget as HTMLAnchorElement).href;
+        if (isEnterpriseWeb() && isEnterpriseKnowledgeSourceLink(href, window.location.origin)) {
+          e.stopPropagation();
+          return; // Preserve the real anchor/new-tab behavior; never frame an authenticated workspace.
+        }
         e.preventDefault();
         e.stopPropagation();
-        const href = (e.currentTarget as HTMLAnchorElement).href;
         if (!href) return;
         // Prefer the built-in browser tab for http(s) links; fall back to the
         // system browser for other schemes or when no Preview panel is available.
