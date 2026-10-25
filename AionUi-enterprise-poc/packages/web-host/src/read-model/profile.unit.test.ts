@@ -28,11 +28,14 @@ INSERT INTO user_order VALUES('system_default_user','pinned','conversation','111
       path.join(profile, 'aionui-backend.db'),
     ]);
     expect(await readProfile(root, actor, 'preferences', '[]')).toEqual({ language: 'zh-CN' });
+    expect(await readProfile(root, actor, 'conversation', '11111111')).toEqual({ exists: true });
+    expect(await readProfile(root, actor, 'conversation', '22222222')).toEqual({ exists: false });
     expect(await readProfile(root, actor, 'history')).toMatchObject({
       items: [{ id: '11111111', pinned: 1 }],
       next_cursor: null,
     });
-    expect(await readProfile(root, { ...actor, userId: '8' }, 'history')).toEqual({ items: [], next_cursor: null });
+    expect(await readProfile(root, { ...actor, userId: '8' }, 'history')).toEqual({ items: [], next_cursor: null,
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

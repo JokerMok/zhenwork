@@ -3,15 +3,21 @@ import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-libr
 import { afterEach, expect, test, vi } from 'vitest';
 import EnterpriseRuntimeGate from './EnterpriseRuntimeGate';
 import { useVisibleConversationIds } from '@/renderer/pages/conversation/GroupedHistory/hooks/useVisibleConversationIds';
-vi.mock('@/renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync', () => ({ useConversationListSync: () => { throw new Error('Host-only browse must not initialize a worker history store'); } }));
-vi.mock('@/renderer/hooks/context/LayoutContext', () => ({ useLayoutContext: () => null }));
+vi.mock('@/renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync', () => ({
+  useConversationListSync: () => {
+    throw new Error('Host-only browse must not initialize a worker history store');
+  },
+}));
+vi.mock('@/renderer/hooks/context/LayoutContext', () => ({ useLayoutContext: (): null => null }));
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 vi.mock('@arco-design/web-react', () => ({
   Alert: ({ content }: { content: string }) => <span>{content}</span>,
   Spin: () => <span>spinner</span>,
-  Collapse: Object.assign(({children}:React.PropsWithChildren)=><div>{children}</div>, {Item:({children}:React.PropsWithChildren)=><div>{children}</div>}),
+  Collapse: Object.assign(({ children }: React.PropsWithChildren) => <div>{children}</div>, {
+    Item: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+  }),
   Button: ({ children, onClick }: React.PropsWithChildren<{ onClick: () => void }>) => (
     <button onClick={onClick}>{children}</button>
   ),

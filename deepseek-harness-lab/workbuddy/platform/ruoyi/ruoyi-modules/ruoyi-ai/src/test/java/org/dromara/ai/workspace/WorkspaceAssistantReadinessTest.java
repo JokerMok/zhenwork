@@ -29,4 +29,10 @@ class WorkspaceAssistantReadinessTest {
         when(tools.resolve(List.of(id.toString()),List.of(),42L)).thenThrow(new WorkspaceDenied(403,"ToolTypeDisabled"));
         assertThrows(WorkspaceDenied.class,()->readiness.requireDependencies(id,"TOOL",42L));
     }
+    @Test
+    void activationCannotBypassDraftDependencyReadiness() {
+        var readiness=spy(new WorkspaceAssistantReadiness(null,null,null,null,null,null));UUID id=UUID.randomUUID();
+        doReturn(Map.of("ready",false)).when(readiness).checkDraft(id,2,42L);
+        assertThrows(WorkspaceDenied.class,()->readiness.requireDraft(id,2,42L));
+    }
 }

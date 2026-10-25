@@ -36,7 +36,8 @@ export function enterpriseLoginRedirectPath(code: unknown, hostedEnterpriseWeb =
   return normalized === '401' ||
     normalized === 'HTTP_401' ||
     normalized === 'UNAUTHENTICATED' ||
-    normalized === 'SESSION_REVOKED' || normalized === 'AUTHENTICATION_REQUIRED'
+    normalized === 'SESSION_REVOKED' ||
+    normalized === 'AUTHENTICATION_REQUIRED'
     ? '/enterprise/login'
     : null;
 }
@@ -57,7 +58,8 @@ export function workspaceErrorTranslationKey(
     normalized === '401' ||
     normalized === 'HTTP_401' ||
     normalized === 'UNAUTHENTICATED' ||
-    normalized === 'SESSION_REVOKED' || normalized === 'AUTHENTICATION_REQUIRED'
+    normalized === 'SESSION_REVOKED' ||
+    normalized === 'AUTHENTICATION_REQUIRED'
   )
     return 'workspace.errors.authentication';
   if (
@@ -66,12 +68,18 @@ export function workspaceErrorTranslationKey(
     normalized === 'FORBIDDEN' ||
     normalized === 'PERMISSION_DENIED' ||
     normalized === 'PERMISSIONDENIED' ||
-    normalized === 'ACCESS_DENIED' || normalized === 'CAPABILITY_FORBIDDEN'
+    normalized === 'ACCESS_DENIED' ||
+    normalized === 'CAPABILITY_FORBIDDEN'
   )
     return 'workspace.errors.forbidden';
   if (normalized === 'CORE_UNAVAILABLE' || normalized === 'CORE_CAPACITY') return 'workspace.errors.prepareFailed';
   if (normalized === 'NO_AVAILABLE_CAPABILITY') return 'workspace.errors.noCapability';
-  if (normalized === 'MODELUNAVAILABLE' || normalized === 'MODEL_UNAVAILABLE' || normalized === 'NO_AVAILABLE_MODEL' || normalized === 'DEFAULT_MODEL_UNAVAILABLE')
+  if (
+    normalized === 'MODELUNAVAILABLE' ||
+    normalized === 'MODEL_UNAVAILABLE' ||
+    normalized === 'NO_AVAILABLE_MODEL' ||
+    normalized === 'DEFAULT_MODEL_UNAVAILABLE'
+  )
     return 'workspace.errors.noModel';
   return `workspace.errors.${fallback}`;
 }
@@ -106,7 +114,11 @@ export async function enterpriseControl<T>(path: string, init?: RequestInit): Pr
     const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
     throw new WorkspaceApiError(
       typeof record.error === 'string' ? record.error : `HTTP_${response.status}`,
-      typeof record.message === 'string' ? record.message : response.statusText
+      typeof record.msg === 'string'
+        ? record.msg
+        : typeof record.message === 'string'
+          ? record.message
+          : response.statusText
     );
   }
   return unwrapRc2Response<T>(value);
@@ -121,7 +133,11 @@ export async function enterpriseRequest<T>(path: string, init?: RequestInit): Pr
     const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
     throw new WorkspaceApiError(
       typeof record.error === 'string' ? record.error : `HTTP_${response.status}`,
-      typeof record.message === 'string' ? record.message : response.statusText
+      typeof record.msg === 'string'
+        ? record.msg
+        : typeof record.message === 'string'
+          ? record.message
+          : response.statusText
     );
   }
   return value as T;
@@ -149,7 +165,11 @@ export async function uploadWorkspaceFiles(
     const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
     throw new WorkspaceApiError(
       typeof record.error === 'string' ? record.error : `HTTP_${response.status}`,
-      typeof record.message === 'string' ? record.message : response.statusText
+      typeof record.msg === 'string'
+        ? record.msg
+        : typeof record.message === 'string'
+          ? record.message
+          : response.statusText
     );
   }
   const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
@@ -170,7 +190,8 @@ export async function uploadWorkspaceFiles(
 }
 
 export function workspaceErrorCode(error: unknown): string {
-  if (error instanceof WorkspaceApiError) return error.code;
+  if (error instanceof WorkspaceApiError)
+    return /^[A-Za-z][A-Za-z0-9_]{1,100}$/.test(error.message) ? error.message : error.code;
   if (error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{1,100}$/.test(error.message)) return error.message;
   return 'REQUEST_FAILED';
 }

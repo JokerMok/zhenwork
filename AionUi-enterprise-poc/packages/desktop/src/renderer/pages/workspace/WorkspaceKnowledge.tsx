@@ -9,6 +9,7 @@ import {
   List,
   Message,
   Modal,
+  Pagination,
   Select,
   Space,
   Spin,
@@ -19,6 +20,7 @@ import type { UploadRequest } from '@arco-design/web-react/es/Upload/interface';
 import { Delete, Refresh, Search, UploadOne } from '@icon-park/react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { catalogOrigin } from './workspaceCatalog';
 import { enterpriseControl, newIdempotencyKey, workspaceErrorCode, workspaceErrorTranslationKey } from './workspaceApi';
 import type {
@@ -37,6 +39,17 @@ type Preview = {
   content: string;
   fileId: string;
   sha256: string;
+  baseId: string;
+  latestVersion: number;
+  indexedVersion: number | null;
+  status: string;
+  chunks: Array<{
+    chunk_index: number;
+    location_label: string;
+    line_start: number;
+    line_end: number;
+    content: string;
+  }>;
 };
 
 const knowledgeIssueKey = (code: string): string => {
@@ -46,6 +59,7 @@ const knowledgeIssueKey = (code: string): string => {
   if (['DocumentContainsNoExtractableText', 'ScannedPdfOcrUnavailable'].includes(code)) return 'noText';
   if (
     [
+      'FileSizeLimitExceeded',
       'DocumentTextLimitExceeded',
       'DocumentStructureLimitExceeded',
       'PdfPageLimitExceeded',
@@ -82,6 +96,17 @@ const WorkspaceKnowledge: React.FC = () => {
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<KnowledgeCitation[]>([]);
   const [jobs, setJobs] = useState<KnowledgeJob[]>([]);
+  const [params, setParams] = useSearchParams();
+  const [documentPage, setDocumentPage] = useState(1);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string>();
+  const sourceId = params.get('documentId');
+  const sourceVersion = Number(params.get('version'));
+  const sourceChunk = Number(params.get('chunk'));
+  const previewGeneration = useRef(0);
+  const searchGeneration = useRef(0);
+  const [searched, setSearched] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const basesLoadGeneration = useRef(0);
   const documentsLoadGeneration = useRef(0);
@@ -114,7 +139,14 @@ const WorkspaceKnowledge: React.FC = () => {
     setJobs([]);
     setResults([]);
     try {
-      const value = await enterpriseControl<WorkspaceResource[]>(`/ai/resources?type=KNOWLEDGE&scope=${scope}&page=1`);
+      const value: WorkspaceResource[] = [];
+      for (let page = 1; page <= 100; page++) {
+        const batch = await enterpriseControl<WorkspaceResource[]>(
+          `/ai/resources?type=KNOWLEDGE&scope=${scope}&page=${page}`
+        );
+        value.push(...batch);
+        if (batch.length < 30) break;
+      }
       if (generation !== basesLoadGeneration.current) return;
       const items = Array.isArray(value) ? value : [];
       setBases(items);
@@ -137,24 +169,24 @@ const WorkspaceKnowledge: React.FC = () => {
       setJobs([]);
       return;
     }
-    setDocuments([]);
-    setJobs([]);
-    setResults([]);
+    setDocumentsLoading(true);
     try {
-      const [value, jobValue] = await Promise.all([
-        enterpriseControl<KnowledgeDocument[]>(`/ai/knowledge/${baseId}/documents?page=1`),
+      const [value, jobValue] = await Promise.allSettled([
+        enterpriseControl<KnowledgeDocument[]>(`/ai/knowledge/${baseId}/documents?page=${documentPage}`),
         enterpriseControl<KnowledgeJob[]>(`/ai/knowledge/${baseId}/jobs`),
       ]);
       if (generation !== documentsLoadGeneration.current) return;
-      setDocuments(Array.isArray(value) ? value : []);
-      setJobs(Array.isArray(jobValue) ? jobValue : []);
-      setErrorCode(null);
+      if (value.status === 'rejected') throw value.reason;
+      setDocuments(Array.isArray(value.value) ? value.value : []);
+      setJobs(jobValue.status === 'fulfilled' && Array.isArray(jobValue.value) ? jobValue.value : []);
+      setErrorCode(jobValue.status === 'rejected' ? workspaceErrorCode(jobValue.reason) : null);
     } catch (error) {
       if (generation !== documentsLoadGeneration.current) return;
-      setDocuments([]);
       setErrorCode(workspaceErrorCode(error));
+    } finally {
+      if (generation === documentsLoadGeneration.current) setDocumentsLoading(false);
     }
-  }, [baseId]);
+  }, [baseId, documentPage]);
 
   useEffect(() => {
     void loadBases();
@@ -162,6 +194,58 @@ const WorkspaceKnowledge: React.FC = () => {
   useEffect(() => {
     void loadDocuments();
   }, [loadDocuments]);
+
+  useEffect(() => {
+    setDocumentPage(1);
+    setResults([]);
+    setSearched(false);
+    searchGeneration.current += 1;
+  }, [baseId]);
+  useEffect(() => {
+    if (
+      !jobs.some((j) => ['QUEUED', 'RUNNING'].includes(j.status)) &&
+      !documents.some((d) => ['QUEUED', 'INDEXING'].includes(d.status))
+    )
+      return;
+    let polls = 0;
+    const timer = setInterval(() => {
+      if (++polls > 40) {
+        clearInterval(timer);
+        return;
+      }
+      if (document.visibilityState === 'visible') void loadDocuments();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [
+    baseId,
+    jobs.some((j) => ['QUEUED', 'RUNNING'].includes(j.status)),
+    documents.some((d) => ['QUEUED', 'INDEXING'].includes(d.status)),
+    loadDocuments,
+  ]);
+  useEffect(() => {
+    const generation = ++previewGeneration.current;
+    setPreview(null);
+    setPreviewError(undefined);
+    if (!sourceId || !Number.isInteger(sourceVersion) || sourceVersion < 1) return;
+    setPreviewLoading(true);
+    void enterpriseControl<Preview>(`/ai/knowledge/documents/${sourceId}/versions/${sourceVersion}`)
+      .then((value) => {
+        if (generation === previewGeneration.current) setPreview(value);
+      })
+      .catch((e) => {
+        if (generation === previewGeneration.current) setPreviewError(workspaceErrorCode(e));
+      })
+      .finally(() => {
+        if (generation === previewGeneration.current) setPreviewLoading(false);
+      });
+    return () => {
+      previewGeneration.current += 1;
+    };
+  }, [sourceId, sourceVersion]);
+  useEffect(() => {
+    if (preview && params.has('chunk'))
+      document.querySelector(`[data-knowledge-chunk="${sourceChunk}"]`)?.scrollIntoView({ block: 'center' });
+  }, [preview, sourceChunk]);
 
   const createBase = () => {
     let name = '';
@@ -204,6 +288,7 @@ const WorkspaceKnowledge: React.FC = () => {
     async ({ file, onSuccess, onError }) => {
       if (!baseId) return;
       try {
+        if ((file as File).size > 10 * 1024 * 1024) throw new Error('FileSizeLimitExceeded');
         const params = new URLSearchParams({ idempotencyKey: newIdempotencyKey() });
         if (document) {
           params.set('documentId', document.id);
@@ -211,12 +296,21 @@ const WorkspaceKnowledge: React.FC = () => {
         }
         const form = new FormData();
         form.append('file', file as File);
-        await enterpriseControl(`/ai/knowledge/${baseId}/documents?${params.toString()}`, {
-          method: 'POST',
-          body: form,
-        });
+        const result = await enterpriseControl<{ reused?: boolean }>(
+          `/ai/knowledge/${baseId}/documents?${params.toString()}`,
+          {
+            method: 'POST',
+            body: form,
+          }
+        );
         onSuccess?.({});
-        message.success(document ? t('workspace.knowledge.versionUploaded') : t('workspace.knowledge.uploaded'));
+        message.success(
+          result.reused
+            ? t('workspace.knowledge.duplicateReused')
+            : document
+              ? t('workspace.knowledge.versionUploaded')
+              : t('workspace.knowledge.uploaded')
+        );
         await loadDocuments();
       } catch (error) {
         onError?.(error as Error);
@@ -227,27 +321,32 @@ const WorkspaceKnowledge: React.FC = () => {
 
   const search = async () => {
     if (!baseId || !query.trim()) return;
+    const generation = ++searchGeneration.current;
     setSearching(true);
+    setSearched(false);
     try {
       const value = await enterpriseControl<KnowledgeSearchResponse>(
         `/ai/knowledge/${baseId}/search?query=${encodeURIComponent(query.trim())}`
       );
+      if (generation !== searchGeneration.current) return;
       setResults(Array.isArray(value.citations) ? value.citations : []);
+      setSearched(true);
     } catch (error) {
       const code = workspaceErrorCode(error);
       message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
     } finally {
-      setSearching(false);
+      if (generation === searchGeneration.current) setSearching(false);
     }
   };
 
-  const openPreview = async (documentId: string, version: number) => {
-    try {
-      setPreview(await enterpriseControl<Preview>(`/ai/knowledge/documents/${documentId}/versions/${version}`));
-    } catch (error) {
-      const code = workspaceErrorCode(error);
-      message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
-    }
+  const openPreview = (documentId: string, version: number, chunk?: number) => {
+    setParams((current) => {
+      current.set('documentId', documentId);
+      current.set('version', String(version));
+      if (chunk !== undefined) current.set('chunk', String(chunk));
+      else current.delete('chunk');
+      return current;
+    });
   };
 
   const remove = (document: KnowledgeDocument) => {
@@ -311,7 +410,7 @@ const WorkspaceKnowledge: React.FC = () => {
               </Select.Option>
             ))}
           </Select>
-          {scope === 'mine' ? <Button onClick={createBase}>{t('workspace.knowledge.createBase')}</Button> : null}
+          <Button onClick={createBase}>{t('workspace.knowledge.createBase')}</Button>
           {canEdit && baseId ? (
             <Upload
               accept='.txt,.md,.csv,.json,.docx,.xlsx,.pptx,.pdf,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp'
@@ -323,7 +422,11 @@ const WorkspaceKnowledge: React.FC = () => {
               </Button>
             </Upload>
           ) : null}
-          <Button icon={<Refresh />} onClick={() => void loadDocuments()}>
+          <Button
+            icon={<Refresh />}
+            loading={documentsLoading}
+            onClick={() => void (baseId ? loadDocuments() : loadBases())}
+          >
             {t('common.refresh')}
           </Button>
         </Space>
@@ -334,6 +437,16 @@ const WorkspaceKnowledge: React.FC = () => {
           showIcon
           content={t(workspaceErrorTranslationKey(errorCode, 'load'), { code: errorCode })}
         />
+      ) : null}
+      {selectedBase ? (
+        <div className='text-13px text-t-secondary'>
+          {t('workspace.knowledge.accessScope', {
+            permissions: selectedBase.actions
+              .filter((a) => ['VIEW', 'USE', 'EDIT'].includes(a))
+              .map((a) => t(`workspace.knowledge.permissions.${a}`))
+              .join(' · '),
+          })}
+        </div>
       ) : null}
       <Card>
         <Input.Search
@@ -353,7 +466,11 @@ const WorkspaceKnowledge: React.FC = () => {
               <List.Item
                 key={`${row.documentId}:${row.version}:${row.chunkIndex}`}
                 actions={[
-                  <Button key='preview' type='text' onClick={() => void openPreview(row.documentId, row.version)}>
+                  <Button
+                    key='preview'
+                    type='text'
+                    onClick={() => void openPreview(row.documentId, row.version, row.chunkIndex)}
+                  >
                     {t('workspace.knowledge.viewSource')}
                   </Button>,
                 ]}
@@ -366,8 +483,9 @@ const WorkspaceKnowledge: React.FC = () => {
             )}
           />
         ) : null}
+        {searched && !results.length ? <Empty description={t('workspace.knowledge.noMatches')} /> : null}
       </Card>
-      <Spin loading={loading} className='w-full'>
+      <Spin loading={loading || documentsLoading} className='w-full'>
         {!baseId || (documents.length === 0 && !loading) ? (
           <Empty
             description={
@@ -412,7 +530,9 @@ const WorkspaceKnowledge: React.FC = () => {
                       <Tag
                         color={document.status === 'READY' ? 'green' : document.status === 'ERROR' ? 'red' : 'orange'}
                       >
-                        {document.status}
+                        {t(`workspace.knowledge.status.${document.status}`, {
+                          defaultValue: document.status,
+                        })}
                       </Tag>
                     </div>
                   }
@@ -437,13 +557,39 @@ const WorkspaceKnowledge: React.FC = () => {
           />
         )}
       </Spin>
+      {baseId ? (
+        <Pagination
+          simple
+          current={documentPage}
+          pageSize={30}
+          total={documentPage * 30 + (documents.length === 30 ? 1 : 0)}
+          onChange={setDocumentPage}
+        />
+      ) : null}
       <Drawer
         width={640}
-        visible={Boolean(preview)}
+        visible={Boolean(sourceId)}
         title={preview?.filename || t('workspace.knowledge.preview')}
         footer={null}
-        onCancel={() => setPreview(null)}
+        onCancel={() =>
+          setParams((current) => {
+            current.delete('documentId');
+            current.delete('version');
+            current.delete('chunk');
+            return current;
+          })
+        }
       >
+        {previewLoading ? <Spin /> : null}
+        {previewError ? (
+          <Alert
+            type='error'
+            content={t('workspace.knowledge.sourceUnavailable', {
+              version: sourceVersion,
+              code: previewError,
+            })}
+          />
+        ) : null}
         {preview ? (
           <div className='flex flex-col gap-12px'>
             <Descriptions
@@ -451,12 +597,42 @@ const WorkspaceKnowledge: React.FC = () => {
               border
               data={[
                 { label: t('workspace.knowledge.version'), value: `v${preview.version}` },
+                { label: t('workspace.knowledge.title'), value: t(`workspace.knowledge.status.${preview.status}`, { defaultValue: preview.status }) },
                 { label: 'SHA-256', value: preview.sha256 },
               ]}
             />
-            <pre className='m-0 whitespace-pre-wrap break-words text-13px leading-22px text-t-primary'>
-              {preview.content}
-            </pre>
+            {preview.version !== preview.indexedVersion ? (
+              <Alert
+                type='warning'
+                content={t('workspace.knowledge.historicalSource', {
+                  version: preview.version,
+                  indexed: preview.indexedVersion ?? '-',
+                })}
+              />
+            ) : null}
+            <Button href={`/enterprise/control/ai/files/${preview.fileId}/download`}>{t('common.download')}</Button>
+            {preview.chunks?.length ? (
+              preview.chunks.map((chunk) => (
+                <div
+                  key={chunk.chunk_index}
+                  data-knowledge-chunk={chunk.chunk_index}
+                  className={sourceChunk === chunk.chunk_index && params.has('chunk') ? 'p-12px bg-fill-2' : 'p-12px'}
+                >
+                  <div className='font-semibold'>
+                    {chunk.location_label} ·{' '}
+                    {t('workspace.knowledge.lines', {
+                      start: chunk.line_start,
+                      end: chunk.line_end,
+                    })}
+                  </div>
+                  <pre className='m-0 whitespace-pre-wrap break-words text-13px leading-22px text-t-primary'>
+                    {chunk.content}
+                  </pre>
+                </div>
+              ))
+            ) : (
+              <pre className='whitespace-pre-wrap break-words'>{preview.content}</pre>
+            )}
           </div>
         ) : null}
       </Drawer>

@@ -143,7 +143,7 @@
     "deleteConfirm": "删除 {{name}}，并停止今后继续使用？",
     "deleted": "文档已删除",
     "empty": "请选择知识库，或上传第一份文档",
-    "availableEmpty": "当前账号暂无可用知识库；可切换到“我的”新建个人知识库，或联系组织管理员授权。",
+    "availableEmpty": "暂无可用知识库。可新建个人私有知识库，或联系管理员申请组织资料权限。",
     "versionStatus": "最新 v{{latest}}，已索引 v{{indexed}}",
     "version": "版本",
     "indexError": "索引错误：{{code}}",
@@ -157,6 +157,28 @@
       "contentChanged": "重新索引前文件内容已经变化。请将它作为新版本上传，以保留准确的版本历史。",
       "temporary": "文档提取未能完成。请先重试一次；若仍失败，请重新导出文件或联系管理员（{{code}}）。",
       "failed": "索引失败（{{code}}）。请检查文件后重试，或上传修正后的新版本。"
+    },
+    "taskScope": "本次知识范围",
+    "scopeCount": "{{bases}} 个知识库 · {{documents}} 份指定版本资料",
+    "scopeDefault": "当前有权使用的知识，专家按其默认范围检索",
+    "scopeHint": "选择知识库使用当前已索引版本；选择单份文件固定使用指定版本。空选择表示本任务不检索知识。每次使用均重新检查权限。",
+    "selectedBases": "选择知识库",
+    "selectedFiles": "或选择具体文件版本",
+    "duplicateReused": "相同文件已存在，已复用原资料和索引任务。",
+    "accessScope": "当前权限：{{permissions}}",
+    "noMatches": "所选知识库中未找到匹配依据。",
+    "sourceUnavailable": "原文 v{{version}} 当前不可用或访问权限已变化（{{code}}）。此引用不会自动转向内容不同的新版本。",
+    "historicalSource": "正在查看引用版本 v{{version}}；当前索引生效版本为 v{{indexed}}。",
+    "permissions": {
+      "VIEW": "查看",
+      "USE": "用于任务",
+      "EDIT": "编辑草稿"
+    },
+    "status": {
+      "READY": "索引可用",
+      "QUEUED": "等待解析",
+      "INDEXING": "正在索引",
+      "ERROR": "索引失败"
     }
   },
   "abilities": {

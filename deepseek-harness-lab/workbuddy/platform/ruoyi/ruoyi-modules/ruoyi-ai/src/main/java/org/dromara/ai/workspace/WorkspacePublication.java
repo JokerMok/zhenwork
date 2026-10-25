@@ -29,6 +29,11 @@ public class WorkspacePublication {
    }
    return issues;
   }
+  if("KNOWLEDGE".equals(type)){
+   boolean ready=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_knowledge_document d JOIN ai_knowledge_document_version v ON v.document_id=d.id AND v.version=d.indexed_version WHERE d.base_id=? AND d.deleted_at IS NULL AND v.status='READY')",Boolean.class,id));
+   if(!ready)issues.add(Map.of("type","KNOWLEDGE","id",id.toString(),"code","KnowledgeIndexNotReady"));
+   return issues;
+  }
   if(!"ASSISTANT".equals(type))return List.of();
   UUID model=UUID.fromString(config.get("modelId").toString());
   boolean modelReady=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_model m JOIN ai_provider p ON p.id=m.provider_id WHERE m.id=? AND m.enabled AND m.streaming AND p.enabled)",Boolean.class,model));
@@ -39,6 +44,10 @@ public class WorkspacePublication {
     UUID dependency=UUID.fromString(raw.toString());
     boolean active=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_resource WHERE id=? AND resource_type=? AND enabled AND NOT security_disabled AND lifecycle_state='ACTIVE' AND published_version IS NOT NULL)",Boolean.class,dependency,resourceType));
     if(!active)issues.add(Map.of("type",resourceType,"id",dependency.toString(),"code","ResourceUnavailable"));
+    if(active&&"KNOWLEDGE".equals(resourceType)){
+     boolean indexed=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_knowledge_document d JOIN ai_knowledge_document_version v ON v.document_id=d.id AND v.version=d.indexed_version WHERE d.base_id=? AND d.deleted_at IS NULL AND v.status='READY')",Boolean.class,dependency));
+     if(!indexed)issues.add(Map.of("type","KNOWLEDGE","id",dependency.toString(),"code","KnowledgeIndexNotReady"));
+    }
     if(active&&"MCP".equals(resourceType)){
      boolean connected=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_mcp_connection c JOIN ai_resource r ON r.id=c.resource_id WHERE c.resource_id=? AND c.enabled AND c.status='READY' AND c.template_version=r.published_version)",Boolean.class,dependency));
      if(!connected)issues.add(Map.of("type","MCP","id",dependency.toString(),"code","McpConnectionNotReady"));

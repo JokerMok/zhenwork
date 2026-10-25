@@ -27,6 +27,9 @@ elif op=='settings':
  if row:
   for k in result:
    if k in row.keys():result[k]=row[k] if k=='language' else bool(row[k])
+elif op=='conversation':
+ row=c.execute('SELECT id FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL',(argument,uid)).fetchone()
+ result={'exists':row is not None}
 elif op=='history':
  cursor=argument
  args=[uid];where='c.user_id=? AND c.archived_at IS NULL'
@@ -45,7 +48,7 @@ c.close()
 export async function readProfile(
   root: string,
   actor: EnterpriseActor,
-  operation: 'preferences' | 'settings' | 'history',
+  operation: 'preferences' | 'settings' | 'history' | 'conversation',
   argument = ''
 ): Promise<unknown> {
   const { profile } = await prepareEnterpriseProfile(root, actor);

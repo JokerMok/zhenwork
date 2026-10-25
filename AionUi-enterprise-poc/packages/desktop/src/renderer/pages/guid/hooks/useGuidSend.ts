@@ -1,3 +1,4 @@
+import { persistDraftKnowledge } from '@/renderer/components/chat/SendBox/WebKnowledgePicker';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -208,6 +209,8 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
           Message.error(t('conversation.createFailed'));
           return;
         }
+
+        await persistDraftKnowledge(conversation.id);
 
         if (isCustomWorkspace) {
           updateWorkspaceTime(finalWorkspace);

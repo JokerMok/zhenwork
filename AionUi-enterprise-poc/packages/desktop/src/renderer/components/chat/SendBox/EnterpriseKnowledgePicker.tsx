@@ -1,4 +1,6 @@
 import { Button, Message, Modal } from '@arco-design/web-react';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import WebKnowledgePicker from './WebKnowledgePicker';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -10,7 +12,13 @@ type Preview = { filename: string; content: string; version: number };
 const api = (): EnterpriseApi | undefined =>
   (window as Window & { enterpriseResources?: EnterpriseApi }).enterpriseResources;
 
-export default function EnterpriseKnowledgePicker({ onAttach }: { onAttach: (path: string, name: string) => void }) {
+export default function EnterpriseKnowledgePicker({
+  onAttach,
+  conversationId,
+}: {
+  onAttach: (path: string, name: string) => void;
+  conversationId?: string;
+}) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [bases, setBases] = useState<Resource[]>([]);
@@ -18,6 +26,7 @@ export default function EnterpriseKnowledgePicker({ onAttach }: { onAttach: (pat
   const [documents, setDocuments] = useState<Document[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
+  if (isEnterpriseWeb()) return <WebKnowledgePicker conversationId={conversationId} />;
   if (!api()) return null;
 
   const run = async (operation: () => Promise<void>) => {
@@ -26,8 +35,16 @@ export default function EnterpriseKnowledgePicker({ onAttach }: { onAttach: (pat
       await operation();
     } catch (error) {
       const code = error instanceof Error ? error.message : '';
-      const key = code === 'CONNECTION' ? 'connection' : code === 'PERMISSION' ? 'denied' :
-        code === 'FILE_TOO_LARGE' ? 'tooLarge' : code === 'SESSION_CLOSED' ? 'sessionClosed' : 'failed';
+      const key =
+        code === 'CONNECTION'
+          ? 'connection'
+          : code === 'PERMISSION'
+            ? 'denied'
+            : code === 'FILE_TOO_LARGE'
+              ? 'tooLarge'
+              : code === 'SESSION_CLOSED'
+                ? 'sessionClosed'
+                : 'failed';
       Message.error(t(`fileSelection.enterpriseResources.${key}`));
     } finally {
       setBusy(false);

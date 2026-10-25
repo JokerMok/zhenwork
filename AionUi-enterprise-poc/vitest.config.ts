@@ -49,6 +49,7 @@ export default defineConfig({
             'tests/unit/**/*.dom.test.ts',
             'tests/unit/**/*.dom.test.tsx',
             'packages/desktop/src/renderer/components/layout/runtime/*.dom.test.tsx',
+            'packages/desktop/src/renderer/components/chat/SendBox/WebKnowledgePicker.dom.test.tsx',
           ],
           setupFiles: ['./tests/vitest.dom.setup.ts'],
         },

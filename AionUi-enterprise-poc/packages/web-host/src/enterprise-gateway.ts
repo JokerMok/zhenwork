@@ -10,7 +10,7 @@ import serveHandler from 'serve-handler';
 import enLogin from '../../desktop/src/renderer/services/i18n/locales/en-US/login.json' with { type: 'json' };
 import zhLogin from '../../desktop/src/renderer/services/i18n/locales/zh-CN/login.json' with { type: 'json' };
 import { enterpriseCoreBase, enterpriseCoreHost, enterpriseProxyHost } from './enterprise-core-address.js';
-import { OfficeStore } from './office/office-store.js';
+import { OfficeStore, validateKnowledgeScope, type KnowledgeScope } from './office/office-store.js';
 import { previewOfficeFile } from './office/preview/index.js';
 import { enterpriseProfilePath, prepareEnterpriseProfile } from './enterprise-core.js';
 import { readProfile } from './read-model/profile.js';
@@ -1024,6 +1024,37 @@ export async function startEnterpriseGateway(
         return reply(res, status.state === 'pending' ? 202 : 200, { ok: true, ...status });
       } catch (error) { return replyCoreFailure(res, error); }
     }
+    const scopeRoute = /^\/enterprise\/knowledge-scope\/([A-Za-z0-9_-]{1,100})$/.exec(req.url);
+    const checkKnowledge = async (scope: KnowledgeScope): Promise<void> => {
+      if (!opts.controlRequest) throw new Error('KNOWLEDGE_UNAVAILABLE');
+      for (const id of new Set([...scope.baseIds, ...scope.documents.map(d => d.baseId)])) {
+        const response = await opts.controlRequest(auth.session.actor, `/ai/resources/${id}?active=true`, { method: 'GET' });
+        const value = await response.json() as { code?: number; data?: { resourceType?: string; actions?: string[] } };
+        if (!response.ok || value.code !== 200 || value.data?.resourceType !== 'KNOWLEDGE' || !value.data.actions?.includes('USE')) throw new Error('KNOWLEDGE_SCOPE_REVOKED');
+      }
+      for (const doc of scope.documents) {
+        const response = await opts.controlRequest(auth.session.actor, `/ai/knowledge/documents/${doc.documentId}/versions/${doc.version}`, { method: 'GET' });
+        const value = await response.json() as { code?: number; data?: { baseId?: string; status?: string } };
+        if (!response.ok || value.code !== 200 || value.data?.baseId !== doc.baseId || value.data.status !== 'READY') throw new Error('KNOWLEDGE_SCOPE_REVOKED');
+      }
+    };
+    if (scopeRoute && opts.profileRoot) {
+      try {
+        const owned = await readProfile(opts.profileRoot, auth.session.actor, 'conversation', scopeRoute[1]) as { exists?: boolean };
+        if (!owned.exists) return reply(res, 404, { error: 'CONVERSATION_NOT_FOUND' });
+        const store = await OfficeStore.create(opts.profileRoot, auth.session.actor);
+        if (req.method === 'GET') return reply(res, 200, { scope: await store.knowledgeScope(scopeRoute[1]) || null });
+        if (req.method !== 'PUT') return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
+        const scope = validateKnowledgeScope(JSON.parse((await body(req, 8000)).toString('utf8')));
+        await checkKnowledge(scope);
+        await store.selectKnowledge(scopeRoute[1], scope);
+        return reply(res, 200, { scope });
+      } catch (error) {
+        const code = (error as Error).message;
+        const known = ['KNOWLEDGE_SCOPE_REVOKED', 'INVALID_KNOWLEDGE_SCOPE', 'INVALID_CONVERSATION', 'KNOWLEDGE_SCOPE_LIMIT'].includes(code);
+        return reply(res, code === 'KNOWLEDGE_SCOPE_REVOKED' ? 403 : known ? 400 : 503, { error: known ? code : 'KNOWLEDGE_SCOPE_UNAVAILABLE' });
+      }
+    }
     if (req.url.startsWith('/enterprise/control/')) {
       const route = req.url.slice('/enterprise/control'.length);
       // No arbitrary proxy, auth reset, internal service routes or admin wildcard.
@@ -1488,6 +1519,15 @@ export async function startEnterpriseGateway(
       try {
         if (opts.profileRoot && req.method === 'GET' && !cores.has(actorKey(auth.session.actor)))
           return reply(res, 409, { error: 'CORE_NOT_RUNNING' });
+        const messageRoute = /^\/api\/conversations\/([A-Za-z0-9_-]{1,100})\/messages$/.exec(req.url);
+        if (opts.profileRoot && req.method === 'POST' && messageRoute) {
+          const store = await OfficeStore.create(opts.profileRoot, auth.session.actor);
+          const scope = await store.knowledgeScope(messageRoute[1]);
+          if (scope) {
+            try { await checkKnowledge(scope); }
+            catch { return reply(res, 403, { error: 'KNOWLEDGE_SCOPE_REVOKED' }); }
+          }
+        }
         const core = await getCore(auth.session.actor, false, !passiveWorkerRequest(req.method || 'GET', req.url || ''),
           req.method === 'POST' && /^\/api\/conversations(?:\/[^/]+\/messages)?$/.test(req.url) ? 'task_request' : 'user_operation');
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;

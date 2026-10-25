@@ -153,7 +153,30 @@
       "contentChanged": "重新索引前檔案內容已經變化。請將它作為新版本上傳，以保留準確的版本歷史。",
       "temporary": "文件提取未能完成。請先重試一次；若仍失敗，請重新匯出檔案或聯絡管理員（{{code}}）。",
       "failed": "索引失敗（{{code}}）。請檢查檔案後重試，或上傳修正後的新版本。"
-    }
+    },
+    "taskScope": "本次知識範圍",
+    "scopeCount": "{{bases}} 個知識庫 · {{documents}} 份指定版本資料",
+    "scopeDefault": "目前有權使用的知識，專家依預設範圍檢索",
+    "scopeHint": "選擇知識庫使用目前已索引版本；單份文件固定使用指定版本。空選擇表示不檢索知識。每次使用重新檢查權限。",
+    "selectedBases": "選擇知識庫",
+    "selectedFiles": "或選擇具體文件版本",
+    "duplicateReused": "相同文件已存在，已重用原資料及索引工作。",
+    "accessScope": "目前權限：{{permissions}}",
+    "noMatches": "所選知識庫未找到相符依據。",
+    "sourceUnavailable": "原文 v{{version}} 目前無法存取或權限已變更（{{code}}）。不會自動改為不同版本。",
+    "historicalSource": "正在檢視引用版本 v{{version}}；目前索引版本為 v{{indexed}}。",
+    "permissions": {
+      "VIEW": "檢視",
+      "USE": "用於工作",
+      "EDIT": "編輯草稿"
+    },
+    "status": {
+      "READY": "索引可用",
+      "QUEUED": "等待解析",
+      "INDEXING": "正在索引",
+      "ERROR": "索引失敗"
+    },
+    "availableEmpty": "No knowledge base is available. Create a private one, or ask an administrator to grant access."
   },
   "abilities": {
     "title": "能力",

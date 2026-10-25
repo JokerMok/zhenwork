@@ -9,7 +9,17 @@ const MAX_FILE = 50 * 1024 * 1024;
 const HISTORY_BUDGET = 256 * 1024 * 1024;
 type Version = { id: string; createdAt: string; byteSize: number; sha256: string };
 type Memory = { id: string; scope: 'personal' | 'project'; projectId?: string; content: string; updatedAt: string };
-type State = { files: Record<string, Version[]>; memories: Memory[]; deliveries?: Record<string, Record<string, string>> };
+export type KnowledgeScope = { baseIds: string[]; documents: Array<{ baseId: string; documentId: string; version: number }> };
+export function validateKnowledgeScope(value: unknown): KnowledgeScope {
+  const input = value as KnowledgeScope;
+  const uuid = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id);
+  if (!input || !Array.isArray(input.baseIds) || !Array.isArray(input.documents) || input.baseIds.length > 8 || input.documents.length > 8 ||
+      !input.baseIds.every(uuid) || new Set(input.baseIds).size !== input.baseIds.length ||
+      input.documents.some(d => !d || !uuid(d.baseId) || !uuid(d.documentId) || !Number.isInteger(d.version) || d.version < 1) ||
+      new Set(input.documents.map(d => d.documentId)).size !== input.documents.length) throw new Error('INVALID_KNOWLEDGE_SCOPE');
+  return { baseIds: [...input.baseIds], documents: input.documents.map(d => ({ baseId: d.baseId, documentId: d.documentId, version: d.version })) };
+}
+type State = { knowledgeScopes?: Record<string, KnowledgeScope>; files: Record<string, Version[]>; memories: Memory[]; deliveries?: Record<string, Record<string, string>> };
 const digest = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex');
 const inside = (root: string, file: string): boolean => file === root || file.startsWith(root + path.sep);
 
@@ -68,6 +78,18 @@ export class OfficeStore {
       state.deliveries ||= {};
       state.deliveries[dataSha256] = { ...state.deliveries[dataSha256], [name]: sha256 };
       while (Object.keys(state.deliveries).length > 128) delete state.deliveries[Object.keys(state.deliveries)[0]];
+    });
+  }
+
+  async knowledgeScope(conversation: string): Promise<KnowledgeScope | undefined> { return (await this.state()).knowledgeScopes?.[conversation]; }
+
+  async selectKnowledge(conversation: string, value: unknown): Promise<void> {
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(conversation)) throw new Error('INVALID_CONVERSATION');
+    const scope = validateKnowledgeScope(value);
+    await this.transaction(async state => {
+      state.knowledgeScopes ||= {};
+      if (!state.knowledgeScopes[conversation] && Object.keys(state.knowledgeScopes).length >= 1000) throw new Error('KNOWLEDGE_SCOPE_LIMIT');
+      state.knowledgeScopes[conversation] = scope;
     });
   }
 

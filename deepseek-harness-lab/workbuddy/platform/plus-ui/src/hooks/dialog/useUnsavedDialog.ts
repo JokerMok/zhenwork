@@ -1,12 +1,12 @@
 import { ElMessageBox } from 'element-plus';
 import { ref, watch, type Ref } from 'vue';
-/** Only explicit user close goes through this guard; successful saves close normally. */
+/** Guard explicit close; editors that stay open after saving may update their saved baseline. */
 export function useUnsavedDialog(visible: Ref<boolean>, state: () => unknown, busy: Ref<boolean>) {
   const initial = ref('');
   watch(visible, open => {
     if (open) initial.value = JSON.stringify(state());
   });
-  return async (done?: () => void) => {
+  const close = async (done?: () => void) => {
     if (busy.value) return;
     if (initial.value !== JSON.stringify(state()))
       try {
@@ -21,4 +21,5 @@ export function useUnsavedDialog(visible: Ref<boolean>, state: () => unknown, bu
     visible.value = false;
     done?.();
   };
+  return Object.assign(close, { markSaved: () => { initial.value = JSON.stringify(state()); } });
 }

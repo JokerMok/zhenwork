@@ -611,6 +611,7 @@ test('knowledge search resolves permitted bases and output context without inven
     const found = JSON.parse((await call('search_knowledge', { query: 'requirements' })).result.content[0].text);
     expect(found.searchedBases).toBe(1);
     expect(found.results[0].citations[0]).toMatchObject({ baseId, version: 3 });
+    expect(found.results[0].citations[0].sourceUrl).toContain('/#/workspace?section=knowledge&documentId=');
     expect(checked).toEqual([baseId]);
     const ref = found.results[0].citations[0].sourceRef;
     expect(found.results[0].citations[0].quoteOptions[0]).toEqual({ index: 0, quote: 'Original source claim only, no acceptance evidence.' });
@@ -635,5 +636,17 @@ test('knowledge search resolves permitted bases and output context without inven
     expect(denied.error.message).toBe('resource revoked');
     const deniedCreate = await call('create_office_document', { path: 'report.xlsx', format: 'xlsx', evidenceRows: [evidenceRow] }) as unknown as { error: { message: string } };
     expect(deniedCreate.error.message).toBe('resource revoked');
+    allowed = true;
+    await (await OfficeStore.create(root, actor)).selectKnowledge('c1', { baseIds: [], documents: [] });
+    const excluded = (await call('search_knowledge', {
+      query: 'requirements',
+      baseId,
+    })) as unknown as { error: { message: string } };
+    expect(excluded.error.message).toBe('KNOWLEDGE_OUTSIDE_SELECTED_SCOPE');
+    const staleCitation = (await call('verify_source_quotes', {
+      citations: [{ ref, quoteIndex: 0 }],
+    })) as unknown as { error: { message: string } };
+    expect(staleCitation.error.message).toBe('SOURCE_OUTSIDE_SELECTED_KNOWLEDGE');
+
   } finally { await office.stop(); await fixture.close(); }
 });

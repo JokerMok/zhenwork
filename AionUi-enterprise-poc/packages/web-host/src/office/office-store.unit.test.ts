@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, test } from 'vitest';
 import { enterpriseManagedResourcePath } from '../enterprise-resource-runtime.js';
-import { OfficeStore } from './office-store.js';
+import { OfficeStore, validateKnowledgeScope } from './office-store.js';
 
 const roots: string[] = [];
 const actor = (userId: string) => ({ serverId: 'rc2', userId });
@@ -149,4 +149,35 @@ test.runIf(process.platform === 'linux')('invalid Office originals remain listed
   await writeFile(path.join(root, 'outside.xlsx'), 'private');
   await symlink(path.join(root, 'outside.xlsx'), path.join(workspace, 'escape.xlsx'));
   await expect(store.downloadOriginal(workspace, 'escape.xlsx')).rejects.toThrow('WORKSPACE_DENIED');
+});
+
+test('task knowledge selection is persistent metadata isolated by actor and conversation', async () => {
+  const { root } = await fixture();
+  const first = await OfficeStore.create(root, actor('70'));
+  const second = await OfficeStore.create(root, actor('71'));
+  const scope = { baseIds: ['11111111-1111-4111-8111-111111111111'], documents: [] };
+  await first.selectKnowledge('c1', scope);
+  expect(await first.knowledgeScope('c1')).toEqual(scope);
+  expect(await second.knowledgeScope('c1')).toBeUndefined();
+  expect(await first.knowledgeScope('c2')).toBeUndefined();
+  await first.selectKnowledge('c1', { baseIds: [], documents: [] });
+  expect(await first.knowledgeScope('c1')).toEqual({ baseIds: [], documents: [] });
+});
+
+test('invalid knowledge selectors cannot become persisted runtime scope', () => {
+  expect(() => validateKnowledgeScope({ baseIds: ['arbitrary-url'], documents: [] })).toThrow(
+    'INVALID_KNOWLEDGE_SCOPE'
+  );
+  expect(() =>
+    validateKnowledgeScope({
+      baseIds: [],
+      documents: [
+        {
+          baseId: '11111111-1111-4111-8111-111111111111',
+          documentId: '22222222-2222-4222-8222-222222222222',
+          version: 0,
+        },
+      ],
+    })
+  ).toThrow('INVALID_KNOWLEDGE_SCOPE');
 });

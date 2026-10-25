@@ -79,7 +79,7 @@ public class WorkspaceResources {
             if(!Set.of("ASSISTANT","SKILL","MCP","TOOL","KNOWLEDGE").contains(r.get("resource_type")))throw new WorkspaceDenied(400,"ResourceExecutionNotEnabledYet");
             if(!"SKILL".equals(r.get("resource_type"))&&((Number)r.get("latest_version")).intValue()!=version)throw new WorkspaceDenied(409,"VersionConflict");
             if(r.get("visibility").equals("ENTERPRISE_PUBLIC"))throw new WorkspaceDenied(403,"PublicationReviewRequired");
-            guard.version(id,version,actor,AiResourceGuard.Action.EDIT);changed[0]=!Objects.equals(r.get("published_version"),version);jdbc.update("UPDATE ai_resource SET published_version=?,lifecycle_state='ACTIVE',auth_version=auth_version+CASE WHEN published_version IS DISTINCT FROM ? THEN 1 ELSE 0 END,updated_by=?,updated_at=NOW() WHERE id=?",version,version,actor,id);audit(actor,"resource.version.activated",id,Map.of("version",version));
+            guard.version(id,version,actor,AiResourceGuard.Action.EDIT);if("ASSISTANT".equals(r.get("resource_type")))readiness.requireDraft(id,version,actor);changed[0]=!Objects.equals(r.get("published_version"),version);jdbc.update("UPDATE ai_resource SET published_version=?,lifecycle_state='ACTIVE',auth_version=auth_version+CASE WHEN published_version IS DISTINCT FROM ? THEN 1 ELSE 0 END,updated_by=?,updated_at=NOW() WHERE id=?",version,version,actor,id);audit(actor,"resource.version.activated",id,Map.of("version",version));
         });if(changed[0])conversations.revokeResource(id);return active(id,actor);
     }
     public Map<String,Object> share(UUID id,long actor,String subject,long subjectId,Set<String> actions){

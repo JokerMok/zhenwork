@@ -153,7 +153,30 @@
       "contentChanged": "The stored file changed before reindexing. Upload it as a new version to keep the version history accurate.",
       "temporary": "Document extraction could not finish. Retry once; if it repeats, re-export the file or contact an administrator ({{code}}).",
       "failed": "Indexing failed ({{code}}). Check the file and retry, or upload a corrected version."
-    }
+    },
+    "taskScope": "Knowledge scope",
+    "scopeCount": "{{bases}} bases · {{documents}} pinned files",
+    "scopeDefault": "Current authorized knowledge; expert defaults apply",
+    "scopeHint": "Whole bases use their current indexed version. Individual files keep the selected version. An empty selection excludes knowledge from this task. Access is checked again when used.",
+    "selectedBases": "Knowledge bases",
+    "selectedFiles": "Or choose specific file versions",
+    "duplicateReused": "The identical file is already present; its existing document and indexing job were reused.",
+    "accessScope": "Your permissions: {{permissions}}",
+    "noMatches": "No matching evidence was found in the selected knowledge base.",
+    "sourceUnavailable": "Source v{{version}} is unavailable or access has changed ({{code}}). This reference has not been redirected to a different version.",
+    "historicalSource": "You are viewing cited v{{version}}. The current indexed version is v{{indexed}}.",
+    "permissions": {
+      "VIEW": "View",
+      "USE": "Use in tasks",
+      "EDIT": "Edit drafts"
+    },
+    "status": {
+      "READY": "Indexed",
+      "QUEUED": "Queued",
+      "INDEXING": "Indexing",
+      "ERROR": "Indexing failed"
+    },
+    "availableEmpty": "No knowledge base is available. Create a private one, or ask an administrator to grant access."
   },
   "abilities": {
     "title": "Abilities",

@@ -1676,9 +1676,13 @@ const SendBox: React.FC<{
 
   const hasDraftToSend = input.trim().length > 0 || domSnippets.length > 0;
 
-  const addToDraftLabel = t('conversation.commandQueue.addToQueue', { defaultValue: 'Save to Draft box' });
+  const addToDraftLabel = t('conversation.commandQueue.addToQueue', {
+    defaultValue: 'Save to Draft box',
+  });
   const sendNowLabel = t('conversation.commandQueue.sendNow', { defaultValue: 'Send now' });
-  const enterShortcutLabel = t('conversation.commandQueue.enterShortcut', { defaultValue: 'Enter' });
+  const enterShortcutLabel = t('conversation.commandQueue.enterShortcut', {
+    defaultValue: 'Enter',
+  });
   const addToDraftShortcutLabel = t('conversation.commandQueue.addToQueueShortcut', {
     defaultValue: isMacOS() ? '⌘ + Enter' : 'Ctrl + Enter',
   });
@@ -1971,7 +1975,9 @@ const SendBox: React.FC<{
               emptyText={
                 activeAtSessionQuery?.query
                   ? t('messages.atSession.empty', { defaultValue: 'No conversations found' })
-                  : t('messages.atSession.hint', { defaultValue: 'Type to search your conversations' })
+                  : t('messages.atSession.hint', {
+                      defaultValue: 'Type to search your conversations',
+                    })
               }
               items={sessionMentionSearch.items}
               label={t('messages.atSession.menuLabel', { defaultValue: 'Conversation mentions' })}
@@ -2137,6 +2143,7 @@ const SendBox: React.FC<{
                 {renderedTools}
                 {onSelectedWorkspaceItemsChange && (
                   <EnterpriseKnowledgePicker
+                    conversationId={conversationContext?.conversation_id}
                     onAttach={(path, name) =>
                       onSelectedWorkspaceItemsChange(
                         mergeFileSelectionItems(selectedWorkspaceItems ?? [], [
@@ -2253,6 +2260,7 @@ const SendBox: React.FC<{
                 {renderedTools}
                 {onSelectedWorkspaceItemsChange && (
                   <EnterpriseKnowledgePicker
+                    conversationId={conversationContext?.conversation_id}
                     onAttach={(path, name) =>
                       onSelectedWorkspaceItemsChange(
                         mergeFileSelectionItems(selectedWorkspaceItems ?? [], [
