@@ -1,11 +1,11 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-23。当前范围：新员工组织能力继承、登录来源、受保护服务监控和系统工具；定向真实网页验收通过，外部资料边界继续单列。不制作桌面安装包。
+核对日期：2026-10-25。当前范围：员工资源效率与按需Core生命周期；保留既有交互、组织能力和办公功能。实际验证边界见资源效率记录，不制作桌面安装包。
 
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261023-employee-inheritance-v7`；准确应用 SHA：`cea46c0ef395f1a3e3c5712af477a55ecbb27e37`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
+- 激活 release：`20261025-resource-efficiency-v4`；准确应用 SHA：`8a913209a41758cfd13d34e0530911194a218aa6`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
@@ -162,3 +162,15 @@ test1001原密码实际登录：首页/刷新、新会话/双标签、真实长�
 五组真实网页/模型回归、历史恢复/继续消息/刷新、Gzip/Brotli与内容SHA256、304/no-store/退出旧身份拒绝通过。证据docs/employee-startup-performance.md与私有.codex/startup-performance/acceptance-report.md；服务器acceptance/20261025-employee-startup.md。Host32定向通过；旧Host完整tsc research.ts:137未扩展修复。不重复后台全巡检/办公三场景。
 
 Admin/Java/control/23迁移/amd64镜像和Caddy模板逐字节复用v6。备份成功，Core1/启动1/闲120秒/等180秒保持。只清理未验收workspace-ui-v1/v4/v5，保留清单、配置快照、全部已验证发布与数据。最终Core0，可用内存5.03GiB、磁盘3.54GiB；本项目/拼豆/Caddy及HTTPS正常。最新备份20261025T065012557834Z.tar.gz / 752216047字节；2份/1504298426字节。回滚审核20261025-startup-v1-to-ui-v6.json，仅应用/配置，保留数据/权限，未实际回滚。
+
+## 2026-10-25 员工资源效率最终发布
+
+`20261025-resource-efficiency-v4` / 应用 `8a913209a41758cfd13d34e0530911194a218aa6`，基线startup-v1。实现及测量：[员工运行环境与资源效率](docs/employee-resource-efficiency.md)；私有 `.codex/resource-efficiency/acceptance-report.md`。登录/组织目录/文件及预览/下载/工作台历史元数据不再唤醒Core；读探测/焦点/WS不续期，真实任务和子进程保护保持；同员工启动合并、物理容量队列和ready后闲置计时修复。管理员网页、Java/监控、23迁移及精确amd64镜像复用。
+
+同条件纯浏览Core启动1组→0组，请求51→36；可见会话165秒原保留Core，本轮161.730秒自动安全回收并在不刷新原页面情况下3030ms真实续聊。三轮连续对话只用一组Core。冷Core首页6.546→4.742秒，但输入7.361→8.080秒、热输入中位5.069→5.723秒、热真实回复7.895→8.819秒（每组热n2），没有稳定任务提速。原生启动中位1.373→1.417秒也无改善；不外推节省百分比/多人容量。服务实际常驻与CPU/采样边界见报告，不把页缓存或重启后的Java堆差当成代码节省。
+
+真实模型、历史任务工具续作、XLSX新版本/预览/下载、双标签复用、双员工排队自动推进及越权拒绝、回收后身份和文件可用、退出401通过。v3完整8项证据按未变逻辑复用，v4另验三轮模型/原会话回收续聊/当前成品下载字节一致；v4预览脚本初次断言早于异步内容到达保留FAIL，由等待实际单元格和下载的补验覆盖。v1首页布局失败曾实际审核回滚；v2被只读POST误唤醒导致Core0失败，均修复并保留失败证据，不标VERIFIED。定向Host34项、相关读取/身份/前端用例和类型通过；未扩展后台全巡检、办公三场景或历史全量测试。
+
+收口2026-10-25T11:43:35Z：Core0，Host/RC2/monitor/拼豆/Caddy active，员工/管理/拼豆公网TLS200，ops-check200；可用内存4.97GiB、磁盘2.91GiB。最新一致备份20261025T112200058025Z.tar.gz(752521336字节)，2份共1504819348字节；未生产还原。Core1/启动1/队列2/等180秒/闲120秒不变，回收安全检查60秒。无新常驻服务、无内存限额调整。只归档移除未验收失败候选v1/v2，所有有效发布/备份/用户数据保持。
+
+当前previous为startup-v1，回滚审核 `shared/config/rollback-reviews/20261025-resource-v4-to-startup-v1.json`；仅退应用/配置，保留数据库/员工文件/历史/授权。原生会话、执行及高级配置仍依赖用户独立Core；跨员工等待实测125.818秒，不声称并行执行能力。独立客户符合性仍待独立需求资料。

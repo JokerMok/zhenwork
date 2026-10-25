@@ -8,7 +8,15 @@
 
 应用版本看 `current/RELEASE.json`、实际验收看 `current/VERIFIED.json`。初次源码 SHA 为 `42d834a75722bdbe6331dba226d0febdc6179383`，额外保留 Core 依赖锁及空会话回收补丁，各自 SHA256 在 manifest 中。补丁只用于该准确源码版本；不关闭身份复核、目录隔离、后台授权或单次工具审批。
 
-## 2026-10-23 员工继承当前部署
+## 2026-10-25 资源效率当前发布
+
+`20261025-resource-efficiency-v4` / 应用 `8a913209a41758cfd13d34e0530911194a218aa6`。员工网页/Host本机构建和预压缩；最终v4仅重建Host，精确复用v3网页/Admin/Java/监控/control及23迁移、amd64镜像。说明及测量见 `docs/employee-resource-efficiency.md`，实际范围见 `current/VERIFIED.json` 和私有验收记录。后续维护提交不改变应用SHA。
+
+登录、组织目录、工作台历史元数据、文件及预览/下载不启动Core；原生会话/执行配置仍需独立Core。仅真实活动续期，焦点/只读轮询不续期；在途读取及启动按身份合并，不缓存授权结果。安全回收继续核对任务/子进程/文件写入；排队及启动耗时不吃掉ready后的闲置预算。配置仍在 `shared/config/web.env`：Core1/启动1/队列2/等待180000ms/闲置120000ms，无新常驻服务或限额变化。
+
+维护：`sudo bash /srv/apps/zhenwork/deploy/manage.sh status`、`logs 100`、`restart`；更新 `sudo bash /srv/apps/zhenwork/deploy/finalize-release.sh NEW_RELEASE`。回滚 `sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261025-resource-v4-to-startup-v1.json`；退回startup-v1会恢复旧Core浏览依赖，只退应用/配置，保留数据库/文件/授权，不是数据库回滚。v1曾因首页上下文遗漏实际回滚；v2被只读POST唤醒导致Core0失败，失败证据保留，未标记验证成功。
+
+## 2026-10-23 员工继承历史部署
 
 当前 `20261023-employee-inheritance-v7` / 应用SHA `cea46c0ef395f1a3e3c5712af477a55ecbb27e37`，23迁移，原21及amd64镜像不变。v7仅重建Host，按manifest复用v6的网页、Java、监控及部署资产。实际新建普通员工无需手选角色或个人模型/MCP，完成真实办公和部门查询；撤权/部门切换/双账号隔离/test1001原密码模型对话/登录来源/公网监控与工具页已定向回归。见 `docs/employee-capabilities.md` 和私有 `.codex/employee-inheritance/acceptance-report.md`。
 
