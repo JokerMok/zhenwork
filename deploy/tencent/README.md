@@ -188,3 +188,14 @@ test1001原密码实际登录：首页/刷新、新会话/双标签、真实长�
 证据 `.codex/ui-transition/acceptance-report.md`；服务器 `shared/config/acceptance/20261024-workspace-ui.md`、当前VERIFIED.json。Host31、标题3、Java共享5定向用例实际通过，renderer类型及受影响组件编译通过；未跑历史全量/桌面/办公扩展。Host既存research.ts:137完整tsc问题未修不计通过，独立客户符合性仍待独立需求资料。
 
 最终Core0，可用内存4.88GiB、盘余3.04GiB；Host/RC2/monitor/拼豆/Caddyactive，两入口及拼豆TLS200、ops-check200。Core1/启动1/闲120秒/等180秒保持。最新一致备份 `20261024T035251536989Z.tar.gz` / 752031283字节，保留2份/1504059344字节，原预算保持；前轮隔离恢复证据复用，本轮不生产还原。回滚审核 `shared/config/rollback-reviews/20261024-ui-v6-to-guid-v3.json`，previous仍guid-refresh-v3；仅应用/配置回滚、保留数据/授权，会恢复旧UI限制，未实际执行。
+
+
+## 2026-10-25 员工启动性能
+
+已部署 `20261025-employee-startup-v1` / 实际应用 `1a17dab1ea647e769c5a4571d7bc9058eb2da796`。两个主脚本实传8.90MB→2.24MB（Brotli），下载15.8→3.4秒；本机预压缩、服务器流送，只有内容哈希静态资源长期private缓存，身份/用户/组织数据no-store，保留认证、品牌、真实状态及原并发。
+
+同条件：平台已热时员工Core冷/无缓存，首页19.27→6.57秒、输入20.58→7.40秒、真实模型回复23.87→10.71秒；已有Core无缓存输入17.93→5.57秒。首次发布后的冷输入另为9.80秒，包含1.716秒登录服务预热，未混为同条件。有缓存输入1.24→1.92–2.07秒，本轮没有明显改善；冷Core有缓存3.28→3.97秒，刷新0.88→1.01秒，均如实保留，配置/授权不长期缓存。
+
+五组真实网页/模型回归、历史恢复/继续消息/刷新、Gzip/Brotli与内容SHA256、304/no-store/退出旧身份拒绝通过。证据docs/employee-startup-performance.md与私有.codex/startup-performance/acceptance-report.md；服务器acceptance/20261025-employee-startup.md。Host32定向通过；旧Host完整tsc research.ts:137未扩展修复。不重复后台全巡检/办公三场景。
+
+Admin/Java/control/23迁移/amd64镜像和Caddy模板逐字节复用v6。备份成功，Core1/启动1/闲120秒/等180秒保持。只清理未验收workspace-ui-v1/v4/v5，保留清单、配置快照、全部已验证发布与数据。最终Core0，可用内存5.03GiB、磁盘3.54GiB；本项目/拼豆/Caddy及HTTPS正常。最新备份20261025T065012557834Z.tar.gz / 752216047字节；2份/1504298426字节。回滚审核20261025-startup-v1-to-ui-v6.json，仅应用/配置，保留数据/权限，未实际回滚。
