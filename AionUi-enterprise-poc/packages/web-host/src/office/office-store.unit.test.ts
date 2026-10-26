@@ -181,3 +181,17 @@ test('invalid knowledge selectors cannot become persisted runtime scope', () => 
     })
   ).toThrow('INVALID_KNOWLEDGE_SCOPE');
 });
+
+test('read snapshots reuse identical bytes, retain old versions and deny other actors', async () => {
+  const { root, workspace } = await fixture();
+  const first = await OfficeStore.create(root, actor('80'));
+  const second = await OfficeStore.create(root, actor('81'));
+  const original = await first.pinSource('来源.txt', Buffer.from('original source'));
+  const repeated = await first.pinSource('来源.txt', Buffer.from('original source'));
+  const changed = await first.pinSource('来源.txt', Buffer.from('changed source'));
+  expect(repeated).toEqual(original);
+  expect(changed.path).not.toBe(original.path);
+  expect((await first.download(workspace, original.path, original.versionId)).toString()).toBe('original source');
+  expect((await first.fileReceipt(original.path))?.version).toBe(1);
+  await expect(second.download(workspace, original.path, original.versionId)).rejects.toThrow('VERSION_NOT_FOUND');
+});

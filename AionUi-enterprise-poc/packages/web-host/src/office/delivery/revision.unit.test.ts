@@ -169,3 +169,14 @@ integration(
     ).rejects.toThrow("SOURCE_CATALOG_READ_ONLY");
   },
 );
+
+integration('keeps narrative findings in notes and remaps native formula references after compacting numeric rows', async () => {
+  const mixed = structuredClone(args);
+  mixed.rows.unshift({ topic: '资料性质说明', source: { ref: 'trusted-ref', quoteIndex: 0 }, assessment: '证据不足', analysis: '合成资料说明不属于数值参数', missing: '' });
+  mixed.rows.at(-1)!.metric!.calculation!.rows = [2, 3];
+  const built = buildEvidenceDeliverables(mixed, [source, source, source, source]);
+  const bytes = await generateOfficeArtifact(built.files[1].content);
+  const info = await inspectZip(bytes, 'xlsx');
+  expect(info.cells.filter((c: { type: string; value: unknown }) => c.type === 'n' && c.value !== null)).toHaveLength(2);
+  expect(info.cells.find((c: { type: string }) => c.type === 'f').cache).toBe(19.85);
+});

@@ -188,21 +188,25 @@ def xlsx(data):
     report=data.get('report');sources=source_map(data);formula_requests=[]
     if report:
         resolved=report_values(report);rows=[];notes=[];evidence=[];common=common_report_notes(report)
+        has_metrics=any(item.get('metric') for item in report['findings']);main_indices=[]
         for key,label in [('analysis','分析'),('missing','待补资料')]:
             if key in common:
                 for offset in range(0,len(common[key]),220):notes.append(['全部','共同说明',label,common[key][offset:offset+220]])
         for index,item in enumerate(report['findings']):
             m=item.get('metric') or {};analysis=item['analysis'];missing=item['missing']
-            rows.append([index+1,m.get('object',''),m.get('parameter') or item['topic'],resolved[index] if m else item['assessment'],m.get('unit',''),item['source']])
+            if m or not has_metrics:
+                main_indices.append(index)
+                rows.append([index+1,m.get('object',''),m.get('parameter') or item['topic'],resolved[index] if m else item['assessment'],m.get('unit',''),item['source']])
+            elif not analysis and not missing:notes.append([index+1,item['topic'],'核查状态',item['assessment']])
             for kind,key,value in [('分析','analysis',analysis),('待补资料','missing',missing)]:
                 if key in common:continue
                 for start in range(0,len(value),220):notes.append([index+1,item['topic'],kind,value[start:start+220]])
             if m.get('calculation'):formula_requests.append((index,m['calculation']))
         main,start=sheet('参数对比',['序号','对象','参数或主题','数值或状态','单位','来源'],rows,[7,24,34,23,16,10],[data.get('title') or '',report['scope']])
         for index,calc in formula_requests:
-            refs=['D'+str(start+i-1) for i in calc['rows']]
+            refs=['D'+str(start+main_indices.index(i-1)) for i in calc['rows']]
             formula='SUM('+','.join(refs)+')' if calc['operation']=='sum' else refs[0]+('-' if calc['operation']=='difference' else '/')+refs[1]
-            main.cell(start+index,4,'='+formula)
+            main.cell(start+main_indices.index(index),4,'='+formula)
         sheet('分析与缺项',['序号','主题','类别','说明'],notes,[8,30,16,85],['资料数值为原文声明，不等于独立实测或客户符合。',report['conclusion']])
     else:
         definitions=data.get('sheets') or [dict(data.get('table') or {'headers':[],'rows':[]},name='内容')]
