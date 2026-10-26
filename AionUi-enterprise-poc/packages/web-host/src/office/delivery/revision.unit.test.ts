@@ -180,3 +180,11 @@ integration('keeps narrative findings in notes and remaps native formula referen
   expect(info.cells.filter((c: { type: string; value: unknown }) => c.type === 'n' && c.value !== null)).toHaveLength(2);
   expect(info.cells.find((c: { type: string }) => c.type === 'f').cache).toBe(19.85);
 });
+
+integration('ambiguous continuation cannot replace two paragraphs when only one location was selected', async () => {
+  const bytes = await generateOfficeArtifact({ format: 'docx', title: '定位续改', paragraphs: ['重复说明', '保留中间段', '重复说明'] });
+  await expect(reviseOfficeDocument('narrow.docx', bytes, [{ kind: 'replace_text', find: '重复说明', replace: '单处修改', expectedOccurrences: 1 }])).rejects.toThrow('AMBIGUOUS_TEXT');
+  const revised = await reviseOfficeDocument('narrow.docx', bytes, [{ kind: 'replace_text', paragraph: 2, find: '重复说明', replace: '单处修改', expectedOccurrences: 1 }]);
+  const info = await inspectOfficeStructure('narrow.docx', revised.bytes!);
+  expect((info.paragraphs as Array<{text:string}>).map(p => p.text)).toEqual(['定位续改', '单处修改', '保留中间段', '重复说明']);
+});

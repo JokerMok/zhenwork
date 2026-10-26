@@ -14,7 +14,8 @@ const operations = z
           kind: z.literal("replace_text"),
           find: z.string().min(1).max(8000),
           replace: z.string().max(8000),
-          expectedOccurrences: z.number().int().min(1).max(100).default(1),
+          expectedOccurrences: z.literal(1).default(1),
+          paragraph: z.number().int().min(1).optional(),
         })
         .strict(),
       z
@@ -52,7 +53,7 @@ const operations = z
 export const revisionTool = {
   name: "revise_office_document",
   description:
-    "NARROW in-place DOCX/XLSX changes with current SHA guard and atomic versioned commit. First inspect_office_document/read_document (or inspect_workbook) to identify actual text/cells. DOCX replace_text requires an exact match count and preserves surrounding runs; append_section creates a real Heading1 and returns its actual heading/index (never claim a guessed chapter). set_table_cell uses physical 1-based table/row/cell indices from inspection and exact expected text. XLSX set_cell uses existing sheet/address and exact current value, preserves formats/merges/other sheets; formulas are freshly recalculated with the existing bounded Decimal evaluator or the operation fails without overwriting. Verified quotes/source catalogs cannot be edited; source changes require fresh retrieval/generation. Returns actual saved inspection, changed locations, version, preview/download links. No outputPath: edits the requested original, with history retained. Copy the returned receipt verbatim rather than inventing file/section/version claims.",
+    "NARROW in-place DOCX/XLSX changes with current SHA guard and atomic versioned commit. First inspect_office_document/read_document (or inspect_workbook) to identify actual text/cells. DOCX replace_text changes exactly ONE match, preserving surrounding runs; optional paragraph selects the 1-based body paragraph from inspection. Repeated text requires an explicit paragraph or a larger unique exact match; multiple locations use separate operations. append_section creates a real Heading1 and returns its actual heading/index (never claim a guessed chapter). set_table_cell uses physical 1-based table/row/cell indices from inspection and exact expected text. XLSX set_cell uses existing sheet/address and exact current value, preserves formats/merges/other sheets; formulas are freshly recalculated with the existing bounded Decimal evaluator or the operation fails without overwriting. Verified quotes/source catalogs cannot be edited; source changes require fresh retrieval/generation. Returns actual saved inspection, changed locations, version, preview/download links. No outputPath: edits the requested original, with history retained. Copy the returned receipt verbatim rather than inventing file/section/version claims.",
   inputSchema: {
     type: "object",
     additionalProperties: false,

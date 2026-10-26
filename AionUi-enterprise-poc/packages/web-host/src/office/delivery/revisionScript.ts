@@ -75,9 +75,15 @@ def revise_office(content,format,operations):
             kind=operation['kind']
             if kind=='replace_text':
                 find=operation['find'];replacement=operation['replace'];count=0
-                for p in root.iter('{'+W+'}p'):count+=replace_paragraph(p,find,replacement)
+                candidates=list(root.iter('{'+W+'}p'))
+                if operation.get('paragraph'):
+                    paragraphs=body.findall('w:p',WN);at=operation['paragraph']-1
+                    if at>=len(paragraphs):raise ValueError('PARAGRAPH_INDEX_OUT_OF_RANGE')
+                    candidates=[paragraphs[at]]
+                for p in candidates:count+=replace_paragraph(p,find,replacement)
+                if count>1:raise ValueError('AMBIGUOUS_TEXT_SELECT_PARAGRAPH_OR_UNIQUE_EXACT_MATCH')
                 if count!=operation.get('expectedOccurrences',1):raise ValueError('REPLACEMENT_COUNT_MISMATCH')
-                changes.append({'kind':kind,'occurrences':count,'find':find,'replacement':replacement})
+                changes.append({'kind':kind,'occurrences':count,'paragraph':operation.get('paragraph'),'find':find,'replacement':replacement})
             elif kind=='set_table_cell':
                 tables=body.findall('w:tbl',WN)
                 if operation['table']>len(tables):raise ValueError('TABLE_INDEX_OUT_OF_RANGE')
