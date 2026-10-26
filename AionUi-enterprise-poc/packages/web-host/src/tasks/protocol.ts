@@ -117,7 +117,7 @@ export async function recordTool(
   ]);
   const artifacts = artifactTools.has(tool) ? collect(result) : [];
   const input = args as Record<string, unknown>;
-  const target = String(input?.path || input?.baseName || input?.basename || input?.baseId || input?.query || '');
+  const target = String(input?.path || input?.basePath || input?.baseName || input?.basename || input?.baseId || input?.query || '');
   const partial = result && typeof result === 'object' && (result as { status?: string }).status === 'partial';
   if (partial && !error) error = 'PARTIAL_OUTPUT';
   await store.mutate(conversation, attempt.id, (a) => {
@@ -127,7 +127,7 @@ export async function recordTool(
     const d = digest({ tool, args });
     if (!error)
       for (const prior of a.steps)
-        if (prior.tool === tool && prior.target === target && prior.state === 'failed')
+        if (prior.tool === tool && prior.state === 'failed' && (prior.target === target || (!prior.target && /^OFFICE_ARGUMENT_/.test(prior.summary))))
           prior.summary = 'Recovered by a later successful call';
     const step = {
       id: existing?.id || `${a.id}:${a.steps.length + 1}`,

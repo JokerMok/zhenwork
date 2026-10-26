@@ -45,9 +45,11 @@ async function fixture(trusted = false) {
     } else if (req.url?.endsWith('/office-call/confirm')) {
       approvalData = (data as {data?:unknown}).data;
       pendingApproval = false;
-    } else if (req.url?.includes('/messages?'))
+    } else if (req.url?.includes('/messages?')) {
+      if(!req.url.includes('anchor_message_id=msg1')) {res.writeHead(400);res.end(JSON.stringify({success:false}));return;}
       body = {
         items: [
+          {id:'msg1', msg_id:'msg1', position:'right',type:'text',content:{content:'Work'}},
           {
             position: 'left',
             type: 'text',
@@ -57,7 +59,7 @@ async function fixture(trusted = false) {
           },
         ],
       };
-    else if (req.url?.endsWith('/cancel')) {
+    } else if (req.url?.endsWith('/cancel')) {
       stops++;
       processing = false;
     } else
@@ -212,4 +214,11 @@ test('trusted Office approval uses the native object-valued confirmation contrac
   await expect.poll(()=>f.counts().sends,{timeout:5000}).toBe(1);
   f.approval();await f.runner.tick();
   await expect.poll(()=>f.approvalData(),{timeout:5000}).toEqual({value:'proceed_once'});
+});
+test('completion reads the accepted row anchor using native cursors, never a raw ID as after',async()=>{
+  const f=await fixture();
+  await f.runner.accept(f.actor,'aabbccdd',{content:'Hello',request_id:randomUUID()});
+  await expect.poll(()=>f.counts().sends,{timeout:5000}).toBe(1);
+  f.finish();await f.runner.tick();
+  await expect.poll(async()=>currentAttempt(await f.store.get('aabbccdd')).state,{timeout:6000}).toBe('completed');
 });

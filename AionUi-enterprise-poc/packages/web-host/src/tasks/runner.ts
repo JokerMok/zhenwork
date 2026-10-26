@@ -554,18 +554,19 @@ export class TaskRunner {
       if (settled) await this.release(actor, task.id, a);
       return;
     }
-    const messages = await this.call<{
-      items: Array<{
-        position?: string;
-        type?: string;
-        status?: string;
-        content?: unknown;
-        backend_turn_id?: string;
-        created_at?: number;
-      }>;
-    }>(core, `/api/conversations/${task.id}/messages?limit=100&after=${encodeURIComponent(a.messageId!)}`);
-    // The native backend/fork turn id is not the Host runtime claim id. The accepted user-message anchor is authoritative.
-    const current = messages.items;
+    type ObservedMessage = { id?: string; msg_id?: string; position?: string; type?: string; status?: string; content?: unknown };
+    type Page = {items: ObservedMessage[]; newest_cursor?: string; has_more_after?: boolean};
+    let page = await this.call<Page>(core, `/api/conversations/${task.id}/messages?limit=200&anchor_message_id=${encodeURIComponent(a.messageId!)}`);
+    const anchor = page.items.findIndex(m => m.id === a.messageId || m.msg_id === a.messageId);
+    if (anchor < 0) throw new TaskError(409, 'TASK_MESSAGE_ANCHOR_UNAVAILABLE');
+    const current = page.items.slice(anchor + 1);
+    for (let n = 0; page.has_more_after; n++) {
+      if (n >= 5 || !page.newest_cursor) throw new TaskError(409, 'TASK_MESSAGE_WINDOW_LIMIT');
+      page = await this.call<Page>(core, `/api/conversations/${task.id}/messages?limit=200&after=${encodeURIComponent(page.newest_cursor)}`);
+      current.push(...page.items);
+    }
+    // `after` is an opaque cursor, never a message ID. Use the accepted row anchor,
+    // then the server's cursors; backend and Host turn IDs intentionally differ.
     const answer = current.some((m) => m.position === 'left' && m.type === 'text' && m.content && m.status !== 'error');
     const errors = current.some((m) => m.status === 'error' || m.type === 'error');
     const office = await OfficeStore.create(this.deps.root, actor);
