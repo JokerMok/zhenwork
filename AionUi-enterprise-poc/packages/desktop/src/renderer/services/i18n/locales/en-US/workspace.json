@@ -401,7 +401,8 @@
       "TASK_SERVICE_UNAVAILABLE": "Task status is temporarily unavailable. Retry; do not resubmit the original work.",
       "TASK_REQUEST_CONFLICT": "This submission identifier was used for different input. Refresh and retry.",
       "TASK_NOT_FOUND": "This task does not exist or is not accessible to your account.",
-      "TASK_EXTERNAL_REVIEW_REQUIRED": "Verify the previous external operation outcome first."
+      "TASK_EXTERNAL_REVIEW_REQUIRED": "Verify the previous external operation outcome first.",
+      "TASK_APPROVAL_DETAILS_UNAVAILABLE": "The complete operation could not be verified. Decline and clarify before continuing, or cancel the task."
     },
     "history": "Execution history",
     "externalReview": "The previous external operation has an unknown outcome. Verify it before continuing; it will not be replayed automatically.",

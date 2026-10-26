@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { enterpriseRequest, workspaceErrorCode } from '../workspaceApi';
-import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { enterpriseRequest, workspaceErrorCode } from "../workspaceApi";
+import { isEnterpriseWeb } from "@/renderer/utils/platform";
 export type WorkAttempt = {
   id: string;
   round: number;
@@ -11,7 +11,12 @@ export type WorkAttempt = {
   progress?: string;
   assistant?: { id: string; name: string };
   requiresExternalReview?: boolean;
-  inputs?: { content: string; files: Array<{ kind: string; path?: string; relative_path?: string }> };
+  canApprove?: boolean;
+  confirmation?: { proposal?: string };
+  inputs?: {
+    content: string;
+    files: Array<{ kind: string; path?: string; relative_path?: string }>;
+  };
   question?: string;
   reason?: string;
   scope?: { baseIds: string[]; documents: Array<{ documentId: string; version: number }> };
@@ -54,7 +59,7 @@ export function useTaskWork(id?: string) {
     } catch (e) {
       const code = workspaceErrorCode(e);
       if (n === generation.current) {
-        if (code === 'TASK_NOT_FOUND') setTask(undefined);
+        if (code === "TASK_NOT_FOUND") setTask(undefined);
         else setError(code);
       }
     }
@@ -65,27 +70,29 @@ export function useTaskWork(id?: string) {
     if (!id || !isEnterpriseWeb()) return;
     void reload();
     const tick = () => {
-      if (document.visibilityState === 'visible') void reload();
+      if (document.visibilityState === "visible") void reload();
     };
     const timer = setInterval(tick, 3000);
-    window.addEventListener('task-work:changed', tick);
-    document.addEventListener('visibilitychange', tick);
+    window.addEventListener("task-work:changed", tick);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       generation.current++;
       clearInterval(timer);
-      window.removeEventListener('task-work:changed', tick);
-      document.removeEventListener('visibilitychange', tick);
+      window.removeEventListener("task-work:changed", tick);
+      document.removeEventListener("visibilitychange", tick);
     };
   }, [id, reload]);
   return { task, attempt: task?.attempts.at(-1), error, reload };
 }
 export async function taskRequestId(id: string, payload: unknown): Promise<string> {
   const hash = Array.from(
-    new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(payload))))
+    new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(payload))),
+    ),
   )
-    .map((x) => x.toString(16).padStart(2, '0'))
-    .join('');
-  const key = 'zhenwork:pending-send:' + id;
+    .map((x) => x.toString(16).padStart(2, "0"))
+    .join("");
+  const key = "zhenwork:pending-send:" + id;
   const saved = sessionStorage.getItem(key);
   if (saved) {
     try {
@@ -100,6 +107,6 @@ export async function taskRequestId(id: string, payload: unknown): Promise<strin
   return requestId;
 }
 export function taskAccepted(id: string): void {
-  sessionStorage.removeItem('zhenwork:pending-send:' + id);
-  window.dispatchEvent(new Event('task-work:changed'));
+  sessionStorage.removeItem("zhenwork:pending-send:" + id);
+  window.dispatchEvent(new Event("task-work:changed"));
 }

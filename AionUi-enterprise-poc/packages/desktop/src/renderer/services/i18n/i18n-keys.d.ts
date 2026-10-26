@@ -3424,6 +3424,7 @@ export type I18nKey =
   | 'workspace.work.continue'
   | 'workspace.work.decline'
   | 'workspace.work.details'
+  | 'workspace.work.errors.TASK_APPROVAL_DETAILS_UNAVAILABLE'
   | 'workspace.work.errors.TASK_ATTEMPT_CAPACITY'
   | 'workspace.work.errors.TASK_ATTEMPT_CHANGED'
   | 'workspace.work.errors.TASK_BUSY'

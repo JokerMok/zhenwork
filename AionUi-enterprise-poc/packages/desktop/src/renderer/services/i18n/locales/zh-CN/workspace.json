@@ -401,7 +401,8 @@
       "TASK_SERVICE_UNAVAILABLE": "暂时无法获取任务状态，请重试，不要重新提交同一工作。",
       "TASK_REQUEST_CONFLICT": "本次提交标识已用于不同内容，请刷新后重试。",
       "TASK_NOT_FOUND": "任务不存在或当前账号无权访问。",
-      "TASK_EXTERNAL_REVIEW_REQUIRED": "请先核实上次外部操作的实际结果。"
+      "TASK_EXTERNAL_REVIEW_REQUIRED": "请先核实上次外部操作的实际结果。",
+      "TASK_APPROVAL_DETAILS_UNAVAILABLE": "无法核对完整操作范围，暂不能批准。可拒绝并补充说明后继续，或取消任务。"
     },
     "history": "执行记录",
     "externalReview": "上次外部操作结果不明。请先核对实际系统结果，再决定继续；不会自动重放。",

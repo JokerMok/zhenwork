@@ -1926,12 +1926,12 @@ export async function startEnterpriseGateway(
     },
     stop: async () => {
       shuttingDown = true;
-      await tasks?.stop();
       for (const waiter of queuedStarts.splice(0)) {
         clearTimeout(waiter.timeout);
         waiter.signal.removeEventListener('abort', waiter.onAbort);
         waiter.reject(new Error('Enterprise gateway is stopping'));
       }
+      await tasks?.stop();
       clearInterval(reap);
       const sessionResults = await Promise.all([...sessions.keys()].map(revoke));
       await new Promise<void>((resolve) => server.close(() => resolve()));

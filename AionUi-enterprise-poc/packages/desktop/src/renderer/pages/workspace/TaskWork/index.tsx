@@ -10,21 +10,27 @@ import {
   Select,
   Tag,
   Upload,
-} from '@arco-design/web-react';
-import type { UploadRequest } from '@arco-design/web-react/es/Upload/interface';
-import React, { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import { isEnterpriseWeb } from '@/renderer/utils/platform';
-import WebKnowledgePicker from '@/renderer/components/chat/SendBox/WebKnowledgePicker';
-import { enterpriseRequest, uploadWorkspaceFiles, workspaceErrorCode } from '../workspaceApi';
-import { taskAccepted, taskRequestId, useTaskWork } from './api';
+} from "@arco-design/web-react";
+import type { UploadRequest } from "@arco-design/web-react/es/Upload/interface";
+import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
+import { isEnterpriseWeb } from "@/renderer/utils/platform";
+import WebKnowledgePicker from "@/renderer/components/chat/SendBox/WebKnowledgePicker";
+import { enterpriseRequest, uploadWorkspaceFiles, workspaceErrorCode } from "../workspaceApi";
+import { taskAccepted, taskRequestId, useTaskWork } from "./api";
 
-export default function TaskWork({ conversationId, composer = false }: { conversationId: string; composer?: boolean }) {
+export default function TaskWork({
+  conversationId,
+  composer = false,
+}: {
+  conversationId: string;
+  composer?: boolean;
+}) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { task, attempt: a, error, reload } = useTaskWork(conversationId);
-  const [input, setInput] = useState(''),
+  const [input, setInput] = useState(""),
     [files, setFiles] = useState<string[]>([]),
     [busy, setBusy] = useState(false),
     [failure, setFailure] = useState<string>(),
@@ -33,14 +39,23 @@ export default function TaskWork({ conversationId, composer = false }: { convers
   const previous = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (a) {
-      const value = a.id + ':' + a.state;
+      const value = a.id + ":" + a.state;
       if (
         previous.current &&
         previous.current !== value &&
-        ['completed', 'partial', 'waiting_input', 'waiting_confirmation', 'failed', 'interrupted'].includes(a.state)
+        [
+          "completed",
+          "partial",
+          "waiting_input",
+          "waiting_confirmation",
+          "failed",
+          "interrupted",
+        ].includes(a.state)
       )
         Message.info(
-          t('workspace.work.changed', { status: t(`workspace.work.states.${a.state}`, { defaultValue: a.state }) })
+          t("workspace.work.changed", {
+            status: t(`workspace.work.states.${a.state}`, { defaultValue: a.state }),
+          }),
         );
       previous.current = value;
     }
@@ -49,12 +64,12 @@ export default function TaskWork({ conversationId, composer = false }: { convers
   if (!task || !a)
     return error ? (
       <Alert
-        type='error'
-        content={t('workspace.errors.load', { code: error })}
-        action={<Button onClick={() => void reload()}>{t('common.retry')}</Button>}
+        type="error"
+        content={t("workspace.errors.load", { code: error })}
+        action={<Button onClick={() => void reload()}>{t("common.retry")}</Button>}
       />
     ) : null;
-  const active = ['queued', 'running', 'cancelling'].includes(a.state);
+  const active = ["queued", "running", "cancelling"].includes(a.state);
   const action = async (kind: string) => {
     if (busy) return;
     setBusy(true);
@@ -63,19 +78,19 @@ export default function TaskWork({ conversationId, composer = false }: { convers
       const payload = {
         attemptId: a.id,
         content: input,
-        files: files.map((path) => ({ kind: 'local', path })),
+        files: files.map((path) => ({ kind: "local", path })),
         reviewed,
         externalOutcome,
         language: i18n.language,
       };
       const request_id = await taskRequestId(conversationId, { kind, ...payload });
       await enterpriseRequest(`/enterprise/tasks/${conversationId}/${kind}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...payload, request_id }),
       });
       taskAccepted(conversationId);
-      setInput('');
+      setInput("");
       setFiles([]);
       setReviewed(false);
       setExternalOutcome(undefined);
@@ -97,92 +112,113 @@ export default function TaskWork({ conversationId, composer = false }: { convers
       setFailure(workspaceErrorCode(e));
     }
   };
-  const status = t(`workspace.work.states.${a.state}`, { defaultValue: t('workspace.work.unknown') });
+  const status = t(`workspace.work.states.${a.state}`, {
+    defaultValue: t("workspace.work.unknown"),
+  });
   return (
     <section
-      data-testid='task-work'
-      className='border border-solid border-b-base rd-8px p-12px flex flex-col gap-8px min-w-0'
+      data-testid="task-work"
+      className="border border-solid border-b-base rd-8px p-12px flex flex-col gap-8px min-w-0"
     >
-      <div className='flex flex-wrap items-center justify-between gap-8px'>
+      <div className="flex flex-wrap items-center justify-between gap-8px">
         <Space>
           <Tag>{status}</Tag>
-          <span className='text-12px text-t-secondary'>
-            {t('workspace.work.round', { round: a.round, attempt: a.attempt })}
+          <span className="text-12px text-t-secondary">
+            {t("workspace.work.round", { round: a.round, attempt: a.attempt })}
           </span>
         </Space>
-        <span className='text-12px text-t-secondary'>
-          {new Intl.DateTimeFormat(i18n.language, { dateStyle: 'short', timeStyle: 'short' }).format(
-            new Date(a.updatedAt)
-          )}
+        <span className="text-12px text-t-secondary">
+          {new Intl.DateTimeFormat(i18n.language, {
+            dateStyle: "short",
+            timeStyle: "short",
+          }).format(new Date(a.updatedAt))}
         </span>
       </div>
       {a.question ? (
-        <Alert type='warning' content={a.question} />
+        <Alert type="warning" content={a.question} />
       ) : a.progress ? (
-        <span className='text-13px text-t-secondary break-words'>
+        <span className="text-13px text-t-secondary break-words">
           {t(`workspace.work.progress.${a.progress}`, { defaultValue: a.progress })}
         </span>
       ) : null}
       {a.reason ? (
         <Alert
-          type={a.state === 'queued' ? 'info' : 'warning'}
+          type={a.state === "queued" ? "info" : "warning"}
           content={t(`workspace.work.reasons.${a.reason}`, {
-            defaultValue: t('workspace.work.reasons.TASK_EXECUTION_UNAVAILABLE'),
+            defaultValue: t("workspace.work.reasons.TASK_EXECUTION_UNAVAILABLE"),
           })}
         />
       ) : null}
       <Space wrap>
         {a.artifacts.map((f) => (
           <Space key={f.path}>
-            <Tag color={f.valid ? 'green' : 'orange'}>{f.valid ? f.path : t('workspace.work.pendingArtifact', {path:f.path})}</Tag>
+            <Tag color={f.valid ? "green" : "orange"}>
+              {f.valid ? f.path : t("workspace.work.pendingArtifact", { path: f.path })}
+            </Tag>
             {f.valid && f.previewUrl ? (
-              <Button type='text' onClick={() => navigate(f.previewUrl!.replace(/^\/#/, ''))}>
-                {t('workspace.files.preview')}
+              <Button type="text" onClick={() => navigate(f.previewUrl!.replace(/^\/#/, ""))}>
+                {t("workspace.files.preview")}
               </Button>
             ) : null}
             {f.valid && f.downloadUrl ? (
               <Link href={f.downloadUrl} download>
-                {t('common.download')}
+                {t("common.download")}
               </Link>
             ) : null}
           </Space>
         ))}
       </Space>
       {a.assistant ? <Tag>{a.assistant.name}</Tag> : null}
-      <Collapse className='max-h-180px overflow-y-auto'>
-        <Collapse.Item name='steps' header={t('workspace.work.details')}>
-          {a.inputs?.content ? <p className='whitespace-pre-wrap break-words'>{a.inputs.content}</p> : null}
+      <Collapse className="max-h-180px overflow-y-auto">
+        <Collapse.Item name="steps" header={t("workspace.work.details")}>
+          {a.confirmation?.proposal ? (
+            <pre className="whitespace-pre-wrap break-words text-12px">
+              {a.confirmation.proposal}
+            </pre>
+          ) : null}
+          {a.inputs?.content ? (
+            <p className="whitespace-pre-wrap break-words">{a.inputs.content}</p>
+          ) : null}
           {a.inputs?.files?.length ? (
             <Space wrap>
               {a.inputs.files.map((f, i) => (
-                <Tag key={i}>{(f.path || f.relative_path || '').split(/[\\/]/).at(-1)}</Tag>
+                <Tag key={i}>{(f.path || f.relative_path || "").split(/[\\/]/).at(-1)}</Tag>
               ))}
             </Space>
           ) : null}
           {a.steps.length ? (
             a.steps.map((s) => (
-              <div key={s.id} className='py-4px break-words'>
+              <div key={s.id} className="py-4px break-words">
                 <Tag>{t(`workspace.work.step.${s.state}`, { defaultValue: s.state })}</Tag> {s.tool}
-                {s.state === 'failed' ? ` · ${s.summary}` : ''}
+                {s.state === "failed" ? ` · ${s.summary}` : ""}
               </div>
             ))
           ) : (
-            <span className='text-t-secondary'>{t('workspace.work.noSteps')}</span>
+            <span className="text-t-secondary">{t("workspace.work.noSteps")}</span>
           )}
           {a.scope ? (
-            <div className='mt-8px text-12px text-t-secondary'>
-              {t('workspace.work.scope', { bases: a.scope.baseIds.length, documents: a.scope.documents.length })}{' '}
-              {a.scope.documents.map((d) => `v${d.version}`).join(' · ')}
+            <div className="mt-8px text-12px text-t-secondary">
+              {t("workspace.work.scope", {
+                bases: a.scope.baseIds.length,
+                documents: a.scope.documents.length,
+              })}{" "}
+              {a.scope.documents.map((d) => `v${d.version}`).join(" · ")}
             </div>
           ) : null}
         </Collapse.Item>
         {task.attempts.length > 1 ? (
-          <Collapse.Item name='history' header={t('workspace.work.history')}>
+          <Collapse.Item name="history" header={t("workspace.work.history")}>
             {task.attempts.slice(0, -1).map((old) => (
-              <div key={old.id} className='py-8px border-b border-solid border-b-base'>
+              <div key={old.id} className="py-8px border-b border-solid border-b-base">
                 <Space>
-                  <Tag>{t(`workspace.work.states.${old.state}`, { defaultValue: t('workspace.work.unknown') })}</Tag>
-                  <span>{t('workspace.work.round', { round: old.round, attempt: old.attempt })}</span>
+                  <Tag>
+                    {t(`workspace.work.states.${old.state}`, {
+                      defaultValue: t("workspace.work.unknown"),
+                    })}
+                  </Tag>
+                  <span>
+                    {t("workspace.work.round", { round: old.round, attempt: old.attempt })}
+                  </span>
                 </Space>
                 {old.question ? <p>{old.question}</p> : null}
                 <Space wrap>
@@ -192,13 +228,16 @@ export default function TaskWork({ conversationId, composer = false }: { convers
                       <Space key={f.path}>
                         <span>{f.path}</span>
                         {f.previewUrl ? (
-                          <Button type='text' onClick={() => navigate(f.previewUrl!.replace(/^\/#/, ''))}>
-                            {t('workspace.files.preview')}
+                          <Button
+                            type="text"
+                            onClick={() => navigate(f.previewUrl!.replace(/^\/#/, ""))}
+                          >
+                            {t("workspace.files.preview")}
                           </Button>
                         ) : null}
                         {f.downloadUrl ? (
                           <Link href={f.downloadUrl} download>
-                            {t('common.download')}
+                            {t("common.download")}
                           </Link>
                         ) : null}
                       </Space>
@@ -211,68 +250,80 @@ export default function TaskWork({ conversationId, composer = false }: { convers
       </Collapse>
       {failure ? (
         <Alert
-          type='error'
+          type="error"
           content={t(`workspace.work.errors.${failure}`, {
-            defaultValue: t('workspace.errors.action', { code: failure }),
+            defaultValue: t("workspace.errors.action", { code: failure }),
           })}
         />
       ) : null}
       <Space wrap>
-        <Button onClick={() => navigate(`/conversation/${conversationId}`)}>{t('workspace.tasks.open')}</Button>
-        {['queued', 'running', 'cancelling', 'waiting_input', 'waiting_confirmation', 'interrupted'].includes(
-          a.state
-        ) ? (
+        <Button onClick={() => navigate(`/conversation/${conversationId}`)}>
+          {t("workspace.tasks.open")}
+        </Button>
+        {[
+          "queued",
+          "running",
+          "cancelling",
+          "waiting_input",
+          "waiting_confirmation",
+          "interrupted",
+        ].includes(a.state) ? (
           <Button
-            status='danger'
-            disabled={a.state === 'cancelling'}
+            status="danger"
+            disabled={a.state === "cancelling"}
             loading={busy}
-            onClick={() => void action('cancel')}
+            onClick={() => void action("cancel")}
           >
-            {t(a.state === 'cancelling' ? 'workspace.work.stopping' : 'common.cancel')}
+            {t(a.state === "cancelling" ? "workspace.work.stopping" : "common.cancel")}
           </Button>
         ) : null}
-        {['partial', 'failed', 'interrupted'].includes(a.state) ? (
+        {["partial", "failed", "interrupted"].includes(a.state) ? (
           <Button
             loading={busy}
-            disabled={a.state === 'interrupted' && (!reviewed || (a.requiresExternalReview && !externalOutcome))}
-            onClick={() => void action('retry')}
+            disabled={
+              a.state === "interrupted" &&
+              (!reviewed || (a.requiresExternalReview && !externalOutcome))
+            }
+            onClick={() => void action("retry")}
           >
-            {t('workspace.work.retryRemaining')}
+            {t("workspace.work.retryRemaining")}
           </Button>
         ) : null}
       </Space>
-      {a.state === 'interrupted' ? (
+      {a.state === "interrupted" ? (
         <Checkbox checked={reviewed} onChange={setReviewed}>
-          {t('workspace.work.reviewRecovery')}
+          {t("workspace.work.reviewRecovery")}
         </Checkbox>
       ) : null}
-      {a.state === 'interrupted' && a.requiresExternalReview ? (
-        <div className='flex flex-col gap-8px'>
-          <Alert type='warning' content={t('workspace.work.externalReview')} />
+      {a.state === "interrupted" && a.requiresExternalReview ? (
+        <div className="flex flex-col gap-8px">
+          <Alert type="warning" content={t("workspace.work.externalReview")} />
           <Select
-            aria-label={t('workspace.work.externalReview')}
+            aria-label={t("workspace.work.externalReview")}
             value={externalOutcome}
-            placeholder={t('workspace.work.externalReview')}
+            placeholder={t("workspace.work.externalReview")}
             onChange={setExternalOutcome}
           >
-            <Select.Option value='applied'>{t('workspace.work.externalApplied')}</Select.Option>
-            <Select.Option value='not_applied'>{t('workspace.work.externalNotApplied')}</Select.Option>
+            <Select.Option value="applied">{t("workspace.work.externalApplied")}</Select.Option>
+            <Select.Option value="not_applied">
+              {t("workspace.work.externalNotApplied")}
+            </Select.Option>
           </Select>
         </div>
       ) : null}
-      {!active && (composer || a.state === 'waiting_confirmation') ? (
-        <div className='flex flex-col gap-8px'>
+      {!active && (composer || a.state === "waiting_confirmation") ? (
+        <div className="flex flex-col gap-8px">
           <WebKnowledgePicker conversationId={conversationId} />
           <Input.TextArea
-            aria-label={t('workspace.work.continuation')}
+            aria-label={t("workspace.work.continuation")}
             value={input}
             onChange={setInput}
             autoSize={{ minRows: 2, maxRows: 6 }}
-            placeholder={t('workspace.work.continuation')}
+            placeholder={t("workspace.work.continuation")}
           />
           <Space wrap>
             <Upload multiple showUploadList={false} customRequest={upload}>
-              <Button>{t('workspace.files.upload')}</Button>
+              <Button>{t("workspace.files.upload")}</Button>
             </Upload>
             {files.map((f) => (
               <Tag key={f} closable onClose={() => setFiles((old) => old.filter((x) => x !== f))}>
@@ -281,26 +332,38 @@ export default function TaskWork({ conversationId, composer = false }: { convers
             ))}
           </Space>
           <Space>
-            {a.state === 'waiting_confirmation' ? (
+            {a.state === "waiting_confirmation" && a.canApprove === false ? (
+              <Alert
+                type="warning"
+                content={t("workspace.work.errors.TASK_APPROVAL_DETAILS_UNAVAILABLE")}
+              />
+            ) : null}
+            {a.state === "waiting_confirmation" ? (
               <>
-                <Button type='primary' loading={busy} onClick={() => void action('approve')}>
-                  {t('workspace.work.approve')}
+                <Button
+                  type="primary"
+                  disabled={a.canApprove === false}
+                  loading={busy}
+                  onClick={() => void action("approve")}
+                >
+                  {t("workspace.work.approve")}
                 </Button>
-                <Button loading={busy} onClick={() => void action('decline')}>
-                  {t('workspace.work.decline')}
+                <Button loading={busy} onClick={() => void action("decline")}>
+                  {t("workspace.work.decline")}
                 </Button>
               </>
             ) : (
               <Button
-                type='primary'
+                type="primary"
                 loading={busy}
                 disabled={
                   !input.trim() ||
-                  (a.state === 'interrupted' && (!reviewed || (a.requiresExternalReview && !externalOutcome)))
+                  (a.state === "interrupted" &&
+                    (!reviewed || (a.requiresExternalReview && !externalOutcome)))
                 }
-                onClick={() => void action('continue')}
+                onClick={() => void action("continue")}
               >
-                {t('workspace.work.continue')}
+                {t("workspace.work.continue")}
               </Button>
             )}
           </Space>
