@@ -31,12 +31,12 @@ const text = new Set([
   'ini',
   'sql',
 ]);
-const BinaryFilePreview: React.FC<{ path: string; extension: string }> = ({ path, extension }) => {
+const BinaryFilePreview: React.FC<{ path: string; extension: string; version?: string }> = ({ path, extension, version }) => {
   const { t } = useTranslation();
   const [data, setData] = useState<{ url?: string; text?: string; error?: string }>();
   const [retry, setRetry] = useState(0);
   const supported = extension === 'pdf' || extension in images || text.has(extension);
-  const url = '/enterprise/files/download?' + new URLSearchParams({ path });
+  const url = '/enterprise/files/download?' + new URLSearchParams({ path, ...(version ? { version } : {}) });
   useEffect(() => {
     if (!supported) return;
     const controller = new AbortController();
@@ -113,12 +113,12 @@ const BinaryFilePreview: React.FC<{ path: string; extension: string }> = ({ path
   );
 };
 /** Uses actor-private Host bytes for attachments too; never opens a server path or public viewer. */
-const EnterpriseFilePreview: React.FC<{ path: string }> = ({ path }) => {
+const EnterpriseFilePreview: React.FC<{ path: string; version?: string }> = ({ path, version }) => {
   const extension = path.toLowerCase().split('.').pop() || '';
   return ['xlsx', 'docx', 'pptx'].includes(extension) ? (
-    <OfficePreview path={path} />
+    <OfficePreview path={path} version={version} />
   ) : (
-    <BinaryFilePreview path={path} extension={extension} />
+    <BinaryFilePreview path={path} extension={extension} version={version} />
   );
 };
 export default EnterpriseFilePreview;

@@ -4,6 +4,7 @@ export type OfficeCell = {
   column: number;
   text: string;
   formula?: string;
+  href?: string;
   error?: string;
   colSpan: number;
   rowSpan: number;
@@ -16,6 +17,7 @@ export type OfficeLocation = {
   texts?: Array<{ text: string }>;
   tables?: Array<{ rows: unknown[][] }>;
   textTruncated?: boolean;
+  links?: Array<{ text: string; url: string }>;
 };
 export type OfficePreviewData = {
   format: 'xlsx' | 'docx' | 'pptx';
@@ -44,4 +46,11 @@ export function previewErrorKey(code: string): string {
   if (code === 'PREVIEW_TIMEOUT') return 'workspace.preview.timeout';
   if (code === 'PREVIEW_FORMAT_UNSUPPORTED') return 'workspace.files.unsupportedPreviewHint';
   return 'workspace.preview.failed';
+}
+
+/** Office relationships are untrusted upload data, never executable URLs. */
+export function safeOfficeHyperlink(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try { const url = new URL(value);return url.protocol === 'https:' && !url.username && !url.password ? url.href : undefined; }
+  catch { return undefined; }
 }

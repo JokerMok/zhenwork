@@ -301,6 +301,8 @@
     "retryPrompt": "Vérifiez les résultats et erreurs. Continuez uniquement les étapes inachevées ou échouées sans régénérer les fichiers terminés. En attente : {{paths}}",
     "complete": "Terminé",
     "failedFile": "Échec",
-    "errorCount": "Étapes ayant signalé une erreur : {{count}}"
+    "errorCount": "Étapes ayant signalé une erreur : {{count}}",
+    "savedStructure": "{{headings}} titres · {{tables}} tableaux",
+    "savedWorkbookStructure": "{{sheets}} feuilles"
   }
 }

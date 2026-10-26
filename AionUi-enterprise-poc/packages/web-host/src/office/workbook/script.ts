@@ -1016,3 +1016,6 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 `;
+
+/** Definitions only, shared by generation and revision for the same Decimal formula semantics. */
+export const WORKBOOK_SUPPORT_PYTHON = WORKBOOK_PYTHON_SCRIPT.slice(0, WORKBOOK_PYTHON_SCRIPT.indexOf('\ndef main() -> None:'));

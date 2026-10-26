@@ -250,10 +250,11 @@ export function hasRunningToolMessages(messages: ToolMessage[]): boolean {
 }
 
 /** Only server tool receipts establish deliverables; chat prose is not a receipt. */
+export type ToolDeliveryReceipt = { path: string; status: 'complete' | 'failed'; error?: string; version?: number; versionId?: string; headingCount?: number; tableCount?: number; sheetCount?: number; addedHeadings?: string[] };
 export function toolDeliveryReceipts(
   tools: NormalizedToolCall[]
-): Array<{ path: string; status: 'complete' | 'failed'; error?: string }> {
-  const files = new Map<string, { path: string; status: 'complete' | 'failed'; error?: string }>();
+): ToolDeliveryReceipt[] {
+  const files = new Map<string, ToolDeliveryReceipt>();
   for (const tool of tools) {
     if (!tool.output) continue;
     try {
@@ -282,6 +283,12 @@ export function toolDeliveryReceipts(
         files.set(item.path, {
           path: item.path,
           status: item.status,
+          ...(Number.isInteger(item.version) && item.version > 0 ? { version: item.version } : {}),
+          ...(/^[a-f0-9-]{36}$/i.test(item.versionId || '') ? { versionId: item.versionId } : {}),
+          ...(Number.isInteger(item.inspection?.headingCount) ? { headingCount: item.inspection.headingCount } : {}),
+          ...(Array.isArray(item.inspection?.tables) ? { tableCount: item.inspection.tables.length } : {}),
+          ...(Number.isInteger(item.inspection?.sheetCount) ? { sheetCount: item.inspection.sheetCount } : {}),
+          ...(Array.isArray(item.changes) ? { addedHeadings: item.changes.filter((change: { kind?: string; actualHeading?: unknown }) => change.kind === 'append_section' && typeof change.actualHeading === 'string').map((change: { actualHeading: string }) => change.actualHeading.slice(0,300)).slice(0,32) } : {}),
           ...(item.error ? { error: String(item.error).slice(0, 200) } : {}),
         });
       }

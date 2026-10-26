@@ -301,6 +301,8 @@
     "retryPrompt": "ابتدا نتایج و خطاها را بررسی کنید. فقط مراحل ناقص یا ناموفق را ادامه دهید و نتایج تکمیل‌شده را دوباره نسازید. باقی‌مانده: {{paths}}",
     "complete": "تکمیل",
     "failedFile": "ناموفق",
-    "errorCount": "مراحل دارای خطا: {{count}}"
+    "errorCount": "مراحل دارای خطا: {{count}}",
+    "savedStructure": "{{headings}} عنوان · {{tables}} جدول",
+    "savedWorkbookStructure": "{{sheets}} برگه"
   }
 }

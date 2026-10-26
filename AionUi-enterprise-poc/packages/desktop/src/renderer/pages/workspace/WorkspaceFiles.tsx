@@ -218,10 +218,16 @@ const WorkspaceFiles: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const requested = (location.state as { previewPath?: string } | null)?.previewPath;
+    const params = new URLSearchParams(location.search);
+    const requested = params.get('previewPath') || (location.state as { previewPath?: string } | null)?.previewPath;
     const file = requested ? files.find((item) => item.path === requested) : undefined;
-    if (file) openPreview(file);
-  }, [location.key, files, openPreview]);
+    if (file) {
+      const versionId = params.get('fileVersion');
+      const version = versionId ? file.versions.find(item => item.id === versionId) : undefined;
+      if (versionId && !version) { message.error(t('workspace.errors.action', { code: 'VERSION_NOT_FOUND' }));return; }
+      openPreview(file, version);
+    }
+  }, [location.key, location.search, files, openPreview]);
 
   useEffect(() => {
     const file = preview?.file;
@@ -430,7 +436,11 @@ const WorkspaceFiles: React.FC = () => {
             </Button>
           ) : null
         }
-        onCancel={() => setPreview(null)}
+        onCancel={() => {
+          setPreview(null);
+          const params = new URLSearchParams(location.search);
+          if (params.has('previewPath')) { params.delete('previewPath');params.delete('fileVersion');navigate({ pathname: location.pathname, search: params.toString() }, { replace: true, state: null }); }
+        }}
       >
         {preview?.kind === 'office' && /\.(xlsx|docx|pptx)$/i.test(preview.file.name) ? (
           <OfficePreview

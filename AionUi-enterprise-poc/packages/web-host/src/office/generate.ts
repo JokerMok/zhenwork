@@ -1,4 +1,7 @@
 import { execFile } from 'node:child_process';
+import { WORKBOOK_SUPPORT_PYTHON } from './workbook/script.js';
+import { OFFICE_PRESENTATION_PYTHON } from './delivery/presentationScript.js';
+import { safeOfficeSourceUrl, type OfficeSource, type OfficeReport, type OfficeSection, type OfficeProvenance } from './delivery/presentation.js';
 
 export type OfficeCell = string | number | null;
 export type OfficeTable = { headers: string[]; rows: OfficeCell[][] };
@@ -11,6 +14,10 @@ export type GenerateOfficeArtifactInput = {
   table?: OfficeTable;
   sheets?: OfficeSheet[];
   slides?: OfficeSlide[];
+  sources?: OfficeSource[];
+  report?: OfficeReport;
+  sections?: OfficeSection[];
+  provenance?: OfficeProvenance;
 };
 
 const MAX_INPUT_BYTES = 64 * 1024;
@@ -32,109 +39,9 @@ MAX_OUTPUT=10*1024*1024
 def text(value):
     return '' if value is None else str(value)
 
-def xlsx(data):
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
-    from openpyxl.utils import get_column_letter
-    wb=Workbook()
-    wb.remove(wb.active)
-    wb.properties.title=data.get('title') or ''
-    definitions=data.get('sheets') or []
-    if not definitions:
-        table=data.get('table') or {'headers':[],'rows':[]}
-        definitions=[{'name':'Sheet1','headers':table.get('headers',[]),'rows':table.get('rows',[]),'intro':True}]
-    used=set()
-    for index,item in enumerate(definitions,1):
-        raw=text(item.get('name') or ('Sheet'+str(index)))
-        name=''.join('_' if char in '[]:*?/\\' else char for char in raw).strip(" '")[:31] or ('Sheet'+str(index))
-        base=name;counter=2
-        while name.lower() in used:
-            suffix='_'+str(counter);name=base[:31-len(suffix)]+suffix;counter+=1
-        used.add(name.lower())
-        ws=wb.create_sheet(name)
-        row_number=1
-        widths={}
-        headers=item.get('headers') or []
-        rows=item.get('rows') or []
-        intro=index==1
-        width=max(1,len(headers),max((len(row) for row in rows),default=0))
-        def put(row,column,value,bold=False,fill=None,size=None):
-            cell=ws.cell(row=row,column=column)
-            if isinstance(value,str):
-                cell.value=value
-                cell.data_type='s'
-            else:
-                cell.value=value
-            cell.alignment=Alignment(vertical='top',wrap_text=True)
-            cell.font=Font(name='Microsoft YaHei',bold=bold,size=size)
-            if fill: cell.fill=PatternFill('solid',fgColor=fill)
-            lengths=[len(part) for part in text(value).splitlines()] or [0]
-            widths[column]=max(widths.get(column,0),min(48,max(lengths)))
-            return cell
-        if intro and data.get('title'):
-            put(row_number,1,data['title'],bold=True,size=16)
-            if width>1: ws.merge_cells(start_row=row_number,start_column=1,end_row=row_number,end_column=width)
-            row_number+=1
-        if intro:
-            for paragraph in data.get('paragraphs') or []:
-                put(row_number,1,paragraph)
-                if width>1: ws.merge_cells(start_row=row_number,start_column=1,end_row=row_number,end_column=width)
-                row_number+=1
-            if (data.get('title') or data.get('paragraphs')) and (headers or rows): row_number+=1
-        header_row=None
-        if headers:
-            header_row=row_number
-            for column,value in enumerate(headers,1):
-                cell=put(row_number,column,value,bold=True,fill='1F4E78')
-                cell.font=Font(name='Microsoft YaHei',bold=True,color='FFFFFF')
-            row_number+=1
-        for row in rows:
-            for column,value in enumerate(row,1): put(row_number,column,value)
-            row_number+=1
-        if header_row:
-            ws.freeze_panes='A'+str(header_row+1)
-            ws.auto_filter.ref='A'+str(header_row)+':'+get_column_letter(max(1,len(headers)))+str(max(header_row,row_number-1))
-        for column in range(1,width+1): ws.column_dimensions[get_column_letter(column)].width=max(10,widths.get(column,0)+2)
-    if not wb.worksheets: wb.create_sheet('Sheet1')
-    output=io.BytesIO();wb.save(output);return output.getvalue()
-
-def docx(data):
-    from docx import Document
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-    from docx.shared import Pt
-    document=Document()
-    document.core_properties.title=data.get('title') or ''
-    for style_name,size in [('Normal',10.5),('Title',22),('Heading 1',16)]:
-        style=document.styles[style_name]
-        style.font.name='Microsoft YaHei';style.font.size=Pt(size)
-        style._element.rPr.rFonts.set(qn('w:eastAsia'),'Microsoft YaHei')
-    def format_paragraph(paragraph,bold=False):
-        for run in paragraph.runs:
-            run.font.name='Microsoft YaHei';run.font.bold=bold
-            run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),'Microsoft YaHei')
-    if data.get('title'): format_paragraph(document.add_heading(data['title'],0),True)
-    for value in data.get('paragraphs') or []: format_paragraph(document.add_paragraph(value))
-    table_data=data.get('table')
-    if table_data:
-        headers=table_data.get('headers') or [];rows=table_data.get('rows') or []
-        columns=max(1,len(headers),max((len(row) for row in rows),default=0))
-        table=document.add_table(rows=0,cols=columns);table.style='Table Grid'
-        if headers:
-            cells=table.add_row().cells
-            for index,value in enumerate(headers):
-                cells[index].text=value
-                shade=OxmlElement('w:shd');shade.set(qn('w:fill'),'D9EAF7');cells[index]._tc.get_or_add_tcPr().append(shade)
-                for paragraph in cells[index].paragraphs: format_paragraph(paragraph,True)
-        for row in rows:
-            cells=table.add_row().cells
-            for index,value in enumerate(row):
-                cells[index].text=text(value)
-                for paragraph in cells[index].paragraphs: format_paragraph(paragraph)
-    if not document.paragraphs and not document.tables: document.add_paragraph('')
-    output=io.BytesIO();document.save(output);return output.getvalue()
-
-def pptx(data):
+`;
+const PYTHON_LAYOUT = OFFICE_PRESENTATION_PYTHON;
+const PYTHON_TAIL = String.raw`def pptx(data):
     from pptx import Presentation
     from pptx.dml.color import RGBColor
     from pptx.util import Inches,Pt
@@ -207,7 +114,9 @@ try:
     if not result or len(result)>MAX_OUTPUT: raise ValueError('OUTPUT_LIMIT_10MB')
     sys.stdout.buffer.write(result)
 except Exception as error:
-    sys.stderr.write('OFFICE_GENERATION_FAILED:'+type(error).__name__)
+    allowed={'CALCULATION_CYCLE','CALCULATION_MISSING_VALUE','CALCULATION_UNIT_MISMATCH','CALCULATION_ZERO_DIVISOR'}
+    category=str(error) if isinstance(error,ValueError) and str(error) in allowed else error.code if isinstance(error,WorkbookError) else type(error).__name__
+    sys.stderr.write('OFFICE_GENERATION_FAILED:'+category)
     sys.exit(2)
 `;
 
@@ -264,11 +173,44 @@ function validateTable(value: unknown, state: { rows: number }, optionalHeaders 
 
 function validate(input: unknown): asserts input is GenerateOfficeArtifactInput {
   if (!record(input)) fail('OFFICE_INPUT_INVALID');
-  const allowed = new Set(['format', 'title', 'paragraphs', 'table', 'sheets', 'slides']);
+  const allowed = new Set(['format', 'title', 'paragraphs', 'table', 'sheets', 'slides', 'sources', 'report', 'sections', 'provenance']);
   if (Object.keys(input).some((key) => !allowed.has(key))) fail('OFFICE_INPUT_INVALID');
   if (!['xlsx', 'docx', 'pptx', 'pdf'].includes(String(input.format))) fail('OFFICE_FORMAT_INVALID');
   if (input.title !== undefined) string(input.title, 'OFFICE_TITLE_LIMIT_300', MAX_TITLE_LENGTH);
   if (input.paragraphs !== undefined) strings(input.paragraphs, 'OFFICE_PARAGRAPHS_INVALID');
+  if (input.sources !== undefined) {
+    if (!Array.isArray(input.sources) || input.sources.length > 32) fail('OFFICE_SOURCE_LIMIT_32');
+    for (const source of input.sources) {
+      if (!record(source)) fail('OFFICE_SOURCE_INVALID');
+      for (const key of ['id', 'title', 'version', 'location']) string(source[key], 'OFFICE_SOURCE_INVALID', 1000);
+      strings(source.quotes, 'OFFICE_SOURCE_QUOTES_INVALID', 32);
+      for (const key of ['url', 'originalUrl']) if (source[key] !== undefined && safeOfficeSourceUrl(source[key]) !== source[key]) fail('OFFICE_SOURCE_URL_INVALID');
+    }
+  }
+  if (input.sections !== undefined) {
+    if (!Array.isArray(input.sections) || input.sections.length > 32) fail('OFFICE_SECTION_LIMIT_32');
+    for (const section of input.sections) { if (!record(section)) fail('OFFICE_SECTION_INVALID');string(section.heading, 'OFFICE_SECTION_INVALID', 300);strings(section.paragraphs, 'OFFICE_SECTION_INVALID'); }
+  }
+  if (input.report !== undefined) {
+    if (!record(input.report) || !Array.isArray(input.report.findings) || input.report.findings.length < 1 || input.report.findings.length > 32) fail('OFFICE_REPORT_INVALID');
+    if (!['research', 'compliance'].includes(String(input.report.purpose))) fail('OFFICE_REPORT_INVALID');
+    string(input.report.scope, 'OFFICE_REPORT_INVALID', 2000);string(input.report.conclusion, 'OFFICE_REPORT_INVALID', 2000);
+    const findingCount = input.report.findings.length;
+    const sourceIds = new Set((input.sources as OfficeSource[] | undefined)?.map(source => source.id));
+    for (const finding of input.report.findings) {
+      if (!record(finding) || !sourceIds.has(String(finding.source)) || (finding.requirement && !sourceIds.has(String(finding.requirement)))) fail('OFFICE_REPORT_SOURCE_INVALID');
+      for (const key of ['topic', 'assessment', 'analysis', 'missing']) string(finding[key], 'OFFICE_REPORT_INVALID', 2000);
+      if (finding.metric !== undefined) {
+        const metric = finding.metric;if (!record(metric)) fail('OFFICE_REPORT_METRIC_INVALID');
+        for (const key of ['object', 'parameter', 'unit']) string(metric[key], 'OFFICE_REPORT_METRIC_INVALID', 300);
+        if (metric.value != null && (typeof metric.value !== 'number' || !Number.isFinite(metric.value))) fail('OFFICE_REPORT_METRIC_INVALID');
+        if (metric.calculation !== undefined) {
+          const calc = metric.calculation;if (!record(calc) || !['sum', 'difference', 'ratio'].includes(String(calc.operation)) || !Array.isArray(calc.rows) || calc.rows.length < 1 || calc.rows.length > 32 || !calc.rows.every(index => Number.isInteger(index) && index > 0 && index <= findingCount) || (calc.operation !== 'sum' && calc.rows.length !== 2)) fail('OFFICE_REPORT_CALCULATION_INVALID');
+        }
+      }
+    }
+  }
+  if (input.provenance !== undefined && (!record(input.provenance) || /"(?:password|cookie|authorization|access_token|refresh_token|apiKey|secret)"\s*:/i.test(JSON.stringify(input.provenance)))) fail('OFFICE_PROVENANCE_INVALID');
   const state = { rows: 0 };
   if (input.table !== undefined) validateTable(input.table, state);
   if (input.sheets !== undefined) {
@@ -303,6 +245,7 @@ function hasVisibleTable(table: OfficeTable | OfficeSheet | undefined): boolean 
 }
 
 function hasVisibleContent(input: GenerateOfficeArtifactInput): boolean {
+  if (input.report?.findings.length || input.sections?.some(section => section.paragraphs.some(hasVisibleText)) || input.sources?.length) return true;
   const titleOrParagraph = hasVisibleText(input.title) || Boolean(input.paragraphs?.some(hasVisibleText));
   if (input.format === 'xlsx') {
     return titleOrParagraph || hasVisibleTable(input.table) || Boolean(input.sheets?.some(hasVisibleTable));
@@ -339,7 +282,7 @@ export async function generateOfficeArtifact(input: GenerateOfficeArtifactInput)
   return new Promise((resolve, reject) => {
     const child = execFile(
       python,
-      ['-c', PYTHON_SCRIPT],
+      ['-c', WORKBOOK_SUPPORT_PYTHON + PYTHON_SCRIPT + PYTHON_LAYOUT + PYTHON_TAIL],
       {
         encoding: 'buffer',
         timeout: 20_000,

@@ -3232,6 +3232,8 @@ export type I18nKey =
   | 'workspace.delivery.processing'
   | 'workspace.delivery.receipts'
   | 'workspace.delivery.retryPrompt'
+  | 'workspace.delivery.savedStructure'
+  | 'workspace.delivery.savedWorkbookStructure'
   | 'workspace.delivery.steps'
   | 'workspace.errors.action'
   | 'workspace.errors.authentication'

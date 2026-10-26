@@ -71,6 +71,23 @@ export class OfficeStore {
     return (await this.state()).deliveries?.[dataSha256]?.[name];
   }
 
+  async fileReceipt(name: string): Promise<{ version: number; versionId: string; sha256: string; createdAt: string; byteSize: number } | undefined> {
+    const versions = (await this.state()).files[name] || [];
+    const latest = versions.at(-1);
+    return latest ? { version: versions.length, versionId: latest.id, sha256: latest.sha256, createdAt: latest.createdAt, byteSize: latest.byteSize } : undefined;
+  }
+
+  /** Pin source bytes in the existing private version store, never a public bearer URL. */
+  async pinSource(filename: string, bytes: Buffer): Promise<{ path: string; versionId: string; createdAt: string }> {
+    if (bytes.length > MAX_FILE) throw new Error('FILE_LIMIT_50MB');
+    const name = '来源快照/' + digest(bytes) + '/' + path.basename(filename);
+    return this.transaction(async state => {
+      await this.snapshot(state, name, bytes);
+      const version = state.files[name].at(-1)!;
+      return { path: name, versionId: version.id, createdAt: version.createdAt };
+    });
+  }
+
   async rememberDelivery(dataSha256: string, name: string, sha256: string): Promise<void> {
     if (!/^[a-f0-9]{64}$/.test(dataSha256) || !/^[a-f0-9]{64}$/.test(sha256))
       throw new Error('INVALID_DELIVERY_RECEIPT');

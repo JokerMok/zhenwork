@@ -163,9 +163,7 @@ test('builds evidence table rows from verified source text and locator', () => {
     '未提供',
     '未提供',
     '现场核验',
-    '扫码',
-    '{"documentId":"doc-1","version":3,"location":"第 4 页"}',
-    '已校验原文摘录存在且来源当前可访问；结论、独立要求和验收证据仍需独立核查。',
+    'S1',
   ]);
   expect(JSON.stringify(table)).not.toContain('模型误抄的原文');
 });
@@ -193,18 +191,16 @@ test('appends bounded custom evidence columns without replacing protected source
     sources
   );
 
-  expect(table.headers.slice(0, 10)).toEqual([
-    '编号', '主题', '结论/声明', '状态', '独立要求', '验收证据', '后续事项', '原文摘录', '真实来源定位', '核查边界',
+  expect(table.headers.slice(0, 8)).toEqual([
+    '编号', '主题', '结论/声明', '状态', '独立要求', '验收证据', '后续事项', '来源',
   ]);
-  expect(table.headers.slice(10)).toEqual(['后续验证责任', '置信度', '已复核', '备注']);
+  expect(table.headers.slice(8)).toEqual(['后续验证责任', '置信度', '已复核', '备注']);
   expect(table.rows[0].slice(7)).toEqual([
-    '真实原文一', '{"location":"第 1 页"}',
-    '已校验原文摘录存在且来源当前可访问；结论、独立要求和验收证据仍需独立核查。',
+    'S1',
     '需用户指定责任人', 0.8, 'true', '',
   ]);
   expect(table.rows[1].slice(7)).toEqual([
-    '真实原文二', '{"location":"第 2 页"}',
-    '已校验原文摘录存在且来源当前可访问；结论、独立要求和验收证据仍需独立核查。',
+    'S2',
     '', '', '', null,
   ]);
 });

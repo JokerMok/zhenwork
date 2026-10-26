@@ -301,6 +301,8 @@
     "retryPrompt": "既存成果とエラーを確認し、未完成・失敗した処理だけを続行してください。完成済みは再生成しないでください。対象：{{paths}}",
     "complete": "完了",
     "failedFile": "失敗",
-    "errorCount": "エラーがあった処理：{{count}}"
+    "errorCount": "エラーがあった処理：{{count}}",
+    "savedStructure": "見出し {{headings}} 件 · 表 {{tables}} 件",
+    "savedWorkbookStructure": "ワークシート {{sheets}} 件"
   }
 }

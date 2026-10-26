@@ -116,7 +116,13 @@ def docx_read(raw,start,limit):
     for kind,number,item in blocks[start:start+limit]:
         if kind=='paragraph':
             text,cut=clipped(item.text)
-            locations.append({'location':{'kind':'paragraph','paragraph':number},'text':text,'textTruncated':cut})
+            links=[]
+            from docx.oxml.ns import qn
+            for hyperlink in item._p.iter(qn('w:hyperlink')):
+                relationship=document.part.rels.get(hyperlink.get(qn('r:id')))
+                if relationship is not None and relationship.is_external:
+                    links.append({'text':''.join(t.text or '' for t in hyperlink.iter(qn('w:t'))),'url':relationship.target_ref})
+            locations.append({'location':{'kind':'paragraph','paragraph':number},'text':text,'textTruncated':cut,'links':links[:32]})
         else:
             rows=[]
             for row in item.rows[:ROW_LIMIT]: rows.append([cell.text for cell in row.cells[:COLUMN_LIMIT]])

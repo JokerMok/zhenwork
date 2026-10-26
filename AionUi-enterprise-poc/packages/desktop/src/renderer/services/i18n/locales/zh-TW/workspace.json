@@ -301,6 +301,8 @@
     "retryPrompt": "請先檢查現有成果與失敗原因，只繼續未完成或失敗步驟，避免重複產生已完成成果。待處理：{{paths}}",
     "complete": "已完成",
     "failedFile": "失敗",
-    "errorCount": "曾失敗的工具步驟：{{count}}"
+    "errorCount": "曾失敗的工具步驟：{{count}}",
+    "savedStructure": "{{headings}} 個標題 · {{tables}} 個表格",
+    "savedWorkbookStructure": "{{sheets}} 個工作表"
   }
 }

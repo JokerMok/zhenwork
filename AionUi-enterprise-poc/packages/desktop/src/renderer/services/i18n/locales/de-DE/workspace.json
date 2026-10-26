@@ -301,6 +301,8 @@
     "retryPrompt": "Vorhandene Ergebnisse und Fehler prüfen. Nur offene/fehlgeschlagene Schritte fortsetzen, abgeschlossene Dateien nicht neu erzeugen. Offen: {{paths}}",
     "complete": "Fertig",
     "failedFile": "Fehlgeschlagen",
-    "errorCount": "Schritte mit Fehlern: {{count}}"
+    "errorCount": "Schritte mit Fehlern: {{count}}",
+    "savedStructure": "{{headings}} Überschriften · {{tables}} Tabellen",
+    "savedWorkbookStructure": "{{sheets}} Arbeitsblätter"
   }
 }

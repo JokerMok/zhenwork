@@ -1,3 +1,4 @@
+import { safeOfficeHyperlink } from './types';
 import { Alert, Button, Empty, Select, Space, Spin, Table, Tag } from '@arco-design/web-react';
 import { Download, Refresh } from '@icon-park/react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -173,7 +174,7 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
                         style={cell.style}
                         title={[cell.reference, cell.formula, cell.error].filter(Boolean).join(' · ')}
                       >
-                        {cell.text}
+                        {safeOfficeHyperlink(cell.href) ? <a href={safeOfficeHyperlink(cell.href)} target='_blank' rel='noopener noreferrer'>{cell.text}</a> : cell.text}
                         {cell.error ? <span className='text-warning ml-4px'>⚠</span> : null}
                       </td>
                     ))}
@@ -202,6 +203,7 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
                 })}
               </Tag>
               {location.text ? <p className='whitespace-pre-wrap break-words'>{location.text}</p> : null}
+              {location.links?.map((link, index) => safeOfficeHyperlink(link.url) ? <a key={index} href={safeOfficeHyperlink(link.url)} target='_blank' rel='noopener noreferrer'>{link.text || link.url}</a> : null)}
               {location.texts?.map((text, j) => (
                 <p key={j} className='whitespace-pre-wrap break-words'>
                   {text.text}

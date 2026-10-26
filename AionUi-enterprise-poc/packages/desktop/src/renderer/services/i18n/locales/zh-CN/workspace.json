@@ -317,6 +317,8 @@
     "retryPrompt": "请先检查当前已有成果和失败原因，仅继续未完成或失败的步骤，避免重复生成已完成成果。待处理：{{paths}}",
     "complete": "已完成",
     "failedFile": "失败",
-    "errorCount": "曾失败的工具步骤：{{count}}"
+    "errorCount": "曾失败的工具步骤：{{count}}",
+    "savedStructure": "{{headings}} 个标题 · {{tables}} 个表格",
+    "savedWorkbookStructure": "{{sheets}} 个工作表"
   }
 }

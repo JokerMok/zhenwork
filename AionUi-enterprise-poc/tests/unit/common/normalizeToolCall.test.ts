@@ -99,3 +99,9 @@ describe('verified tool delivery receipts', () => {
     expect(toolDeliveryReceipts([tool])).toEqual([]);
   });
 });
+
+
+it('uses the saved artifact version and actual appended heading in delivery receipts', () => {
+  const receipts = toolDeliveryReceipts([{ key: 'revision', name: 'revise_office_document', status: 'completed', output: JSON.stringify({ path: 'actual.docx', sha256: 'a'.repeat(64), downloadUrl: 'https://workspace.example/enterprise/files/download?path=actual.docx', version: 3, versionId: '11111111-1111-4111-8111-111111111111', inspection: { headingCount: 6, tables: [{ rows: 3, columns: 2 }] }, changes: [{ kind: 'append_section', actualHeading: '6 核实资料' }] }) }]);
+  expect(receipts[0]).toMatchObject({ path: 'actual.docx', version: 3, versionId: '11111111-1111-4111-8111-111111111111', headingCount: 6, tableCount: 1, addedHeadings: ['6 核实资料'] });
+});

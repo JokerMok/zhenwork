@@ -193,7 +193,7 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
   const failed = files.filter((file) => file.status === 'failed');
   const errors = tools.filter((tool) => tool.status === 'error');
   const running = tools.findLast((tool) => tool.status === 'running' || tool.status === 'pending');
-  const [preview, setPreview] = useState<string>();
+  const [preview, setPreview] = useState<{ path: string; version?: string }>();
   const navigate = useNavigate();
   if (!isEnterpriseWeb() || (!tools.length && !processing)) return null;
   return (
@@ -232,6 +232,10 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
       {files.map((file) => (
         <div key={file.path} className='flex flex-wrap items-center gap-8px mt-8px'>
           <span className='break-all'>{file.path}</span>
+          {file.version ? <Tag>v{file.version}</Tag> : null}
+          {file.headingCount !== undefined ? <span className='text-t-secondary'>{t('workspace.delivery.savedStructure', { headings: file.headingCount, tables: file.tableCount || 0 })}</span> : null}
+          {file.sheetCount !== undefined ? <span className='text-t-secondary'>{t('workspace.delivery.savedWorkbookStructure', { sheets: file.sheetCount })}</span> : null}
+          {file.addedHeadings?.map(heading => <Tag key={heading}>{heading}</Tag>)}
           <Tag color={file.status === 'complete' ? 'green' : 'red'}>
             {t(file.status === 'complete' ? 'workspace.delivery.complete' : 'workspace.delivery.failedFile')}
           </Tag>
@@ -241,7 +245,7 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
             <>
               <Button
                 type='text'
-                onClick={() => setPreview(file.path)}
+                onClick={() => setPreview({ path: file.path, version: file.versionId })}
               >
                 {t('workspace.files.preview')}
               </Button>
@@ -249,7 +253,7 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
                 type='text'
                 onClick={() =>
                   window.open(
-                    `/enterprise/files/download?${new URLSearchParams({ path: file.path })}`,
+                    `/enterprise/files/download?${new URLSearchParams({ path: file.path, ...(file.versionId ? { version: file.versionId } : {}) })}`,
                     '_blank',
                     'noopener,noreferrer'
                   )
@@ -275,11 +279,11 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
       <Drawer
         width={920}
         visible={Boolean(preview)}
-        title={preview || ''}
+        title={preview?.path || ''}
         footer={null}
         onCancel={() => setPreview(undefined)}
       >
-        {preview ? <EnterpriseFilePreview path={preview} /> : null}
+        {preview ? <EnterpriseFilePreview path={preview.path} version={preview.version} /> : null}
       </Drawer>
     </div>
   );

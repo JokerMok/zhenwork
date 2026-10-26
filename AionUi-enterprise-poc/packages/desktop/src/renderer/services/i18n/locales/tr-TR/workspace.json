@@ -301,6 +301,8 @@
     "retryPrompt": "Önce mevcut çıktıları ve hataları kontrol edin. Yalnızca eksik/başarısız adımları sürdürün, tamamlanan çıktıları yeniden üretmeyin. Bekleyen: {{paths}}",
     "complete": "Tamamlandı",
     "failedFile": "Başarısız",
-    "errorCount": "Hata bildiren adımlar: {{count}}"
+    "errorCount": "Hata bildiren adımlar: {{count}}",
+    "savedStructure": "{{headings}} başlık · {{tables}} tablo",
+    "savedWorkbookStructure": "{{sheets}} çalışma sayfası"
   }
 }

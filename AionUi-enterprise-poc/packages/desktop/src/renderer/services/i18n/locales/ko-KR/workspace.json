@@ -301,6 +301,8 @@
     "retryPrompt": "기존 결과와 오류를 먼저 확인하고 미완성 또는 실패한 단계만 계속하세요. 완료된 결과를 다시 생성하지 마세요. 대상: {{paths}}",
     "complete": "완료",
     "failedFile": "실패",
-    "errorCount": "오류가 발생했던 단계: {{count}}"
+    "errorCount": "오류가 발생했던 단계: {{count}}",
+    "savedStructure": "제목 {{headings}}개 · 표 {{tables}}개",
+    "savedWorkbookStructure": "워크시트 {{sheets}}개"
   }
 }

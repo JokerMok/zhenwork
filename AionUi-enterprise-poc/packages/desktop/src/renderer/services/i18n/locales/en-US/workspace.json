@@ -317,6 +317,8 @@
     "retryPrompt": "First check current artifacts and errors. Continue only unfinished or failed steps; do not regenerate completed outputs. Pending: {{paths}}",
     "complete": "Complete",
     "failedFile": "Failed",
-    "errorCount": "Tool steps that reported errors: {{count}}"
+    "errorCount": "Tool steps that reported errors: {{count}}",
+    "savedStructure": "{{headings}} headings · {{tables}} tables",
+    "savedWorkbookStructure": "{{sheets}} worksheets"
   }
 }

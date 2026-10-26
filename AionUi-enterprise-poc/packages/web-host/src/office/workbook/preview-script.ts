@@ -65,6 +65,15 @@ def preview(content, args):
             for c in range(cc,min(c2,columns)+1):
                 if (c,r)!=(cc,rr):covered.add((c,r))
         merges.append(merge.attrib['ref'])
+    import posixpath
+    targets={};links={}
+    rel_path=posixpath.dirname(str(sheet['path']))+'/_rels/'+posixpath.basename(str(sheet['path']))+'.rels'
+    if rel_path in package.parts:
+        for rel in package.xml(rel_path):
+            if rel.get('TargetMode')=='External':targets[rel.get('Id')]=rel.get('Target')
+    for link in root.findall('x:hyperlinks/x:hyperlink',NS):
+        url=targets.get(link.get('{'+DOC_REL_NS+'}id'))
+        if url:links[link.get('ref')]=url
     rows=[];unsupported=0
     for row in range(start+1,end+1):
         output=[]
@@ -81,7 +90,7 @@ def preview(content, args):
             elif raw['kind']=='number':text=display_number(str(raw['value']),fmt_id,fmt)
             elif raw.get('value') is not None:text=str(raw['value'])
             text=text[:min(2000,max(budget,0))];budget-=len(text)
-            output.append({'reference':reference,'column':column,'text':text,'formula':formula,'error':error,'colSpan':colspan,'rowSpan':rowspan,'style':style})
+            output.append({'reference':reference,'column':column,'text':text,'formula':formula,'error':error,'colSpan':colspan,'rowSpan':rowspan,'style':style,'href':links.get(reference)})
         rows.append({'number':row,'cells':output})
     widths=[100]*columns
     for col in root.findall('x:cols/x:col',NS):

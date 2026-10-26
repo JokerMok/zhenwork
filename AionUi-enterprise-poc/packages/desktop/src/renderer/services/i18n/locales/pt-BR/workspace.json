@@ -301,6 +301,8 @@
     "retryPrompt": "Confira resultados e erros. Continue apenas etapas pendentes ou com falha, sem gerar novamente arquivos concluídos. Pendente: {{paths}}",
     "complete": "Concluído",
     "failedFile": "Falhou",
-    "errorCount": "Etapas que relataram erros: {{count}}"
+    "errorCount": "Etapas que relataram erros: {{count}}",
+    "savedStructure": "{{headings}} títulos · {{tables}} tabelas",
+    "savedWorkbookStructure": "{{sheets}} planilhas"
   }
 }

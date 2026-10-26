@@ -301,6 +301,8 @@
     "retryPrompt": "Revise los resultados y errores. Continúe solo los pasos pendientes o fallidos; no regenere archivos terminados. Pendiente: {{paths}}",
     "complete": "Completo",
     "failedFile": "Fallido",
-    "errorCount": "Pasos que notificaron errores: {{count}}"
+    "errorCount": "Pasos que notificaron errores: {{count}}",
+    "savedStructure": "{{headings}} títulos · {{tables}} tablas",
+    "savedWorkbookStructure": "{{sheets}} hojas"
   }
 }

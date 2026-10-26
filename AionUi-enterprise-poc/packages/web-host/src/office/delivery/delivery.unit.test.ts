@@ -15,7 +15,7 @@ const input = {
     },
   ],
 };
-test('one shared table and hash appears in both real artifact inputs; absent requirements cannot pass', () => {
+test('one shared fact dataset uses distinct layouts and hidden provenance; absent requirements cannot pass', () => {
   const parsed = parseEvidenceDelivery(input);
   const result = buildEvidenceDeliverables(parsed, [
     {
@@ -26,10 +26,10 @@ test('one shared table and hash appears in both real artifact inputs; absent req
     },
   ]);
   expect(result.files.map((item) => item.path)).toEqual(['review.docx', 'review.xlsx']);
-  expect(result.files[0].content.table).toEqual(result.files[1].content.table);
-  expect(result.files[0].content.table!.rows[0][3]).toBe('证据不足');
+  expect(result.files[0].content.report).toEqual(result.files[1].content.report);
+  expect(result.files[0].content.report!.findings[0].assessment).toBe('证据不足');
   expect(JSON.stringify(result.files)).toContain('dry conditions');
-  expect(result.files.every((item) => item.content.paragraphs!.at(-1)!.includes(result.dataSha256))).toBe(true);
+  expect(result.files.every((item) => item.content.provenance!.dataSha256 === result.dataSha256)).toBe(true);
   expect(deliveryReferences(parsed)).toHaveLength(1);
 });
 test('schema rejects empty refs, missing args and wrong nested types before any write', () => {
@@ -72,8 +72,8 @@ test('research preserves source-location status while compliance still needs req
   const parsed = parseEvidenceDelivery({ ...input, purpose: 'research', rows: Array.from({ length: 32 }, () => input.rows[0]) });
   const source = { ref: 'source', kind: 'web' as const, quote: 'A vendor claim, not independent acceptance.', locator: { url: 'https://example.com', sha256: 'v1' } };
   const result = buildEvidenceDeliverables(parsed, Array.from({ length: 32 }, () => source));
-  expect(result.files[0].content.table!.rows[0][3]).toContain('原文已定位');
-  expect(result.files[0].content.table).toEqual(result.files[1].content.table);
+  expect(result.files[0].content.report!.findings[0].assessment).toBe('原文声明');
+  expect(result.files[0].content.report).toEqual(result.files[1].content.report);
   expect(() => parseEvidenceDelivery({ ...input, rows: Array.from({ length: 17 }, () => ({ ...input.rows[0], requirement: { ref: 'r', quoteIndex: 0 } })) })).toThrow('REFERENCE_LIMIT_32');
   expect(() => validateToolArguments(evidenceDeliveryTool.inputSchema, { ...input, evidenceRows: [] })).toThrow('allowed fields here:');
 });
