@@ -290,7 +290,10 @@ export class TaskRunner {
     const text = await r.text();
     if (text.length > 2 * 1024 * 1024) throw new TaskError(502, 'TASK_CORE_RESPONSE_LIMIT');
     const parsed = JSON.parse(text) as { success?: boolean; data: T; error?: unknown };
-    if (!r.ok || parsed.success !== true) throw new TaskError(r.status === 409 ? 409 : 502, 'TASK_CORE_REQUEST_FAILED');
+    if (!r.ok || parsed.success !== true) {
+      console.warn('[Enterprise tasks] native request rejected', JSON.stringify({route: route.split('?')[0], status:r.status, success:parsed.success}));
+      throw new TaskError(r.status === 409 ? 409 : 502, 'TASK_CORE_REQUEST_FAILED');
+    }
     return parsed.data;
   }
   private async release(actor: EnterpriseActor, id: string, a: TaskAttempt): Promise<void> {
@@ -509,7 +512,7 @@ export class TaskRunner {
           await this.call(
             core,
             `/api/conversations/${task.id}/confirmations/${encodeURIComponent(String(c.call_id))}/confirm`,
-            { msg_id: a.messageId, data: 'proceed_once', always_allow: false }
+            { msg_id: a.messageId, data: { value: 'proceed_once' }, always_allow: false }
           );
         } else {
           await store.mutate(task.id, a.id, (x) => {

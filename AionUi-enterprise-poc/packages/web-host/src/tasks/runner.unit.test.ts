@@ -14,7 +14,7 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const fn of cleanups.splice(0).reverse()) await fn();
 });
-async function fixture() {
+async function fixture(trusted = false) {
   const root = await mkdtemp(path.join(tmpdir(), 'task-runner-'));
   cleanups.push(() => rm(root, { recursive: true, force: true }));
   const actor = { serverId: 'rc2', userId: '17' },
@@ -30,6 +30,8 @@ async function fixture() {
   let coreGate: Promise<void> = Promise.resolve();
   let releaseCore = () => {};
   let authorized = true;
+  let pendingApproval = false;
+  let approvalData: unknown;
   const server = http.createServer(async (req, res) => {
     let data = {};
     for await (const b of req) data = { ...data, ...JSON.parse(String(b)) };
@@ -38,6 +40,11 @@ async function fixture() {
       sends++;
       processing = true;
       body = { msg_id: 'msg1', turn_id: 'turn1' };
+    } else if (req.url?.endsWith('/confirmations')) {
+      body = [{call_id:'office-call',description:'MCP office/office_context: context',options:[{value:'proceed_once'}]}];
+    } else if (req.url?.endsWith('/office-call/confirm')) {
+      approvalData = (data as {data?:unknown}).data;
+      pendingApproval = false;
     } else if (req.url?.includes('/messages?'))
       body = {
         items: [
@@ -59,7 +66,7 @@ async function fixture() {
           state: processing ? 'running' : 'idle',
           turn_id: 'turn1',
           is_processing: processing,
-          pending_confirmations: 0,
+          pending_confirmations: pendingApproval ? 1 : 0,
         },
       };
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -98,7 +105,7 @@ async function fixture() {
     },
     bind: () => {},
     actors: async () => [actor],
-    trustedConfirmation: async () => false,
+    trustedConfirmation: async () => trusted,
   });
   cleanups.push(() => runner.stop());
   const store = await TaskStore.create(root, actor);
@@ -120,6 +127,8 @@ async function fixture() {
     revoke: () => {
       authorized = false;
     },
+    approval: () => { pendingApproval = true; },
+    approvalData: () => approvalData,
     counts: () => ({ sends, stops }),
   };
 }
@@ -195,4 +204,12 @@ test('revocation cancels real executor state instead of retaining a valid browse
     .toBe('failed');
   expect(f.counts().stops).toBeGreaterThan(0);
   expect(currentAttempt(await f.store.get('aabbccdd')).reason).toBe('TASK_AUTHORIZATION_REVOKED');
+});
+
+test('trusted Office approval uses the native object-valued confirmation contract',async()=>{
+  const f=await fixture(true);
+  await f.runner.accept(f.actor,'aabbccdd',{content:'Work',request_id:randomUUID()});
+  await expect.poll(()=>f.counts().sends,{timeout:5000}).toBe(1);
+  f.approval();await f.runner.tick();
+  await expect.poll(()=>f.approvalData(),{timeout:5000}).toEqual({value:'proceed_once'});
 });
