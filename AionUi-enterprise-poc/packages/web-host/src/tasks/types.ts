@@ -14,6 +14,7 @@ export type TaskArtifact = {
   path: string;
   sha256: string;
   versionId?: string;
+  version?: number;
   downloadUrl?: string;
   previewUrl?: string;
   valid: boolean;
@@ -56,6 +57,7 @@ export type TaskAttempt = {
   resumeContext?: {
     action: string;
     requestHash?: string;
+    replaceRequirements?: boolean;
     priorState: TaskState;
     retryOnly: boolean;
     question?: string;
@@ -107,7 +109,7 @@ export function requiresToolEvidence(content: string, files: unknown): boolean {
   if (requiredFormats(content).length || (Array.isArray(files) && files.length)) return true;
   content = content
     .split(/(?:[。；;,，\n]|但(?:是)?|\bbut\b)/i)
-    .filter((c) => !/^\s*(?:不要|无需|不必|不|勿|禁止|do not|don't|without|never)/i.test(c))
+    .filter((c) => !/^\s*(?:(?:请|务必|一定|暂时|暂|先|绝对|绝)\s*)?(?:不要|无需|不必|不|勿|禁止|严禁|切勿|do not|don't|without|never)/i.test(c))
     .join("\n");
   if (/^(?:请问)?(?:什么是|如何理解|为什么|请解释|解释|what is|explain|why)/i.test(content.trim()))
     return false;

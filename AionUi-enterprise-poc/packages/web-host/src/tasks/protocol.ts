@@ -96,6 +96,7 @@ export async function recordTool(
             {
               path: o.path,
               sha256: o.sha256,
+              version: typeof o.version === "number" ? o.version : undefined,
               versionId: typeof o.versionId === "string" ? o.versionId : undefined,
               downloadUrl: typeof o.downloadUrl === "string" ? o.downloadUrl : undefined,
               previewUrl: typeof o.previewUrl === "string" ? o.previewUrl : undefined,
@@ -312,6 +313,7 @@ export async function taskOfficeContext(
     previousState: context?.priorState || prior?.state,
     pendingIssue: context?.question || prior?.question || prior?.reason,
     retryOnly: !!a.retryOf,
+    requirementsReplaced: context?.replaceRequirements === true,
     verifiedPriorOutputs: context?.protectedFiles || prior?.artifacts.filter((f) => f.valid) || [],
     employeeDecision: context?.action,
     externalOutcome: context?.externalOutcome,

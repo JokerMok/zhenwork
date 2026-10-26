@@ -35,8 +35,13 @@ export default function TaskWork({
     [busy, setBusy] = useState(false),
     [failure, setFailure] = useState<string>(),
     [reviewed, setReviewed] = useState(false),
+    [replaceRequirements,setReplaceRequirements] = useState(false),
     [externalOutcome, setExternalOutcome] = useState<string>();
   const previous = useRef<string | undefined>(undefined);
+  useEffect(()=>{
+    setInput("");setFiles([]);setReviewed(false);setReplaceRequirements(false);
+    setExternalOutcome(undefined);setFailure(undefined);previous.current=undefined;
+  },[conversationId]);
   useEffect(() => {
     if (a) {
       const value = a.id + ":" + a.state;
@@ -81,6 +86,7 @@ export default function TaskWork({
         files: files.map((path) => ({ kind: "local", path })),
         reviewed,
         externalOutcome,
+        replaceRequirements,
         language: i18n.language,
       };
       const request_id = await taskRequestId(conversationId, { kind, ...payload });
@@ -93,6 +99,7 @@ export default function TaskWork({
       setInput("");
       setFiles([]);
       setReviewed(false);
+      setReplaceRequirements(false);
       setExternalOutcome(undefined);
       await reload();
     } catch (e) {
@@ -153,7 +160,7 @@ export default function TaskWork({
         {a.artifacts.map((f) => (
           <Space key={f.path}>
             <Tag color={f.valid ? "green" : "orange"}>
-              {f.valid ? f.path : t("workspace.work.pendingArtifact", { path: f.path })}
+              {f.valid ? `${f.path}${f.version ? " · v"+f.version : ""}` : t("workspace.work.pendingArtifact", { path: f.path })}
             </Tag>
             {f.valid && f.previewUrl ? (
               <Button type="text" onClick={() => navigate(f.previewUrl!.replace(/^\/#/, ""))}>
@@ -314,6 +321,7 @@ export default function TaskWork({
       {!active && (composer || a.state === "waiting_confirmation") ? (
         <div className="flex flex-col gap-8px">
           <WebKnowledgePicker conversationId={conversationId} />
+          {!["completed","cancelled"].includes(a.state) ? <Checkbox checked={replaceRequirements} onChange={setReplaceRequirements}>{t("workspace.work.replaceRequirements")}</Checkbox> : null}
           <Input.TextArea
             aria-label={t("workspace.work.continuation")}
             value={input}

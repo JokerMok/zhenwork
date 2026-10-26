@@ -374,3 +374,15 @@ test("explicit approval is bound to full tool input, not a matching truncated de
         .toEqual({ value: "proceed_once" });
   }
 }, 20000);
+
+test("execution deadline cannot be bypassed by a continuous sequence of trusted tool approvals",async()=>{
+  const f=await fixture(true);
+  await f.runner.accept(f.actor,"aabbccdd",{content:"Work",request_id:randomUUID()});
+  await expect.poll(()=>f.counts().sends,{timeout:5000}).toBe(1);
+  const a=currentAttempt(await f.store.get("aabbccdd"));
+  await f.store.mutate("aabbccdd",a.id,x=>{x.startedAt=Date.now()-21*60*1000;});
+  f.approval();await f.runner.tick();
+  await expect.poll(async()=>currentAttempt(await f.store.get("aabbccdd")).state,{timeout:6000}).toBe("failed");
+  expect(f.approvalData()).toBeUndefined();
+  expect(currentAttempt(await f.store.get("aabbccdd")).reason).toBe("TASK_EXECUTION_TIME_LIMIT");
+});

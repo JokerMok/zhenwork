@@ -167,7 +167,7 @@ export class TaskRunner {
           currentAttempt(prior).payloadHash === digest(normalized));
       if (!duplicate && all.reduce((a, b) => a + b, 0) >= this.deps.queueLimit)
         throw new TaskError(429, "TASK_QUEUE_FULL");
-      const accepted = await store.accept(id, requestId, normalized, retry),
+      const accepted = await store.accept(id, requestId, normalized, retry, resumeContext?.replaceRequirements === true),
         attempt = currentAttempt(accepted.task);
       if (!accepted.duplicate) {
         try {
@@ -301,6 +301,7 @@ export class TaskRunner {
       {
         action,
         requestHash: digest({ action, body }),
+        replaceRequirements: body.replaceRequirements === true,
         priorState: a.state,
         retryOnly: action === "retry",
         question: a.question || a.reason,
@@ -562,6 +563,16 @@ export class TaskRunner {
       await this.call(core, `/api/conversations/${task.id}/cancel`, { turn_id: a.turnId });
       return;
     }
+    if (
+      Date.now() - (a.startedAt || a.createdAt) > 20 * 60 * 1000 &&
+      (r.is_processing || r.pending_confirmations > 0 || r.state === "running")
+    ) {
+      await store.mutate(task.id, a.id, (x) => {
+        x.state = "cancelling";
+        x.reason = "TASK_EXECUTION_TIME_LIMIT";
+      });
+      return;
+    }
     if (r.pending_confirmations > 0) {
       const pending = await this.call<Array<Record<string, unknown>>>(
         core,
@@ -637,16 +648,6 @@ export class TaskRunner {
           return;
         }
       }
-      return;
-    }
-    if (
-      Date.now() - (a.startedAt || a.createdAt) > 20 * 60 * 1000 &&
-      (r.is_processing || r.state === "running")
-    ) {
-      await store.mutate(task.id, a.id, (x) => {
-        x.state = "cancelling";
-        x.reason = "TASK_EXECUTION_TIME_LIMIT";
-      });
       return;
     }
     if (
@@ -740,7 +741,7 @@ export class TaskRunner {
     for (const f of a.artifacts) {
       try {
         if (!core.workspaceRoot) throw new Error("workspace");
-        const bytes = await office.download(core.workspaceRoot, f.path);
+        const bytes = await office.download(core.workspaceRoot, f.path, f.versionId);
         const hash = digestBytes(bytes);
         const ext = path.extname(f.path).toLowerCase();
         if ([".docx", ".xlsx", ".pptx", ".pdf"].includes(ext)) {
@@ -754,8 +755,12 @@ export class TaskRunner {
         if (f.sha256 && f.sha256 !== hash) throw new Error("changed");
         f.valid = true;
         f.sha256 = hash;
-        const receipt = await office.fileReceipt(f.path);
-        f.versionId = receipt?.versionId;
+        if(!f.versionId) {
+          const receipt = await office.captureCurrent(core.workspaceRoot, f.path, hash);
+          f.versionId = receipt.versionId;
+          f.version = receipt.version;
+        }
+        if(f.versionId && !f.version) f.version = (await office.fileReceipt(f.path,f.versionId))?.version;
         f.downloadUrl = `/enterprise/files/download?path=${encodeURIComponent(f.path)}${f.versionId ? "&version=" + f.versionId : ""}`;
         f.previewUrl = `/#/workspace?section=files&previewPath=${encodeURIComponent(f.path)}${f.versionId ? "&fileVersion=" + f.versionId : ""}`;
       } catch {
@@ -796,6 +801,13 @@ export class TaskRunner {
       failedSteps.length === 0 &&
       !a.steps.some((s) => s.state === "running") &&
       (!a.requiresToolEvidence || toolEvidence);
+    if (!(await this.deps.check(actor,a.jobId))) {
+      await store.mutate(task.id,a.id,x=>{
+        if(x.state!=='running') return;
+        x.artifacts=a.artifacts;x.state=valid?'partial':'failed';x.phase='settled';x.reason='TASK_AUTHORIZATION_REVOKED';
+      });
+      await this.release(actor,task.id,a);return;
+    }
     let settled = false;
     await store.mutate(task.id, a.id, (x) => {
       if (x.state !== "running") return;

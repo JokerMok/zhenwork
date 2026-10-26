@@ -125,6 +125,7 @@ export class TaskStore {
     requestId: string,
     payload: Record<string, unknown>,
     retry = false,
+    replaceRequirements = false,
   ): Promise<{ task: TaskRecord; duplicate: boolean }> {
     if (
       !/^[A-Za-z0-9_-]{1,100}$/.test(id) ||
@@ -165,6 +166,10 @@ export class TaskStore {
       if (task.attempts.length >= 50) throw new TaskError(409, "TASK_ATTEMPT_CAPACITY");
       const uuid = randomUUID();
       const now = Date.now();
+      const unfinished = prior && !["completed", "cancelled"].includes(prior.state);
+      const retained = prior && (retry || unfinished) ? prior.artifacts.filter(f=>f.valid).map(f=>({...f})) : [];
+      const missing = unfinished && !replaceRequirements ? prior.requiredFormats.filter(ext=>!retained.some(f=>path.extname(f.path).toLowerCase()==='.'+ext)) : [];
+      const formats = retry && prior && !replaceRequirements ? [...prior.requiredFormats] : [...new Set([...missing,...requiredFormats(String(payload.content))])];
       task.attempts.push({
         id: uuid,
         requestId,
@@ -178,13 +183,9 @@ export class TaskStore {
         updatedAt: now,
         payload,
         steps: [],
-        artifacts: retry && prior ? [...prior.artifacts] : [],
-        requiredFormats:
-          retry && prior ? [...prior.requiredFormats] : requiredFormats(String(payload.content)),
-        requiresToolEvidence:
-          retry && prior
-            ? prior.requiresToolEvidence
-            : requiresToolEvidence(String(payload.content), payload.files),
+        artifacts: retry && prior && !replaceRequirements ? prior.artifacts.map(f=>({...f})) : retained,
+        requiredFormats: formats,
+        requiresToolEvidence: formats.length > 0 || (retry && prior ? prior.requiresToolEvidence : requiresToolEvidence(String(payload.content), payload.files)),
         ...(retry && prior ? { retryOf: prior.id } : {}),
       });
       task.updatedAt = now;

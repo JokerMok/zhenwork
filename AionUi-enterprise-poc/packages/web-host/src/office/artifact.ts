@@ -29,13 +29,14 @@ except Exception as e:
 `;
 
 /** Validate actual Office containers and PDF structure before publishing a result. */
-export async function inspectArtifact(name: string, bytes: Buffer): Promise<Record<string, unknown>> {
+export async function inspectArtifact(name: string, bytes: Buffer, signal?: AbortSignal): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const child = execFile(
       'python3',
       ['-c', inspect, path.extname(name).toLowerCase()],
-      { timeout: 20000, maxBuffer: 8192 },
+      { timeout: 20000, maxBuffer: 8192, signal, killSignal: 'SIGKILL' },
       (error, stdout) => {
+        if(signal?.aborted){reject(new Error('ARTIFACT_VALIDATION_CANCELLED'));return;}
         let result: Record<string, unknown>;
         try {
           result = JSON.parse(stdout);

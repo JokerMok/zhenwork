@@ -266,7 +266,7 @@ function hasVisibleContent(input: GenerateOfficeArtifactInput): boolean {
 }
 
 /** Generate a real Office/PDF artifact in memory from bounded structured data. */
-export async function generateOfficeArtifact(input: GenerateOfficeArtifactInput): Promise<Buffer> {
+export async function generateOfficeArtifact(input: GenerateOfficeArtifactInput, signal?: AbortSignal): Promise<Buffer> {
   let payload: string;
   try {
     payload = JSON.stringify(input);
@@ -284,6 +284,7 @@ export async function generateOfficeArtifact(input: GenerateOfficeArtifactInput)
       python,
       ['-c', WORKBOOK_SUPPORT_PYTHON + PYTHON_SCRIPT + PYTHON_LAYOUT + PYTHON_TAIL],
       {
+        signal, killSignal: 'SIGKILL',
         encoding: 'buffer',
         timeout: 20_000,
         maxBuffer: MAX_OUTPUT_BYTES + 1,
@@ -293,7 +294,8 @@ export async function generateOfficeArtifact(input: GenerateOfficeArtifactInput)
       (error, stdout, stderr) => {
         if (error) {
           const code = (error as NodeJS.ErrnoException).code;
-          if (code === 'ENOENT') reject(new Error('OFFICE_PYTHON_UNAVAILABLE'));
+          if (signal?.aborted) reject(new Error('OFFICE_GENERATION_CANCELLED'));
+          else if (code === 'ENOENT') reject(new Error('OFFICE_PYTHON_UNAVAILABLE'));
           else if ((error as Error & { killed?: boolean }).killed) reject(new Error('OFFICE_GENERATION_TIMEOUT'));
           else if (code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') reject(new Error('OFFICE_OUTPUT_LIMIT_10MB'));
           else {

@@ -71,10 +71,22 @@ export class OfficeStore {
     return (await this.state()).deliveries?.[dataSha256]?.[name];
   }
 
-  async fileReceipt(name: string): Promise<{ version: number; versionId: string; sha256: string; createdAt: string; byteSize: number } | undefined> {
+  async fileReceipt(name: string, versionId?: string): Promise<{ version: number; versionId: string; sha256: string; createdAt: string; byteSize: number } | undefined> {
     const versions = (await this.state()).files[name] || [];
-    const latest = versions.at(-1);
-    return latest ? { version: versions.length, versionId: latest.id, sha256: latest.sha256, createdAt: latest.createdAt, byteSize: latest.byteSize } : undefined;
+    const index = versionId ? versions.findIndex(v=>v.id===versionId) : versions.length-1;
+    const latest = versions[index];
+    return latest ? { version: index+1, versionId: latest.id, sha256: latest.sha256, createdAt: latest.createdAt, byteSize: latest.byteSize } : undefined;
+  }
+
+  /** Capture exactly the validated output, without rewriting the employee's file. */
+  async captureCurrent(root: string, name: string, expectedSha256: string) {
+    const bytes = await this.readWorkspace(root, name, true);
+    if(digest(bytes)!==expectedSha256) throw new Error('FILE_CHANGED_RETRY');
+    return this.transaction(async state=>{
+      await this.snapshot(state,name,bytes);
+      const versions=state.files[name], latest=versions.at(-1)!;
+      return {version:versions.length, versionId:latest.id, sha256:latest.sha256, createdAt:latest.createdAt, byteSize:latest.byteSize};
+    });
   }
 
   /** Pin source bytes in the existing private version store, never a public bearer URL. */

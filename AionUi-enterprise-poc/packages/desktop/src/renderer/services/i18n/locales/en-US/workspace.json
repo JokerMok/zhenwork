@@ -408,6 +408,7 @@
     "externalReview": "The previous external operation has an unknown outcome. Verify it before continuing; it will not be replayed automatically.",
     "externalApplied": "Confirmed applied",
     "externalNotApplied": "Confirmed not applied",
-    "pendingArtifact": "Pending deliverable: {{path}}"
+    "pendingArtifact": "Pending deliverable: {{path}}",
+    "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
   }
 }

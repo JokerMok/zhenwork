@@ -3475,6 +3475,7 @@ export type I18nKey =
   | 'workspace.work.reasons.TOOL_STEPS_UNFINISHED'
   | 'workspace.work.reasons.USER_CANCELLED'
   | 'workspace.work.reasons.USER_CANCEL_REQUESTED'
+  | 'workspace.work.replaceRequirements'
   | 'workspace.work.retryRemaining'
   | 'workspace.work.reviewRecovery'
   | 'workspace.work.round'

@@ -211,3 +211,20 @@ test("ordinary answers do not require tools solely because the employee forbids 
     false,
   );
 });
+
+test("negative approval scope does not become a request to send or execute",()=>{
+ expect(requiresToolEvidence("同意该范围，仅制作内部文字草稿，绝不对外发送。现在写五条交接事项。",[])).toBe(false);
+ expect(requiresToolEvidence("请不要执行命令，只回答一句已收到。",[])).toBe(false);
+ expect(requiresToolEvidence("请执行一次已授权查询并核对结果。",[])).toBe(true);
+});
+
+test("a short clarification inherits unfinished deliverables and retains only verified outputs",async()=>{
+ const {store}=await fixture();
+ const first=currentAttempt((await store.accept("aabbccdd",randomUUID(),{content:"Generate Word and Excel"})).task);
+ await store.mutate("aabbccdd",first.id,a=>{a.state="waiting_input";a.question="Which period?";a.artifacts=[{path:"retained.docx",sha256:"a".repeat(64),valid:true,versionId:randomUUID()}];});
+ const next=currentAttempt((await store.accept("aabbccdd",randomUUID(),{content:"October"})).task);
+ expect(next.requiredFormats).toEqual(["xlsx"]);expect(next.artifacts).toHaveLength(1);expect(next.requiresToolEvidence).toBe(true);
+ await store.mutate("aabbccdd",next.id,a=>{a.state="waiting_input";});
+ const replaced=currentAttempt((await store.accept("aabbccdd",randomUUID(),{content:"Only reply to my question"},false,true)).task);
+ expect(replaced.requiredFormats).toEqual([]);expect(replaced.artifacts).toHaveLength(1);
+});

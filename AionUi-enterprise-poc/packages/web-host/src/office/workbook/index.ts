@@ -51,7 +51,8 @@ type PythonResponse = {
 function runWorkbookOperation<T extends Record<string, unknown>>(
   operation: Operation,
   workbook: Buffer,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  signal?: AbortSignal
 ): Promise<WorkbookOperationResult<T>> {
   if (!Buffer.isBuffer(workbook) || workbook.length === 0) {
     return Promise.reject(new Error('WORKBOOK_BUFFER_REQUIRED'));
@@ -69,6 +70,7 @@ function runWorkbookOperation<T extends Record<string, unknown>>(
 
   return new Promise((resolve, reject) => {
     const child = spawn(python, ['-c', WORKBOOK_PYTHON_SCRIPT], {
+      signal, killSignal: 'SIGKILL',
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         PATH: process.env.PATH || '',
@@ -93,7 +95,7 @@ function runWorkbookOperation<T extends Record<string, unknown>>(
     }, PROCESS_TIMEOUT_MS);
 
     child.on('error', (error: NodeJS.ErrnoException) => {
-      finish(new Error(error.code === 'ENOENT' ? 'WORKBOOK_PYTHON_UNAVAILABLE' : 'WORKBOOK_PYTHON_START_FAILED'));
+      finish(new Error(signal?.aborted ? 'WORKBOOK_PROCESS_CANCELLED' : error.code === 'ENOENT' ? 'WORKBOOK_PYTHON_UNAVAILABLE' : 'WORKBOOK_PYTHON_START_FAILED'));
     });
     child.stdout.on('data', (chunk: Buffer) => {
       outputBytes += chunk.length;
@@ -133,25 +135,28 @@ function runWorkbookOperation<T extends Record<string, unknown>>(
 /** Inspect bounded workbook structure and cell content without recalculating formulas. */
 export async function inspectWorkbook(
   workbook: Buffer,
-  args: WorkbookInspectArgs = {}
+  args: WorkbookInspectArgs = {},
+  signal?: AbortSignal
 ): Promise<WorkbookOperationResult<Record<string, unknown>>> {
-  return runWorkbookOperation('inspect', workbook, args);
+  return runWorkbookOperation('inspect', workbook, args, signal);
 }
 
 /** Audit explicit amount ranges using exact decimal arithmetic and fresh formula evaluation where supported. */
 export async function auditWorkbook(
   workbook: Buffer,
-  args: WorkbookAuditArgs
+  args: WorkbookAuditArgs,
+  signal?: AbortSignal
 ): Promise<WorkbookOperationResult<Record<string, unknown>>> {
-  return runWorkbookOperation('audit', workbook, args);
+  return runWorkbookOperation('audit', workbook, args, signal);
 }
 
 /** Apply one explicit column edit and return the edited workbook plus reopened verification evidence. */
 export async function editWorkbookColumn(
   workbook: Buffer,
-  args: WorkbookColumnEditArgs
+  args: WorkbookColumnEditArgs,
+  signal?: AbortSignal
 ): Promise<WorkbookOperationResult<Record<string, unknown>>> {
-  return runWorkbookOperation('edit-column', workbook, args);
+  return runWorkbookOperation('edit-column', workbook, args, signal);
 }
 
 /** Bounded read-only page with fresh supported formula values and basic formatting. */

@@ -120,6 +120,7 @@ async function run(
   filename: string,
   bytes: Buffer,
   changes?: unknown,
+  signal?: AbortSignal,
 ): Promise<{ result: Record<string, unknown>; bytes?: Buffer }> {
   const format = path.extname(filename).slice(1).toLowerCase();
   if (!["docx", "xlsx"].includes(format)) throw new Error("OFFICE_REVISION_DOCX_XLSX_REQUIRED");
@@ -151,11 +152,13 @@ async function run(
           main,
       ],
       {
+        signal, killSignal: "SIGKILL",
         timeout: 20000,
         maxBuffer: 38 * 1024 * 1024,
         env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1", PYTHONNOUSERSITE: "1" },
       },
       (error, stdout) => {
+        if(signal?.aborted){reject(new Error("OFFICE_REVISION_CANCELLED"));return;}
         try {
           const response = JSON.parse(stdout);
           if (error || response.error)
@@ -182,9 +185,9 @@ async function run(
     );
   });
 }
-export async function inspectOfficeStructure(filename: string, bytes: Buffer) {
-  return (await run("inspect", filename, bytes)).result;
+export async function inspectOfficeStructure(filename: string, bytes: Buffer, signal?: AbortSignal) {
+  return (await run("inspect", filename, bytes, undefined, signal)).result;
 }
-export async function reviseOfficeDocument(filename: string, bytes: Buffer, changes: unknown) {
-  return run("revise", filename, bytes, changes);
+export async function reviseOfficeDocument(filename: string, bytes: Buffer, changes: unknown, signal?: AbortSignal) {
+  return run("revise", filename, bytes, changes, signal);
 }

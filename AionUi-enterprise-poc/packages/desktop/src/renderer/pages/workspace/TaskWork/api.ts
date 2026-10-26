@@ -26,6 +26,7 @@ export type WorkAttempt = {
     valid: boolean;
     sha256: string;
     versionId?: string;
+    version?: number;
     downloadUrl?: string;
     previewUrl?: string;
   }>;

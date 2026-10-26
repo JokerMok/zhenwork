@@ -136,3 +136,30 @@ test('the fixed Python program parses without importing optional artifact librar
     })
   ).not.toThrow();
 });
+
+test('cancellation kills the actual controlled child process instead of only rejecting a wrapper', async () => {
+  const fs = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'office-cancel-'));
+  const pidfile = path.join(root, 'pid');
+  const executable = path.join(root, 'controlled-interpreter');
+  let pid: number | undefined;
+  try {
+    await fs.writeFile(executable, '#!/bin/sh\necho $$ > "' + pidfile + '"\nexec /bin/sleep 30\n', {mode:0o700});
+    process.env.ZHENWORK_OFFICE_PYTHON = executable;
+    execFileMock.mockImplementation(actual.execFile);
+    const abort = new AbortController();
+    const work = generateOfficeArtifact({format:'docx',title:'Cancellation test',paragraphs:['Controlled unit fixture']},abort.signal);
+    const rejected = expect(work).rejects.toThrow('OFFICE_GENERATION_CANCELLED');
+    await expect.poll(async()=>{try {pid=Number(await fs.readFile(pidfile,'utf8'));return !!pid;}catch{return false;}},{timeout:1000}).toBe(true);
+    abort.abort();
+    await rejected;
+    await expect.poll(()=>{try{process.kill(pid!,0);return true;}catch{return false;}},{timeout:1000}).toBe(false);
+  } finally {
+    if(pid){try{process.kill(pid,'SIGKILL');}catch{/* Already reaped. */}}
+    delete process.env.ZHENWORK_OFFICE_PYTHON;
+    await fs.rm(root,{recursive:true,force:true});
+  }
+});

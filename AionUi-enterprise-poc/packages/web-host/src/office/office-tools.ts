@@ -361,11 +361,11 @@ export async function startOfficeTools(
   };
   const key = randomBytes(32).toString('hex'),
     store = await OfficeStore.create(profileRoot, actor);
-  const savedReceipt = async (relative: string, bytes: Buffer) => {
+  const savedReceipt = async (relative: string, bytes: Buffer, signal?: AbortSignal) => {
     const version = await store.fileReceipt(relative);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     if (!version || version.sha256 !== sha256) throw new Error('SAVED_ARTIFACT_VERSION_MISMATCH');
-    const structure = /\.(docx|xlsx)$/i.test(relative) ? await inspectOfficeStructure(relative, bytes) : undefined;
+    const structure = /\.(docx|xlsx)$/i.test(relative) ? await inspectOfficeStructure(relative, bytes, signal) : undefined;
     const inspection = structure?.format === 'docx' ? { format: 'docx', headingCount: structure.headingCount, headings: structure.headings, tables: (structure.tables as Array<Record<string, unknown>>).map(({ index, rows, columns }) => ({ index, rows, columns,
             })),
           } : structure;
@@ -515,6 +515,8 @@ export async function startOfficeTools(
         toolStepId=await beginTool(profileRoot,actor,conversation,tool!,args,executionId);
         const abort = new AbortController();
         res.once('close', () => abort.abort());
+        if (res.destroyed) abort.abort();
+        abort.signal.throwIfAborted();
         let value: unknown;
         const reused = await reusableOutput(
           profileRoot,
@@ -601,13 +603,13 @@ export async function startOfficeTools(
             value = {
               path: input.inputPath,
               sha256,
-              ...(await inspectWorkbook(input.bytes, args)),
+              ...(await inspectWorkbook(input.bytes, args, abort.signal)),
             };
           else if (tool === 'audit_workbook')
             value = {
               path: input.inputPath,
               sha256,
-              ...(await auditWorkbook(input.bytes, args as WorkbookAuditArgs)),
+              ...(await auditWorkbook(input.bytes, args as WorkbookAuditArgs, abort.signal)),
             };
           else {
             const requested = String(args.outputPath || input.relative);
@@ -617,10 +619,10 @@ export async function startOfficeTools(
             if (same && args.expectedSha256 !== sha256) throw new Error('FILE_CHANGED_READ_CURRENT_SHA256: inspect_workbook again and copy the complete sha256 exactly; do not invent or truncate it.');
             if (!same && (await store.files(core.workspaceRoot)).files.some((item) => item.path === relative))
               throw new Error('OUTPUT_EXISTS: no changes saved. Edit the requested original in place by omitting outputPath and copying its current inspect_workbook sha256, or choose a genuinely unused outputPath. Never validate an old file as this edit result.');
-            const output = await editWorkbookColumn(input.bytes, args as WorkbookColumnEditArgs);
+            const output = await editWorkbookColumn(input.bytes, args as WorkbookColumnEditArgs, abort.signal);
             const { workbook: bytes, ...verification } = output;
             if (!bytes) throw new Error('WORKBOOK_OUTPUT_MISSING');
-            const validation = await inspectArtifact(relative, bytes);
+            const validation = await inspectArtifact(relative, bytes, abort.signal);
             await client.me();
             abort.signal.throwIfAborted();
             await store.upload(core.workspaceRoot, relative, bytes, same, same ? sha256 : undefined);
@@ -629,25 +631,25 @@ export async function startOfficeTools(
               previousSha256: sha256,
               ...verification,
               validation,
-              ...(await savedReceipt(relative, await store.download(core.workspaceRoot, relative))),
+              ...(await savedReceipt(relative, await store.download(core.workspaceRoot, relative), abort.signal)),
             };
           }
         } else if (tool === 'inspect_office_document' || tool === 'revise_office_document') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
           const input = await readInput(String(args.path || ''));
           const sha256 = createHash('sha256').update(input.bytes).digest('hex');
-          if (tool === 'inspect_office_document') value = { path: input.inputPath, sha256, ...(await inspectOfficeStructure(input.relative, input.bytes)) };
+          if (tool === 'inspect_office_document') value = { path: input.inputPath, sha256, ...(await inspectOfficeStructure(input.relative, input.bytes, abort.signal)) };
           else {
             if (input.root !== core.workspaceRoot) throw new Error('OFFICE_REVISION_COPY_UPLOAD_TO_WORKSPACE_FIRST');
             if (args.expectedSha256 !== sha256) throw new Error('FILE_CHANGED_READ_CURRENT_SHA256');
-            const revised = await reviseOfficeDocument(input.relative, input.bytes, args.operations);
+            const revised = await reviseOfficeDocument(input.relative, input.bytes, args.operations, abort.signal);
             if (!revised.bytes) throw new Error('OFFICE_REVISION_OUTPUT_MISSING');
-            const validation = await inspectArtifact(input.relative, revised.bytes);
+            const validation = await inspectArtifact(input.relative, revised.bytes, abort.signal);
             await client.me();abort.signal.throwIfAborted();
             await store.upload(core.workspaceRoot, input.relative, revised.bytes, true, sha256);
             const saved = await store.download(core.workspaceRoot, input.relative);
             if (!saved.equals(revised.bytes)) throw new Error('FILE_CHANGED_RETRY');
-            value = { ...(await savedReceipt(input.relative, saved)), validation, previousSha256: sha256, changes: revised.result.changes, sourceFactsReverified: false, unrequestedPartsPreserved: true,
+            value = { ...(await savedReceipt(input.relative, saved, abort.signal)), validation, previousSha256: sha256, changes: revised.result.changes, sourceFactsReverified: false, unrequestedPartsPreserved: true,
             };
           }
         } else if (tool === 'summarize_json_data') {
@@ -655,7 +657,7 @@ export async function startOfficeTools(
           value = {
             path: input.inputPath,
             sha256: createHash('sha256').update(input.bytes).digest('hex'),
-            ...(await summarizeJsonData(input.bytes, args.operations)),
+            ...(await summarizeJsonData(input.bytes, args.operations, abort.signal)),
           };
         } else if (tool === 'create_evidence_deliverables') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
@@ -679,19 +681,19 @@ export async function startOfficeTools(
                     exists,
                     bytes: current,
                     reused: true,
-                    validation: await inspectArtifact(relative, current),
+                    validation: await inspectArtifact(relative, current, abort.signal),
                   };
                 }
                 if (!input.overwrite) throw new Error('OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME');
               }
-              const bytes = await generateOfficeArtifact(file.content);
+              const bytes = await generateOfficeArtifact(file.content, abort.signal);
               return {
                 relative,
                 exists,
                 bytes,
                 reused: false,
                 expectedSha256,
-                validation: await inspectArtifact(relative, bytes),
+                validation: await inspectArtifact(relative, bytes, abort.signal),
               };
             })
           );
@@ -723,7 +725,7 @@ export async function startOfficeTools(
                 validation: file.validation,
                 byteSize: saved.length,
                 sha256: createHash('sha256').update(saved).digest('hex'),
-                ...(await savedReceipt(file.relative, saved)),
+                ...(await savedReceipt(file.relative, saved, abort.signal)),
               });
             } catch (error) {
               outputs.push({
@@ -783,8 +785,8 @@ export async function startOfficeTools(
               else content.paragraphs = [...(Array.isArray(content.paragraphs) ? content.paragraphs : []), ...lines];
             }
           }
-          const bytes = await generateOfficeArtifact(content as never);
-          const validation = await inspectArtifact(relative, bytes);
+          const bytes = await generateOfficeArtifact(content as never, abort.signal);
+          const validation = await inspectArtifact(relative, bytes, abort.signal);
           if (evidenceRows) await verified(conversation, evidenceRows, client);
           if (args.citations) await verified(conversation, args.citations, client);
           await client.me();
@@ -792,16 +794,16 @@ export async function startOfficeTools(
           await store.upload(core.workspaceRoot, relative, bytes, Boolean(existing && args.overwrite === true), expectedOutputSha256);
           const saved = await store.download(core.workspaceRoot, relative);
           if (!saved.equals(bytes)) throw new Error('FILE_CHANGED_RETRY');
-          value = { ...(await savedReceipt(relative, saved)), validation };
+          value = { ...(await savedReceipt(relative, saved, abort.signal)), validation };
         } else if (tool === 'validate_artifact') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
           const file = String(args.path || '');
           const relative = path.isAbsolute(file) ? path.relative(core.workspaceRoot, file) : file;
           const saved = await store.download(core.workspaceRoot, relative);
-          const validation = await inspectArtifact(relative, saved);
+          const validation = await inspectArtifact(relative, saved, abort.signal);
           // Snapshot external tool writes before issuing an immutable receipt.
           await store.files(core.workspaceRoot);
-          value = { ...(await savedReceipt(relative, saved)), validation, ...validation };
+          value = { ...(await savedReceipt(relative, saved, abort.signal)), validation, ...validation };
         } else if (tool === 'verify_source_quotes') value = { sources: await verified(conversation, args.citations, client), boundary: 'Quote existence and current source access verified. Conclusions and independent acceptance evidence still require review.',
           };
         else if (tool === 'search_web') value = await searchWeb(String(args.query || ''), abort.signal);
