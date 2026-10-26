@@ -390,6 +390,7 @@
     "history": "执行记录",
     "externalReview": "上次外部操作结果不明。请先核对实际系统结果，再决定继续；不会自动重放。",
     "externalApplied": "已确认外部操作生效",
-    "externalNotApplied": "已确认外部操作未生效"
+    "externalNotApplied": "已确认外部操作未生效",
+    "pendingArtifact": "待交付：{{path}}"
   }
 }

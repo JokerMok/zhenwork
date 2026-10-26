@@ -9,6 +9,7 @@ import { prepareEnterpriseProfile } from '../enterprise-core.js';
 import type { EnterpriseActor } from '../enterprise-gateway.js';
 import { TaskRunner } from './runner.js';
 import { TaskStore } from './store.js';
+import { recordTool } from './protocol.js';
 import { currentAttempt } from './types.js';
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -32,6 +33,7 @@ async function fixture(trusted = false) {
   let authorized = true;
   let pendingApproval = false;
   let approvalData: unknown;
+  let nativeToolError = false;
   const server = http.createServer(async (req, res) => {
     let data = {};
     for await (const b of req) data = { ...data, ...JSON.parse(String(b)) };
@@ -50,6 +52,7 @@ async function fixture(trusted = false) {
       body = {
         items: [
           {id:'msg1', msg_id:'msg1', position:'right',type:'text',content:{content:'Work'}},
+          ...(nativeToolError ? [{type:'tool_call',status:'error',content:{name:'read_document',args:{path:'source.txt'}}}] : []),
           {
             position: 'left',
             type: 'text',
@@ -131,6 +134,7 @@ async function fixture(trusted = false) {
     },
     approval: () => { pendingApproval = true; },
     approvalData: () => approvalData,
+    nativeToolError: () => {nativeToolError=true;},
     counts: () => ({ sends, stops }),
   };
 }
@@ -221,4 +225,34 @@ test('completion reads the accepted row anchor using native cursors, never a raw
   await expect.poll(()=>f.counts().sends,{timeout:5000}).toBe(1);
   f.finish();await f.runner.tick();
   await expect.poll(async()=>currentAttempt(await f.store.get('aabbccdd')).state,{timeout:6000}).toBe('completed');
+});
+
+test('a retransmitted continuation returns the accepted attempt and rejects altered input', async()=>{
+  const f=await fixture();
+  await f.runner.accept(f.actor,'aabbccdd',{content:'First',request_id:randomUUID()});
+  const old=currentAttempt(await f.store.get('aabbccdd'));
+  await f.store.mutate('aabbccdd',old.id,a=>{a.state='waiting_input';a.question='Which period?';});
+  f.blockCore();
+  const body={attemptId:old.id,request_id:randomUUID(),content:'October'};
+  await f.runner.action(f.actor,'aabbccdd','continue',body);
+  const id=currentAttempt(await f.store.get('aabbccdd')).id;
+  await f.runner.action(f.actor,'aabbccdd','continue',body);
+  expect(currentAttempt(await f.store.get('aabbccdd')).id).toBe(id);
+  await expect(f.runner.action(f.actor,'aabbccdd','continue',{...body,content:'Changed'})).rejects.toThrow('TASK_ATTEMPT_CHANGED');
+  f.releaseCore();
+});
+
+test('only a verified later Host receipt resolves a persisted tool error; untracked errors remain failures', async()=>{
+  for (const recovered of [true,false]) {
+    const f=await fixture();
+    await f.runner.accept(f.actor,'aabbccdd',{content:'Hello',request_id:randomUUID()});
+    await expect.poll(()=>f.counts().sends,{timeout:5000}).toBe(1);
+    f.nativeToolError();
+    if (recovered) {
+      await recordTool(f.root,f.actor,'aabbccdd','read_document',{path:'source.txt'},undefined,'READ_FAILED');
+      await recordTool(f.root,f.actor,'aabbccdd','read_document',{path:'source.txt'},{text:'Actual recovered source'});
+    }
+    f.finish();await f.runner.tick();
+    await expect.poll(async()=>currentAttempt(await f.store.get('aabbccdd')).state,{timeout:6000}).toBe(recovered?'completed':'failed');
+  }
 });

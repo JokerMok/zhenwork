@@ -516,6 +516,7 @@ export async function startEnterpriseGateway(
     lastUsed: number;
     ready: boolean;
     admitted: boolean;
+    idleBlock?: string;
     abort: AbortController;
     preparation: PreparationAttempt;
   };
@@ -683,7 +684,18 @@ export async function startEnterpriseGateway(
     socket.end(IDLE_CORE_WS_CLOSE);
   });
   const stopIdleCore = async (key: string, entry: CoreEntry): Promise<boolean> => {
-    if (!idleCandidate(key, entry, true)) return false;
+    const blocked = (reason: string): false => {
+      if (entry.ready && Date.now() - entry.lastUsed >= coreIdleMs && entry.idleBlock !== reason) {
+        entry.idleBlock = reason;
+        console.info('[Enterprise Core]', JSON.stringify({event:'idle_reclaim_deferred', reason,
+          actorHash:createHash('sha256').update(key).digest('hex').slice(0,16),
+          idleMs:Date.now()-entry.lastUsed,
+          responses:actorSessions(key).reduce((n,s)=>n+s.responses.size,0),
+          sockets:actorSessions(key).reduce((n,s)=>n+s.sockets.size,0)}));
+      }
+      return false;
+    };
+    if (!idleCandidate(key, entry, true)) return blocked('inflight_response');
     if (
       opts.hasBackgroundJobs?.(entry.actor) &&
       (!opts.backgroundDue || (await opts.backgroundDue(entry.actor).catch(() => true)))
@@ -703,7 +715,7 @@ export async function startEnterpriseGateway(
       idle = body.success === true && body.data?.idle === true;
     } catch { return false; }
     // The worker checks running turns, background children and team coordinators.
-    if (!idle || !idleCandidate(key, entry, true)) return false;
+    if (!idle || !idleCandidate(key, entry, true)) return blocked(idle ? 'activity_changed' : 'native_safety_busy');
     await Promise.all(actorSessions(key).flatMap((session) => [...session.sockets].map(closeIdleSocket)));
     if (!idleCandidate(key, entry)) return false;
     await stopCore(key);

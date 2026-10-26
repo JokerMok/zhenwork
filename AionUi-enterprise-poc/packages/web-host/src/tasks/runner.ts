@@ -212,7 +212,11 @@ export class TaskRunner {
     const store = await TaskStore.create(this.deps.root, actor),
       task = await store.get(id),
       a = currentAttempt(task);
-    if (body.attemptId !== a.id) throw new TaskError(409, 'TASK_ATTEMPT_CHANGED');
+    if (body.attemptId !== a.id) {
+      if (a.requestId === body.request_id && a.resumeContext?.requestHash === digest({action,body}))
+        return publicTask(task);
+      throw new TaskError(409, 'TASK_ATTEMPT_CHANGED');
+    }
     if (action === 'cancel') {
       await store.mutate(id, a.id, (current) => {
         if (current.state === 'queued') {
@@ -266,6 +270,7 @@ export class TaskRunner {
       action === 'retry',
       {
         action,
+        requestHash: digest({action,body}),
         priorState: a.state,
         retryOnly: action === 'retry',
         question: a.question || a.reason,
@@ -567,8 +572,22 @@ export class TaskRunner {
     }
     // `after` is an opaque cursor, never a message ID. Use the accepted row anchor,
     // then the server's cursors; backend and Host turn IDs intentionally differ.
-    const answer = current.some((m) => m.position === 'left' && m.type === 'text' && m.content && m.status !== 'error');
-    const errors = current.some((m) => m.status === 'error' || m.type === 'error');
+    const answer = current.some((m) => {
+      const text = typeof m.content === 'string' ? m.content : (m.content as {content?:unknown} | undefined)?.content;
+      return m.position === 'left' && m.type === 'text' && m.status !== 'error' && typeof text === 'string' && text.trim().length > 0;
+    });
+    const errors = current.some((m) => {
+      if (m.type === 'error') return true;
+      if (m.status !== 'error') return false;
+      // A corrected tool error stays in the transcript for audit. Only a real
+      // later Host receipt for this tool/target can resolve it; untracked native
+      // tools and model/transport errors remain failures.
+      if (m.type !== 'tool_call' || !m.content || typeof m.content !== 'object') return true;
+      const c = m.content as {name?:string;args?:Record<string,unknown>;input?:Record<string,unknown>};
+      const args = c.args || c.input || {};
+      const target = String(args.path || args.basePath || args.baseName || args.basename || args.baseId || args.query || '');
+      return !a.steps.some(s => s.tool === c.name && s.target === target && s.state === 'failed' && s.summary === 'Recovered by a later successful call');
+    });
     const office = await OfficeStore.create(this.deps.root, actor);
     for (const f of a.artifacts) {
       try {

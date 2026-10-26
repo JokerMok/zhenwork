@@ -3440,6 +3440,7 @@ export type I18nKey =
   | 'workspace.work.externalReview'
   | 'workspace.work.history'
   | 'workspace.work.noSteps'
+  | 'workspace.work.pendingArtifact'
   | 'workspace.work.progress.TOOL_FAILED'
   | 'workspace.work.progress.audit_workbook'
   | 'workspace.work.progress.create_evidence_deliverables'

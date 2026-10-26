@@ -55,6 +55,7 @@ export type TaskAttempt = {
   requiresToolEvidence: boolean;
   resumeContext?: {
     action: string;
+    requestHash?: string;
     priorState: TaskState;
     retryOnly: boolean;
     question?: string;

@@ -134,7 +134,7 @@ export default function TaskWork({ conversationId, composer = false }: { convers
       <Space wrap>
         {a.artifacts.map((f) => (
           <Space key={f.path}>
-            <Tag color={f.valid ? 'green' : 'orange'}>{f.path}</Tag>
+            <Tag color={f.valid ? 'green' : 'orange'}>{f.valid ? f.path : t('workspace.work.pendingArtifact', {path:f.path})}</Tag>
             {f.valid && f.previewUrl ? (
               <Button type='text' onClick={() => navigate(f.previewUrl!.replace(/^\/#/, ''))}>
                 {t('workspace.files.preview')}
