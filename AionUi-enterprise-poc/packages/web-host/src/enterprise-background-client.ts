@@ -13,7 +13,7 @@ export async function verifyBackgroundService(baseUrl: string, serviceToken: str
   const response = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/internal/rc2/background/health`, {
     headers: { Authorization: `Bearer ${serviceToken}` }, signal: AbortSignal.timeout(10_000),
   });
-  const body = await response.json().catch((): null => null) as { code?: number; data?: { ready?: boolean } } | null;
+  const body = (await response.json().catch((): null => null)) as { code?: number; data?: { ready?: boolean } } | null;
   if (!response.ok || body?.code !== 200 || body.data?.ready !== true) {
     throw new Error('RC2 background service unavailable');
   }
@@ -28,7 +28,7 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
     if (new URL(baseUrl).protocol !== 'https:' && !baseUrl.startsWith('http://127.0.0.1:')) {
       throw new Error('Background RC2 requires HTTPS');
     }
-    if (!/^[0-9a-f-]{36}$/i.test(grant.id) || !/^cron_[A-Za-z0-9_-]{8,80}$/.test(grant.jobId) ||
+    if (!/^[0-9a-f-]{36}$/i.test(grant.id) || !/^(?:cron|task)_[A-Za-z0-9_-]{8,80}$/.test(grant.jobId) ||
         !/^[0-9a-f]{64}$/.test(grant.secret) || !/^[0-9]{1,20}$/.test(grant.userId) ||
         !/^[A-Za-z0-9_-]{32,128}$/.test(serviceToken)) {
       throw new Error('Invalid background grant');
@@ -40,14 +40,15 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
     return this.fetchImpl(`${this.baseUrl.replace(/\/$/, '')}${this.prefix}${path}`, {
       ...init,
       headers: { Authorization: `Bearer ${this.serviceToken}`, 'X-Aion-Background-Secret': this.grant.secret,
-        ...init.headers },
+        ...init.headers,
+      },
       signal: init.signal || AbortSignal.timeout(10_000),
     });
   }
 
   private async read(path: string, signal?: AbortSignal): Promise<unknown> {
     const response = await this.fetchRc2(path, signal ? { signal } : {});
-    const body = await response.json().catch((): null => null) as { code?: number; data?: unknown } | null;
+    const body = (await response.json().catch((): null => null)) as { code?: number; data?: unknown } | null;
     if ([401, 403].includes(response.status) || [401, 403].includes(body?.code ?? 0)) {
       throw new BackgroundGrantRevokedError();
     }
@@ -55,8 +56,27 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
     return body.data;
   }
 
+  async revoke(): Promise<void> {
+    const response = await this.fetchRc2('', { method: 'DELETE' });
+    const body = await response.json().catch((): null => null) as {code?: number} | null;
+    if ([401,403].includes(response.status) || [401,403].includes(body?.code || 0)) return;
+    if (!response.ok || body?.code !== 200) throw new Error('Background grant revocation unavailable');
+  }
+
+  /** Exact read-only knowledge routes needed to verify fixed-version evidence. No arbitrary RC2 forwarding. */
+  async request(route: string, init: RequestInit = {}): Promise<{response: Response; body: {code?:number;data?:unknown}|null}> {
+    if (init.method && init.method !== 'GET') throw new Error('Background knowledge is read only');
+    const parsed = new URL(route, 'https://internal.invalid');
+    if (parsed.origin !== 'https://internal.invalid' || !/^\/ai\/knowledge\/(?:[0-9a-f-]{36}\/search|documents\/[0-9a-f-]{36}\/versions\/[1-9][0-9]{0,6})$/i.test(parsed.pathname) ||
+        [...parsed.searchParams.keys()].some(key => !['query','documentId','version'].includes(key))) throw new Error('Background route denied');
+    const response = await this.fetchRc2(parsed.pathname.slice(3) + parsed.search, {signal:init.signal || undefined});
+    const body = await response.json().catch((): null => null) as {code?:number;data?:unknown}|null;
+    if ([401,403].includes(response.status) || [401,403].includes(body?.code || 0)) throw new BackgroundGrantRevokedError();
+    return {response,body};
+  }
+
   async me(signal?: AbortSignal): Promise<{ userId: string }> {
-    const result = await this.read('', signal) as { userId?: string; jobId?: string };
+    const result = (await this.read('', signal)) as { userId?: string; jobId?: string };
     if (result?.userId !== this.grant.userId || result.jobId !== this.grant.jobId)
       throw new Error('Background grant actor mismatch');
     return { userId: result.userId };
@@ -72,7 +92,8 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
 
   relayModel(modelId: string, raw: string, signal: AbortSignal, conversationId?: string): Promise<Response> {
     return this.fetchRc2(`/models/${encodeURIComponent(modelId)}/chat/completions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...(conversationId ? { 'X-Aion-Conversation-Id': conversationId } : {}) }, body: raw, signal,
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...(conversationId ? { 'X-Aion-Conversation-Id': conversationId } : {}),
+      }, body: raw, signal,
     });
   }
 
@@ -87,7 +108,8 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
             !Number.isInteger(item.publishedVersion)) continue;
         items.set(item.id, { id: item.id, name: item.name, description: item.description,
           version: item.publishedVersion,
-          source: item.source === 'ORGANIZATION' ? 'enterprise' : 'personal', type });
+          source: item.source === 'ORGANIZATION' ? 'enterprise' : 'personal', type,
+        });
       }
       if (data.length < 30) return [...items.values()];
     }
@@ -95,7 +117,7 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
   }
 
   async authorizedResource(id: string, type: string): Promise<unknown> {
-    const data = await this.read(`/resources/${encodeURIComponent(id)}`) as Record<string, unknown>;
+    const data = (await this.read(`/resources/${encodeURIComponent(id)}`)) as Record<string, unknown>;
     if (data?.resourceType !== type || !Array.isArray(data.actions) || !data.actions.includes('USE') ||
         data.publishedVersion !== data.version) throw new Error('Background resource unavailable');
     return data;
@@ -137,7 +159,8 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
         ...(typeof headers['mcp-protocol-version'] === 'string' ?
           { 'MCP-Protocol-Version': headers['mcp-protocol-version'] } : {}),
         ...(typeof headers['x-zhenwork-idempotency-key'] === 'string' ?
-          { 'X-ZhenWork-Idempotency-Key': headers['x-zhenwork-idempotency-key'] } : {}) }, body: raw, signal,
+          { 'X-ZhenWork-Idempotency-Key': headers['x-zhenwork-idempotency-key'] } : {}),
+      }, body: raw, signal,
     });
   }
 }

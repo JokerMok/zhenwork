@@ -1,3 +1,5 @@
+import { taskProtocol } from '../tasks/instructions.js';
+import { beginTool, checkpoint, currentTaskScope, recordTool, reusableOutput, taskCheckpointTool, taskOfficeContext } from '../tasks/protocol.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -12,14 +14,17 @@ import { readWeb, searchWeb } from './research.js';
 import { inspectArtifact } from './artifact.js';
 import { generateOfficeArtifact } from './generate.js';
 import { summaryTool, summarizeJsonData } from './delivery/data-summary.js';
-import { evidenceDeliveryTool, parseEvidenceDelivery, deliveryReferences, buildEvidenceDeliverables } from './delivery/index.js';
+import { evidenceDeliveryTool, parseEvidenceDelivery, deliveryReferences, buildEvidenceDeliverables,
+} from './delivery/index.js';
 import { buildOfficeSources } from './delivery/presentation.js';
 import { revisionTool, inspectionTool, reviseOfficeDocument, inspectOfficeStructure } from './delivery/revision.js';
 import { InvalidCallBudget, validateToolArguments, normalizeToolArguments } from './delivery/arguments.js';
-import { inspectWorkbook, auditWorkbook, editWorkbookColumn, type WorkbookColumnEditArgs, type WorkbookAuditArgs } from './workbook/index.js';
+import { inspectWorkbook, auditWorkbook, editWorkbookColumn, type WorkbookColumnEditArgs, type WorkbookAuditArgs,
+} from './workbook/index.js';
 import { readOfficeDocument } from './read-document.js';
 import { enterpriseProfilePath } from '../enterprise-core.js';
-import { SourceEvidenceRegistry, type SourceEvidenceInput, type SourceEvidenceReference, type VerifiedSourceEvidence } from './source-evidence.js';
+import { SourceEvidenceRegistry, type SourceEvidenceInput, type SourceEvidenceReference, type VerifiedSourceEvidence,
+} from './source-evidence.js';
 
 type ControlClient = Rc2GatewayClient & {
   request(
@@ -150,6 +155,7 @@ export function buildEvidenceTable(rows: EvidenceRowInput[], sources: VerifiedSo
 }
 
 const tools = [
+  taskCheckpointTool,
   evidenceDeliveryTool,
   summaryTool,
   revisionTool,
@@ -223,22 +229,28 @@ const tools = [
   {
     name: 'read_document',
     description: 'REQUIRED before citing uploaded files: unlike native Read this returns sourceRef and quoteOptions for evidence tools. Read an uploaded/workspace Office, PDF, image or UTF-8 text file with physical page/worksheet/slide locations and OCR when needed. Use nextStart to read further pages. Use the absolute attachment path from this conversation, or a relative workspace path. Formulas are returned as formulas, not computed values.',
-    inputSchema: { type: 'object', properties: { path: { type: 'string' }, start: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 5 } }, required: ['path'] },
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, start: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 5 },
+      }, required: ['path'],
+    },
   },
   {
     name: 'write_workspace_json',
     description: 'Save a structured JSON object or array as a real .json workspace file, for a skill manifest or ordinary data processing. Pass data as JSON, not a serialized string. This does not execute code. Existing files require overwrite=true and retain history.',
-    inputSchema: { type: 'object', properties: { path: { type: 'string' }, data: { type: ['object', 'array'] }, overwrite: { type: 'boolean' } }, required: ['path', 'data'] },
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, data: { type: ['object', 'array'] }, overwrite: { type: 'boolean' } }, required: ['path', 'data'],
+    },
   },
   {
     name: 'check_enterprise_skill',
     description: 'Check CURRENT enterprise Skill USE authorization and actual loaded runtime version by resource ID, display name or runtime Skill name. Read-only. Use this instead of guessing a CLI or scanning old cache paths. available:false means stop trying that package; do not run old paths, reconstruct its scripts, or claim success. Builtin/personal Core Skills are outside this catalog.',
-    inputSchema: { type: 'object', additionalProperties: false, properties: { query: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['query'] },
+    inputSchema: { type: 'object', additionalProperties: false, properties: { query: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['query'],
+    },
   },
   {
     name: 'write_text_file',
     description: 'Write a real UTF-8 TXT, Markdown, CSV/TSV, JSON or YAML result directly to the current employee workspace, with checked SHA, version history and download. No Office/PDF conversion is needed. Never add unrequested formats. Existing file updates require explicit overwrite and the complete expectedSha256 from reading its current bytes.',
-    inputSchema: { type: 'object', additionalProperties: false, properties: { path: { type: 'string' }, content: { type: 'string', maxLength: 2097152 }, overwrite: { type: 'boolean' }, expectedSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' } }, required: ['path', 'content'] },
+    inputSchema: { type: 'object', additionalProperties: false, properties: { path: { type: 'string' }, content: { type: 'string', maxLength: 2097152 }, overwrite: { type: 'boolean' }, expectedSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+      }, required: ['path', 'content'],
+    },
   },
   {
     name: 'office_context',
@@ -249,24 +261,38 @@ const tools = [
     name: 'create_office_document',
     description: 'Create and validate a REAL downloadable Excel, Word, PowerPoint or PDF from structured content. Prefer this over Write for new ordinary office files. Templates and complex editing use OfficeCLI/Python/skills. Never invent source content.',
     inputSchema: { type: 'object', additionalProperties: false, properties: {
-      path: { type: 'string', description: 'Relative output filename including .xlsx/.docx/.pptx/.pdf in the actual workspace.' },
+      path: { type: 'string', description: 'Relative output filename including .xlsx/.docx/.pptx/.pdf in the actual workspace.',
+        },
       format: { type: 'string', enum: ['xlsx', 'docx', 'pptx', 'pdf'] },
       title: { type: 'string' }, paragraphs: { type: 'array', items: { type: 'string' } },
-      table: { type: 'object', properties: { headers: { type: 'array', items: { type: 'string' } }, rows: { type: 'array', items: { type: 'array', items: { type: ['string', 'number', 'null'] } } } }, required: ['headers', 'rows'] },
-      slides: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } }, paragraphs: { type: 'array', items: { type: 'string' } } }, required: ['title'] } },
-      overwrite: { type: 'boolean', description: 'Explicitly replace an existing output; previous versions remain available.' },
-      sourceBased: { type: 'boolean', description: 'Set true for research, compliance or other source-based reports. Requires verified exact quotes.' },
-      citations: { type: 'array', maxItems: 32, items: evidenceReferenceSchema, description: 'Use sourceRef plus quoteIndex from returned quoteOptions (preferred), OR an exact contiguous quote. Do not supply both. Checked sources are embedded in the real file.' },
-      evidenceRows: { type: 'array', minItems: 1, maxItems: 32, description: 'For xlsx only. Builds the main evidence table with server-verified original quotes and source locations; never copy source wording into business fields. Up to 12 additional user-named columns are supported in first-seen order; values must be string, number, boolean or null.', items: { type: 'object', propertyNames: { type: 'string', minLength: 1, maxLength: 120, not: { enum: [...evidenceForbiddenColumnNames, ...evidenceProtectedHeaders] } }, properties: {
+      table: { type: 'object', properties: { headers: { type: 'array', items: { type: 'string' } }, rows: { type: 'array', items: { type: 'array', items: { type: ['string', 'number', 'null'] } } },
+          }, required: ['headers', 'rows'],
+        },
+      slides: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } }, paragraphs: { type: 'array', items: { type: 'string' } },
+            }, required: ['title'],
+          },
+        },
+      overwrite: { type: 'boolean', description: 'Explicitly replace an existing output; previous versions remain available.',
+        },
+      sourceBased: { type: 'boolean', description: 'Set true for research, compliance or other source-based reports. Requires verified exact quotes.',
+        },
+      citations: { type: 'array', maxItems: 32, items: evidenceReferenceSchema, description: 'Use sourceRef plus quoteIndex from returned quoteOptions (preferred), OR an exact contiguous quote. Do not supply both. Checked sources are embedded in the real file.',
+        },
+      evidenceRows: { type: 'array', minItems: 1, maxItems: 32, description: 'For xlsx only. Builds the main evidence table with server-verified original quotes and source locations; never copy source wording into business fields. Up to 12 additional user-named columns are supported in first-seen order; values must be string, number, boolean or null.', items: { type: 'object', propertyNames: { type: 'string', minLength: 1, maxLength: 120, not: { enum: [...evidenceForbiddenColumnNames, ...evidenceProtectedHeaders] },
+            }, properties: {
         topic: { type: 'string' }, claim: { type: 'string' }, status: { type: 'string' }, independentRequirement: { type: 'string' }, acceptanceEvidence: { type: 'string' }, followUp: { type: 'string' },
         ...evidenceReferenceSchema.properties,
-      }, required: [...evidenceRowBusinessFields, 'ref'], oneOf: evidenceReferenceExactlyOne, additionalProperties: evidenceCustomValueSchema } },
-    }, required: ['path', 'format'] },
+      }, required: [...evidenceRowBusinessFields, 'ref'], oneOf: evidenceReferenceExactlyOne, additionalProperties: evidenceCustomValueSchema,
+          },
+        },
+    }, required: ['path', 'format'],
+    },
   },
   {
     name: 'verify_source_quotes',
     description: 'Check exact contiguous source quotes against actual retrieved source text and current authorization before creating a report. This verifies quote existence, not whether your conclusions follow from it. Expired references require re-reading/searching.',
-    inputSchema: { type: 'object', properties: { citations: { type: 'array', minItems: 1, maxItems: 32, items: evidenceReferenceSchema } }, required: ['citations'] },
+    inputSchema: { type: 'object', properties: { citations: { type: 'array', minItems: 1, maxItems: 32, items: evidenceReferenceSchema } }, required: ['citations'],
+    },
   },
   {
     name: 'validate_artifact',
@@ -322,7 +348,9 @@ export async function startOfficeTools(
   profileRoot: string,
   clientFor: (conversationId: string) => Promise<Rc2GatewayClient>,
   publicOrigin?: string
-): Promise<{ mcpId: string; stop: () => Promise<void> }> {
+): Promise<{ mcpId: string; stop: () => Promise<void>;
+  trustedConfirmation: (c: Record<string, unknown>) => Promise<boolean>;
+}> {
   const site = publicOrigin ? new URL(publicOrigin) : undefined;
   if (site && (site.username || site.password || site.pathname !== '/' || site.search || site.hash ||
       (site.protocol !== 'https:' && !(site.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(site.hostname)))))
@@ -338,13 +366,16 @@ export async function startOfficeTools(
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     if (!version || version.sha256 !== sha256) throw new Error('SAVED_ARTIFACT_VERSION_MISMATCH');
     const structure = /\.(docx|xlsx)$/i.test(relative) ? await inspectOfficeStructure(relative, bytes) : undefined;
-    const inspection = structure?.format === 'docx' ? { format: 'docx', headingCount: structure.headingCount, headings: structure.headings, tables: (structure.tables as Array<Record<string, unknown>>).map(({ index, rows, columns }) => ({ index, rows, columns })) } : structure;
+    const inspection = structure?.format === 'docx' ? { format: 'docx', headingCount: structure.headingCount, headings: structure.headings, tables: (structure.tables as Array<Record<string, unknown>>).map(({ index, rows, columns }) => ({ index, rows, columns,
+            })),
+          } : structure;
     const previewPath = '/#/workspace?' + new URLSearchParams({ section: 'files', previewPath: relative, fileVersion: version.versionId });
     const previewUrl = site ? new URL(previewPath, site).href : previewPath;
     const actualDownload = downloadUrl(relative, version.versionId);
     const summary = inspection?.format === 'docx' ? `已读取 ${inspection.headingCount} 个标题、${(inspection.tables as unknown[]).length} 个表格。` : inspection?.format === 'xlsx' ? `已读取 ${inspection.sheetCount} 个工作表。` : '';
     return { path: relative, filename: path.basename(relative), ...version, sha256, inspection, previewUrl, downloadUrl: actualDownload,
-      receiptText: `${path.basename(relative)} · v${version.version} · ${version.byteSize} bytes\n${summary}\n[预览](${previewUrl}) [下载](${actualDownload})` };
+      receiptText: `${path.basename(relative)} · v${version.version} · ${version.byteSize} bytes\n${summary}\n[预览](${previewUrl}) [下载](${actualDownload})`,
+    };
   };
   const evidence = new SourceEvidenceRegistry();
   const invalidCalls = new InvalidCallBudget();
@@ -360,7 +391,7 @@ export async function startOfficeTools(
     const sourceRef = evidence.add(conversation, source);
     return { sourceRef, quoteOptions: evidence.quoteOptions(conversation, sourceRef) };
   };
-  const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   const readInput = async (file: string): Promise<{ root: string; relative: string; bytes: Buffer; inputPath: string }> => {
     if (!core.workspaceRoot || !file) throw new Error('WORKSPACE_PATH_REQUIRED');
     // Guid uploads exist before a conversation ID is allocated, under general/.
@@ -373,16 +404,17 @@ export async function startOfficeTools(
     return { root, relative, bytes: await store.download(root, relative), inputPath: taskInput ? file : relative };
   };
   const knowledgeContext = async (conversation: string, client: Rc2GatewayClient) => {
-    const scope = await store.knowledgeScope(conversation);
-    const all = await client.resources('KNOWLEDGE') as Array<{ id: string; name?: string }>;
+    const task = await currentTaskScope(profileRoot,actor,conversation);
+    const scope = task.active ? task.scope : await store.knowledgeScope(conversation);
+    const all = (await client.resources('KNOWLEDGE')) as Array<{ id: string; name?: string }>;
     if (!Array.isArray(all)) throw new Error('KNOWLEDGE_CATALOG_UNAVAILABLE');
-    const ids = scope ? new Set([...scope.baseIds, ...scope.documents.map(d => d.baseId)]) : null;
-    const resources = ids ? all.filter(r => ids.has(r.id)) : all;
+    const ids = scope ? new Set([...scope.baseIds, ...scope.documents.map((d) => d.baseId)]) : null;
+    const resources = ids ? all.filter((r) => ids.has(r.id)) : all;
     if (ids && resources.length !== ids.size) throw new Error('KNOWLEDGE_SCOPE_REVOKED');
     return { scope, resources };
   };
   const verified = async (conversation: string, citations: unknown, client: Rc2GatewayClient) => {
-    const normalized = Array.isArray(citations) ? citations.map(reference => {
+    const normalized = Array.isArray(citations) ? citations.map((reference) => {
       const value = { ...record(reference) };
       if (typeof value.quoteIndex === 'string' && /^\d{1,2}$/.test(value.quoteIndex)) value.quoteIndex = Number(value.quoteIndex);
       return value;
@@ -398,7 +430,8 @@ export async function startOfficeTools(
       const locator = record(source.locator);
       if (source.kind === 'knowledge') {
         const { scope } = await knowledgeContext(conversation, client);
-        if (scope && !scope.baseIds.includes(String(locator.baseId)) && !scope.documents.some(d => d.baseId === locator.baseId && d.documentId === locator.documentId && d.version === locator.version)) throw new Error('SOURCE_OUTSIDE_SELECTED_KNOWLEDGE');
+        if (scope && !scope.baseIds.includes(String(locator.baseId)) && !scope.documents.some(
+            (d) => d.baseId === locator.baseId && d.documentId === locator.documentId && d.version === locator.version)) throw new Error('SOURCE_OUTSIDE_SELECTED_KNOWLEDGE');
         await client.authorizedResource(String(locator.baseId), 'KNOWLEDGE');
         if (!('request' in client) || typeof client.request !== 'function') throw new Error('SOURCE_EVIDENCE_RECHECK_UNAVAILABLE');
         const reply = await (client as ControlClient).request(`/ai/knowledge/documents/${locator.documentId}/versions/${locator.version}`);
@@ -414,6 +447,8 @@ export async function startOfficeTools(
   };
   const server = http.createServer((req, res) => {
     let messageId: unknown = null;
+    let executionId: string | undefined;
+    let toolStepId: string | undefined;
     let failedCall: { conversation: string; tool: string; args: unknown } | undefined;
     void (async () => {
       res.setHeader('cache-control', 'no-store');
@@ -460,6 +495,7 @@ export async function startOfficeTools(
         if (!conversation) throw new Error('CONVERSATION_REQUIRED');
         const client = await clientFor(conversation);
         if ((await client.me()).userId !== actor.userId) throw new Error('IDENTITY_REVOKED');
+        executionId=(await currentTaskScope(profileRoot,actor,conversation)).attemptId;
         const args = { ...message.params?.arguments },
           tool = message.params?.name;
         // Some deployed Core adapters serialize scalar booleans/numbers as
@@ -476,21 +512,40 @@ export async function startOfficeTools(
         Object.assign(args, normalizeToolArguments(definition.inputSchema, args));
         invalidCalls.check(conversation, tool!, args);
         validateToolArguments(definition.inputSchema, args);
+        toolStepId=await beginTool(profileRoot,actor,conversation,tool!,args,executionId);
         const abort = new AbortController();
         res.once('close', () => abort.abort());
         let value: unknown;
-        if (tool === 'office_context') {
+        const reused = await reusableOutput(
+          profileRoot,
+          actor,
+          conversation,
+          tool!,
+          args,
+          async (file, sha) =>
+            !!core.workspaceRoot &&
+            createHash('sha256')
+              .update(await store.download(core.workspaceRoot, file))
+              .digest('hex') === sha
+        );
+        if (reused !== undefined) {
+          await knowledgeContext(conversation, client);
+          value = reused;
+        } else if (tool === 'task_checkpoint') {
+          value = await checkpoint(profileRoot, actor, conversation, args, executionId);
+        } else if (tool === 'office_context') {
           const knowledge = await knowledgeContext(conversation, client);
-          value = { workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
-            python: '/opt/aionui/skill-python/bin/python', knowledge: knowledge.resources, knowledgeScope: knowledge.scope || 'current authorized bases; assistant may select its declared defaults' };
+          value = { task:await taskOfficeContext(profileRoot,actor,conversation), workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
+            python: '/opt/aionui/skill-python/bin/python', knowledge: knowledge.resources, knowledgeScope: knowledge.scope || 'current authorized bases; assistant may select its declared defaults',
+          };
         } else if (tool === 'check_enterprise_skill') {
           const metadata = JSON.parse(await readFile(await enterpriseManagedResourcePath(profileRoot, actor), 'utf8'));
           const response = await fetch(enterpriseCoreBase(core) + '/api/skills', {
             headers: { 'x-aion-enterprise-local-token': core.localToken }, signal: abort.signal,
           });
-          const registry = await response.json() as { success?: boolean; data?: Array<{ name: string }> };
+          const registry = (await response.json()) as { success?: boolean; data?: Array<{ name: string }> };
           if (!response.ok || !registry.success || !Array.isArray(registry.data)) throw new Error('SKILL_RUNTIME_CATALOG_UNAVAILABLE');
-          value = await checkEnterpriseSkill(client, String(args.query), Array.isArray(metadata.skillResources) ? metadata.skillResources : [], registry.data.map(item => item.name));
+          value = await checkEnterpriseSkill(client, String(args.query), Array.isArray(metadata.skillResources) ? metadata.skillResources : [], registry.data.map((item) => item.name));
         } else if (tool === 'write_text_file') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
           const file = String(args.path || '');
@@ -500,14 +555,15 @@ export async function startOfficeTools(
           const bytes = Buffer.from(text, 'utf8');
           if (bytes.length > 2 * 1024 * 1024 || text.includes('\0')) throw new Error('TEXT_OUTPUT_LIMIT_2MB_OR_INVALID_TEXT');
           if (path.extname(relative).toLowerCase() === '.json') { try { JSON.parse(text); } catch { throw new Error('TEXT_OUTPUT_JSON_INVALID'); } }
-          const existing = (await store.files(core.workspaceRoot)).files.find(item => item.path === relative);
+          const existing = (await store.files(core.workspaceRoot)).files.find((item) => item.path === relative);
           if (existing && args.overwrite !== true) throw new Error('OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME');
           if (existing && (!/^[a-f0-9]{64}$/.test(String(args.expectedSha256 || '')) || createHash('sha256').update(await store.download(core.workspaceRoot, relative)).digest('hex') !== args.expectedSha256)) throw new Error('FILE_CHANGED_READ_CURRENT_SHA256');
           await client.me();abort.signal.throwIfAborted();
           await store.upload(core.workspaceRoot, relative, bytes, !!existing, existing ? String(args.expectedSha256) : undefined);
           const saved = await store.download(core.workspaceRoot, relative);
           if (!saved.equals(bytes)) throw new Error('FILE_CHANGED_RETRY');
-          value = { path: relative, byteSize: saved.length, sha256: createHash('sha256').update(saved).digest('hex'), validation: { valid: true, format: 'utf8-text' }, downloadUrl: downloadUrl(relative) };
+          value = { path: relative, byteSize: saved.length, sha256: createHash('sha256').update(saved).digest('hex'), validation: { valid: true, format: 'utf8-text' }, downloadUrl: downloadUrl(relative),
+          };
         } else if (tool === 'read_document' || tool === 'write_workspace_json') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
           const file = String(args.path || '');
@@ -515,23 +571,27 @@ export async function startOfficeTools(
           if (!relative) throw new Error('WORKSPACE_PATH_REQUIRED');
           if (tool === 'read_document') {
             const input = await readInput(file);
-            const parsed = await readOfficeDocument(input.relative, input.bytes, { start: args.start as number | undefined, limit: args.limit as number | undefined });
+            const parsed = await readOfficeDocument(input.relative, input.bytes, { start: args.start as number | undefined, limit: args.limit as number | undefined,
+            });
             const pinned = await store.pinSource(path.basename(input.inputPath), input.bytes);
             for (const item of (parsed.locations || []) as Record<string, unknown>[]) {
               const text = typeof item.text === 'string' ? item.text : JSON.stringify(item.rows || item.paragraphs || item);
-              Object.assign(item, bindEvidence(conversation, { kind: 'workspace', text, locator: { path: input.inputPath, title: path.basename(input.inputPath), sha256: parsed.sourceSha256, versionLabel: '读取快照 ' + pinned.createdAt.slice(0,16).replace('T',' '), sourceUrl: downloadUrl(pinned.path, pinned.versionId), location: item.location } }));
+              Object.assign(item, bindEvidence(conversation, { kind: 'workspace', text, locator: { path: input.inputPath, title: path.basename(input.inputPath), sha256: parsed.sourceSha256, versionLabel: '读取快照 ' + pinned.createdAt.slice(0,16).replace('T',' '), sourceUrl: downloadUrl(pinned.path, pinned.versionId), location: item.location,
+                  },
+                }));
             }
             value = { path: input.inputPath, ...parsed };
           } else {
             if (path.extname(relative).toLowerCase() !== '.json' || !args.data || typeof args.data !== 'object')
               throw new Error('WORKSPACE_JSON_OBJECT_OR_ARRAY_REQUIRED');
             const bytes = Buffer.from(JSON.stringify(args.data, null, 2) + '\n');
-            const existing = (await store.files(core.workspaceRoot)).files.find(item => item.path === relative);
+            const existing = (await store.files(core.workspaceRoot)).files.find((item) => item.path === relative);
             if (existing && args.overwrite !== true) throw new Error('OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME');
             await client.me();
             abort.signal.throwIfAborted();
             await store.upload(core.workspaceRoot, relative, bytes, Boolean(existing && args.overwrite === true));
-            value = { path: relative, absolutePath: path.join(core.workspaceRoot, relative), byteSize: bytes.length, downloadUrl: downloadUrl(relative) };
+            value = { path: relative, absolutePath: path.join(core.workspaceRoot, relative), byteSize: bytes.length, downloadUrl: downloadUrl(relative),
+            };
           }
         } else if (tool === 'inspect_workbook' || tool === 'audit_workbook' || tool === 'edit_workbook_column') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
@@ -555,7 +615,7 @@ export async function startOfficeTools(
             if (path.extname(relative).toLowerCase() !== '.xlsx') throw new Error('WORKBOOK_XLSX_OUTPUT_REQUIRED');
             const same = input.root === core.workspaceRoot && relative === input.relative;
             if (same && args.expectedSha256 !== sha256) throw new Error('FILE_CHANGED_READ_CURRENT_SHA256: inspect_workbook again and copy the complete sha256 exactly; do not invent or truncate it.');
-            if (!same && (await store.files(core.workspaceRoot)).files.some(item => item.path === relative))
+            if (!same && (await store.files(core.workspaceRoot)).files.some((item) => item.path === relative))
               throw new Error('OUTPUT_EXISTS: no changes saved. Edit the requested original in place by omitting outputPath and copying its current inspect_workbook sha256, or choose a genuinely unused outputPath. Never validate an old file as this edit result.');
             const output = await editWorkbookColumn(input.bytes, args as WorkbookColumnEditArgs);
             const { workbook: bytes, ...verification } = output;
@@ -569,14 +629,14 @@ export async function startOfficeTools(
               previousSha256: sha256,
               ...verification,
               validation,
-              ...await savedReceipt(relative, await store.download(core.workspaceRoot, relative)),
+              ...(await savedReceipt(relative, await store.download(core.workspaceRoot, relative))),
             };
           }
         } else if (tool === 'inspect_office_document' || tool === 'revise_office_document') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
           const input = await readInput(String(args.path || ''));
           const sha256 = createHash('sha256').update(input.bytes).digest('hex');
-          if (tool === 'inspect_office_document') value = { path: input.inputPath, sha256, ...await inspectOfficeStructure(input.relative, input.bytes) };
+          if (tool === 'inspect_office_document') value = { path: input.inputPath, sha256, ...(await inspectOfficeStructure(input.relative, input.bytes)) };
           else {
             if (input.root !== core.workspaceRoot) throw new Error('OFFICE_REVISION_COPY_UPLOAD_TO_WORKSPACE_FIRST');
             if (args.expectedSha256 !== sha256) throw new Error('FILE_CHANGED_READ_CURRENT_SHA256');
@@ -587,7 +647,8 @@ export async function startOfficeTools(
             await store.upload(core.workspaceRoot, input.relative, revised.bytes, true, sha256);
             const saved = await store.download(core.workspaceRoot, input.relative);
             if (!saved.equals(revised.bytes)) throw new Error('FILE_CHANGED_RETRY');
-            value = { ...await savedReceipt(input.relative, saved), validation, previousSha256: sha256, changes: revised.result.changes, sourceFactsReverified: false, unrequestedPartsPreserved: true };
+            value = { ...(await savedReceipt(input.relative, saved)), validation, previousSha256: sha256, changes: revised.result.changes, sourceFactsReverified: false, unrequestedPartsPreserved: true,
+            };
           }
         } else if (tool === 'summarize_json_data') {
           const input = await readInput(String(args.path || ''));
@@ -662,7 +723,7 @@ export async function startOfficeTools(
                 validation: file.validation,
                 byteSize: saved.length,
                 sha256: createHash('sha256').update(saved).digest('hex'),
-                ...await savedReceipt(file.relative, saved),
+                ...(await savedReceipt(file.relative, saved)),
               });
             } catch (error) {
               outputs.push({
@@ -685,7 +746,7 @@ export async function startOfficeTools(
           const relative = path.isAbsolute(file) ? path.relative(core.workspaceRoot, file) : file;
           if (!relative || !['xlsx', 'docx', 'pptx', 'pdf'].includes(String(args.format)) || path.extname(relative).toLowerCase() !== '.' + args.format)
             throw new Error('OFFICE_OUTPUT_PATH_AND_FORMAT_REQUIRED');
-          const existing = (await store.files(core.workspaceRoot)).files.find(item => item.path === relative);
+          const existing = (await store.files(core.workspaceRoot)).files.find((item) => item.path === relative);
           if (existing && args.overwrite !== true) throw new Error('OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME');
           const expectedOutputSha256 = existing ? createHash('sha256').update(await store.download(core.workspaceRoot, relative)).digest('hex') : undefined;
           const evidenceRows = args.evidenceRows === undefined ? undefined : parseEvidenceRows(args.evidenceRows);
@@ -715,8 +776,10 @@ export async function startOfficeTools(
             const catalog = buildOfficeSources(attachedSources);
             content.sources = catalog.entries;content.provenance = catalog.provenance;
             if (!['docx', 'xlsx'].includes(String(args.format))) {
-              const lines = catalog.entries.map(source => `[${source.id}] ${source.title} · ${source.version} · ${source.location}\n${source.quotes.join('\n')}\n${source.url || ''}`);
-              if (args.format === 'pptx') content.slides = [...(Array.isArray(content.slides) ? content.slides : []), { title: '资料来源', paragraphs: lines }];
+              const lines = catalog.entries.map(
+                (source) => `[${source.id}] ${source.title} · ${source.version} · ${source.location}\n${source.quotes.join('\n')}\n${source.url || ''}`);
+              if (args.format === 'pptx') content.slides = [...(Array.isArray(content.slides) ? content.slides : []), { title: '资料来源', paragraphs: lines },
+                ];
               else content.paragraphs = [...(Array.isArray(content.paragraphs) ? content.paragraphs : []), ...lines];
             }
           }
@@ -729,7 +792,7 @@ export async function startOfficeTools(
           await store.upload(core.workspaceRoot, relative, bytes, Boolean(existing && args.overwrite === true), expectedOutputSha256);
           const saved = await store.download(core.workspaceRoot, relative);
           if (!saved.equals(bytes)) throw new Error('FILE_CHANGED_RETRY');
-          value = { ...await savedReceipt(relative, saved), validation };
+          value = { ...(await savedReceipt(relative, saved)), validation };
         } else if (tool === 'validate_artifact') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
           const file = String(args.path || '');
@@ -738,13 +801,17 @@ export async function startOfficeTools(
           const validation = await inspectArtifact(relative, saved);
           // Snapshot external tool writes before issuing an immutable receipt.
           await store.files(core.workspaceRoot);
-          value = { ...await savedReceipt(relative, saved), validation, ...validation };
-        } else if (tool === 'verify_source_quotes') value = { sources: await verified(conversation, args.citations, client), boundary: 'Quote existence and current source access verified. Conclusions and independent acceptance evidence still require review.' };
+          value = { ...(await savedReceipt(relative, saved)), validation, ...validation };
+        } else if (tool === 'verify_source_quotes') value = { sources: await verified(conversation, args.citations, client), boundary: 'Quote existence and current source access verified. Conclusions and independent acceptance evidence still require review.',
+          };
         else if (tool === 'search_web') value = await searchWeb(String(args.query || ''), abort.signal);
         else if (tool === 'read_web') {
           const page = await readWeb(String(args.url || ''), abort.signal);
           const pinned = await store.pinSource('网页摘录.txt', Buffer.from(String(page.text), 'utf8'));
-          value = { ...page, ...bindEvidence(conversation, { kind: 'web', text: String(page.text), locator: { url: page.url, originalUrl: page.url, sourceUrl: downloadUrl(pinned.path, pinned.versionId), title: page.title, sha256: page.sha256, versionLabel: '读取快照 ' + pinned.createdAt.slice(0,16).replace('T',' '), publishedAt: page.publishedAt, retrievedAt: page.retrievedAt } }) };
+          value = { ...page, ...bindEvidence(conversation, { kind: 'web', text: String(page.text), locator: { url: page.url, originalUrl: page.url, sourceUrl: downloadUrl(pinned.path, pinned.versionId), title: page.title, sha256: page.sha256, versionLabel: '读取快照 ' + pinned.createdAt.slice(0,16).replace('T',' '), publishedAt: page.publishedAt, retrievedAt: page.retrievedAt,
+              },
+            }),
+          };
         }
         else if (tool === 'read_preferences')
           value = (await store.memories()).filter(
@@ -758,13 +825,13 @@ export async function startOfficeTools(
           if (requested && requested !== 'default' && !/^[0-9a-f-]{36}$/i.test(requested))
             throw new Error('KNOWLEDGE_ID_INVALID_USE_OFFICE_CONTEXT');
           const context = await knowledgeContext(conversation, client);
-          if (requested && requested !== 'default' && !context.resources.some(r => r.id === requested)) throw new Error('KNOWLEDGE_OUTSIDE_SELECTED_SCOPE');
-          const resources = requested && requested !== 'default' ? context.resources.filter(r => r.id === requested) : context.resources;
+          if (requested && requested !== 'default' && !context.resources.some((r) => r.id === requested)) throw new Error('KNOWLEDGE_OUTSIDE_SELECTED_SCOPE');
+          const resources = requested && requested !== 'default' ? context.resources.filter((r) => r.id === requested) : context.resources;
           if (context.scope && !resources.length) throw new Error('KNOWLEDGE_NOT_SELECTED');
           const results: unknown[] = [];
           for (const resource of resources.slice(0, 20)) {
             await client.authorizedResource(resource.id, 'KNOWLEDGE');
-            const selected = context.scope && !context.scope.baseIds.includes(resource.id) ? context.scope.documents.filter(d => d.baseId === resource.id) : [null];
+            const selected = context.scope && !context.scope.baseIds.includes(resource.id) ? context.scope.documents.filter((d) => d.baseId === resource.id) : [null];
             for (const document of selected) {
               if (document && !('request' in client)) throw new Error('KNOWLEDGE_VERSION_SEARCH_UNAVAILABLE');
               if (!document && typeof client.knowledgeSearch === 'function') results.push(await client.knowledgeSearch(resource.id, query));
@@ -783,25 +850,41 @@ export async function startOfficeTools(
                 baseId: resource.id, documentId: citation.documentId, version: citation.version, sha256: citation.sha256,
                 title: citation.title, location: citation.locationLabel,
                 sourceUrl: citation.sourceUrl, chunkIndex: citation.chunkIndex,
-                downloadUrl: typeof citation.downloadUrl === 'string' && citation.downloadUrl.startsWith('/api/ai/') ?
-                  (site ? new URL('/enterprise/control' + citation.downloadUrl.slice(4), site).href : '/enterprise/control' + citation.downloadUrl.slice(4)) : undefined,
-              } }));
+                downloadUrl: typeof citation.downloadUrl === 'string' && citation.downloadUrl.startsWith('/api/ai/') ? site ? new URL('/enterprise/control' + citation.downloadUrl.slice(4), site).href : '/enterprise/control' + citation.downloadUrl.slice(4)
+                          : undefined,
+                    },
+                  }));
             }
           }
           }
           value = { query, results, selectedScope: context.scope || null, searchedBases: Math.min(resources.length, 20), truncatedBases: resources.length > 20,
-            note: resources.length > 20 ? 'Select a specific authorized baseId from office_context to search additional bases.' : 'Use exact citations from results; missing evidence stays unknown.' };
+            note: resources.length > 20 ? 'Select a specific authorized baseId from office_context to search additional bases.' : 'Use exact citations from results; missing evidence stays unknown.',
+          };
         } else throw new Error('UNKNOWN_TOOL');
         // A grant revoked during network/parse work cannot release results to Core.
         await client.me();
         abort.signal.throwIfAborted();
+        await recordTool(profileRoot, actor, conversation, tool!, args, value, undefined, executionId, toolStepId);
         failedCall = undefined;
         result = { content: [{ type: 'text', text: JSON.stringify(value) }] };
       } else throw new Error('METHOD_NOT_SUPPORTED');
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ jsonrpc: '2.0', id: message.id ?? null, result }));
     })().catch((error: Error) => {
-      if (failedCall) invalidCalls.failed(failedCall.conversation, failedCall.tool, failedCall.args);
+      if (failedCall) {
+        invalidCalls.failed(failedCall.conversation, failedCall.tool, failedCall.args);
+        void recordTool(
+          profileRoot,
+          actor,
+          failedCall.conversation,
+          failedCall.tool,
+          failedCall.args,
+          null,
+          error.message,
+          executionId,
+          toolStepId
+        ).catch(() => {});
+      }
       if (!res.headersSent) res.writeHead(200, { 'content-type': 'application/json' });
       if (!res.destroyed)
         res.end(
@@ -853,7 +936,49 @@ export async function startOfficeTools(
       if (!toggled.ok || !enabled.success || enabled.data?.enabled !== true)
         throw new Error('OFFICE_TOOLS_REGISTRATION_FAILED');
     }
-    return { mcpId: body.data.id, stop };
+    const trustedConfirmation = async (c: Record<string, unknown>): Promise<boolean> => {
+      const prefix = `MCP ${name}/`;
+      if (typeof c.description !== 'string' || !c.description.startsWith(prefix) || c.questions) return false;
+      const tool = c.description.slice(prefix.length).split(': ', 1)[0];
+      const safe = new Set([
+        'task_checkpoint',
+        'office_context',
+        'read_document',
+        'inspect_office_document',
+        'revise_office_document',
+        'inspect_workbook',
+        'audit_workbook',
+        'edit_workbook_column',
+        'create_office_document',
+        'create_evidence_deliverables',
+        'validate_artifact',
+        'summarize_json_data',
+        'verify_source_quotes',
+        'search_knowledge',
+        'search_web',
+        'read_web',
+        'read_preferences',
+        'write_workspace_text',
+        'write_workspace_json', 'write_text_file', 'list_knowledge', 'check_enterprise_skill',
+      ]);
+      if (!safe.has(tool) || !tools.some((t) => t.name === tool)) return false;
+      const response = await fetch(`${base}/api/mcp/servers/${body.data!.id}`, {
+        headers,
+        signal: AbortSignal.timeout(3000),
+      });
+      const current = (await response.json()) as {
+        success?: boolean;
+        data?: { name?: string; transport?: { url?: string; headers?: Record<string, string> } };
+      };
+      return (
+        response.ok &&
+        current.success === true &&
+        current.data?.name === name &&
+        current.data.transport?.url === `http://${enterpriseProxyHost(core)}:${port}/mcp` &&
+        current.data.transport.headers?.Authorization === 'Bearer ' + key
+      );
+    };
+    return { mcpId: body.data.id, stop, trustedConfirmation };
   } catch (error) {
     await stop();
     throw error;
@@ -940,11 +1065,12 @@ export async function ensureOfficeAssistant(
   if (!exists) await request('/api/assistants/' + id, 'PUT', {
     defaults: {
       model: { mode: 'fixed', value: model.code },
-      skills: { mode: 'fixed', value: skills.map(item => item.name).filter(Boolean) },
-      mcps: { mode: 'fixed', value: mcps.filter(item => item.enabled).map(item => item.id) },
+      skills: { mode: 'fixed', value: skills.map((item) => item.name).filter(Boolean) },
+      mcps: { mode: 'fixed', value: mcps.filter((item) => item.enabled).map((item) => item.id) },
     },
   });
-  await request('/api/skills/assistant-rule/write', 'POST', { assistant_id: id, content: instructions + '\nActual downloadable output workspace: ' + JSON.stringify(core.workspaceRoot || '') });
+  await request('/api/skills/assistant-rule/write', 'POST', { assistant_id: id, content: instructions + taskProtocol + '\nActual downloadable output workspace: ' + JSON.stringify(core.workspaceRoot || ''),
+  });
   const preferences = (await request('/api/settings/client')) as Record<string, unknown>;
   if (
     !preferences['guid.lastAssistantId'] ||

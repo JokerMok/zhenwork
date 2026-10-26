@@ -2,6 +2,8 @@
 
 本部署只提供员工网页、管理后台、RC2、Web Host 和按需启动的 Linux Core/Gateway。源码由 --ref 指定的已提交版本冻结（省略时为本机 HEAD）；更新前先核对 origin 默认分支和本机提交，保留工作树修改；不调用桌面打包、签名、下载页或更新服务。
 
+本轮持久任务说明见 `docs/task-workspace.md`。发布脚本按源码差异复用未变管理网页与监控产物，重建受影响员工网页/Host/Java；manifest记录并验证实际复用摘要。
+
 ## 当前主机与入口
 
 部署前阅读 `~/server-ops/tencent-main/SERVER.md`、服务器 `/srv/ops/SERVER.md`、项目 `PROJECT.md` 及 `docs/deployment.md`。主机别名 `tencent-main`，项目独占 `/srv/apps/zhenwork`；员工入口 https://zhenwork.shizibandu.icu ，后台 https://zhenwork-admin.shizibandu.icu/admin/ 。后台静态与 `/api` 走同一 origin；Host 的 RC2 URL 为管理 origin 根地址。

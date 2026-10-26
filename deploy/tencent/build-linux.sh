@@ -57,6 +57,12 @@ if reuse is not None:
   ['admin','control-source','deploy-assets','monitor.jar','rc2.jar'],
   ['control-source','deploy-assets','monitor.jar','rc2.jar'],
   ['employee','web-host.cjs'],
+  ['admin','monitor.jar'],
+  ['monitor.jar'],
+  ['admin'],
+  ['admin','employee','web-host.cjs','monitor.jar'],
+  ['admin','employee','web-host.cjs'],
+  ['employee','web-host.cjs','monitor.jar'],
  )
  base=pathlib.Path('/srv/apps/zhenwork/releases')/reuse['release']
  assert (base/'SOURCE_SHA').read_text().strip()==reuse['sourceSha']
@@ -77,7 +83,7 @@ if reuse is not None:
   assert artifact_hash(after)==hashes[name],name
  m['artifactReusedFrom']={'release':reuse['release'],'sourceSha':reuse['sourceSha'],
                           'reusedArtifacts':reuse['reusedArtifacts'],'artifactSha256':hashes}
- m['buildLocation']=('macOS Admin/Java rebuild; employee/Host reused from immutable release' if reuse['reusedArtifacts']==['employee','web-host.cjs'] else ('macOS Host-only rebuild; Web/Admin/Java/control source reused from immutable release' if 'employee' in reuse['reusedArtifacts'] else ('macOS Web/Host rebuild; Admin/Java/control source reused from immutable release' if 'admin' in reuse['reusedArtifacts'] else 'macOS Web/Admin/Host rebuild; Java/control source reused from immutable release')))
+ m['buildLocation']=('macOS Web/Host/Java rebuild; unchanged Admin/Monitor reused' if reuse['reusedArtifacts']==['admin','monitor.jar'] else ('macOS Admin/Java rebuild; employee/Host reused from immutable release' if reuse['reusedArtifacts']==['employee','web-host.cjs'] else ('macOS Host-only rebuild; Web/Admin/Java/control source reused from immutable release' if 'employee' in reuse['reusedArtifacts'] else ('macOS Web/Host rebuild; Admin/Java/control source reused from immutable release' if 'admin' in reuse['reusedArtifacts'] else 'macOS Web/Admin/Host rebuild; Java/control source reused from immutable release'))))
 ops=pathlib.Path('/srv/apps/zhenwork/deploy')
 m['maintenanceSha256']={n:hashlib.sha256((ops/n).read_bytes()).hexdigest() for n in ('activate.sh','backup.sh','bootstrap.py','build-linux.sh','finalize-release.sh','manage.sh','prepare-office-host.sh')}
 migrations=[]

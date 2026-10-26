@@ -28,7 +28,7 @@ public class WorkspaceBackgroundGrants {
     public record Authorized(long userId, long authVersion, String jobId) {}
 
     private static String validJobId(String jobId) {
-        if (jobId == null || !jobId.matches("cron_[A-Za-z0-9_-]{8,80}"))
+        if (jobId == null || !jobId.matches("(?:cron|task)_[A-Za-z0-9_-]{8,80}"))
             throw new WorkspaceDenied(400, "InvalidBackgroundJob");
         return jobId;
     }

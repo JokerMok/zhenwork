@@ -1,3 +1,4 @@
+import { taskProtocol } from './tasks/instructions.js';
 import { lstat, mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -352,6 +353,7 @@ export async function syncEnterpriseWebResources(
     await writeFile(bundlePath, JSON.stringify(bundle), { mode: 0o600 });
     config.AION_ENTERPRISE_RESOURCES_PATH = bundlePath;
     const syncResult = await syncEnterpriseResources(core, core.localToken, config, fetch, {
+      taskInstruction: taskProtocol,
       removeRevokedSkill: (name: string) => removeManagedSkillCache(profile, name),
     });
     let invalidate!: () => void;

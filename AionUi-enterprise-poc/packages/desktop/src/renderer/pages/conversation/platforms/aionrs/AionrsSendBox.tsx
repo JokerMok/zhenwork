@@ -1,3 +1,4 @@
+import { taskRequestId, taskAccepted, useTaskWork } from '@/renderer/pages/workspace/TaskWork/api';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -223,7 +224,10 @@ const AionrsSendBox: React.FC<{
     isProcessing: runtimeView.isProcessing,
   };
   const isCancelling = runtimeView.state === 'cancelling';
-  const isBusy = isCancelling || commandQueueRuntimeGate.isProcessing || !commandQueueRuntimeGate.canSendMessage;
+  const { attempt: workAttempt } = useTaskWork(conversation_id);
+  const workBusy = !!workAttempt && ['queued', 'running', 'cancelling'].includes(workAttempt.state);
+  const isBusy =
+    workBusy || isCancelling || commandQueueRuntimeGate.isProcessing || !commandQueueRuntimeGate.canSendMessage;
   const ordinaryRuntimeStatus = runtimeDisplayStatus(
     {
       state: runtimeView.state,
@@ -302,13 +306,17 @@ const AionrsSendBox: React.FC<{
         setWaitingResponse(true);
         const res = await ipcBridge.conversation.sendMessage.invoke({
           input,
+          execution_id: await taskRequestId(conversation_id, { input, files, sessions }),
           conversation_id,
           files,
           // `@@` references. Omitting this makes the whole feature silently
           // no-op for this platform.
           sessions,
         });
-        setActiveMsgId(res.msg_id);
+        taskAccepted(conversation_id);
+        // Durable acceptance precedes the native turn. Do not fence later stream
+        // events with an outbox ID or a previous round's message ID.
+        setActiveMsgId(res.msg_id || null);
         markSendAccepted(res.turn_id, res.runtime, res.msg_id);
         emitter.emit('chat.history.refresh');
         if (files.length > 0) {

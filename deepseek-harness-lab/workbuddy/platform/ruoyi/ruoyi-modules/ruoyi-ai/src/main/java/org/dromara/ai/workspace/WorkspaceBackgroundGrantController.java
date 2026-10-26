@@ -44,6 +44,17 @@ public class WorkspaceBackgroundGrantController {
         return R.ok();
     }
 
+    @DeleteMapping("/internal/rc2/background/grants/{id}")
+    @SaIgnore
+    public R<?> release(@PathVariable UUID id,
+                        @RequestHeader("Authorization") String serviceAuthorization,
+                        @RequestHeader("X-Aion-Background-Secret") String secret) {
+        execution.checkBackgroundService(serviceAuthorization);
+        var authorized = grants.require(id, secret);
+        grants.revoke(authorized.userId(), authorized.jobId());
+        return R.ok();
+    }
+
     @GetMapping("/internal/rc2/background/grants/{id}")
     @SaIgnore
     public R<?> check(@PathVariable UUID id,

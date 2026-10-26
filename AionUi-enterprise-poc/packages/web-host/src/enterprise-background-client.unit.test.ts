@@ -39,3 +39,18 @@ test('background resources use the same server-authoritative available catalog a
   expect(resources[0]).toMatchObject({ id: 'resource-0', source: 'personal', version: 1, type: 'SKILL' });
   expect(resources.at(-1)).toMatchObject({ id: 'resource-30', source: 'enterprise', version: 31 });
 });
+
+test('task knowledge supports fixed versions and rejects unrelated routes, writes and credential overrides', async () => {
+  const calls: Array<{url:string;headers:HeadersInit|undefined}>=[];
+  const client=new EnterpriseBackgroundClient('http://127.0.0.1:3580','a'.repeat(43),{id:'11111111-1111-4111-8111-111111111111',jobId:'task_12345678',secret:'b'.repeat(64),userId:'17'},async(url,init)=>{
+    calls.push({url:String(url),headers:init?.headers});return new Response(JSON.stringify({code:200,data:{version:2}}));
+  });
+  const document='22222222-2222-4222-8222-222222222222';
+  const result=await client.request(`/ai/knowledge/documents/${document}/versions/2`,{headers:{Authorization:'untrusted',Cookie:'untrusted'}});
+  expect(result.body?.data).toEqual({version:2});
+  expect(calls[0].url).toContain(`/knowledge/documents/${document}/versions/2`);
+  expect(new Headers(calls[0].headers).get('Authorization')).toBe('Bearer '+'a'.repeat(43));
+  expect(new Headers(calls[0].headers).has('Cookie')).toBe(false);
+  await expect(client.request('/system/user/list')).rejects.toThrow('Background route denied');
+  await expect(client.request(`/ai/knowledge/documents/${document}/versions/2`,{method:'DELETE'})).rejects.toThrow('read only');
+});

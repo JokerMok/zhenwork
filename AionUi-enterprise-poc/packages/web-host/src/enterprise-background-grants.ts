@@ -3,7 +3,8 @@ import type { Dirent } from 'node:fs';
 import { lstat, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { EnterpriseActor } from './enterprise-gateway.js';
-import { BackgroundGrantRevokedError, EnterpriseBackgroundClient, type BackgroundGrant } from './enterprise-background-client.js';
+import { BackgroundGrantRevokedError, EnterpriseBackgroundClient, type BackgroundGrant,
+} from './enterprise-background-client.js';
 import { enterpriseManagedResourcePath } from './enterprise-resource-runtime.js';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 
@@ -12,7 +13,7 @@ type GrantIssuer = Rc2GatewayClient & {
 };
 
 function validJobId(jobId: string): boolean {
-  return /^cron_[A-Za-z0-9_-]{8,80}$/.test(jobId);
+  return /^(?:cron|task)_[A-Za-z0-9_-]{8,80}$/.test(jobId);
 }
 
 /** The file is in the host-only control tree, outside Core's mounted workspace. */
@@ -22,9 +23,13 @@ export class EnterpriseBackgroundGrants {
   private sequence: Promise<void> = Promise.resolve();
 
   constructor(private readonly root: string, private readonly actor: EnterpriseActor,
-    private readonly rc2Url: string, private readonly serviceToken: string) {}
+    private readonly rc2Url: string, private readonly serviceToken: string,
+    private readonly kind: 'background-grants.json' | 'task-grants.json' = 'background-grants.json'
+  ) {}
 
-  static async discoverActors(root: string, rc2Url: string, serviceToken: string): Promise<EnterpriseActor[]> {
+  static async discoverActors(root: string, rc2Url: string, serviceToken: string,
+    kind: 'background-grants.json' | 'task-grants.json' = 'background-grants.json'
+  ): Promise<EnterpriseActor[]> {
     const control = path.join(root, 'control');
     const servers = await readdir(control, { withFileTypes: true }).catch((error: NodeJS.ErrnoException): Dirent[] => {
       if (error.code === 'ENOENT') return [];
@@ -38,7 +43,7 @@ export class EnterpriseBackgroundGrants {
       if (users.length > 100) throw new Error('Background actor catalog too large');
       for (const user of users) {
         if (!user.isDirectory() || user.isSymbolicLink()) throw new Error('Background control directory invalid');
-        const file = path.join(control, server.name, user.name, 'background-grants.json');
+        const file = path.join(control, server.name, user.name, kind);
         const entry = await lstat(file).catch((error: NodeJS.ErrnoException): null => {
           if (error.code === 'ENOENT') return null;
           throw error;
@@ -48,7 +53,7 @@ export class EnterpriseBackgroundGrants {
           throw new Error('Background grant file is not private');
         const saved = JSON.parse(await readFile(file, 'utf8')) as { actor?: EnterpriseActor; grants?: unknown };
         if (!saved.actor || !Array.isArray(saved.grants) || saved.grants.length === 0) continue;
-        const store = new EnterpriseBackgroundGrants(root, saved.actor, rc2Url, serviceToken);
+        const store = new EnterpriseBackgroundGrants(root, saved.actor, rc2Url, serviceToken, kind);
         await store.load();
         if (store.file !== file) throw new Error('Background grant actor path mismatch');
         try { await store.client(); actors.push(saved.actor); }
@@ -62,8 +67,7 @@ export class EnterpriseBackgroundGrants {
   }
 
   async load(): Promise<void> {
-    this.file = path.join(path.dirname(await enterpriseManagedResourcePath(this.root, this.actor)),
-      'background-grants.json');
+    this.file = path.join(path.dirname(await enterpriseManagedResourcePath(this.root, this.actor)), this.kind);
     const entry = await lstat(this.file).catch((error: NodeJS.ErrnoException): null => {
       if (error.code === 'ENOENT') return null;
       throw error;
@@ -95,7 +99,8 @@ export class EnterpriseBackgroundGrants {
     const temporary = `${this.file}.${randomBytes(12).toString('hex')}.tmp`;
     try {
       await writeFile(temporary, JSON.stringify({ actor: this.actor, grants: [...this.grants.values()] }),
-        { mode: 0o600, flag: 'wx' });
+        { mode: 0o600, flag: 'wx',
+      });
       await rename(temporary, this.file);
     } finally { await rm(temporary, { force: true }); }
   }
@@ -185,6 +190,16 @@ export class EnterpriseBackgroundGrants {
       }).catch(() => {});
       throw error;
     }
+    });
+  }
+
+  async revokeStored(jobId: string): Promise<void> {
+    return this.serialized(async () => {
+      const grant = this.grants.get(jobId);
+      if (!grant) return;
+      await new EnterpriseBackgroundClient(this.rc2Url, this.serviceToken, grant).revoke();
+      this.grants.delete(jobId);
+      await this.persist();
     });
   }
 

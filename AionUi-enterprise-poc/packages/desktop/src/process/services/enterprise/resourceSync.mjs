@@ -350,7 +350,7 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
           throw new Error('AionCore assistant defaults verification failed');
         }
         await request('/api/skills/assistant-rule/write', {
-          assistant_id: id, content: item.instruction + knowledgeContext,
+          assistant_id: id, content: item.instruction + knowledgeContext + (typeof hooks.taskInstruction === 'string' && hooks.taskInstruction.length <= 2000 ? hooks.taskInstruction : ''),
         });
       } catch {
         currentAssistantIds.delete(id);

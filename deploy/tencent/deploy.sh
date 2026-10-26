@@ -135,6 +135,12 @@ fi
 
 fi
 
+# Unchanged administration and monitor artifacts remain byte-identical.
+reuse_admin=0
+reuse_monitor=0
+if git diff --quiet "$base_sha" "$sha" -- deepseek-harness-lab/workbuddy/platform/plus-ui; then reuse_admin=1; fi
+if git diff --quiet "$base_sha" "$sha" -- deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-extend/ruoyi-monitor-admin deepseek-harness-lab/workbuddy/platform/ruoyi/pom.xml; then reuse_monitor=1; fi
+if [[ $reuse_admin == 0 ]]; then
 admin_cache=${ZHENWORK_ADMIN_CACHE:-$repo/deepseek-harness-lab/workbuddy/platform/plus-ui}
 if [[ -d "$admin_cache/node_modules" ]] && cmp -s "$admin_cache/pnpm-lock.yaml" "$control/platform/plus-ui/pnpm-lock.yaml"; then
   ln -s "$(cd "$admin_cache/node_modules" && pwd)" "$control/platform/plus-ui/node_modules"
@@ -155,8 +161,10 @@ VITE_APP_MONITOR_ADMIN=/monitor/
 ENV
 (cd "$control/platform/plus-ui" && node node_modules/vite/bin/vite.js build --mode tencent)
 
+fi
+
 if [[ -z ${JAVA_HOME:-} ]]; then
-  for candidate in "$repo"/deepseek-harness-lab/workbuddy/.state/rc2-toolchain/*/Contents/Home; do
+  for candidate in "$repo"/deepseek-harness-lab/workbuddy/.state/rc2-toolchain/*/Contents/Home "$repo"/../deepseek-harness-lab/workbuddy/.state/rc2-toolchain/*/Contents/Home; do
     [[ -x "$candidate/bin/java" ]] && export JAVA_HOME="$candidate" && break
   done
 fi
@@ -176,15 +184,17 @@ maven_cache=${ZHENWORK_MAVEN_REPOSITORY:-${ZHENWORK_MAVEN_CACHE_ROOT:-$repo/.cod
 mkdir -p "$maven_cache"
 maven_network=(-B -ntp)
 [[ ${ZHENWORK_MAVEN_OFFLINE:-0} == 1 ]] && maven_network+=(-o)
-(cd "$control/platform/ruoyi" && MAVEN_OPTS='-Xms128m -Xmx1536m' sh mvnw "${maven_network[@]}" -s "$ops/config/maven-settings.xml" -Dmaven.repo.local="$maven_cache" -pl ruoyi-admin,ruoyi-extend/ruoyi-monitor-admin -am package -Dmaven.test.skip=true)
+java_targets=ruoyi-admin
+[[ $reuse_monitor == 0 ]] && java_targets+=,ruoyi-extend/ruoyi-monitor-admin
+(cd "$control/platform/ruoyi" && MAVEN_OPTS='-Xms128m -Xmx1536m' sh mvnw "${maven_network[@]}" -s "$ops/config/maven-settings.xml" -Dmaven.repo.local="$maven_cache" -pl "$java_targets" -am package -Dmaven.test.skip=true)
 
 stage="$work/release"
 mkdir -p "$stage/employee" "$stage/admin" "$stage/control-source/platform/ruoyi/script/sql/postgres" "$stage/control-source/migrations" "$stage/deploy-assets"
 if [[ $reuse_employee == 0 ]]; then cp -R "$app/out/renderer/." "$stage/employee/"; fi
-cp -R "$control/platform/plus-ui/dist/." "$stage/admin/"
+if [[ $reuse_admin == 0 ]]; then cp -R "$control/platform/plus-ui/dist/." "$stage/admin/"; fi
 if [[ $reuse_employee == 0 ]]; then cp "$app/packages/web-cli/dist/aionui-enterprise-web.cjs" "$stage/web-host.cjs"; fi
 cp "$control/platform/ruoyi/ruoyi-admin/target/ruoyi-admin.jar" "$stage/rc2.jar"
-cp "$control/platform/ruoyi/ruoyi-extend/ruoyi-monitor-admin/target/ruoyi-monitor-admin.jar" "$stage/monitor.jar"
+if [[ $reuse_monitor == 0 ]]; then cp "$control/platform/ruoyi/ruoyi-extend/ruoyi-monitor-admin/target/ruoyi-monitor-admin.jar" "$stage/monitor.jar"; fi
 cp "$ops/backup.sh" "$ops/prepare-monitor.py" "$ops/zhenwork-monitor.service" "$ops/zhenwork-caddy-edge.conf" "$ops/zhenwork-web.service" "$ops/zhenwork.caddy" "$stage/deploy-assets/"
 cp "$control/platform/ruoyi/script/sql/postgres/postgres_ry_vue.sql" "$stage/control-source/platform/ruoyi/script/sql/postgres/"
 cp -R "$control/migrations/rc2" "$stage/control-source/migrations/"
@@ -201,9 +211,9 @@ for raw in sys.argv[3:]:
 print(h.hexdigest(),hashlib.sha256((lock if lock.exists() else fallback).read_bytes()).hexdigest(),gateway.hexdigest())
 PY
 )
-python3 - "$stage/IMAGE_IDS.json" "$current_json" "$release" "$base_release" "$core_image" "$gateway_image" "$core_changed" "$gateway_changed" "$core_tree_sha" "$core_lock_sha" "$core_binary_sha" "$legacy" "$gateway_source_sha" "$reuse_employee" <<'PY'
+python3 - "$stage/IMAGE_IDS.json" "$current_json" "$release" "$base_release" "$core_image" "$gateway_image" "$core_changed" "$gateway_changed" "$core_tree_sha" "$core_lock_sha" "$core_binary_sha" "$legacy" "$gateway_source_sha" "$reuse_employee" "$reuse_admin" "$reuse_monitor" <<'PY'
 import json,pathlib,sys
-out,current,release,base,core,gateway,core_changed,gateway_changed,tree,lock,binary,legacy,gateway_source,reuse_employee=sys.argv[1:]
+out,current,release,base,core,gateway,core_changed,gateway_changed,tree,lock,binary,legacy,gateway_source,reuse_employee,reuse_admin,reuse_monitor=sys.argv[1:]
 m=json.loads(current); images=dict(m['images']); images.update(core=core,gateway=gateway)
 data={'release':release,'baseRelease':base,'images':images,'runtimeBase':m['runtimeBase'],
       'coreSourceChanged':core_changed=='1','gatewaySourceChanged':gateway_changed=='1',
@@ -213,7 +223,8 @@ data={'release':release,'baseRelease':base,'images':images,'runtimeBase':m['runt
       'compatiblePasswordPolicies':['8-alnum-v1'] if legacy=='1' else ['8-16-alnum-temp-v2'],
       'coreRuntimeCapabilities':(['python-system-site-packages','openpyxl==3.1.5','python-docx==1.2.0','python-pptx==1.0.2']
         if core=='sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0' else [])}
-if reuse_employee=='1':data['artifactReusedFrom']={'release':base,'sourceSha':m['sourceSha'],'reusedArtifacts':['employee','web-host.cjs']}
+reuse=(['admin'] if reuse_admin=='1' else [])+(['employee','web-host.cjs'] if reuse_employee=='1' else [])+(['monitor.jar'] if reuse_monitor=='1' else [])
+if reuse:data['artifactReusedFrom']={'release':base,'sourceSha':m['sourceSha'],'reusedArtifacts':reuse}
 pathlib.Path(out).write_text(json.dumps(data,indent=2)+'\n')
 PY
 
@@ -224,6 +235,12 @@ ssh tencent-main "set -eu; sudo rm -rf '$remote_root/incoming/$release'; sudo in
 rsync -az --delete "$stage/" "tencent-main:$remote_root/incoming/$release/"
 if [[ $reuse_employee == 1 ]]; then
   ssh tencent-main "sudo cp -a '$remote_root/releases/$base_release/employee/.' '$remote_root/incoming/$release/employee/'; sudo cp -a '$remote_root/releases/$base_release/web-host.cjs' '$remote_root/incoming/$release/web-host.cjs'"
+fi
+if [[ $reuse_admin == 1 ]]; then
+  ssh tencent-main "sudo cp -a '$remote_root/releases/$base_release/admin/.' '$remote_root/incoming/$release/admin/'"
+fi
+if [[ $reuse_monitor == 1 ]]; then
+  ssh tencent-main "sudo cp -a '$remote_root/releases/$base_release/monitor.jar' '$remote_root/incoming/$release/monitor.jar'"
 fi
 for name in activate.sh backup.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh prepare-office-host.sh prepare-monitor.py; do
   rsync -az "$ops/$name" "tencent-main:/tmp/zhenwork-$release-$name"

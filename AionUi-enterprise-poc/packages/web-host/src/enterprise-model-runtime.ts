@@ -1,6 +1,9 @@
-import type { EnterpriseResourceState, EnterpriseActor, EnterpriseClientMetadata, EnterpriseCore, EnterpriseGatewayOptions } from './enterprise-gateway.js';
+import { currentTaskScope } from './tasks/protocol.js';
+import type { EnterpriseResourceState, EnterpriseActor, EnterpriseClientMetadata, EnterpriseCore, EnterpriseGatewayOptions,
+} from './enterprise-gateway.js';
 import { EnterpriseModelProxy } from '../../desktop/src/process/services/enterprise/modelProxy.mjs';
-import { removeEnterpriseModelProvider, syncEnterpriseModelProvider } from '../../desktop/src/process/services/enterprise/modelProvider.mjs';
+import { removeEnterpriseModelProvider, syncEnterpriseModelProvider,
+} from '../../desktop/src/process/services/enterprise/modelProvider.mjs';
 import type { Rc2GatewayClient, Rc2GatewayLogin } from './enterprise-rc2-login.mjs';
 import { syncEnterpriseWebResources } from './enterprise-resource-runtime.js';
 import type { RuntimeResourceIssue } from './enterprise-resource-runtime.js';
@@ -10,6 +13,7 @@ import { enterpriseCoreBase, enterpriseProxyBindHost, enterpriseProxyHost } from
 import { startOfficeTools, ensureOfficeAssistant } from './office/office-tools.js';
 import { OfficeStore } from './office/office-store.js';
 import { watch } from 'node:fs';
+import type { TaskRuntime } from './tasks/integration.js';
 import { backgroundDue } from './office/background-due.js';
 
 function key(actor: EnterpriseActor): string {
@@ -21,15 +25,37 @@ export function createEnterpriseModelRuntime(
   rc2Login: (username: string, password: string, client: EnterpriseClientMetadata) => Promise<Rc2GatewayLogin>,
   startIsolatedCore: (actor: EnterpriseActor) => Promise<EnterpriseCore>,
   options: { profileRoot?: string; publicOrigin?: string; rc2Resume?: (cookie: string) => Promise<Rc2GatewayLogin>;
-    background?: { rc2Url: string; serviceToken: string } } = {}
-): Pick<EnterpriseGatewayOptions, 'login' | 'startCore' | 'resume' | 'authorizeBackground' | 'controlRequest' | 'backgroundDue' | 'refreshResources' | 'resourceStatus'> & {
+    background?: { rc2Url: string; serviceToken: string };
+  } = {}
+): Pick<EnterpriseGatewayOptions,
+  | 'login' | 'startCore' | 'resume' | 'authorizeBackground' | 'controlRequest' | 'backgroundDue' | 'refreshResources' | 'resourceStatus'> &
+  TaskRuntime & {
   syncCronGrant: (actor: EnterpriseActor, jobId: string, enabled: boolean) => Promise<void>;
   hasBackgroundJobs: (actor: EnterpriseActor) => boolean;
   authorizeCronJob: (actor: EnterpriseActor, jobId: string) => Promise<boolean>;
   backgroundActors: () => Promise<EnterpriseActor[]>;
   reconcileCronJobs: (actor: EnterpriseActor) => Promise<void>;
 } {
+  const taskBindings = new Map<string, Map<string, string>>();
+  const officeTrust = new Map<string, (c: Record<string, unknown>) => Promise<boolean>>();
+  const grantStore = async (actor: EnterpriseActor) => {
+    let store = taskGrants.get(key(actor));
+    if (!store) {
+      if (!options.background || !options.profileRoot) throw new Error('Background authorization unavailable');
+      store = new EnterpriseBackgroundGrants(
+        options.profileRoot,
+        actor,
+        options.background.rc2Url,
+        options.background.serviceToken,
+        'task-grants.json'
+      );
+      await store.load();
+      taskGrants.set(key(actor), store);
+    }
+    return store;
+  };
   const clients = new Map<string, Set<Rc2GatewayClient>>();
+  const taskGrants = new Map<string, EnterpriseBackgroundGrants>();
   const grants = new Map<string, EnterpriseBackgroundGrants>();
   const runningCores = new Map<string, EnterpriseCore>();
   const refreshers = new Map<string, () => Promise<EnterpriseResourceState>>();
@@ -40,6 +66,7 @@ export function createEnterpriseModelRuntime(
     const core = runningCores.get(key(actor));
     if (core) {
       for (const revoked of status.revoked) {
+        if (revoked.jobId.startsWith('task_')) continue;
         await store.disableRevoked(revoked.jobId, revoked.grantId, async () => {
           const response = await fetch(`${enterpriseCoreBase(core)}/api/cron/jobs/${revoked.jobId}`, {
             method: 'PUT', headers: { 'content-type': 'application/json',
@@ -79,7 +106,9 @@ export function createEnterpriseModelRuntime(
       } catch { /* revoked session; try another active device */ }
     }
     const store = grants.get(key(actor));
-    if (store) return store.client();
+    if (store?.hasJobs()) return store.client();
+    const taskStore = taskGrants.get(key(actor));
+    if (taskStore?.hasJobs()) return taskStore.client();
     throw new Error('No active RC2 session for employee');
   };
   const relayClient = async (actor: EnterpriseActor, conversationId?: string): Promise<Rc2GatewayClient> => {
@@ -108,6 +137,35 @@ export function createEnterpriseModelRuntime(
       if (!store) throw new Error('Active enterprise task grant unavailable');
       return store.clientFor(jobId);
     }
+    const taskJob = taskBindings.get(key(actor))?.get(conversationId);
+    if (taskJob) {
+      const taskClient = await (await grantStore(actor)).clientFor(taskJob);
+      const originalMe=taskClient.me.bind(taskClient);
+      taskClient.me=async(signal?:AbortSignal)=>{
+        if(taskBindings.get(key(actor))?.get(conversationId)!==taskJob)throw new Error('Task execution changed');
+        if(options.profileRoot){const current=await currentTaskScope(options.profileRoot,actor,conversationId);if(!current.active||current.jobId!==taskJob)throw new Error('Task execution stopped');}
+        return originalMe(signal);
+      };
+
+      if (options.profileRoot) {
+        const taskState = await currentTaskScope(options.profileRoot,actor,conversationId);
+        if(!taskState.active)throw new Error('Task execution is no longer active');
+        if(taskState.waiting)throw new Error('Task is waiting for employee input');
+        const scope = taskState.scope;
+        for (const baseId of new Set([...(scope?.baseIds || []), ...(scope?.documents.map((d) => d.baseId) || [])]))
+          await taskClient.authorizedResource(baseId, 'KNOWLEDGE');
+      }
+      const identityResponse = await fetch(`${enterpriseCoreBase(core)}/api/conversations/${conversationId}`, {
+        headers: { 'x-aion-enterprise-local-token': core.localToken },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (identityResponse.ok) {
+        const identity = (await identityResponse.json()) as { data?: { assistant?: { id?: string } } };
+        const id = identity.data?.assistant?.id;
+        if (id?.startsWith('rc2-')) await taskClient.authorizedResource(id.slice(4), 'ASSISTANT');
+      } else throw new Error('Task assistant identity unavailable');
+      return taskClient;
+    }
     for (const candidate of clients.get(key(actor)) || []) {
       try { if ((await candidate.me()).userId === actor.userId) return candidate; }
       catch { /* A revoked device cannot authorize this call. */ }
@@ -132,9 +190,50 @@ export function createEnterpriseModelRuntime(
         group!.delete(session.client);
         if (group!.size === 0 && clients.get(actorKey) === group) clients.delete(actorKey);
         await session.close();
-      } };
+      },
+    };
   };
   return {
+    issueTaskGrant: async (actor, jobId) => {
+      if (!/^task_[A-Za-z0-9_-]{8,80}$/.test(jobId)) throw new Error('Invalid task grant');
+      const store = await grantStore(actor),
+        issuer = await interactiveClient(actor);
+      if (!('request' in issuer) || typeof issuer.request !== 'function') throw new Error('Grant issuer unavailable');
+      if (!store.jobIds().includes(jobId))
+        await store.issue(issuer as Parameters<EnterpriseBackgroundGrants['issue']>[0], jobId);
+    },
+    checkTaskGrant: async (actor, jobId) => {
+      try {
+        await (await grantStore(actor)).clientFor(jobId);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    revokeTaskGrant: async (actor, jobId) => {
+      await (await grantStore(actor)).revokeStored(jobId);
+    },
+    bindTask: (actor, conversation, jobId, expectedJobId) => {
+      let bindings = taskBindings.get(key(actor));
+      if (!bindings) {
+        bindings = new Map();
+        taskBindings.set(key(actor), bindings);
+      }
+      if (jobId) bindings.set(conversation, jobId);
+      else if(!expectedJobId || bindings.get(conversation)===expectedJobId) bindings.delete(conversation);
+    },
+    trustedTaskConfirmation: async (actor, c) => officeTrust.get(key(actor))?.(c) || false,
+    taskActors: async () => {
+      if (!options.background || !options.profileRoot) return [];
+      const actors = await EnterpriseBackgroundGrants.discoverActors(
+        options.profileRoot,
+        options.background.rc2Url,
+        options.background.serviceToken,
+        'task-grants.json'
+      );
+      for (const actor of actors) await grantStore(actor);
+      return actors;
+    },
     resourceStatus: (actor) => resourceStates.get(key(actor)) || { state: 'ready' },
     refreshResources: async (actor) => {
       const refresh = refreshers.get(key(actor));
@@ -143,11 +242,13 @@ export function createEnterpriseModelRuntime(
     },
     backgroundDue: async (actor) => {
       const store = grants.get(key(actor));
+      if (taskBindings.get(key(actor))?.size) return true;
       if (!store || !options.profileRoot) return false;
-      return backgroundDue(options.profileRoot, actor, store.jobIds());
+      return backgroundDue(options.profileRoot, actor, store.jobIds().filter((id) => id.startsWith('cron_'))
+      );
     },
     controlRequest: async (actor, route, init) => {
-      const client = await interactiveClient(actor) as Rc2GatewayClient & {
+      const client = (await interactiveClient(actor)) as Rc2GatewayClient & {
         baseUrl: string; cookie: string; clientId: string; origin: string;
       };
       if ((await client.me()).userId !== actor.userId) throw new Error('IDENTITY_REVOKED');
@@ -158,7 +259,8 @@ export function createEnterpriseModelRuntime(
       }
       const response = await fetch(client.baseUrl + route, { ...init, redirect: 'error', headers: {
         ...init.headers, Cookie: client.cookie, clientid: client.clientId, Origin: client.origin,
-      } });
+      },
+      });
       await client.me();
       if (response.ok && !['GET', 'HEAD', 'OPTIONS'].includes(init.method || 'GET') && /^\/ai\/(resources|mcp)/.test(route)) {
         // The write already committed. A busy Core must not turn that success into a retryable failure.
@@ -168,7 +270,7 @@ export function createEnterpriseModelRuntime(
     },
     login: async (username, password, client) => register(await rc2Login(username, password, client)),
     resume: options.rc2Resume ? async (cookie) => register(await options.rc2Resume!(cookie)) : undefined,
-    hasBackgroundJobs: (actor) => grants.get(key(actor))?.hasJobs() === true,
+    hasBackgroundJobs: (actor) => grants.get(key(actor))?.hasJobs() === true || taskGrants.get(key(actor))?.hasJobs() === true,
     authorizeCronJob: async (actor, jobId) => {
       const store = grants.get(key(actor));
       if (!store) return false;
@@ -177,8 +279,11 @@ export function createEnterpriseModelRuntime(
     },
     authorizeBackground: async (actor) => {
       const store = grants.get(key(actor));
-      if (!store?.hasJobs()) return false;
-      try { return await auditBackground(actor, store); }
+      const taskStore = taskGrants.get(key(actor));
+      try {
+        if (taskStore?.hasJobs() && (await taskStore.inspect()).valid.length > 0) return true;
+        if (!store?.hasJobs()) return false;
+        return await auditBackground(actor, store); }
       catch { return false; }
     },
     backgroundActors: async () => {
@@ -217,7 +322,7 @@ export function createEnterpriseModelRuntime(
         typeof job.id === 'string' && /^cron_[A-Za-z0-9_-]{8,80}$/.test(job.id)).map((job) => job.id!));
       const client = issuer as Parameters<EnterpriseBackgroundGrants['issue']>[0];
       for (const jobId of enabled) if (!store.jobIds().includes(jobId)) await store.issue(client, jobId);
-      for (const jobId of store.jobIds()) if (!enabled.has(jobId)) await store.revoke(client, jobId);
+      for (const jobId of store.jobIds()) if (jobId.startsWith('cron_') && !enabled.has(jobId)) await store.revoke(client, jobId);
     },
     syncCronGrant: async (actor, jobId, enabled) => {
       const store = grants.get(key(actor));
@@ -232,7 +337,8 @@ export function createEnterpriseModelRuntime(
     },
     startCore: async (actor) => {
       const client = await activeClient(actor);
-      const models = (await client.availableModels()).map((item) => ({ ...item, upstreamCode: item.code, code: 'rc2-' + item.id }));
+      const models = (await client.availableModels()).map((item) => ({ ...item, upstreamCode: item.code, code: 'rc2-' + item.id,
+      }));
       const model = models.find((item) => item.streaming && item.id && item.code && item.name);
       let store: EnterpriseBackgroundGrants | null = null;
       let core: EnterpriseCore | undefined;
@@ -255,7 +361,7 @@ export function createEnterpriseModelRuntime(
       }
       if (!core) throw new Error('Enterprise Core unavailable');
       const stop = async (...cleanup: Array<() => Promise<void>>) => {
-        grants.delete(key(actor));
+        officeTrust.delete(key(actor));
         runningCores.delete(key(actor));
         resourceIssues.delete(key(actor));
         const coreResult = await Promise.allSettled([core.stop()]);
@@ -288,7 +394,8 @@ export function createEnterpriseModelRuntime(
             return current.relayModel(modelId, raw, signal, conversationId);
           } catch { return new Response(null, { status: 403 }); }
         },
-      } });
+      },
+      });
       let office: Awaited<ReturnType<typeof startOfficeTools>> | null = null;
       let resources: Awaited<ReturnType<typeof syncEnterpriseWebResources>> | null = null;
       let stopRefreshTimer = (): void => {};
@@ -326,7 +433,7 @@ export function createEnterpriseModelRuntime(
                 headers: { 'x-aion-enterprise-local-token': core.localToken, 'x-aionui-internal': '1' }, signal: AbortSignal.timeout(3000),
               });
               if (!response.ok) throw new Error('RESOURCE_REFRESH_CHECK_FAILED');
-              ready = await response.json() as typeof ready;
+              ready = (await response.json()) as typeof ready;
             } catch {
               refreshPending = true;
               const state = { state: 'pending', reason: 'CHECK_FAILED' } as const;
@@ -344,7 +451,8 @@ export function createEnterpriseModelRuntime(
             generation += 1;
             const currentGeneration = generation;
             try {
-              const available = (await (await activeClient(actor)).availableModels()).map((item) => ({ ...item, upstreamCode: item.code, code: 'rc2-' + item.id }));
+              const available = (await (await activeClient(actor)).availableModels()).map((item) => ({ ...item, upstreamCode: item.code, code: 'rc2-' + item.id,
+              }));
               const chosen = available.find((item) => item.streaming);
               if (!chosen || !options.profileRoot) throw new Error('DEFAULT_MODEL_UNAVAILABLE');
               await resources?.stop();resources = null;
@@ -374,6 +482,7 @@ export function createEnterpriseModelRuntime(
         let stopHistory = (): void => {};
         if (options.profileRoot) {
           office = await startOfficeTools(actor, core, options.profileRoot, (conversationId) => relayClient(actor, conversationId), options.publicOrigin);
+          officeTrust.set(key(actor), office.trustedConfirmation);
           await ensureOfficeAssistant(core, office.mcpId, model);
           if (core.workspaceRoot) {
             const store = await OfficeStore.create(options.profileRoot, actor), workspace = core.workspaceRoot;
@@ -390,7 +499,8 @@ export function createEnterpriseModelRuntime(
           }
         }
         return { ...core, invalidated,
-          stop: async () => { stoppingResources = true;clearInterval(refreshTimer);refreshers.delete(key(actor));stopHistory();await refreshing?.catch(() => {});resourceStates.delete(key(actor));return stop(...(resources ? [resources.stop] : []), ...(office ? [office.stop] : []), () => proxy.stop()); } };
+          stop: async () => { stoppingResources = true;clearInterval(refreshTimer);refreshers.delete(key(actor));stopHistory();await refreshing?.catch(() => {});resourceStates.delete(key(actor));return stop(...(resources ? [resources.stop] : []), ...(office ? [office.stop] : []), () => proxy.stop()); },
+        };
       } catch (error) {
         stopRefreshTimer();
         grants.delete(key(actor));

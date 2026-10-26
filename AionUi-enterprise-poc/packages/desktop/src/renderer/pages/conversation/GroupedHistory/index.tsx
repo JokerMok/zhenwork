@@ -1,3 +1,4 @@
+import { TaskOverviewProvider } from '@/renderer/pages/workspace/TaskWork/overview';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -564,4 +565,6 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
   );
 };
 
-export default WorkspaceGroupedHistory;
+export default function TaskAwareHistory(props: WorkspaceGroupedHistoryProps) {
+  return <TaskOverviewProvider><WorkspaceGroupedHistory {...props} /></TaskOverviewProvider>;
+}

@@ -3,7 +3,7 @@ export function syncEnterpriseResources(
   localToken: string,
   config?: NodeJS.ProcessEnv,
   fetchImpl?: typeof fetch,
-  hooks?: { removeRevokedSkill?: (name: string) => Promise<void> }
+  hooks?: { taskInstruction?: string; removeRevokedSkill?: (name: string) => Promise<void> }
 ): Promise<{
   skillName?: string;
   mcpId?: string;

@@ -1,3 +1,4 @@
+import { TaskBadge } from '@/renderer/pages/workspace/TaskWork/overview';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -237,6 +238,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
           >
             <div className='chat-history__item-name overflow-hidden text-ellipsis flex items-center gap-4px w-full text-14px font-[500] lh-24px whitespace-nowrap min-w-0 text-t-primary'>
               <span className='block overflow-hidden text-ellipsis whitespace-nowrap min-w-0'>{conversation.name}</span>
+              <TaskBadge id={conversation.id}/>
               {executionSource && <span className='text-10px text-t-tertiary flex-shrink-0'>
                 {t(executionSource === 'web' ? 'conversation.history.webConversationSource' :
                   'conversation.history.desktopConversationSource')}

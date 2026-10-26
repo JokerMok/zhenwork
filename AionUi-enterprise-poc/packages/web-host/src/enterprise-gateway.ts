@@ -1,3 +1,6 @@
+import { TaskRunner } from './tasks/runner.js';
+import { TaskError } from './tasks/types.js';
+import type { TaskRuntime } from './tasks/integration.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readFile, realpath, stat } from 'node:fs/promises';
@@ -58,7 +61,8 @@ async function serveReleaseAsset(req: IncomingMessage, res: ServerResponse, stat
   if (String(req.headers['if-none-match'] || '').split(',').map((value) => value.trim()).some((value) => value === etag || value === '*')) {
     res.writeHead(304);res.end();return true;
   }
-  const types: Record<string, string> = { js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml', json: 'application/json', woff: 'font/woff', woff2: 'font/woff2', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', ico: 'image/x-icon' };
+  const types: Record<string, string> = { js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml', json: 'application/json', woff: 'font/woff', woff2: 'font/woff2', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', ico: 'image/x-icon',
+  };
   res.setHeader('content-type', types[match[2]]);
   res.setHeader('content-length', file.size);
   res.writeHead(200);
@@ -67,7 +71,8 @@ async function serveReleaseAsset(req: IncomingMessage, res: ServerResponse, stat
   return true;
 }
 
-export type EnterpriseResourceState = { state: 'ready' | 'pending' | 'refreshing'; reason?: 'TASK_ACTIVE' | 'CHECK_FAILED' };
+export type EnterpriseResourceState = { state: 'ready' | 'pending' | 'refreshing'; reason?: 'TASK_ACTIVE' | 'CHECK_FAILED';
+};
 export type EnterpriseActor = { serverId: string; userId: string };
 export type EnterpriseClientMetadata = { ipAddress: string; userAgent: string };
 export type EnterpriseCore = { port: number; localToken: string; stop: () => Promise<void>; invalidated?: Promise<void>;
@@ -84,9 +89,11 @@ export type EnterpriseCore = { port: number; localToken: string; stop: () => Pro
   /** Admit a newly started host proxy into the actor's bridge before Core uses it. */
   registerProxyPort?: (port: number) => Promise<void>;
   /** Revoke the route before a closed host port can be reused by another process. */
-  unregisterProxyPort?: (port: number) => Promise<void> };
+  unregisterProxyPort?: (port: number) => Promise<void>;
+};
 export type EnterpriseLogin = { actor: EnterpriseActor; username?: string; validate: () => Promise<boolean>;
-  brand?: () => Promise<unknown>; close: () => Promise<void> };
+  brand?: () => Promise<unknown>; close: () => Promise<void>;
+};
 export type EnterpriseGatewayOptions = {
   staticDir: string;
   /** Public HTTPS origin terminated by the trusted reverse proxy. */
@@ -101,6 +108,7 @@ export type EnterpriseGatewayOptions = {
   /** Only explicit employee control routes; RC2 credentials never enter the browser. */
   controlRequest?: (actor: EnterpriseActor, route: string, init: RequestInit) => Promise<Response>;
   profileRoot?: string;
+  taskRuntime?: TaskRuntime;
   adminUrl?: string;
   refreshResources?: (actor: EnterpriseActor) => Promise<EnterpriseResourceState | void>;
   resourceStatus?: (actor: EnterpriseActor) => EnterpriseResourceState;
@@ -139,10 +147,12 @@ type Session = EnterpriseLogin & {
 class CoreCapacityError extends Error {}
 type PreparationPhase = 'queued' | 'starting' | 'ready';
 type PreparationAttempt = { traceId: string; startedAt: number; phase: PreparationPhase; phaseStartedAt: number;
-  trace: Array<{ phase: PreparationPhase | 'failed'; atMs: number }>; outcomeLogged?: true };
+  trace: Array<{ phase: PreparationPhase | 'failed'; atMs: number }>; outcomeLogged?: true;
+};
 type PreparationFailure = { error: 'AUTHENTICATION_REQUIRED' | 'CAPABILITY_FORBIDDEN' |
   'DEFAULT_MODEL_UNAVAILABLE' | 'CORE_START_FAILED';
-  attempt: PreparationAttempt; failedAt: number };
+  attempt: PreparationAttempt; failedAt: number;
+};
 const COOKIE_NAME = '__Host-aion-enterprise-web';
 const DEV_COOKIE_NAME = 'aion-enterprise-web-dev';
 // Core creates conversation IDs with generate_short_id() (8 hex chars), while
@@ -161,12 +171,13 @@ const MAX_PROVIDER_RESPONSE = 2 * 1024 * 1024;
 function passiveWorkerRequest(method: string, url: string): boolean {
   if (['GET', 'HEAD'].includes(method)) return true;
   const route = url.split('?')[0];
-  return method === 'POST' && (
+  return (
+    method === 'POST' && (
     /^\/api\/fs\/(dir|list|read|metadata|content|content\/metadata|image-base64)$/.test(route) ||
     route === '/api/shell/check-tool-installed' ||
     /^\/api\/conversations\/[^/]+\/runtime\/ensure$/.test(route) ||
     /^\/api\/(word|excel|ppt)-preview\/stop$/.test(route) ||
-    /^\/api\/extensions\/(i18n|permissions|risk-level)$/.test(route)
+    /^\/api\/extensions\/(i18n|permissions|risk-level)$/.test(route))
   );
 }
 
@@ -412,7 +423,8 @@ async function scopedDirectoryEntries(value: unknown, root: string): Promise<Arr
     if (!resolved || !withinDirectory(resolved, root)) return null;
     return { name: item.name, full_path: item.full_path,
       relative_path: path.relative(root, resolved), is_dir: item.is_dir, is_file: !item.is_dir,
-      ...(Array.isArray(item.children) ? { children: await scopedDirectoryEntries(item.children, root) } : {}) };
+      ...(Array.isArray(item.children) ? { children: await scopedDirectoryEntries(item.children, root) } : {}),
+      };
   }));
   return candidates.filter((item): item is Record<string, unknown> => item !== null);
 }
@@ -488,7 +500,8 @@ export async function startEnterpriseGateway(
   reapIdleCores: () => Promise<void>;
   capacity: () => { sessions: number; pendingSessions: number; cores: number;
     starting: number; queuedStarts: number };
-  startBackgroundCore: (actor: EnterpriseActor) => Promise<void> }> {
+  startBackgroundCore: (actor: EnterpriseActor) => Promise<void>;
+}> {
   const origin = new URL(opts.publicOrigin);
   const localDev = opts.allowInsecureLoopbackDev === true && origin.protocol === 'http:' &&
     ['127.0.0.1', 'localhost'].includes(origin.hostname);
@@ -525,7 +538,8 @@ export async function startEnterpriseGateway(
   let occupied = 0;
   let pendingSessions = 0;
   type StartWaiter = { resolve: () => void; reject: (error: Error) => void;
-    timeout: ReturnType<typeof setTimeout>; signal: AbortSignal; onAbort: () => void };
+    timeout: ReturnType<typeof setTimeout>; signal: AbortSignal; onAbort: () => void;
+  };
   const queuedStarts: StartWaiter[] = [];
   let shuttingDown = false;
   const preparationFor = (key: string): PreparationAttempt => {
@@ -534,7 +548,8 @@ export async function startEnterpriseGateway(
     const now = Date.now();
     const attempt: PreparationAttempt = { traceId: randomBytes(8).toString('hex'),
       startedAt: now, phase: 'queued', phaseStartedAt: now,
-      trace: [{ phase: 'queued', atMs: 0 }] };
+      trace: [{ phase: 'queued', atMs: 0 }],
+    };
     preparationAttempts.set(key, attempt);
     return attempt;
   };
@@ -561,7 +576,8 @@ export async function startEnterpriseGateway(
     attempt.outcomeLogged = true;
     const entry = JSON.stringify({ event: 'enterprise_core_initialization', outcome,
       traceId: attempt.traceId, phase: outcome === 'success' ? 'ready' : 'failed',
-      timings: preparationTimings(attempt, endedAt), code });
+      timings: preparationTimings(attempt, endedAt), code,
+    });
     if (outcome === 'success') console.info('[Enterprise preparation]', entry);
     else console.warn('[Enterprise preparation]', entry);
   };
@@ -609,7 +625,8 @@ export async function startEnterpriseGateway(
         if (index >= 0) queuedStarts.splice(index, 1);
         signal.removeEventListener('abort', onAbort);
         reject(new CoreCapacityError('Core startup wait timed out'));
-      }, coreStartWaitMs) };
+      }, coreStartWaitMs),
+      };
       waiter.timeout.unref();
       queuedStarts.push(waiter);
       signal.addEventListener('abort', onAbort, { once: true });
@@ -772,7 +789,8 @@ export async function startEnterpriseGateway(
     if (!entry) {
       const abort = new AbortController();
       console.info('[Enterprise Core]', JSON.stringify({ event: 'core_requested', source,
-        actorHash: createHash('sha256').update(key).digest('hex').slice(0, 16), traceId: preparation.traceId }));
+        actorHash: createHash('sha256').update(key).digest('hex').slice(0, 16), traceId: preparation.traceId,
+        }));
       const started = (async () => {
         if (occupied >= maxCores) await reclaimIdleCores(true);
         await acquireStart(abort.signal);
@@ -866,6 +884,41 @@ export async function startEnterpriseGateway(
   }, 60_000);
   reap.unref();
 
+  const taskPrepared = new Set<string>();
+  const tasks =
+    opts.profileRoot && opts.taskRuntime
+      ? new TaskRunner({
+          root: opts.profileRoot,
+          origin: opts.publicOrigin,
+          queueLimit: Math.max(1, opts.maxQueuedCoreStarts ?? 2),
+          core: async (actor) => {
+            const k = actorKey(actor);
+            if (!cores.has(k)) taskPrepared.add(k);
+            try {
+              return await getCore(actor, true, true, 'accepted_task');
+            } finally {
+              taskPrepared.delete(k);
+            }
+          },
+          cancelPreparation: async (actor) => {
+            const k = actorKey(actor);
+            if (taskPrepared.has(k) && !cores.get(k)?.ready) await stopCore(k);
+          },
+          peek: async (actor) => {
+            const entry = cores.get(actorKey(actor));
+            return entry?.ready ? entry.started : undefined;
+          },
+          issue: opts.taskRuntime.issueTaskGrant,
+    prepare: actor => opts.refreshResources?.(actor) || Promise.resolve(),
+          check: opts.taskRuntime.checkTaskGrant,
+          revoke: opts.taskRuntime.revokeTaskGrant,
+          bind: opts.taskRuntime.bindTask,
+          actors: opts.taskRuntime.taskActors,
+          trustedConfirmation: opts.taskRuntime.trustedTaskConfirmation,
+        })
+      : undefined;
+  if (tasks) await tasks.recover().catch(() => console.warn('[Enterprise tasks] recovery deferred; employee login remains available'));
+
   const server = http.createServer(async (req, res) => {
     const requestStarted = performance.now();
     res.setHeader('x-aion-enterprise-web', '1');
@@ -917,7 +970,8 @@ export async function startEnterpriseGateway(
         res.setHeader('server-timing', `login;dur=${(performance.now() - requestStarted).toFixed(1)}`);
         actorKey(login.actor);
         const id = randomBytes(32).toString('hex');
-        sessions.set(id, { ...login, sockets: new Set(), requests: new Set(), responses: new Set(), expiresAt: Date.now() + SESSION_MS });
+        sessions.set(id, { ...login, sockets: new Set(), requests: new Set(), responses: new Set(), expiresAt: Date.now() + SESSION_MS,
+        });
         res.setHeader('set-cookie', `${cookieName}=${id}; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict`);
         return reply(res, 200, { ok: true });
       } catch (error) {
@@ -939,7 +993,8 @@ export async function startEnterpriseGateway(
         actorKey(resumed.actor);
         const id = randomBytes(32).toString('hex');
         sessions.set(id, { ...resumed, sockets: new Set(), requests: new Set(), responses: new Set(),
-          expiresAt: Date.now() + SESSION_MS });
+          expiresAt: Date.now() + SESSION_MS,
+        });
         res.setHeader('set-cookie', `${cookieName}=${id}; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict`);
         return reply(res, 200, { ok: true, actor: resumed.actor });
       } catch {
@@ -972,9 +1027,12 @@ export async function startEnterpriseGateway(
         return reply(res, status, { ready: false, phase: 'failed', error: failure.error,
           traceId: failure.attempt.traceId,
           timings: { totalMs: failure.failedAt - failure.attempt.startedAt,
-            phaseMs: failure.failedAt - failure.attempt.phaseStartedAt },
+            phaseMs: failure.failedAt - failure.attempt.phaseStartedAt,
+          },
           trace: [...failure.attempt.trace,
-            { phase: failure.error, atMs: failure.failedAt - failure.attempt.startedAt }] });
+            { phase: failure.error, atMs: failure.failedAt - failure.attempt.startedAt },
+          ],
+        });
       }
       const attempt = preparationFor(key);
       const current = cores.get(key);
@@ -1015,6 +1073,64 @@ export async function startEnterpriseGateway(
         return reply(res, 200, opts.resourceStatus?.(auth.session.actor) || { state: 'ready' });
       } catch (error) { return replyCoreFailure(res, error); }
     }
+    const taskRoute =
+      /^\/enterprise\/tasks(?:\/([A-Za-z0-9_-]{1,100})(?:\/(events|cancel|continue|retry|approve|decline))?)?$/.exec(
+        req.url.split('?')[0]
+      );
+    const taskMessage = /^\/api\/conversations\/([A-Za-z0-9_-]{1,100})\/messages$/.exec(req.url);
+    if ((taskRoute || (taskMessage && req.method === 'POST')) && tasks) {
+      try {
+        if (taskMessage) {
+          const input = JSON.parse((await body(req, 128000)).toString()) as Record<string, unknown>;
+          const result = await tasks.accept(auth.session.actor, taskMessage[1], input);
+          return reply(res, 202, { success: true, data: result.receipt });
+        }
+        const id = taskRoute![1],
+          action = taskRoute![2];
+        if (req.method === 'GET' && !id) return reply(res, 200, await tasks.list(auth.session.actor));
+        if (req.method === 'GET' && id && action === 'events') {
+          await tasks.detail(auth.session.actor, id);
+          res.writeHead(200, {
+            'content-type': 'text/event-stream',
+            'cache-control': 'no-store',
+            'x-accel-buffering': 'no',
+          });
+          let busy = false;
+          const timer = setInterval(() => {
+            if (busy) return;
+            busy = true;
+            void (async () => {
+              if (sessions.get(auth.id) !== auth.session || !(await validateSession(auth.session))) {
+                res.end();
+                return;
+              }
+              res.write('data: ' + JSON.stringify(await tasks.detail(auth.session.actor, id)) + '\n\n');
+            })()
+              .catch(() => res.end())
+              .finally(() => {
+                busy = false;
+              });
+          }, 3000);
+          const limit = setTimeout(() => res.end(), 300000);
+          timer.unref();
+          limit.unref();
+          res.once('close', () => {
+            clearInterval(timer);
+            clearTimeout(limit);
+          });
+          return;
+        }
+        if (req.method === 'GET' && id && !action) return reply(res, 200, await tasks.detail(auth.session.actor, id));
+        if (req.method === 'POST' && id && action && action !== 'events') {
+          const input = JSON.parse((await body(req, 128000)).toString()) as Record<string, unknown>;
+          return reply(res, 200, await tasks.action(auth.session.actor, id, action, input));
+        }
+        return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
+      } catch (error) {
+        if (error instanceof TaskError) return reply(res, error.status, { error: error.message });
+        return reply(res, 503, { error: 'TASK_SERVICE_UNAVAILABLE' });
+      }
+    }
     if (req.url === '/enterprise/resources/refresh' && req.method === 'POST') {
       if (!opts.refreshResources) return reply(res, 503, { error: 'RESOURCE_REFRESH_UNAVAILABLE' });
       try {
@@ -1027,23 +1143,26 @@ export async function startEnterpriseGateway(
     const scopeRoute = /^\/enterprise\/knowledge-scope\/([A-Za-z0-9_-]{1,100})$/.exec(req.url);
     const checkKnowledge = async (scope: KnowledgeScope): Promise<void> => {
       if (!opts.controlRequest) throw new Error('KNOWLEDGE_UNAVAILABLE');
-      for (const id of new Set([...scope.baseIds, ...scope.documents.map(d => d.baseId)])) {
-        const response = await opts.controlRequest(auth.session.actor, `/ai/resources/${id}?active=true`, { method: 'GET' });
-        const value = await response.json() as { code?: number; data?: { resourceType?: string; actions?: string[] } };
+      for (const id of new Set([...scope.baseIds, ...scope.documents.map((d) => d.baseId)])) {
+        const response = await opts.controlRequest(auth.session.actor, `/ai/resources/${id}?active=true`, { method: 'GET',
+        });
+        const value = (await response.json()) as { code?: number; data?: { resourceType?: string; actions?: string[] };
+        };
         if (!response.ok || value.code !== 200 || value.data?.resourceType !== 'KNOWLEDGE' || !value.data.actions?.includes('USE')) throw new Error('KNOWLEDGE_SCOPE_REVOKED');
       }
       for (const doc of scope.documents) {
         const response = await opts.controlRequest(auth.session.actor, `/ai/knowledge/documents/${doc.documentId}/versions/${doc.version}`, { method: 'GET' });
-        const value = await response.json() as { code?: number; data?: { baseId?: string; status?: string } };
+        const value = (await response.json()) as { code?: number; data?: { baseId?: string; status?: string } };
         if (!response.ok || value.code !== 200 || value.data?.baseId !== doc.baseId || value.data.status !== 'READY') throw new Error('KNOWLEDGE_SCOPE_REVOKED');
       }
     };
     if (scopeRoute && opts.profileRoot) {
       try {
-        const owned = await readProfile(opts.profileRoot, auth.session.actor, 'conversation', scopeRoute[1]) as { exists?: boolean };
+        const owned = (await readProfile(opts.profileRoot, auth.session.actor, 'conversation', scopeRoute[1])) as { exists?: boolean;
+        };
         if (!owned.exists) return reply(res, 404, { error: 'CONVERSATION_NOT_FOUND' });
         const store = await OfficeStore.create(opts.profileRoot, auth.session.actor);
-        if (req.method === 'GET') return reply(res, 200, { scope: await store.knowledgeScope(scopeRoute[1]) || null });
+        if (req.method === 'GET') return reply(res, 200, { scope: (await store.knowledgeScope(scopeRoute[1])) || null });
         if (req.method !== 'PUT') return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
         const scope = validateKnowledgeScope(JSON.parse((await body(req, 8000)).toString('utf8')));
         await checkKnowledge(scope);
@@ -1051,8 +1170,10 @@ export async function startEnterpriseGateway(
         return reply(res, 200, { scope });
       } catch (error) {
         const code = (error as Error).message;
-        const known = ['KNOWLEDGE_SCOPE_REVOKED', 'INVALID_KNOWLEDGE_SCOPE', 'INVALID_CONVERSATION', 'KNOWLEDGE_SCOPE_LIMIT'].includes(code);
-        return reply(res, code === 'KNOWLEDGE_SCOPE_REVOKED' ? 403 : known ? 400 : 503, { error: known ? code : 'KNOWLEDGE_SCOPE_UNAVAILABLE' });
+        const known = ['KNOWLEDGE_SCOPE_REVOKED', 'INVALID_KNOWLEDGE_SCOPE', 'INVALID_CONVERSATION', 'KNOWLEDGE_SCOPE_LIMIT',
+        ].includes(code);
+        return reply(res, code === 'KNOWLEDGE_SCOPE_REVOKED' ? 403 : known ? 400 : 503, { error: known ? code : 'KNOWLEDGE_SCOPE_UNAVAILABLE',
+        });
       }
     }
     if (req.url.startsWith('/enterprise/control/')) {
@@ -1065,13 +1186,15 @@ export async function startEnterpriseGateway(
         const raw = ['GET', 'HEAD'].includes(req.method || 'GET') ? undefined : await body(req, MAX_BODY);
         const upstream = await opts.controlRequest(auth.session.actor, route, { method: req.method,
           headers: req.headers['content-type'] ? { 'content-type': req.headers['content-type'] } : {},
-          ...(raw ? { body: raw as unknown as BodyInit } : {}), signal: abort.signal });
+          ...(raw ? { body: raw as unknown as BodyInit } : {}), signal: abort.signal,
+        });
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const bytes = Buffer.from(await upstream.arrayBuffer());
         if (bytes.length > MAX_BODY) return reply(res, 502, { error: 'CONTROL_RESPONSE_TOO_LARGE' });
         res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json',
           'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
-          ...(upstream.headers.get('content-disposition') ? { 'content-disposition': upstream.headers.get('content-disposition')! } : {}) });
+          ...(upstream.headers.get('content-disposition') ? { 'content-disposition': upstream.headers.get('content-disposition')! } : {}),
+        });
         res.end(bytes);
       } catch { if (!res.destroyed) reply(res, 502, { error: 'CONTROL_UNAVAILABLE' }); }
       return;
@@ -1145,7 +1268,8 @@ export async function startEnterpriseGateway(
         }
         if (url.pathname === '/enterprise/files/upload' && req.method === 'POST') {
           const raw = await body(req, MAX_BODY + 1024 * 1024);
-          const data = await new Response(raw as unknown as BodyInit, { headers: { 'content-type': req.headers['content-type'] || '' } }).formData();
+          const data = await new Response(raw as unknown as BodyInit, { headers: { 'content-type': req.headers['content-type'] || '' },
+          }).formData();
           const files = data.getAll('files').filter((item): item is File => typeof item !== 'string');
           const paths = JSON.parse(String(data.get('paths') || '[]')) as string[];
           if (!files.length || files.length > 100 || files.reduce((n, file) => n + file.size, 0) > MAX_BODY || (paths.length && paths.length !== files.length)) return reply(res, 400, { error: 'UPLOAD_LIMIT_100_FILES_50MB' });
@@ -1215,7 +1339,8 @@ export async function startEnterpriseGateway(
     }
     if (req.url === '/api/auth/user' && req.method === 'GET') {
       return reply(res, 200, { success: true,
-        user: { id: auth.session.actor.userId, username: auth.session.username || auth.session.actor.userId } });
+        user: { id: auth.session.actor.userId, username: auth.session.username || auth.session.actor.userId },
+      });
     }
     if (opts.profileRoot && req.url.startsWith('/api/') &&
         passiveWorkerRequest(req.method || 'GET', req.url) &&
@@ -1259,8 +1384,10 @@ export async function startEnterpriseGateway(
           }
           const pinnedRaw: string = await pinnedResponse.text();
           if (pinnedRaw.length > MAX_PROVIDER_RESPONSE) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
-          const pinnedData = (JSON.parse(pinnedRaw) as { data?: unknown }).data as {
-            groups?: Array<{ scope?: { type?: string }; items?: unknown[]; has_more?: boolean; next_cursor?: string }>;
+          const pinnedData = (JSON.parse(pinnedRaw) as { data?: unknown }).data as
+            | {
+            groups?: Array<{ scope?: { type?: string }; items?: unknown[]; has_more?: boolean; next_cursor?: string;
+                }>;
             items?: unknown[]; has_more?: boolean; next_cursor?: string;
           } | undefined;
           if (!pinnedData || (!pinnedCursor && !Array.isArray(pinnedData.groups))) {
@@ -1347,7 +1474,8 @@ export async function startEnterpriseGateway(
           return { key: `enterprise_web:${actor.serverId}:${actor.userId}:${conversation.id}`,
             source: 'enterprise_web', conversation_id: conversation.id, name: conversation.name.slice(0, 500),
             message_id: item.message_id, message_created_at: item.message_created_at,
-            preview_text: (item.preview_text as string).slice(0, 500) };
+            preview_text: (item.preview_text as string).slice(0, 500),
+            };
         });
         return reply(res, 200, { items, has_more: data.has_more === true });
       } catch (error) {
@@ -1409,7 +1537,8 @@ export async function startEnterpriseGateway(
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
         const base = `${enterpriseCoreBase(core)}/api/settings/client`;
         const current = await fetch(base, { headers: { 'x-aion-enterprise-local-token': core.localToken },
-          signal: abort.signal });
+          signal: abort.signal,
+        });
         if (!current.ok || Number(current.headers.get('content-length') || 0) > MAX_PROVIDER_RESPONSE) {
           return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
         }
@@ -1419,7 +1548,8 @@ export async function startEnterpriseGateway(
         const merged = mergeClientSettingsSecrets(updates, previous);
         const saved = await fetch(base, { method: 'PUT', headers: {
           'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken,
-        }, body: JSON.stringify(merged), signal: abort.signal });
+        }, body: JSON.stringify(merged), signal: abort.signal,
+        });
         const savedRaw = await saved.text();
         if (savedRaw.length > MAX_PROVIDER_RESPONSE) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
@@ -1448,7 +1578,8 @@ export async function startEnterpriseGateway(
         if (!withinDirectory(directory, root)) return reply(res, 403, { error: 'WORKSPACE_DENIED' });
         const upstream = await fetch(`${enterpriseCoreBase(core)}/api/fs/dir`, { method: 'POST',
           headers: { 'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken },
-          body: JSON.stringify({ dir: input.dir, root: core.workspaceRoot }), signal: abort.signal });
+          body: JSON.stringify({ dir: input.dir, root: core.workspaceRoot }), signal: abort.signal,
+        });
         if (!upstream.ok || Number(upstream.headers.get('content-length') || 0) > MAX_PROVIDER_RESPONSE) {
           return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
         }
@@ -1477,7 +1608,8 @@ export async function startEnterpriseGateway(
         const base = enterpriseCoreBase(core);
         const headers = { 'x-aion-enterprise-local-token': core.localToken, 'content-type': 'application/json' };
         const upstream = await fetch(`${base}${req.url}`, { method: req.method, headers,
-          body: requestBody?.toString('utf8'), signal: AbortSignal.timeout(20_000) });
+          body: requestBody?.toString('utf8'), signal: AbortSignal.timeout(20_000),
+        });
         const raw = await upstream.text();
         if (raw.length > MAX_PROVIDER_RESPONSE) return reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
         const parsed = JSON.parse(raw) as { success?: boolean; data?: { id?: string; enabled?: boolean } };
@@ -1491,19 +1623,53 @@ export async function startEnterpriseGateway(
             if (enabled) {
               await fetch(`${base}/api/cron/jobs/${jobId}`, { method: cronCollection ? 'DELETE' : 'PUT',
                 headers, body: cronCollection ? undefined : JSON.stringify({ enabled: false }),
-                signal: AbortSignal.timeout(5000) }).catch(() => {});
+                signal: AbortSignal.timeout(5000),
+              }).catch(() => {});
             }
             return reply(res, 503, { error: 'BACKGROUND_AUTHORIZATION_UNAVAILABLE' });
           }
         }
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
-        res.writeHead(upstream.status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        res.writeHead(upstream.status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store',
+        });
         res.end(raw);
       } catch (error) {
         if (error instanceof CoreCapacityError && !res.destroyed) return replyCoreFailure(res, error);
         if (!res.destroyed) reply(res, 502, { error: 'CORE_RESPONSE_INVALID' });
       }
       return;
+    }
+    const taskCancel = /^\/api\/conversations\/([A-Za-z0-9_-]{1,100})\/cancel$/.exec(req.url);
+    if (tasks && taskCancel && req.method === 'POST') {
+      try {
+        const task = (await tasks.detail(auth.session.actor, taskCancel[1])) as {
+          attempts: Array<{ id: string; turnId?: string }>;
+        };
+        const input = JSON.parse((await body(req, 128000)).toString()) as { turn_id?: string };
+        const attempt = task.attempts.at(-1)!;
+        if (input.turn_id !== attempt.id && input.turn_id !== attempt.turnId)
+          return reply(res, 409, { error: 'TASK_ATTEMPT_CHANGED' });
+        await tasks.action(auth.session.actor, taskCancel[1], 'cancel', { attemptId: attempt.id });
+        const updated = await tasks.detail(auth.session.actor,taskCancel[1]) as {attempts:Array<{state:string}>};
+        const stoppingTask = updated.attempts.at(-1)?.state === 'cancelling';
+        return reply(res, 200, {
+          success: true,
+          data: {
+            runtime: {
+              state: stoppingTask ? 'cancelling' : 'idle',
+              turn_id: attempt.turnId || attempt.id,
+              is_processing: stoppingTask,
+              pending_confirmations: 0,
+              can_send_message: !stoppingTask,
+            },
+          },
+        });
+      } catch (error) {
+        if (!(error instanceof TaskError && error.status === 404))
+          return reply(res, error instanceof TaskError ? error.status : 503, {
+            error: error instanceof TaskError ? error.message : 'TASK_SERVICE_UNAVAILABLE',
+          });
+      }
     }
     if (
       opts.profileRoot &&
@@ -1623,7 +1789,8 @@ export async function startEnterpriseGateway(
         const nonce = randomBytes(16).toString('base64');
         const brand = loginBrand(await auth.session.brand?.().catch((): null => null));
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
-          'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; img-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'` });
+          'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; img-src data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'`,
+        });
         res.end(enterpriseReadinessPage(req.headers['accept-language'] || '', nonce, brand));return;
       }
       const html = await readFile(path.join(opts.staticDir, 'index.html'), 'utf8');
@@ -1642,7 +1809,8 @@ export async function startEnterpriseGateway(
           "font-src 'self' data:", `connect-src 'self' ${localDev ? 'ws' : 'wss'}://${origin.host}`,
           "frame-src 'self' blob:", "worker-src 'self' blob:", "object-src 'none'",
           "base-uri 'self'", "form-action 'self'",
-        ].join('; ') });
+        ].join('; '),
+      });
       res.end(content);
       return;
     }
@@ -1746,6 +1914,7 @@ export async function startEnterpriseGateway(
     },
     stop: async () => {
       shuttingDown = true;
+      await tasks?.stop();
       for (const waiter of queuedStarts.splice(0)) {
         clearTimeout(waiter.timeout);
         waiter.signal.removeEventListener('abort', waiter.onAbort);

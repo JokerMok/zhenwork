@@ -370,6 +370,7 @@ export const conversation = {
     (p) => `/api/conversations/${p.conversation_id}/messages`,
     (p) => ({
       content: p.input,
+      request_id: p.execution_id || globalThis.crypto?.randomUUID(),
       files: p.files,
       // `@@` session references. Omitting this silently breaks the feature end
       // to end: the backend's send-boundary resolver would always see an empty
@@ -1781,6 +1782,7 @@ export interface ICronJobUpdateParams {
 // ---------------------------------------------------------------------------
 
 interface ISendMessageParams {
+  execution_id?: string;
   input: string;
   conversation_id: string;
   /** Source-tagged file refs; the backend resolves each to an absolute path and

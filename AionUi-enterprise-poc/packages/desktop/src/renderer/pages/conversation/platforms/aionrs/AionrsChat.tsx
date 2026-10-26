@@ -1,3 +1,4 @@
+import TaskWork from '@/renderer/pages/workspace/TaskWork';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -110,6 +111,7 @@ const AionrsChat: React.FC<{
           <FlexFullContainer>
             <MessageList className='flex-1' emptySlot={emptySlot} />
           </FlexFullContainer>
+          <TaskWork conversationId={conversation_id} />
           <ConversationPlanBar conversation_id={conversation_id} />
           <AionrsSendBox
             conversation_id={conversation_id}

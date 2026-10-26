@@ -2,7 +2,8 @@ import { lstat, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { acquireEnterpriseDockerSupervisor, createEnterpriseDockerCoreStarter, createEnterpriseModelRuntime,
   createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPasswordChange, createRc2GatewayPublicBrand,
-  startEnterpriseGateway } from '@aionui/web-host';
+  startEnterpriseGateway,
+} from '@aionui/web-host';
 
 const required = (name: string): string => {
   const value = process.env[name]?.trim();
@@ -52,10 +53,12 @@ export async function startEnterpriseWebFromEnvironment() {
   const startCore = createEnterpriseDockerCoreStarter({ profileRoot, supervisor,
     appVersion: required('AION_ENTERPRISE_WEB_APP_VERSION'),
     coreImage: required('AION_ENTERPRISE_WEB_DOCKER_CORE_IMAGE'), gatewayImage, upstreamProxyPort,
-    authorizeCronJob: async (actor, jobId) => runtime ? runtime.authorizeCronJob(actor, jobId) : false });
+    authorizeCronJob: async (actor, jobId) => (runtime ? runtime.authorizeCronJob(actor, jobId) : false),
+    });
   runtime = createEnterpriseModelRuntime(createRc2GatewayLogin(rc2Url, publicOrigin, edgeToken), startCore,
     { profileRoot, publicOrigin, rc2Resume: createRc2GatewayResume(rc2Url, publicOrigin),
-      background: { rc2Url, serviceToken } });
+      background: { rc2Url, serviceToken },
+    });
   const gateway = await startEnterpriseGateway({ staticDir, publicOrigin, port, adminUrl: new URL('/admin/', rc2Url).toString(),
     maxSessions: optionalLimit('AION_ENTERPRISE_WEB_MAX_SESSIONS', 1, 1000),
     maxCores: optionalLimit('AION_ENTERPRISE_WEB_MAX_CORES', 1, 200),
@@ -67,12 +70,15 @@ export async function startEnterpriseWebFromEnvironment() {
     changePassword: createRc2GatewayPasswordChange(rc2Url, publicOrigin, edgeToken),
     login: runtime.login, resume: runtime.resume, startCore: runtime.startCore,
     trustedProxyToken: edgeToken,
-    profileRoot, controlRequest: runtime.controlRequest,
+    profileRoot,
+      taskRuntime: runtime,
+      controlRequest: runtime.controlRequest,
     refreshResources: runtime.refreshResources, resourceStatus: runtime.resourceStatus,
     syncCronGrant: runtime.syncCronGrant, hasBackgroundJobs: runtime.hasBackgroundJobs,
     authorizeBackground: runtime.authorizeBackground,
     backgroundDue: runtime.backgroundDue,
-    reconcileCronJobs: runtime.reconcileCronJobs });
+    reconcileCronJobs: runtime.reconcileCronJobs,
+    });
   try {
     for (const actor of await runtime.backgroundActors()) await gateway.startBackgroundCore(actor);
     await gateway.reconcileAuthorization();
@@ -108,7 +114,8 @@ export async function startEnterpriseWebFromEnvironment() {
     clearInterval(retry);
     await retrying;
     try { await gateway.stop(); } finally { await supervisor.close(); }
-  } };
+  },
+    };
   } catch (error) {
     await supervisor.close();
     throw error;
