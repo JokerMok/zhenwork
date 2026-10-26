@@ -217,3 +217,10 @@ test1001原密码实际登录：首页/刷新、新会话/双标签、真实长�
 五组真实网页/模型回归、历史恢复/继续消息/刷新、Gzip/Brotli与内容SHA256、304/no-store/退出旧身份拒绝通过。证据docs/employee-startup-performance.md与私有.codex/startup-performance/acceptance-report.md；服务器acceptance/20261025-employee-startup.md。Host32定向通过；旧Host完整tsc research.ts:137未扩展修复。不重复后台全巡检/办公三场景。
 
 Admin/Java/control/23迁移/amd64镜像和Caddy模板逐字节复用v6。备份成功，Core1/启动1/闲120秒/等180秒保持。只清理未验收workspace-ui-v1/v4/v5，保留清单、配置快照、全部已验证发布与数据。最终Core0，可用内存5.03GiB、磁盘3.54GiB；本项目/拼豆/Caddy及HTTPS正常。最新备份20261025T065012557834Z.tar.gz / 752216047字节；2份/1504298426字节。回滚审核20261025-startup-v1-to-ui-v6.json，仅应用/配置，保留数据/权限，未实际回滚。
+
+
+## 2026-10-26 文件可交付性发布
+
+当前 `20261026-artifact-delivery-v2` / 应用 `f2a07f0378f6b95a1f2354b0eeefa38dc8202538`。只重建员工网页/Host与预压缩，复用knowledge-v3管理端/Java/control/native、23迁移、精确amd64镜像；没有新常驻转换服务。实际网页双资料四份文件、定点续改、版本/链接权限和中文Office显示通过；桌面Office点击链接后的落地未确认。详见docs/artifact-delivery.md与私有验收记录。
+
+状态、重启、日志仍为 `sudo bash /srv/apps/zhenwork/deploy/manage.sh status`、`restart`、`logs 100`。更新沿用本机restage-web --employee-only及finalize-release，不混入未提交工作。previous为已验证knowledge-v3；回滚命令 `sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261026-artifact-v2-to-knowledge-v3.json`，仅退应用/配置，保留数据库、资料、授权及文件历史，会恢复旧版文件生成限制。未实际回滚。

@@ -1,11 +1,11 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-25。当前范围：企业知识库与业务专家完整网页流程；保留按需Core、组织能力、外部查询和办公功能。实际验证边界见知识与专家记录，不制作桌面安装包。
+核对日期：2026-10-26。当前范围：生成文件可交付性；复用知识专家、按需Core、组织能力、外部查询和办公功能。实际验证边界见本轮文件记录，不制作桌面安装包。
 
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261025-knowledge-experts-v3`；准确应用 SHA：`76806bb96381b07523ebc3d9215325bb1532d354`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
+- 激活 release：`20261026-artifact-delivery-v2`；准确应用 SHA：`f2a07f0378f6b95a1f2354b0eeefa38dc8202538`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
@@ -194,4 +194,8 @@ previous保留已验证 `20261025-resource-efficiency-v4`。回滚审核 `shared
 
 ## 2026-10-26 文件可交付性修复
 
-实现说明见 [生成文件可交付性](docs/artifact-delivery.md)。本地定向检查及原生 Office 打开已验证；部署与普通员工网页/实际文件业务验收尚在进行，不能据此宣称上线通过。复用知识专家、私有文件版本和有界工具；只重建员工网页和Host，保持Core0浏览及原有容量策略。
+已部署 `20261026-artifact-delivery-v2` / 实际应用 `f2a07f0378f6b95a1f2354b0eeefa38dc8202538`。实现说明见 [生成文件可交付性](docs/artifact-delivery.md)。正文去重可读来源与原生超链接、Word/Excel独立布局、数值公式与缓存、固定版本预览/下载、SHA与精确位置约束的原子续改及实际结构回执。完整证据保留在非正文追溯部件，不嵌入访问凭证。真实初版续改发现重复文字误改两处，v2按唯一/指定段落修复，失败证据保留。
+
+普通员工真实企业产品专家，两组不同结构合成资料分别生成/预览/下载Word与Excel；定点修改其他内容保留，采购12.50+7.35=19.85原生公式重算正确，产品实际新增“交付复核”。四份文件原生来源链接在网页预览实际点击，固定原文版本与第二账号拒绝通过；历史恢复/再恢复最新字节一致，重新登录只读预览仍Core0。下载文件在中文LibreOffice环境渲染14页并逐页查看。桌面Office打开链接菜单后落地页未确认，Microsoft Word/Excel未安装，不能宣称原生客户端点击验收通过；合成资料不替代独立客户验收。
+
+私有证据 `.codex/artifact-delivery/acceptance-report.md`、服务器 `shared/config/acceptance/20261026-artifact-delivery.md`。旧知识验收的文件结论追加纠正。仅重建员工网页/Host，复用管理/Java/control/native、23迁移和精确amd64镜像；一致备份成功，Core1/启动1/队列2/等待180秒/空闲120秒不变。previous为已验证knowledge-v3，回滚审核 `shared/config/rollback-reviews/20261026-artifact-v2-to-knowledge-v3.json` 只退应用/配置不退数据，未执行回滚。最终本项目/拼豆/Caddy active、Core0，盘余约2.96GB，2份有效备份共1526378630字节。
