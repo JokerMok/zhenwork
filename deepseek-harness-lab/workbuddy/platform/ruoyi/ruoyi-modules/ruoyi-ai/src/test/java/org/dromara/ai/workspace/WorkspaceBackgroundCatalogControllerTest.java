@@ -19,7 +19,7 @@ class WorkspaceBackgroundCatalogControllerTest {
     private final WorkspaceResources resources = mock(WorkspaceResources.class);
     private final WorkspaceMcpController mcp = mock(WorkspaceMcpController.class);
     private final WorkspaceBackgroundCatalogController controller = new WorkspaceBackgroundCatalogController(
-        grants, execution, permissions, models, resources, mcp);
+        grants, execution, permissions, models, resources, mcp, mock(WorkspaceToolAccess.class));
     private final UUID grantId = UUID.fromString("11111111-1111-4111-8111-111111111111");
 
     @Test

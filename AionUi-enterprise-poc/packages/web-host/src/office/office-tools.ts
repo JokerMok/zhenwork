@@ -32,6 +32,14 @@ type ControlClient = Rc2GatewayClient & {
     options?: RequestInit
   ): Promise<{ response: Response; body: { code?: number; data?: unknown } | null }>;
 };
+async function authorizedCalculators(client: Rc2GatewayClient): Promise<Array<{id: string; name: string; version: number}>> {
+  const catalog = await client.resources('TOOL') as Array<{id: string; name: string; version: number}>;
+  const checked = await Promise.allSettled(catalog.slice(0, 20).map(async item => {
+    const resource = await client.authorizedResource(item.id, 'TOOL') as {config?: {toolType?: string}};
+    return resource.config?.toolType === 'CALCULATOR' ? item : null;
+  }));
+  return checked.flatMap(item => item.status === 'fulfilled' && item.value ? [item.value] : []);
+}
 const name = 'rc2-enterprise-zhenwork-office-tools';
 const evidenceReferenceExactlyOne = [
   { required: ['quote'], not: { required: ['quoteIndex'] } },
@@ -238,6 +246,11 @@ const tools = [
     description: 'Save a structured JSON object or array as a real .json workspace file, for a skill manifest or ordinary data processing. Pass data as JSON, not a serialized string. This does not execute code. Existing files require overwrite=true and retain history.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' }, data: { type: ['object', 'array'] }, overwrite: { type: 'boolean' } }, required: ['path', 'data'],
     },
+  },
+  {
+    name: 'calculate_enterprise_tool',
+    description: 'Execute an authorized enterprise CALCULATOR from office_context.enterpriseCalculators. Use its real resourceId; never treat a TOOL as a Skill or run guessed commands. Decimal strings are calculated with BigDecimal on RC2. USE, tool status and employee/task authorization are rechecked every call. No external side effects.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: {resourceId: {type: 'string', pattern: '^[0-9a-fA-F-]{36}$'}, operation: {type: 'string', enum: ['add','subtract','multiply','divide']}, a: {type: 'string', pattern: '^-?[0-9]{1,30}(\\.[0-9]{1,12})?$'}, b: {type: 'string', pattern: '^-?[0-9]{1,30}(\\.[0-9]{1,12})?$'}}, required: ['resourceId','operation','a','b'] },
   },
   {
     name: 'check_enterprise_skill',
@@ -537,9 +550,17 @@ export async function startOfficeTools(
           value = await checkpoint(profileRoot, actor, conversation, args, executionId);
         } else if (tool === 'office_context') {
           const knowledge = await knowledgeContext(conversation, client);
-          value = { task:await taskOfficeContext(profileRoot,actor,conversation), workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
+          value = { task:await taskOfficeContext(profileRoot,actor,conversation), workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, enterpriseCalculators: await authorizedCalculators(client), outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
             python: '/opt/aionui/skill-python/bin/python', knowledge: knowledge.resources, knowledgeScope: knowledge.scope || 'current authorized bases; assistant may select its declared defaults',
           };
+        } else if (tool === 'calculate_enterprise_tool') {
+          const {resourceId, ...arguments_} = args;
+          if (typeof resourceId !== 'string' || !/^[0-9a-f-]{36}$/i.test(resourceId)) throw new Error('ENTERPRISE_TOOL_ID_INVALID');
+          const result = await (client as ControlClient).request(`/ai/tools/${resourceId}/calculate`, {
+            method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(arguments_), signal: abort.signal,
+          });
+          if (!result.response.ok || result.body?.code !== 200) throw new Error('ENTERPRISE_CALCULATOR_UNAVAILABLE');
+          value = result.body.data;
         } else if (tool === 'check_enterprise_skill') {
           const metadata = JSON.parse(await readFile(await enterpriseManagedResourcePath(profileRoot, actor), 'utf8'));
           const response = await fetch(enterpriseCoreBase(core) + '/api/skills', {

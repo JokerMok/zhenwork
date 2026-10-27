@@ -582,7 +582,7 @@ test('knowledge search resolves permitted bases and output context without inven
   const preview = vi.fn(async () => ({ response: new Response('{}'), body: { code: 200, data: { sha256: 'source-sha' } } }));
   const client = {
     me: async () => ({ userId: actor.userId }),
-    resources: async () => [{ id: baseId, name: 'Company evidence', version: 3 }],
+    resources: async (type: string) => type === 'KNOWLEDGE' ? [{ id: baseId, name: 'Company evidence', version: 3 }] : [],
     authorizedResource: async (id: string) => { checked.push(id); if (!allowed) throw new Error('resource revoked'); },
     knowledgeSearch: async (id: string, query: string) => ({ citations: [{ baseId: id, documentId: baseId, sha256: 'source-sha', content: 'Original source claim only, no acceptance evidence.', version: 3, query, locationLabel: '第 4 页' }] }),
     request: preview,
@@ -645,4 +645,20 @@ test('knowledge search resolves permitted bases and output context without inven
     expect(staleCitation.error.message).toBe('SOURCE_OUTSIDE_SELECTED_KNOWLEDGE');
 
   } finally { await office.stop(); await fixture.close(); }
+});
+
+test('shared enterprise calculators are discoverable and executed under current employee authorization', async () => {
+  const fixture=await coreFixture();const root=await profileRoot();fixture.core.workspaceRoot=path.join(root,'workspace');
+  const resourceId='11111111-1111-4111-8111-111111111111';let allowed=true;
+  const request=vi.fn(async()=>({response:new Response('{}',{status:allowed?200:403}),body:allowed?{code:200,data:{value:'20.75',rounding:'HALF_UP'}}:{code:403}}));
+  const client={me:async()=>({userId:actor.userId}),resources:async(type:string)=>type==='TOOL'?[{id:resourceId,name:'Shared calculator',version:1}]:[],authorizedResource:async()=>({config:{toolType:'CALCULATOR'}}),request};
+  const office=await startOfficeTools(actor,fixture.core,root,async()=>client as never,'https://workspace.example');const registration=fixture.registered();
+  const call=async(name:string,args:unknown)=>await(await fetch(registration.transport.url.replace('/mcp','/conversations/c1/mcp'),{method:'POST',headers:{'content-type':'application/json',authorization:registration.transport.headers.Authorization},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json();
+  try{
+    const context=JSON.parse((await call('office_context',{})).result.content[0].text);expect(context.enterpriseCalculators).toEqual([{id:resourceId,name:'Shared calculator',version:1}]);
+    const args={resourceId,operation:'add',a:'12.35',b:'8.40'};const result=JSON.parse((await call('calculate_enterprise_tool',args)).result.content[0].text);expect(result.value).toBe('20.75');
+    expect(request).toHaveBeenCalledWith(`/ai/tools/${resourceId}/calculate`,expect.objectContaining({method:'POST',body:JSON.stringify({operation:'add',a:'12.35',b:'8.40'})}));
+    allowed=false;expect((await call('calculate_enterprise_tool',args)).error.message).toContain('UNAVAILABLE');
+    const count=request.mock.calls.length;expect((await call('calculate_enterprise_tool',{...args,resourceId:'../../other'})).error.message).toContain('ID_INVALID');expect(request.mock.calls.length).toBe(count);
+  }finally{await office.stop();await fixture.close()}
 });

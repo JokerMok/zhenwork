@@ -235,7 +235,7 @@ export class Rc2Client {
   }
 
   async resources(type) {
-    if (!['ASSISTANT', 'SKILL', 'MCP', 'KNOWLEDGE'].includes(type)) throw new Error('Invalid resource type');
+    if (!['ASSISTANT', 'SKILL', 'MCP', 'KNOWLEDGE', 'TOOL'].includes(type)) throw new Error('Invalid resource type');
     const items = new Map();
     // One server-authoritative effective catalog is shared by UI and runtime.
     for (let page = 1; page <= 100; page++) {

@@ -20,13 +20,14 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 public class WorkspaceBackgroundCatalogController {
-    private static final Set<String> TYPES = Set.of("ASSISTANT", "SKILL", "MCP", "KNOWLEDGE");
+    private static final Set<String> TYPES = Set.of("ASSISTANT", "SKILL", "MCP", "KNOWLEDGE", "TOOL");
     private final WorkspaceBackgroundGrants grants;
     private final ExecutionCredentials execution;
     private final WorkspacePermissions permissions;
     private final WorkspaceModelAccess models;
     private final WorkspaceResources resources;
     private final WorkspaceMcpController mcp;
+    private final WorkspaceToolAccess tools;
 
     private long owner(UUID grantId, String serviceAuthorization, String secret) {
         execution.checkBackgroundService(serviceAuthorization);
@@ -73,6 +74,17 @@ public class WorkspaceBackgroundCatalogController {
             item.get("publishedVersion") == null || !item.get("publishedVersion").equals(item.get("version")))
             throw new WorkspaceDenied(403, "ResourcePermissionDenied");
         return R.ok(item);
+    }
+
+    @org.springframework.web.bind.annotation.PostMapping("/internal/rc2/background/grants/{grantId}/tools/{id}/calculate")
+    public R<?> calculate(@PathVariable UUID grantId, @PathVariable UUID id,
+        @org.springframework.web.bind.annotation.RequestBody Map<String,Object> args,
+        @RequestHeader("Authorization") String serviceAuthorization,
+        @RequestHeader("X-Aion-Background-Secret") String secret) {
+        long userId=owner(grantId,serviceAuthorization,secret);
+        permissions.require(userId,"ai:tool:view");
+        var result=tools.calculate(userId,id,args);
+        grants.require(grantId,secret);return R.ok(result);
     }
 
     @GetMapping("/internal/rc2/background/grants/{grantId}/mcp/connections")

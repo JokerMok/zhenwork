@@ -65,6 +65,14 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
 
   /** Exact read-only knowledge routes needed to verify fixed-version evidence. No arbitrary RC2 forwarding. */
   async request(route: string, init: RequestInit = {}): Promise<{response: Response; body: {code?:number;data?:unknown}|null}> {
+    if (init.method === 'POST' && /^\/ai\/tools\/[0-9a-f-]{36}\/calculate$/i.test(route) &&
+        typeof init.body === 'string' && init.body.length <= 512) {
+      const response = await this.fetchRc2(route.slice(3), { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: init.body, signal: init.signal });
+      const body = await response.json().catch((): null => null) as {code?:number;data?:unknown}|null;
+      if ([401,403].includes(response.status) || [401,403].includes(body?.code || 0)) throw new BackgroundGrantRevokedError();
+      return {response,body};
+    }
     if (init.method && init.method !== 'GET') throw new Error('Background knowledge is read only');
     const parsed = new URL(route, 'https://internal.invalid');
     if (parsed.origin !== 'https://internal.invalid' || !/^\/ai\/knowledge\/(?:[0-9a-f-]{36}\/search|documents\/[0-9a-f-]{36}\/versions\/[1-9][0-9]{0,6})$/i.test(parsed.pathname) ||
@@ -98,7 +106,7 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
   }
 
   async resources(type: string): Promise<unknown> {
-    if (!['ASSISTANT', 'SKILL', 'MCP', 'KNOWLEDGE'].includes(type)) throw new Error('Invalid background resource type');
+    if (!['ASSISTANT', 'SKILL', 'MCP', 'KNOWLEDGE', 'TOOL'].includes(type)) throw new Error('Invalid background resource type');
     const items = new Map<string, Record<string, unknown>>();
     for (let page = 1; page <= 100; page++) {
       const data = await this.read(`/resources?type=${type}&scope=available&page=${page}`);
