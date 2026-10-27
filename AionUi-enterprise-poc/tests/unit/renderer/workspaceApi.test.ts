@@ -64,4 +64,18 @@ describe('enterprise workspace response handling', () => {
     expect(workspaceErrorTranslationKey('ModelUnavailable', 'action')).toBe('workspace.errors.noModel');
     expect(workspaceErrorTranslationKey('REQUEST_FAILED', 'load')).toBe('workspace.errors.load');
   });
+
+  it('preserves the original conversation when an in-page request expires', () => {
+    const replace = vi.fn();
+    vi.stubGlobal('window', {
+      __AION_ENTERPRISE_WEB__: true,
+      location: { pathname: '/', hash: '#/conversation/original-chat', replace },
+    });
+    try {
+      expect(() => unwrapRc2Response({ code: 401, msg: 'expired' })).toThrowError(WorkspaceApiError);
+      expect(replace).toHaveBeenCalledWith('/enterprise/login#/conversation/original-chat');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

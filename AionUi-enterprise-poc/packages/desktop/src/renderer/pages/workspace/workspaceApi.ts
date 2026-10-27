@@ -45,7 +45,7 @@ export function enterpriseLoginRedirectPath(code: unknown, hostedEnterpriseWeb =
 export function redirectEnterpriseLoginIfNeeded(code: unknown): boolean {
   const target = enterpriseLoginRedirectPath(code);
   if (!target || typeof window === 'undefined') return false;
-  if (window.location.pathname !== target) window.location.replace(target);
+  if (window.location.pathname !== target) window.location.replace(target + (window.location.hash || ''));
   return true;
 }
 
