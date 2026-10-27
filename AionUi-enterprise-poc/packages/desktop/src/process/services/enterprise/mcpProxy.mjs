@@ -83,6 +83,12 @@ export class EnterpriseMcpProxy {
         return;
       }
       if (!upstream.ok) { res.writeHead(502).end(); return; }
+      // Preserve empty Streamable HTTP notification acknowledgments; there is
+      // no JSON-RPC response body to wrap as a successful 200 JSON message.
+      if ([202, 204].includes(upstream.status) && data.length === 0) {
+        res.writeHead(upstream.status).end();
+        return;
+      }
       const type = upstream.headers.get('content-type') || 'application/json';
       if (!type.startsWith('application/json') && !type.startsWith('text/event-stream')) {
         res.writeHead(502).end(); return;

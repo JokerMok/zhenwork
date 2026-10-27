@@ -471,3 +471,20 @@ test('interactive MCP relay forwards the scoped conversation without exposing RC
   await client.relayMcp('connection-1', raw, {}, new AbortController().signal);
   assert.equal(sent[1].headers['X-Aion-Conversation-Id'], undefined);
 });
+
+
+test('real MCP SDK accepts the empty notification acknowledgment through the private proxy', async () => {
+  const { Client }=await import('@modelcontextprotocol/sdk/client/index.js');
+  const { StreamableHTTPClientTransport }=await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
+  const seen=[];
+  const proxy=new EnterpriseMcpProxy({connectionId:'connection-1',requireConversationId:true,client:{relayMcp:async(_id,raw)=>{
+    const message=JSON.parse(raw);seen.push(message.method);
+    if(message.method==='notifications/initialized')return new Response(null,{status:202});
+    const result=message.method==='initialize'?{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'Controlled protocol fixture',version:'1'}}:{tools:[{name:'read_summary',inputSchema:{type:'object',properties:{}},annotations:{readOnlyHint:true}}]};
+    return new Response(JSON.stringify({jsonrpc:'2.0',id:message.id,result}),{headers:{'content-type':'application/json'}});
+  }}});
+  const {port,key}=await proxy.start();const client=new Client({name:'protocol-regression',version:'1'});
+  const transport=new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/conversations/c1/mcp`),{requestInit:{headers:{Authorization:'Bearer '+key}}});
+  try{const acknowledgment=await fetch(`http://127.0.0.1:${port}/conversations/c1/mcp`,{method:'POST',headers:{Authorization:'Bearer '+key},body:JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})});assert.equal(acknowledgment.status,202);assert.equal(await acknowledgment.text(),'');await client.connect(transport);const tools=await client.listTools();assert.equal(tools.tools[0].name,'read_summary');assert(seen.includes('notifications/initialized'));}
+  finally{await client.close();await proxy.stop();}
+});
