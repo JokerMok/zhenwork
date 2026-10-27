@@ -1712,16 +1712,42 @@ export async function startEnterpriseGateway(
             catch { return reply(res, 403, { error: 'KNOWLEDGE_SCOPE_REVOKED' }); }
           }
         }
+        let createBody: string | undefined;
+        if (req.method === 'POST' && req.url === '/api/conversations') {
+          let input: Record<string, unknown>;
+          try {
+            const parsed: unknown = JSON.parse((await body(req, MAX_BODY)).toString('utf8'));
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid input');
+            input = parsed as Record<string, unknown>;
+          } catch { return reply(res, 400, { error: 'BAD_REQUEST' }); }
+          const extra = input.extra as Record<string, unknown> | undefined;
+          if (extra && Array.isArray(extra.selected_session_mcp_servers)) {
+            // Browser catalogs are deliberately redacted. They must never override
+            // the employee Core's full stored transports selected by their IDs.
+            extra.selected_session_mcp_servers = extra.selected_session_mcp_servers.filter((item: unknown) => {
+              if (!item || typeof item !== 'object') return true;
+              const server = item as {name?: string; transport?: {credentials_configured?: boolean}};
+              return server.transport?.credentials_configured !== true &&
+                !(typeof server.name === 'string' && /^(?:rc2-enterprise-|zhenwork-office-tools$)/.test(server.name));
+            });
+          }
+          createBody = JSON.stringify(input);
+        }
         const core = await getCore(auth.session.actor, false, !passiveWorkerRequest(req.method || 'GET', req.url || ''),
           req.method === 'POST' && /^\/api\/conversations(?:\/[^/]+\/messages)?$/.test(req.url) ? 'task_request' : 'user_operation');
         if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        const forwardedHeaders = proxyHeaders(req, core);
+        if (createBody !== undefined) {
+          forwardedHeaders['content-length'] = Buffer.byteLength(createBody);
+          delete forwardedHeaders['transfer-encoding'];
+        }
         const upstream = http.request(
           {
             hostname: enterpriseCoreHost(core),
             port: core.port,
             method: req.method,
             path: req.url,
-            headers: proxyHeaders(req, core),
+            headers: forwardedHeaders,
           },
           (upstreamRes) => {
             const headers: http.IncomingHttpHeaders = {
@@ -1788,7 +1814,8 @@ export async function startEnterpriseGateway(
             upstream.destroy();
           }
         });
-        req.pipe(upstream);
+        if (createBody !== undefined) upstream.end(createBody);
+        else req.pipe(upstream);
       } catch (error) {
         if (!res.destroyed) return replyCoreFailure(res, error);
       }

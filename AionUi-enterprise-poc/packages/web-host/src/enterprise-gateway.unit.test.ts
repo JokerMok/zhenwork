@@ -112,6 +112,10 @@ beforeAll(async () => {
       started.push(actor.userId);
       const token = `core-token-${actor.userId}`;
       const core = http.createServer((req, res) => {
+        if (req.url === '/api/conversations' && req.method === 'POST') {
+          const chunks: Buffer[] = [];req.on('data', (part: Buffer) => chunks.push(part));
+          req.on('end', () => { res.setHeader('content-type','application/json');res.end(JSON.stringify({success:true,data:JSON.parse(Buffer.concat(chunks).toString())})); });return;
+        }
         if (req.url === '/api/fs/dir') {
           const chunks: Buffer[] = [];
           req.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -1409,4 +1413,18 @@ test('capacity and startup waiting do not consume the usable worker idle budget'
     await gateway.stop();await new Promise<void>((resolve) => worker.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+
+test('conversation creation uses stored MCP IDs instead of redacted browser transport snapshots', async () => {
+  const login=await request('POST','/enterprise/login',undefined,{username:'1',password:'test'});
+  const cookie=login.headers['set-cookie']?.[0].split(';')[0];
+  const ids=['office-id','query-id'];const personal={id:'session',name:'personal-session',transport:{type:'http',url:'https://example.test/mcp'}};
+  const created=await request('POST','/api/conversations',cookie,{name:'中文长度检查',assistant:{id:'rc2-test'},extra:{selected_mcp_server_ids:ids,selected_session_mcp_servers:[
+    {id:'office-id',name:'rc2-enterprise-zhenwork-office-tools',transport:{type:'http',url:'',headers:{},credentials_configured:true}},
+    {id:'query-id',name:'rc2-enterprise-11111111-1111-4111-8111-111111111111',transport:{type:'http',url:'untrusted-browser-override'}},personal,
+  ]}});
+  expect(created.status).toBe(200);const body=JSON.parse(created.body).data;
+  expect(body.name).toBe('中文长度检查');expect(body.extra.selected_mcp_server_ids).toEqual(ids);
+  expect(body.extra.selected_session_mcp_servers).toEqual([personal]);expect(created.body).not.toContain('untrusted-browser-override');
 });
