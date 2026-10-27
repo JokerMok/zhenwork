@@ -654,11 +654,11 @@ test('shared enterprise calculators are discoverable and executed under current 
   const fixture=await coreFixture();const root=await profileRoot();fixture.core.workspaceRoot=path.join(root,'workspace');
   const resourceId='11111111-1111-4111-8111-111111111111';let allowed=true;
   const request=vi.fn(async()=>({response:new Response('{}',{status:allowed?200:403}),body:allowed?{code:200,data:{value:'20.75',rounding:'HALF_UP'}}:{code:403}}));
-  const client={me:async()=>({userId:actor.userId}),resources:async(type:string)=>type==='TOOL'?[{id:resourceId,name:'Shared calculator',version:1}]:[],authorizedResource:async()=>({config:{toolType:'CALCULATOR'}}),request};
+  const client={me:async()=>({userId:actor.userId}),resources:async(type:string)=>type==='TOOL'?[{id:resourceId,name:'Shared calculator',version:1}]:type==='MCP'?[{id:resourceId,name:'Authorized business source',version:2}]:[],readyMcpConnection:async()=>({id:resourceId}),relayMcp:async()=>new Response(JSON.stringify({result:{tools:[{name:'entSummary',description:'Fixed read query'}]}})),authorizedResource:async()=>({config:{toolType:'CALCULATOR'}}),request};
   const office=await startOfficeTools(actor,fixture.core,root,async()=>client as never,'https://workspace.example');const registration=fixture.registered();
   const call=async(name:string,args:unknown)=>await(await fetch(registration.transport.url.replace('/mcp','/conversations/c1/mcp'),{method:'POST',headers:{'content-type':'application/json',authorization:registration.transport.headers.Authorization},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json();
   try{
-    const context=JSON.parse((await call('office_context',{})).result.content[0].text);expect(context.enterpriseCalculators).toEqual([{id:resourceId,name:'Shared calculator',version:1}]);
+    const context=JSON.parse((await call('office_context',{})).result.content[0].text);expect(context.enterpriseCalculators).toEqual([{id:resourceId,name:'Shared calculator',version:1}]);expect(context.enterpriseQueries.sources[0]).toMatchObject({name:'Authorized business source',status:'available',tools:[{name:'entSummary',description:'Fixed read query'}]});
     expect(await office.trustedConfirmation({description:'MCP rc2-enterprise-zhenwork-office-tools/calculate_enterprise_tool: {}'})).toBe(true);
     expect(await office.trustedConfirmation({description:'exec wants to use: ExecCommand'})).toBe(false);
     const args={resourceId,operation:'add',a:'12.35',b:'8.40'};const result=JSON.parse((await call('calculate_enterprise_tool',args)).result.content[0].text);expect(result.value).toBe('20.75');

@@ -40,6 +40,21 @@ async function authorizedCalculators(client: Rc2GatewayClient): Promise<Array<{i
   }));
   return checked.flatMap(item => item.status === 'fulfilled' && item.value ? [item.value] : []);
 }
+async function authorizedQueryCatalog(client: Rc2GatewayClient, conversation: string): Promise<unknown> {
+  const catalog = await client.resources('MCP') as Array<{id: string; name: string; version: number}>;
+  const sources = await Promise.all(catalog.slice(0, 8).map(async item => {
+    try {
+      const connection = await client.readyMcpConnection(item.id);
+      const response = await client.relayMcp(connection.id, JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'}), {}, AbortSignal.timeout(5000), conversation);
+      const body = await response.json() as {result?: {tools?: Array<{name?: unknown; description?: unknown}>}};
+      if (!response.ok || !Array.isArray(body.result?.tools)) throw new Error('Unavailable');
+      return {name:item.name,version:item.version,status:'available',tools:body.result.tools.slice(0,64).flatMap(tool =>
+        typeof tool.name === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(tool.name)
+          ? [{name:tool.name,description:typeof tool.description === 'string' ? tool.description.slice(0,400) : ''}] : [])};
+    } catch { return {name:item.name,version:item.version,status:'unavailable',reason:'MCP_TOOL_DISCOVERY_UNAVAILABLE'}; }
+  }));
+  return {instruction:'These are REAL tools/list results under current employee/task authorization, not Skills. For business data first use ToolSearch with ONE exact tool name below, without company/source labels or other search words; then call its returned business tool with its schema. Never scan files/environment or guess commands to find credentials. Report unavailable sources honestly.',sources,sourceCount:catalog.length,shownSourceLimit:8};
+}
 const name = 'rc2-enterprise-zhenwork-office-tools';
 const evidenceReferenceExactlyOne = [
   { required: ['quote'], not: { required: ['quoteIndex'] } },
@@ -267,7 +282,7 @@ const tools = [
   },
   {
     name: 'office_context',
-    description: 'Get the actual writable output workspace and current authorized knowledge IDs before a task. Never guess paths or knowledge identifiers.',
+    description: 'Get the actual output workspace and authorized knowledge/calculator/business MCP tool names before a task. For enterprise business queries use ToolSearch with ONE exact tool name from enterpriseQueries, then its actual business tool. Do not search Skills or scan environment for business connectors.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -550,7 +565,7 @@ export async function startOfficeTools(
           value = await checkpoint(profileRoot, actor, conversation, args, executionId);
         } else if (tool === 'office_context') {
           const knowledge = await knowledgeContext(conversation, client);
-          value = { task:await taskOfficeContext(profileRoot,actor,conversation), workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, enterpriseCalculators: await authorizedCalculators(client), outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
+          value = { task:await taskOfficeContext(profileRoot,actor,conversation), workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, enterpriseCalculators: await authorizedCalculators(client), enterpriseQueries: await authorizedQueryCatalog(client, conversation), outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
             python: '/opt/aionui/skill-python/bin/python', knowledge: knowledge.resources, knowledgeScope: knowledge.scope || 'current authorized bases; assistant may select its declared defaults',
           };
         } else if (tool === 'calculate_enterprise_tool') {
