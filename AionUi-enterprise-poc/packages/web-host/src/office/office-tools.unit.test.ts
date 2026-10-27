@@ -52,6 +52,9 @@ async function coreFixture(
         res.end(JSON.stringify({ success: true, data: { id: 'office-mcp', enabled: false } }));
         return;
       }
+      if (req.method === 'GET' && req.url === '/api/mcp/servers/office-mcp') {
+        res.end(JSON.stringify({success:true,data:registration}));return;
+      }
       if (req.method === 'POST' && req.url === '/api/mcp/servers/office-mcp/toggle') {
         res.statusCode = toggleStatus;
         if (toggleStatus === 200) mcpEnabled = true;
@@ -656,6 +659,8 @@ test('shared enterprise calculators are discoverable and executed under current 
   const call=async(name:string,args:unknown)=>await(await fetch(registration.transport.url.replace('/mcp','/conversations/c1/mcp'),{method:'POST',headers:{'content-type':'application/json',authorization:registration.transport.headers.Authorization},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json();
   try{
     const context=JSON.parse((await call('office_context',{})).result.content[0].text);expect(context.enterpriseCalculators).toEqual([{id:resourceId,name:'Shared calculator',version:1}]);
+    expect(await office.trustedConfirmation({description:'MCP rc2-enterprise-zhenwork-office-tools/calculate_enterprise_tool: {}'})).toBe(true);
+    expect(await office.trustedConfirmation({description:'exec wants to use: ExecCommand'})).toBe(false);
     const args={resourceId,operation:'add',a:'12.35',b:'8.40'};const result=JSON.parse((await call('calculate_enterprise_tool',args)).result.content[0].text);expect(result.value).toBe('20.75');
     expect(request).toHaveBeenCalledWith(`/ai/tools/${resourceId}/calculate`,expect.objectContaining({method:'POST',body:JSON.stringify({operation:'add',a:'12.35',b:'8.40'})}));
     allowed=false;expect((await call('calculate_enterprise_tool',args)).error.message).toContain('UNAVAILABLE');

@@ -966,6 +966,7 @@ export async function startOfficeTools(
       const safe = new Set([
         'task_checkpoint',
         'office_context',
+        'calculate_enterprise_tool',
         'read_document',
         'inspect_office_document',
         'revise_office_document',
