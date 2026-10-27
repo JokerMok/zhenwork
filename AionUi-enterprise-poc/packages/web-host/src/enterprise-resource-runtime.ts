@@ -24,6 +24,14 @@ type SkillResource = { id: string; name: string; source: string; version: number
 export type RuntimeResourceIssue = { type: 'SKILL' | 'MCP' | 'ASSISTANT'; id: string; code: string };
 
 type McpBinding = {resourceId: string; port: string; key: string; host: string; version: number; connectionId: string};
+export type EnterpriseMcpCache = Map<string, {proxy: EnterpriseMcpProxy; binding: McpBinding}>;
+export async function closeEnterpriseMcpCache(core: EnterpriseCore, cache: EnterpriseMcpCache): Promise<void> {
+  const entries=[...cache.values()];cache.clear();
+  await Promise.allSettled(entries.map(async ({proxy,binding})=>{
+    await core.unregisterProxyPort?.(Number(binding.port)).catch(()=>{});await proxy.stop();
+  }));
+}
+
 
 /** Only administrator-managed READ queries on this exact registered actor proxy are trusted. */
 export async function trustedEnterpriseRead(core: EnterpriseCore, confirmation: Record<string, unknown>, bindings: McpBinding[],
@@ -192,13 +200,15 @@ export async function syncEnterpriseWebResources(
   model: Model | null,
   activeClient: () => Promise<Rc2GatewayClient>,
   relayClient: (conversationId?: string) => Promise<Rc2GatewayClient>,
-  onCatalogChange?: () => void
+  onCatalogChange?: () => void,
+  proxyCache?: EnterpriseMcpCache
 ): Promise<{ stop: () => Promise<void>; invalidated: Promise<void>; issues: RuntimeResourceIssue[]; trustedConfirmation: (c:Record<string,unknown>)=>Promise<boolean> }> {
   const profile = enterpriseProfilePath(profileRoot, actor);
   const stage = await mkdtemp(path.join(profile, 'rc2-stage-'));
   await mkdir(stage, { recursive: true, mode: 0o700 });
-  const mcpProxies: Array<{ proxy: EnterpriseMcpProxy; port: number }> = [];
-  const closeProxies = async () => Promise.allSettled(mcpProxies.map(async ({ proxy, port }) => {
+  const mcpProxies: Array<{ proxy: EnterpriseMcpProxy; port: number; resourceId: string }> = [];
+  const closeProxies = async () => Promise.allSettled(mcpProxies.map(async ({ proxy, port, resourceId }) => {
+    if (proxyCache?.get(resourceId)?.proxy === proxy) proxyCache.delete(resourceId);
     if (core.unregisterProxyPort) await core.unregisterProxyPort(port).catch(() => {});
     await proxy.stop();
   }));
@@ -333,12 +343,24 @@ export async function syncEnterpriseWebResources(
       }
       bundle.skills.push({ id: item.id, name, path: skillPath, version: item.version });
     }
+    // A resource refresh is not a Core lifecycle boundary. Existing native
+    // agents retain these URLs, so keep compatible actor proxies stable.
+    if (proxyCache) for (const [id,entry] of proxyCache) if (!mcpIds.includes(id)) {
+      proxyCache.delete(id);await core.unregisterProxyPort?.(Number(entry.binding.port)).catch(()=>{});await entry.proxy.stop();
+    }
     for (const mcpResourceId of mcpIds) {
       let mcpProxy: EnterpriseMcpProxy | undefined;
       try {
         const resource = await client.authorizedResource(mcpResourceId, 'MCP') as Resource;
         const connection = await client.readyMcpConnection(mcpResourceId);
         await client.authorizedMcpConnection(connection.id, mcpResourceId);
+        const cached=proxyCache?.get(mcpResourceId);
+        if (cached && cached.binding.version === resource.version && cached.binding.connectionId === connection.id) {
+          bundle.mcps.push({...cached.binding});continue;
+        }
+        if (cached) {
+          proxyCache!.delete(mcpResourceId);await core.unregisterProxyPort?.(Number(cached.binding.port)).catch(()=>{});await cached.proxy.stop();
+        }
         mcpProxy = new EnterpriseMcpProxy({ connectionId: connection.id, requireConversationId: true,
         client: { relayMcp: async (connectionId, raw, headers, signal, conversationId) => {
           let stage = 'identity';
@@ -364,9 +386,9 @@ export async function syncEnterpriseWebResources(
         const host = enterpriseProxyHost(core);
         const proxy = await mcpProxy.start(enterpriseProxyBindHost(core));
         await core.registerProxyPort?.(proxy.port);
-        mcpProxies.push({ proxy: mcpProxy, port: proxy.port });
-        bundle.mcps.push({ resourceId: mcpResourceId, port: String(proxy.port), key: proxy.key,
-          host, version: resource.version, connectionId: connection.id });
+        mcpProxies.push({ proxy: mcpProxy, port: proxy.port, resourceId: mcpResourceId });
+        const binding={resourceId: mcpResourceId, port: String(proxy.port), key: proxy.key,host,version:resource.version,connectionId:connection.id};
+        proxyCache?.set(mcpResourceId,{proxy:mcpProxy,binding});bundle.mcps.push(binding);
       } catch {
         issues.push({ type: 'MCP', id: mcpResourceId, code: 'CONNECTION_UNAVAILABLE' });
         if (mcpProxy) await mcpProxy.stop().catch(() => {});
@@ -440,7 +462,7 @@ export async function syncEnterpriseWebResources(
     monitor.unref();
     return { invalidated, issues: syncResult.issues, trustedConfirmation: c => trustedEnterpriseRead(core,c,bundle.mcps,activeClient), stop: async () => {
       clearInterval(monitor);
-      await closeProxies();
+      if (!proxyCache) await closeProxies();
       await rm(stage, { recursive: true, force: true });
     } };
   } catch (error) {

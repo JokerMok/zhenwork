@@ -5,7 +5,7 @@ import { EnterpriseModelProxy } from '../../desktop/src/process/services/enterpr
 import { removeEnterpriseModelProvider, syncEnterpriseModelProvider,
 } from '../../desktop/src/process/services/enterprise/modelProvider.mjs';
 import type { Rc2GatewayClient, Rc2GatewayLogin } from './enterprise-rc2-login.mjs';
-import { syncEnterpriseWebResources } from './enterprise-resource-runtime.js';
+import { syncEnterpriseWebResources, closeEnterpriseMcpCache, type EnterpriseMcpCache } from './enterprise-resource-runtime.js';
 import type { RuntimeResourceIssue } from './enterprise-resource-runtime.js';
 import { EnterpriseBackgroundGrants } from './enterprise-background-grants.js';
 import { verifyBackgroundService } from './enterprise-background-client.js';
@@ -360,11 +360,13 @@ export function createEnterpriseModelRuntime(
         throw error;
       }
       if (!core) throw new Error('Enterprise Core unavailable');
+      const mcpCache: EnterpriseMcpCache = new Map();
       const stop = async (...cleanup: Array<() => Promise<void>>) => {
         officeTrust.delete(key(actor));
         runningCores.delete(key(actor));
         resourceIssues.delete(key(actor));
         const coreResult = await Promise.allSettled([core.stop()]);
+        await closeEnterpriseMcpCache(core, mcpCache);
         await Promise.allSettled(cleanup.map((fn) => fn()));
         if (coreResult[0].status === 'rejected') throw coreResult[0].reason;
       };
@@ -372,7 +374,7 @@ export function createEnterpriseModelRuntime(
         try {
           if (!options.profileRoot) throw new Error('Enterprise resource profile root required');
           const resources = await syncEnterpriseWebResources(actor, core, options.profileRoot, null,
-            () => activeClient(actor), (conversationId) => relayClient(actor, conversationId));
+            () => activeClient(actor), (conversationId) => relayClient(actor, conversationId), undefined, mcpCache);
           resourceIssues.set(key(actor), resources.issues);
           await removeEnterpriseModelProvider(core, core.localToken);
           return { ...core, invalidated: resources.invalidated, stop: () => stop(resources.stop) };
@@ -380,7 +382,8 @@ export function createEnterpriseModelRuntime(
           grants.delete(key(actor));
           runningCores.delete(key(actor));
           resourceIssues.delete(key(actor));
-          await core.stop();
+          await core.stop().catch(() => {});
+          await closeEnterpriseMcpCache(core, mcpCache);
           throw error;
         }
       }
@@ -413,7 +416,7 @@ export function createEnterpriseModelRuntime(
         });
         resources = options.profileRoot
           ? await syncEnterpriseWebResources(actor, core, options.profileRoot, { ...model, availableModels: models },
-            () => activeClient(actor), (conversationId) => relayClient(actor, conversationId), markPending)
+            () => activeClient(actor), (conversationId) => relayClient(actor, conversationId), markPending, mcpCache)
           : null;
         resourceIssues.set(key(actor), resources?.issues || []);
         let invalidate: () => void = () => {};
@@ -464,7 +467,7 @@ export function createEnterpriseModelRuntime(
                 AION_ENTERPRISE_MODELS_JSON: JSON.stringify(available),
               });
               resources = await syncEnterpriseWebResources(actor, core, options.profileRoot, { ...chosen, availableModels: available },
-                () => activeClient(actor), (conversationId) => relayClient(actor, conversationId), markPending);
+                () => activeClient(actor), (conversationId) => relayClient(actor, conversationId), markPending, mcpCache);
               resourceIssues.set(key(actor), resources.issues);
               resources.invalidated.then(() => { if (generation === currentGeneration) invalidate(); });
               if (office) await ensureOfficeAssistant(core, office.mcpId, chosen);
@@ -511,6 +514,7 @@ export function createEnterpriseModelRuntime(
         await core.stop().catch(() => {});
         await office?.stop().catch(() => {});
         await resources?.stop().catch(() => {});
+        await closeEnterpriseMcpCache(core, mcpCache);
         await proxy.stop();
         throw error;
       }

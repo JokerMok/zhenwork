@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, symlink } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { enterpriseProfilePath } from './enterprise-core.js';
-import { enterpriseManagedResourcePath, syncEnterpriseWebResources, trustedEnterpriseRead } from './enterprise-resource-runtime.js';
+import { enterpriseManagedResourcePath, syncEnterpriseWebResources, trustedEnterpriseRead, closeEnterpriseMcpCache, type EnterpriseMcpCache } from './enterprise-resource-runtime.js';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 
 test.each(['assistant dependencies', 'standalone authorization', 'mixed authorization',
@@ -12,6 +12,7 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
   'authorized Skills and MCPs reach only that employee Core through %s', async (mode) => {
   const root = await mkdtemp(path.join(tmpdir(), 'enterprise-resources-'));
   const actor = { serverId: 'rc2', userId: '42' };
+  const proxyCache: EnterpriseMcpCache = new Map();
   const profile = enterpriseProfilePath(root, actor);
   await mkdir(profile, { recursive: true });
   const assistantId = '11111111-1111-4111-8111-111111111111';
@@ -147,7 +148,7 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     const synced = await syncEnterpriseWebResources(actor, { port, localToken: 'local-secret', stop: async () => {} },
       root, { id: 'model-1', code: 'model-code', availableModels: [
         { id: 'model-1', code: 'model-code' }, { id: 'model-2', code: 'assistant-model-code' },
-      ] }, async () => client, async () => { executionSelections += 1; return client; });
+      ] }, async () => client, async () => { executionSelections += 1; return client; }, undefined, proxyCache);
     const manifest = JSON.parse(await readFile(await enterpriseManagedResourcePath(root, actor), 'utf8'));
     const skillNames = [skillId, secondSkillId].map((id) => `safe-skill-${id.replaceAll('-', '')}`);
     expect(manifest.skills).toEqual(skillNames);
@@ -193,6 +194,14 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
       expect(rule.content).toContain(`name="Policy Library" | baseId=${knowledgeId} | version=5`);
       expect(rule.content).toContain('search_knowledge');
     }
+    if (mode === 'assistant dependencies') {
+      await synced.stop();
+      const next=await syncEnterpriseWebResources(actor,{port,localToken:'local-secret',stop:async()=>{}},root,{id:'model-1',code:'model-code',availableModels:[{id:'model-1',code:'model-code'},{id:'model-2',code:'assistant-model-code'}]},async()=>client,async()=>client,undefined,proxyCache);
+      const after=writes.filter(({route,body})=>route==='/api/mcp/servers' && body.name===`rc2-enterprise-${firstMcpId}`).at(-1)!.body;
+      expect((after.transport as {url:string}).url).toBe(transport.url);
+      expect((await fetch(mcpUrl,{method:'POST',headers:{...transport.headers,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})})).status).toBe(200);
+      await next.stop();
+    }
     if (mode === 'mixed authorization') {
       knowledgeVersion = 6;
       await Promise.race([
@@ -203,6 +212,7 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     await synced.stop();
     expect((await readdir(profile)).some((entry) => entry.startsWith('rc2-stage-'))).toBe(false);
   } finally {
+    await closeEnterpriseMcpCache({port,localToken:'local-secret',stop:async()=>{}},proxyCache);
     await new Promise<void>((resolve) => core.close(() => resolve()));
     await rm(root, { recursive: true, force: true });
   }
