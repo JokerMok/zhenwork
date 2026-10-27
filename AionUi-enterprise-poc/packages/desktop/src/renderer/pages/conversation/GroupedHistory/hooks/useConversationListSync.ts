@@ -371,7 +371,7 @@ const refreshConversations = () => {
 };
 
 /** Source of a generating-state transition, logged for field diagnosis. */
-type GeneratingTransitionSource = 'stream' | 'reconcile' | 'terminal' | 'turnCompleted' | 'deleted';
+type GeneratingTransitionSource = 'stream' | 'reconcile' | 'reconnect' | 'terminal' | 'turnCompleted' | 'deleted';
 
 const logGeneratingTransition = (conversation_id: string, next: boolean, source: GeneratingTransitionSource) => {
   void ipcBridge.application.writeRendererLog
@@ -411,10 +411,9 @@ const clearGenerating = (conversation_id: string, source: GeneratingTransitionSo
 
 /**
  * Pure decision helper: whether a runtime summary's `is_processing` bit
- * should light the sidebar spinner. Clearing is intentionally NOT handled
- * here (and never by this reconcile path) — an idle-looking runtime summary
- * must not fight a live background stream that's still mid-flight; only
- * terminal stream frames / turn.completed are allowed to clear the flag.
+ * should light the sidebar spinner. Ordinary hydration never clears a live
+ * stream. A caller may explicitly settle a fresh reconnect after checking
+ * that no newer local operation superseded the runtime read.
  */
 export const shouldReconcileMarkGenerating = (isProcessing: boolean): boolean => isProcessing === true;
 
@@ -425,12 +424,18 @@ export const shouldReconcileMarkGenerating = (isProcessing: boolean): boolean =>
  * covers the case where a WS stream frame was missed (window reload/reconnect
  * race) and the store would otherwise never know the turn is still running.
  */
-export const reconcileGeneratingFromRuntime = (conversation_id: string, isProcessing: boolean): void => {
+export const reconcileGeneratingFromRuntime = (
+  conversation_id: string,
+  isProcessing: boolean,
+  settledReconnect = false
+): void => {
   if (!conversation_id) {
     return;
   }
   if (shouldReconcileMarkGenerating(isProcessing)) {
     markGenerating(conversation_id, 'reconcile');
+  } else if (settledReconnect) {
+    clearGenerating(conversation_id, 'reconnect');
   }
 };
 
@@ -486,17 +491,21 @@ const clearAllWaitingConfirmation = (conversation_id: string) => {
  * `reconcileGeneratingFromRuntime`: it only ever marks (using a sentinel id, as
  * the runtime summary reports a count, not ids) so a stale idle summary can't
  * fight a live stream; clearing stays with `confirmation.remove` / terminal
- * frames. Covers the window-reload case where the mark stream frame was missed.
+ * frames or a fresh, explicitly settled reconnect. Covers the window-reload
+ * case where the mark stream frame was missed.
  */
 export const reconcileWaitingConfirmationFromRuntime = (
   conversation_id: string,
-  pendingConfirmations: number
+  pendingConfirmations: number,
+  settledReconnect = false
 ): void => {
   if (!conversation_id) {
     return;
   }
   if (shouldReconcileMarkWaiting(pendingConfirmations)) {
     markWaitingConfirmation(conversation_id, RUNTIME_PENDING_CONFIRMATION_ID);
+  } else if (settledReconnect) {
+    clearAllWaitingConfirmation(conversation_id);
   }
 };
 

@@ -73,4 +73,13 @@ describe('reconcileGeneratingFromRuntime', () => {
 
     expect(result.current.isConversationGenerating('conv-d')).toBe(false);
   });
+
+  it('clears a missed terminal spinner only for an explicitly settled reconnect', () => {
+    const { result } = renderHook(() => useConversationListSync());
+    act(() => reconcileGeneratingFromRuntime('conv-offline', true));
+    act(() => reconcileGeneratingFromRuntime('conv-offline', false));
+    expect(result.current.isConversationGenerating('conv-offline')).toBe(true);
+    act(() => reconcileGeneratingFromRuntime('conv-offline', false, true));
+    expect(result.current.isConversationGenerating('conv-offline')).toBe(false);
+  });
 });

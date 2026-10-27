@@ -91,21 +91,25 @@ export const useConversationRuntimeView = (conversation_id: string): UseConversa
     let generation = 0;
     flushRuntimeViewLogs(hydrateStarted(conversation_id));
 
-    const hydrate = () => {
+    const hydrate = (fromReconnect = false) => {
       const current = ++generation;
+      const initial = getConversationRuntimeViewSnapshot(conversation_id);
       void getConversationOrNull(conversation_id)
         .then((conversation) => {
           if (cancelled || current !== generation) {
             return;
           }
+          // A send/stop/terminal event that landed during this read is newer.
+          if (fromReconnect && getConversationRuntimeViewSnapshot(conversation_id) !== initial) return;
           const runtime = getRuntimeOrNull(conversation?.runtime);
           flushRuntimeViewLogs(hydrateSucceeded(conversation_id, runtime));
           // Reconcile the sidebar spinner against authoritative runtime state:
           // a missed WS frame (window reload/reconnect race) can otherwise
           // leave the row dark even though the runtime is still processing.
           if (runtime) {
-            reconcileGeneratingFromRuntime(conversation_id, runtime.is_processing === true);
-            reconcileWaitingConfirmationFromRuntime(conversation_id, runtime.pending_confirmations ?? 0);
+            const settled = fromReconnect && !getConversationRuntimeViewSnapshot(conversation_id).isProcessing;
+            reconcileGeneratingFromRuntime(conversation_id, runtime.is_processing === true, settled);
+            reconcileWaitingConfirmationFromRuntime(conversation_id, runtime.pending_confirmations ?? 0, settled);
           }
         })
         .catch((error: unknown) => {
@@ -117,7 +121,7 @@ export const useConversationRuntimeView = (conversation_id: string): UseConversa
         });
     };
     hydrate();
-    const disposeReconnect = ipcBridge.realtime?.reconnected?.on(hydrate);
+    const disposeReconnect = ipcBridge.realtime?.reconnected?.on(() => hydrate(true));
 
     return () => {
       cancelled = true;
