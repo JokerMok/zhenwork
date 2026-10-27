@@ -40,7 +40,7 @@ public class WorkspaceResourceController {
     @PostMapping("/resources/{id}/shares/batch") public R<?> shareBatch(@PathVariable UUID id,@Valid @RequestBody ShareBatch input){return R.ok(resources.shareBatch(id,actor(),input.targets(),input.actions(),input.fingerprint(),input.confirmedDependencies(),input.idempotencyKey()));}
     @GetMapping("/resources/{id}/shares/preflight") public R<?> sharePreflight(@PathVariable UUID id,@RequestParam String subjectType,@RequestParam @Pattern(regexp="[0-9]{1,19}") String subjectId,@RequestParam(defaultValue="true") boolean use){return R.ok(shareSupport.preflight(id,actor(),subjectType,subject(subjectId),use));}
     @DeleteMapping("/resources/{id}/shares/{share}") public R<?> revoke(@PathVariable UUID id,@PathVariable UUID share){resources.revoke(id,share,actor());return R.ok();}
-    @GetMapping("/resources/{id}/shares") public R<?> shares(@PathVariable UUID id){return R.ok(publication.shares(id,actor()));}
+    @GetMapping("/resources/{id}/shares") public R<?> shares(@PathVariable UUID id,@RequestParam(defaultValue="false") boolean includeLinked){return R.ok(publication.shares(id,actor(),includeLinked));}
     @GetMapping("/share-targets") public R<?> targets(@RequestParam String type,@RequestParam String query){return R.ok(publication.targets(type,query,actor()));}
     @PostMapping("/resources/{id}/publication") public R<?> submit(@PathVariable UUID id,@Valid @RequestBody Activate input){return R.ok(publication.submit(id,input.version(),actor()));}
     @DeleteMapping("/resources/{id}/publication") public R<?> unpublish(@PathVariable UUID id){publication.unpublish(id,actor());return R.ok();}

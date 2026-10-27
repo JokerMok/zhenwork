@@ -284,7 +284,7 @@ async function loadShares() {
   loading.value = true;
   listError.value = '';
   try {
-    const list = await api('/ai/resources/' + props.resource!.id + '/shares');
+    const list = await api('/ai/resources/' + props.resource!.id + '/shares?includeLinked=true');
     if (g === loadGeneration) shares.value = list;
   } catch (e) {
     if (g === loadGeneration) {
