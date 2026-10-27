@@ -258,6 +258,17 @@ test("cancelled durable queue entry never sends to the native executor", async (
   expect(f.counts().sends).toBe(0);
   await expect.poll(() => f.grants.size, { timeout: 3000 }).toBe(0);
 });
+test("admission returns a stable cancellation identity while native startup is pending", async () => {
+  const f = await fixture();
+  f.blockCore();
+  const accepted = await f.runner.accept(f.actor, "aabbccdd", {
+    content: "A normal question", request_id: randomUUID(),
+  });
+  const attempt = currentAttempt(await f.store.get("aabbccdd"));
+  expect(accepted.receipt).toMatchObject({ turn_id: attempt.id, runtime: { turn_id: null } });
+  expect(attempt.turnId).toBeUndefined();
+  await f.runner.action(f.actor, "aabbccdd", "cancel", { attemptId: attempt.id });
+});
 test("revocation cancels real executor state instead of retaining a valid browser session as authority", async () => {
   const f = await fixture();
   await f.runner.accept(f.actor, "aabbccdd", { content: "Work", request_id: randomUUID() });

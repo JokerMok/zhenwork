@@ -197,7 +197,9 @@ export class TaskRunner {
         task: publicTask(latest),
         receipt: {
           msg_id: a.messageId || "",
-          turn_id: a.turnId || null,
+          // Accepted work is already cancellable before the native turn exists.
+          // The gateway accepts either this attempt ID or its later native ID.
+          turn_id: a.turnId || a.id,
           execution_id: a.id,
           task_id: id,
           runtime: {
@@ -846,7 +848,7 @@ export class TaskRunner {
     await Promise.allSettled(
       [...this.actors.values()].map((actor) => this.deps.cancelPreparation(actor)),
     );
-    await Promise.allSettled([...this.inflight]);
+    await Promise.allSettled(this.inflight);
     for (const actor of this.actors.values())
       await (
         await TaskStore.create(this.deps.root, actor)

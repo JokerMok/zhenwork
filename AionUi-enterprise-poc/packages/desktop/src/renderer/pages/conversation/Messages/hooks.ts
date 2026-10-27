@@ -1045,6 +1045,17 @@ export const useMessageLstCache = (key: string) => {
       });
     });
   }, [key, loadMessages]);
+
+  useEffect(() => {
+    if (!key) return;
+    // The stream is a subscription, not durable delivery. A completed turn can
+    // be entirely missed while disconnected, so reopen from persisted rows.
+    return ipcBridge.realtime?.reconnected?.on(() => {
+      void loadMessages().catch((error) => {
+        console.error('[useMessageLstCache] Failed to reconcile messages after reconnect:', error);
+      });
+    });
+  }, [key, loadMessages]);
 };
 
 export const beforeUpdateMessageList = (fn: (list: TMessage[]) => TMessage[]) => {

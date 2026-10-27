@@ -86,16 +86,14 @@ export const digest = (value: unknown): string =>
     .digest("hex");
 export const currentAttempt = (task: TaskRecord): TaskAttempt =>
   task.attempts[task.attempts.length - 1];
+const operationClauses = (content: string): string[] =>
+  content.split(/(?:[。；;,，\n]|但(?:是)?|\bbut\b)/i).map(c => c.trim()).filter(c =>
+    !/^(?:(?:请|务必|一定|暂时|暂|先|绝对|绝)\s*)?(?:不要|无需|不必|不|勿|禁止|严禁|切勿|do not|don't|no need to|without|never)/i.test(c),
+  );
 export function requiredFormats(content: string): string[] {
-  const clauses = content
-    .split(/[。；;\n]/)
-    .filter(
-      (c) =>
-        !/(?:不要|无需|不必|do not|don't|no need to).{0,12}(?:生成|制作|输出|修改|generate|create|edit)/i.test(
-          c,
-        ),
-    );
-  content = clauses.join("\n");
+  content = operationClauses(content)
+    .filter(c => !/^(?:请问|请)?(?:什么是|如何|怎么|为什么|解释|介绍|what is|how|explain|why)/i.test(c))
+    .join("\n");
   if (
     !/生成|制作|交付|输出|修改|编辑|调整|generate|create|produce|revise|modify|edit/i.test(content)
   )
@@ -107,15 +105,18 @@ export function requiredFormats(content: string): string[] {
 }
 export function requiresToolEvidence(content: string, files: unknown): boolean {
   if (requiredFormats(content).length || (Array.isArray(files) && files.length)) return true;
-  content = content
-    .split(/(?:[。；;,，\n]|但(?:是)?|\bbut\b)/i)
-    .filter((c) => !/^\s*(?:(?:请|务必|一定|暂时|暂|先|绝对|绝)\s*)?(?:不要|无需|不必|不|勿|禁止|严禁|切勿|do not|don't|without|never)/i.test(c))
-    .join("\n");
-  if (/^(?:请问)?(?:什么是|如何理解|为什么|请解释|解释|what is|explain|why)/i.test(content.trim()))
-    return false;
-  return /核对|计算|检索|搜索|查询|对比|分析|修改|编辑|执行|运行|提交|发送|生成文件|execute|run|submit|send|generate|create|modify|calculate|search|query|compare|analyse|analyze/i.test(
-    content,
-  );
+  content = operationClauses(content).join('\n');
+  if (/^(?:请问)?(?:什么是|如何理解|为什么|请解释|解释|what is|explain|why)/i.test(content.trim())) return false;
+  // Tool evidence is an execution contract, not a keyword/topic classifier.
+  // "Write an article about reviewing files" remains ordinary prose. Require
+  // evidence for explicit operations; attachments and deliverables are above.
+  return content
+    .split('\n')
+    .some((clause) =>
+      /^(?:(?:请|帮我|为我|麻烦|现在|接下来|然后|先|再|直接|重新|实际|务必|用程序|使用工具|用工具)\s*)*(?:调用|核对|计算|检索|搜索|查询|修改|编辑|执行|运行|提交|发送|生成文件)\s*\S|^(?:(?:please|then|now|actually)\s+)*(?:call|execute|run|submit|send|modify|calculate|search|query)\s+\S/i.test(
+        clause.trim()
+      )
+    );
 }
 export class TaskError extends Error {
   constructor(

@@ -53,7 +53,7 @@ import { collectChatFileRefs, splitChatFileRefs } from '@/renderer/utils/file/me
 import type { AgentModeOption } from '@/renderer/utils/model/agentTypes';
 import { Button, Message } from '@arco-design/web-react';
 import { Brain, Lightning, MagicHat, Shield } from '@icon-park/react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { classifyConversationBusyError } from '../conversationBusyError';
 import { useAionrsMessage } from './useAionrsMessage';
@@ -160,6 +160,9 @@ const AionrsSendBox: React.FC<{
   );
   const runtimeView = useConversationRuntimeView(conversation_id);
   const { markSendStarted, markSendAccepted, markSendFailed } = runtimeView;
+  // The durable acceptance ID can cancel admitted work before a native turn
+  // exists. It must never become a fence for native stream/completion events.
+  const acceptedExecutionRef = useRef<{ conversationId: string; id: string } | null>(null);
 
   const { atPath, uploadFile, setAtPath, setUploadFile, content, setContent } = useSendBoxDraft(conversation_id);
 
@@ -302,6 +305,7 @@ const AionrsSendBox: React.FC<{
           return;
         }
 
+        acceptedExecutionRef.current = null;
         markSendStarted();
         setWaitingResponse(true);
         const res = await ipcBridge.conversation.sendMessage.invoke({
@@ -314,6 +318,7 @@ const AionrsSendBox: React.FC<{
           sessions,
         });
         taskAccepted(conversation_id);
+        acceptedExecutionRef.current = res.turn_id ? { conversationId: conversation_id, id: res.turn_id } : null;
         // Durable acceptance precedes the native turn. Do not fence later stream
         // events with an outbox ID or a previous round's message ID.
         setActiveMsgId(res.msg_id || null);
@@ -734,7 +739,10 @@ const AionrsSendBox: React.FC<{
   const handleStop = async (): Promise<void> => {
     // Best-effort cancel: swallow rejections so they don't bubble up as
     // unhandled rejections. UI state is still reset via finally.
-    const turnId = runtimeView.activeTurnId;
+    const turnId = workBusy
+      ? workAttempt?.id
+      : runtimeView.activeTurnId ||
+        (acceptedExecutionRef.current?.conversationId === conversation_id ? acceptedExecutionRef.current.id : null);
     if (!turnId) {
       resetState();
       resetActiveExecution('stop');

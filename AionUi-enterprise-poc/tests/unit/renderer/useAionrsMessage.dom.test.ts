@@ -6,6 +6,7 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ipcBridge } from '@/common';
 import { useAionrsMessage } from '@/renderer/pages/conversation/platforms/aionrs/useAionrsMessage';
 import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
 import { resetConversationTurnClockForTests } from '@/renderer/pages/conversation/utils/conversationTurnClock';
@@ -32,6 +33,7 @@ vi.mock('@/renderer/pages/conversation/utils/conversationCache', () => ({
 
 vi.mock('@/common', () => ({
   ipcBridge: {
+    realtime: { reconnected: { on: vi.fn().mockReturnValue(() => {}) } },
     conversation: {
       responseStream: {
         on: responseStreamOnMock.mockImplementation((handler: (message: IResponseMessage) => void) => {
@@ -52,6 +54,23 @@ describe('useAionrsMessage turn clock', () => {
     resetConversationTurnClockForTests();
     conversationUpdateInvokeMock.mockResolvedValue(undefined);
     responseStreamHandlerRef.current = undefined;
+  });
+
+  it('rehydrates completion missed while disconnected and releases the local waiting state', async () => {
+    vi.mocked(getConversationOrNull)
+      .mockResolvedValueOnce({ runtime: { is_processing: true } } as never)
+      .mockResolvedValueOnce({ runtime: { is_processing: false } } as never);
+    let reconnect: (() => void) | undefined;
+    vi.mocked(ipcBridge.realtime.reconnected.on).mockImplementation((cb) => {
+      reconnect = () => cb({ timestamp: Date.now() });
+      return () => {};
+    });
+    const { result } = renderHook(() => useAionrsMessage('offline-chat'));
+    await waitFor(() => expect(result.current.running).toBe(true));
+    await act(async () => {
+      reconnect?.();
+    });
+    expect(result.current.running).toBe(false);
   });
 
   it('preserves the turn start timestamp when switching away and back to a running conversation', async () => {

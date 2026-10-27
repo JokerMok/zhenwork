@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, test } from "vitest";
 import { TaskStore } from "./store.js";
-import { currentAttempt, publicTask, requiresToolEvidence } from "./types.js";
+import { currentAttempt, publicTask, requiredFormats, requiresToolEvidence } from "./types.js";
 import { checkpoint, recordTool, reusableOutput } from "./protocol.js";
 const roots: string[] = [];
 const actor = { serverId: "rc2", userId: "17" };
@@ -227,4 +227,20 @@ test("a short clarification inherits unfinished deliverables and retains only ve
  await store.mutate("aabbccdd",next.id,a=>{a.state="waiting_input";});
  const replaced=currentAttempt((await store.accept("aabbccdd",randomUUID(),{content:"Only reply to my question"},false,true)).task);
  expect(replaced.requiredFormats).toEqual([]);expect(replaced.artifacts).toHaveLength(1);
+});
+
+test('ordinary prose topics do not impose an unrelated tool execution contract', async () => {
+  const { store } = await fixture();
+  const accepted = await store.accept('aabbccdd', randomUUID(), {
+    content: '请直接写一篇小团队文档协作实践，不调用任何工具、不生成文件。涵盖命名、版本、核对、交接与备份。',
+    files: [],
+  });
+  expect(currentAttempt(accepted.task).requiresToolEvidence).toBe(false);
+  expect(requiresToolEvidence('Write an article about how teams run reviews and compare ideas.', [])).toBe(false);
+  expect(requiresToolEvidence('请计算12.4减8.6。然后查询已授权的业务数据。', [])).toBe(true);
+});
+test("negative and explanatory format mentions do not create unwanted deliverables", () => {
+  expect(requiredFormats("请计算金额，保存CSV。不是生产数据，不生成Word或Excel，不执行命令。")).toEqual([]);
+  expect(requiredFormats("请解释如何生成Word和Excel文件，不需要实际制作。")).toEqual([]);
+  expect(requiredFormats("不要修改Word，但请生成Excel。")).toEqual(["xlsx"]);
 });

@@ -21,6 +21,7 @@ import {
 
 vi.mock('@/common', () => ({
   ipcBridge: {
+    realtime: { reconnected: { on: vi.fn().mockReturnValue(() => {}) } },
     conversation: {
       userCreated: {
         on: vi.fn().mockReturnValue(() => {}),
@@ -149,6 +150,80 @@ describe('message merging', () => {
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
+  });
+
+  it('reloads the persisted full answer after missed stream events without duplicating its partial row', async () => {
+    const invoke = vi.mocked(ipcBridge.database.getConversationMessages.invoke);
+    const page = (content: string) => ({
+      items: [createTextMessage('offline-answer', content)],
+      has_more_before: false,
+      has_more_after: false,
+      oldest_cursor: null,
+      newest_cursor: null,
+    });
+    invoke
+      .mockReset()
+      .mockResolvedValueOnce(page('Partial'))
+      .mockResolvedValueOnce(page('Partial and complete answer'));
+    let reconnect: (() => void) | undefined;
+    const dispose = vi.fn();
+    vi.mocked(ipcBridge.realtime.reconnected.on).mockImplementation((cb) => {
+      reconnect = () => cb({ timestamp: Date.now() });
+      return dispose;
+    });
+    const { result, unmount } = renderHook(
+      () => {
+        useMessageLstCache(CONVERSATION_ID);
+        return useMessageList();
+      },
+      { wrapper: CacheWrapper }
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      reconnect?.();
+    });
+    expect(result.current).toHaveLength(1);
+    expect((result.current[0] as IMessageText).content.content).toBe('Partial and complete answer');
+    unmount();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it('retains the displayed answer if the authenticated reconnect read fails', async () => {
+    const invoke = vi.mocked(ipcBridge.database.getConversationMessages.invoke);
+    invoke
+      .mockReset()
+      .mockResolvedValueOnce({
+        items: [createTextMessage('offline-failure', 'Already saved')],
+        has_more_before: false,
+        has_more_after: false,
+        oldest_cursor: null,
+        newest_cursor: null,
+      })
+      .mockRejectedValueOnce(new Error('SESSION_EXPIRED'));
+    let reconnect: (() => void) | undefined;
+    vi.mocked(ipcBridge.realtime.reconnected.on).mockImplementation((cb) => {
+      reconnect = () => cb({ timestamp: Date.now() });
+      return () => {};
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(
+      () => {
+        useMessageLstCache(CONVERSATION_ID);
+        return useMessageList();
+      },
+      { wrapper: CacheWrapper }
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      reconnect?.();
+    });
+    expect((result.current[0] as IMessageText).content.content).toBe('Already saved');
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
   });
 
   it('keeps text segments split when tool calls interrupt the same msg_id stream', async () => {
@@ -489,7 +564,7 @@ describe('message merging', () => {
     ).toBe('finish');
   });
 
-  it('does not reload on turnCompleted when there is no pending right-position message', async () => {
+  it('reconciles a terminal turn even when no pending user badge remains', async () => {
     const invoke = vi.mocked(ipcBridge.database.getConversationMessages.invoke);
     invoke.mockResolvedValue({
       items: [],
@@ -520,7 +595,7 @@ describe('message merging', () => {
       await Promise.resolve();
     });
 
-    expect(invoke).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith({ conversation_id: CONVERSATION_ID, limit: 50, content_mode: 'compact' });
   });
 
   it('ignores turnCompleted for a different conversation even with a pending row', async () => {

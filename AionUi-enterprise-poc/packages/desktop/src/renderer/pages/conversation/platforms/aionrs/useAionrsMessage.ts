@@ -389,6 +389,7 @@ export const useAionrsMessage = (
 
   useEffect(() => {
     let cancelled = false;
+    let generation = 0;
 
     setThought({ subject: '', description: '' });
     setTokenUsage(null);
@@ -397,51 +398,63 @@ export const useAionrsMessage = (
 
     // Check actual conversation status from backend before resetting all running states
     // to avoid flicker when switching to a running conversation
-    void getConversationOrNull(conversation_id).then((res) => {
-      if (cancelled) {
-        return;
-      }
+    const hydrate = () => {
+      const current = ++generation;
+      void getConversationOrNull(conversation_id)
+        .then((res) => {
+          if (cancelled || current !== generation) {
+            return;
+          }
 
-      if (!res) {
-        hydratedConversationRef.current = conversation_id;
-        endConversationTurn(conversation_id);
-        setStreamRunning(false);
-        streamRunningRef.current = false;
-        setHasActiveTools(false);
-        hasActiveToolsRef.current = false;
-        setWaitingResponse(false);
-        waitingResponseRef.current = false;
-        setHasHydratedRunningState(true);
-        return;
-      }
-      const isRunning = isConversationProcessing(res);
-      hydratedConversationRef.current = conversation_id;
-      if (!isRunning) {
-        // Turn ended while this conversation was in the background — drop the
-        // stale origin so the next turn starts from its own send time. (The
-        // sync effect above cannot cover this: running may already be false,
-        // so it never re-runs after hydration.)
-        endConversationTurn(conversation_id);
-      }
-      setStreamRunning(isRunning);
-      streamRunningRef.current = isRunning;
-      // Reset tool states - they will be restored by incoming messages if still active
-      setHasActiveTools(false);
-      hasActiveToolsRef.current = false;
-      setWaitingResponse(isRunning);
-      waitingResponseRef.current = isRunning;
-      // Load persisted token usage stats
-      if (res.type === 'aionrs' && res.extra?.last_token_usage) {
-        const { last_token_usage } = res.extra;
-        if (last_token_usage.total_tokens > 0) {
-          setTokenUsage(last_token_usage);
-        }
-      }
-      setHasHydratedRunningState(true);
-    });
+          if (!res) {
+            hydratedConversationRef.current = conversation_id;
+            endConversationTurn(conversation_id);
+            setStreamRunning(false);
+            streamRunningRef.current = false;
+            setHasActiveTools(false);
+            hasActiveToolsRef.current = false;
+            setWaitingResponse(false);
+            waitingResponseRef.current = false;
+            setHasHydratedRunningState(true);
+            return;
+          }
+          const isRunning = isConversationProcessing(res);
+          hydratedConversationRef.current = conversation_id;
+          if (!isRunning) {
+            // Turn ended while this conversation was in the background — drop the
+            // stale origin so the next turn starts from its own send time. (The
+            // sync effect above cannot cover this: running may already be false,
+            // so it never re-runs after hydration.)
+            endConversationTurn(conversation_id);
+            setThought({ subject: '', description: '' });
+          }
+          setStreamRunning(isRunning);
+          streamRunningRef.current = isRunning;
+          // Reset tool states - they will be restored by incoming messages if still active
+          setHasActiveTools(false);
+          hasActiveToolsRef.current = false;
+          setWaitingResponse(isRunning);
+          waitingResponseRef.current = isRunning;
+          // Load persisted token usage stats
+          if (res.type === 'aionrs' && res.extra?.last_token_usage) {
+            const { last_token_usage } = res.extra;
+            if (last_token_usage.total_tokens > 0) {
+              setTokenUsage(last_token_usage);
+            }
+          }
+          setHasHydratedRunningState(true);
+        })
+        .catch(() => {
+          // Authentication/runtime failures are surfaced by the runtime view.
+          // Preserve the last known state instead of pretending the turn stopped.
+        });
+    };
+    hydrate();
+    const disposeReconnect = ipcBridge.realtime?.reconnected?.on(hydrate);
 
     return () => {
       cancelled = true;
+      disposeReconnect?.();
     };
   }, [conversation_id]);
 

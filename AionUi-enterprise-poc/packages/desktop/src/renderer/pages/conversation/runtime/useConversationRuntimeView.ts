@@ -88,33 +88,40 @@ export const useConversationRuntimeView = (conversation_id: string): UseConversa
     }
 
     let cancelled = false;
+    let generation = 0;
     flushRuntimeViewLogs(hydrateStarted(conversation_id));
 
-    void getConversationOrNull(conversation_id)
-      .then((conversation) => {
-        if (cancelled) {
-          return;
-        }
-        const runtime = getRuntimeOrNull(conversation?.runtime);
-        flushRuntimeViewLogs(hydrateSucceeded(conversation_id, runtime));
-        // Reconcile the sidebar spinner against authoritative runtime state:
-        // a missed WS frame (window reload/reconnect race) can otherwise
-        // leave the row dark even though the runtime is still processing.
-        if (runtime) {
-          reconcileGeneratingFromRuntime(conversation_id, runtime.is_processing === true);
-          reconcileWaitingConfirmationFromRuntime(conversation_id, runtime.pending_confirmations ?? 0);
-        }
-      })
-      .catch((error: unknown) => {
-        if (cancelled) {
-          return;
-        }
-        const reason = error instanceof Error ? error.message : String(error);
-        flushRuntimeViewLogs(hydrateFailed(conversation_id, normalizeReason(reason)));
-      });
+    const hydrate = () => {
+      const current = ++generation;
+      void getConversationOrNull(conversation_id)
+        .then((conversation) => {
+          if (cancelled || current !== generation) {
+            return;
+          }
+          const runtime = getRuntimeOrNull(conversation?.runtime);
+          flushRuntimeViewLogs(hydrateSucceeded(conversation_id, runtime));
+          // Reconcile the sidebar spinner against authoritative runtime state:
+          // a missed WS frame (window reload/reconnect race) can otherwise
+          // leave the row dark even though the runtime is still processing.
+          if (runtime) {
+            reconcileGeneratingFromRuntime(conversation_id, runtime.is_processing === true);
+            reconcileWaitingConfirmationFromRuntime(conversation_id, runtime.pending_confirmations ?? 0);
+          }
+        })
+        .catch((error: unknown) => {
+          if (cancelled || current !== generation) {
+            return;
+          }
+          const reason = error instanceof Error ? error.message : String(error);
+          flushRuntimeViewLogs(hydrateFailed(conversation_id, normalizeReason(reason)));
+        });
+    };
+    hydrate();
+    const disposeReconnect = ipcBridge.realtime?.reconnected?.on(hydrate);
 
     return () => {
       cancelled = true;
+      disposeReconnect?.();
     };
   }, [conversation_id]);
 
