@@ -46,6 +46,8 @@ export async function trustedEnterpriseRead(core: EnterpriseCore, confirmation: 
   } catch { return false; }
 }
 
+const MCP_METADATA_METHODS = new Set(['initialize', 'notifications/initialized', 'ping', 'tools/list']);
+
 const MAX_SYNC_SKILL_BYTES = 48 * 1024 * 1024;
 
 export async function enterpriseManagedResourcePath(root: string, actor: EnterpriseActor): Promise<string> {
@@ -339,13 +341,24 @@ export async function syncEnterpriseWebResources(
         await client.authorizedMcpConnection(connection.id, mcpResourceId);
         mcpProxy = new EnterpriseMcpProxy({ connectionId: connection.id, requireConversationId: true,
         client: { relayMcp: async (connectionId, raw, headers, signal, conversationId) => {
+          let stage = 'identity';
           try {
-            const current = await relayClient(conversationId);
+            // SDK bootstrap may run before a user message has an execution grant.
+            // Metadata still needs current actor/resource/connection authorization;
+            // every actual tool call retains its conversation-bound execution client.
+            const metadata = MCP_METADATA_METHODS.has(JSON.parse(raw).method);
+            const current = metadata ? await activeClient() : await relayClient(conversationId);
+            stage = 'resource';
             const latest = await current.authorizedResource(mcpResourceId, 'MCP') as Resource;
             if (latest.version !== resource.version) return new Response(null, { status: 403 });
+            stage = 'connection';
             await current.authorizedMcpConnection(connectionId, mcpResourceId);
+            stage = 'relay';
             return current.relayMcp(connectionId, raw, headers, signal, conversationId);
-          } catch { return new Response(null, { status: 403 }); }
+          } catch {
+            console.warn('[Enterprise MCP]', JSON.stringify({event:'authorization_rejected',stage}));
+            return new Response(null, { status: 403 });
+          }
         } },
         });
         const host = enterpriseProxyHost(core);

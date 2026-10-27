@@ -27,6 +27,7 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     `66666666-6666-4666-8666-${String(index).padStart(12, '0')}`);
   let knowledgeVersion = 5;
   const relayedConversations: Array<string | undefined> = [];
+  let executionSelections = 0;
   const writes: Array<{ route: string; body: Record<string, unknown> }> = [];
   const assistantDetails = new Map<string, Record<string, unknown>>();
   const core = http.createServer(async (req, res) => {
@@ -146,7 +147,7 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     const synced = await syncEnterpriseWebResources(actor, { port, localToken: 'local-secret', stop: async () => {} },
       root, { id: 'model-1', code: 'model-code', availableModels: [
         { id: 'model-1', code: 'model-code' }, { id: 'model-2', code: 'assistant-model-code' },
-      ] }, async () => client, async () => client);
+      ] }, async () => client, async () => { executionSelections += 1; return client; });
     const manifest = JSON.parse(await readFile(await enterpriseManagedResourcePath(root, actor), 'utf8'));
     const skillNames = [skillId, secondSkillId].map((id) => `safe-skill-${id.replaceAll('-', '')}`);
     expect(manifest.skills).toEqual(skillNames);
@@ -160,6 +161,9 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
     expect(relayed.status).toBe(200);
     expect(relayedConversations).toEqual(['conv-42']);
+    expect(executionSelections).toBe(0);
+    const execution = await fetch(mcpUrl, {method:'POST',headers:{...transport.headers,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'read',arguments:{}}})});
+    expect(execution.status).toBe(200);expect(executionSelections).toBe(1);
     const assistantExpected = mode !== 'standalone authorization';
     expect(manifest.assistantIds).toEqual(assistantExpected ? [`rc2-${assistantId}`] : []);
     if (assistantExpected) {
