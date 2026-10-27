@@ -69,4 +69,24 @@ class WorkspaceResourcesShareTest {
         assertEquals(2,receipt.get("linkedGrants"));verifyNoInteractions(support);verify(jdbc,never()).update(anyString(),any(Object[].class));
     }
 
+    @Test
+    void failedBatchDoesNotCancelRuntimeBeforeItsTransactionCommits() {
+        var jdbc=mock(JdbcTemplate.class);var tx=mock(TransactionTemplate.class);var permissions=mock(WorkspacePermissions.class);
+        var guard=mock(AiResourceGuard.class);var conversations=mock(WorkspaceConversations.class);var readiness=mock(WorkspaceAssistantReadiness.class);var support=mock(WorkspaceShareSupport.class);
+        var resources=new WorkspaceResources(jdbc,tx,permissions,guard,conversations,readiness,support);
+        UUID resource=UUID.randomUUID(),share=UUID.randomUUID();long owner=7L;
+        var row=Map.<String,Object>of("published_version",1,"auth_version",1L);
+        var targets=List.of(new WorkspaceShareSupport.Target("USER","9"),new WorkspaceShareSupport.Target("USER","10"));
+        when(tx.execute(any())).thenAnswer(invocation->((TransactionCallback<?>)invocation.getArgument(0)).doInTransaction(null));
+        when(guard.require(resource,owner,AiResourceGuard.Action.SHARE)).thenReturn(row);when(guard.owner(row,owner)).thenReturn(true);
+        when(jdbc.queryForObject(contains("FROM sys_user"),eq(Boolean.class),anyLong())).thenReturn(true);
+        when(jdbc.queryForList(contains("FROM ai_resource_share"),any(Object[].class))).thenReturn(List.of(Map.of("id",share.toString(),"same",false,"reduced",true)));
+        when(support.plan(resource,owner,targets,true)).thenReturn(Map.of("ready",true,"fingerprint","current","additions",List.of(),"resourceVersion",1,"resourceAuthVersion",1L));
+        when(support.preflight(resource,owner,"USER",9L,true)).thenReturn(Map.of("ready",true));
+        when(support.preflight(resource,owner,"USER",10L,true)).thenReturn(Map.of("ready",false));
+        assertThrows(WorkspaceDenied.class,()->resources.shareBatch(resource,owner,targets,Set.of("VIEW","USE"),"current",Set.of(),UUID.randomUUID()));
+        verify(jdbc,atLeastOnce()).update(anyString(),any(Object[].class));
+        verifyNoInteractions(conversations);
+    }
+
 }

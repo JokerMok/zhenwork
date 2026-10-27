@@ -107,11 +107,12 @@ public class WorkspaceResources {
             for(String action:actions)jdbc.update("INSERT INTO ai_resource_acl(resource_id,subject_type,subject_id,action,granted_by) VALUES(?,?,?,?,?)",id,subject,subjectId,action,actor);
             jdbc.update("UPDATE ai_resource SET visibility=CASE WHEN visibility='PRIVATE' THEN 'SHARED' ELSE visibility END,updated_by=?,updated_at=NOW() WHERE id=?",actor,id);audit(actor,"resource.shared",id,Map.of("shareId",share.toString(),"mode","REFERENCE","actions",actions));return Map.of("id",share.toString(),"mode","REFERENCE","changed",true);
         });
-        if(revoke[0])conversations.revokeResource(id);return result;
+        if(revoke[0]&&!planned)conversations.revokeResource(id);return result;
     }
     /** Parent and minimum dependency grants commit together, or none of them do. */
     public Map<String,Object> shareBatch(UUID id,long actor,List<WorkspaceShareSupport.Target> targets,Set<String> actions,String fingerprint,Set<String> confirmed,UUID idempotencyKey){
-        return tx.execute(status->{
+        boolean[] reduced={false};
+        Map<String,Object> response=tx.execute(status->{
             jdbc.queryForObject("SELECT user_id FROM sys_user WHERE user_id=? FOR UPDATE",Long.class,actor);
             var parent=guard.require(id,actor,AiResourceGuard.Action.SHARE);
             if(!guard.owner(parent,actor))throw new WorkspaceDenied(403,"OwnerSharingRequired");
@@ -141,11 +142,14 @@ public class WorkspaceResources {
                 if(actions.contains("USE")&&!Boolean.TRUE.equals(shareSupport.preflight(id,actor,target.subjectType(),subjectId,true).get("ready")))throw new WorkspaceDenied(409,"ShareDependenciesUnavailable");
                 result.add(Map.of("id",saved.get("id"),"subjectType",target.subjectType(),"subjectId",target.subjectId(),"changed",saved.get("changed")));
             }
+            reduced[0]=!Objects.equals(jdbc.queryForObject("SELECT auth_version FROM ai_resource WHERE id=?",Long.class,id),((Number)plan.get("resourceAuthVersion")).longValue());
             audit(actor,"resource.share.bundle",id,Map.of("targets",targets,"resourceVersion",plan.get("resourceVersion"),"grants",additions,"sensitiveConfirmed",confirmed));
             var receipt=Map.<String,Object>of("recipients",result,"linkedGrants",additions.size());
             jdbc.update("INSERT INTO ai_command(actor_user_id,operation,idempotency_key,input_hash,result) VALUES(?,'resource.share.bundle',?,?,?::jsonb)",actor,idempotencyKey,digest,JsonUtils.toJsonString(receipt));
             return receipt;
         });
+        if(reduced[0])conversations.revokeResource(id);
+        return response;
     }
     public void revoke(UUID id,UUID share,long actor){tx.executeWithoutResult(status->{jdbc.queryForList("SELECT id FROM ai_resource WHERE id=? FOR UPDATE",id);var r=guard.require(id,actor,AiResourceGuard.Action.SHARE);if(!guard.owner(r,actor))throw new WorkspaceDenied(403,"OwnerSharingRequired");var rows=jdbc.queryForList("UPDATE ai_resource_share SET status='REVOKED',revoked_at=NOW() WHERE id=? AND resource_id=? AND status='ACTIVE' RETURNING subject_type,subject_id",share,id);if(rows.isEmpty())return;var recipient=rows.getFirst();jdbc.update("DELETE FROM ai_resource_acl WHERE resource_id=? AND subject_type=? AND subject_id=?",id,recipient.get("subject_type"),recipient.get("subject_id"));jdbc.update("UPDATE ai_resource SET auth_version=auth_version+1,updated_by=?,updated_at=NOW() WHERE id=?",actor,id);audit(actor,"resource.share.revoked",id,Map.of("shareId",share.toString()));});conversations.revokeResource(id);}
     public void enable(UUID id,long actor,boolean enabled,boolean govern,String reason){
