@@ -4,15 +4,17 @@
 
 本轮持久任务说明见 `docs/task-workspace.md`。发布脚本按源码差异复用未变管理网页与监控产物，重建受影响员工网页/Host/Java；manifest记录并验证实际复用摘要。
 
-## 当前任务版本（2026-10-27）
+## 当前普通聊天版本（2026-10-27）
 
-release `20261026-task-workspace-v6`，应用 SHA `bbfe9447b4711251ff2c82c6b1205dac2224b73e`。后续维护文档提交不重建应用；RELEASE.json的sourceSha为执行版本，VERIFIED.json记录限定验收范围。23条迁移链及完整amd64镜像不变；最终只构建员工Web/Host，按manifest复用Admin/Java/Monitor等未变产物。
+release `20261027-chat-continuity-v2`，应用 SHA `bb5e374ed806309de51a9403edef85a6f54c1abc`。后续维护文档提交不重建应用；RELEASE.json的sourceSha为执行版本，VERIFIED.json记录限定验收范围。23条迁移链及完整amd64镜像不变；只构建员工Web/Host，按manifest复用Admin/Java/Monitor等未变产物。
+
+普通文字、长回复与工具调用直接从原聊天框发送，受理后浏览器关闭不取消，持久化完整结果在原会话展示。重连补读消息/运行状态并清理已核实的陈旧侧栏状态；主动停止使用稳定受理ID取消，不把该ID混入原生流事件匹配。定时任务页面与cron链路未改。真实文字全关闭/执行中重入、工具离页、主动停止已验；最终v2重连与旧会话/文件读取下载再验，Host字节与v1一致。记录 `shared/config/acceptance/20261027-chat-continuity.md`，本机 `.codex/chat-continuity/acceptance-report.md`，模型错误源路径的部分失败保留，不假装全部调用首次成功。
 
 任务数据位于 `shared/profiles/control/<serverHash>/<userId>/tasks/tasks.json`，独立task-grants与私有配置在release外，纳入既有停写一致备份。状态、文件、历史只读不唤醒Core。Core1/启动1/队列2/等待180秒/闲120秒、安全检查60秒不变；已受理任务持久队列2/30分钟，执行20分钟。首次创建原生会话仍依赖Core，受理前容量错误不能冒充已入持久队列。
 
 普通员工公网主流程、离页执行双成果、定点修改/版本恢复、部分重试成功成果不变、去重/单Core排队/取消/独立后台授权撤销/Host重启中断及隔离有真实证据；具体复用与未覆盖项见服务器root私有 `shared/config/acceptance/20261026-task-workspace.md` 和本机 `.codex/task-work/acceptance-report.md`。没有重跑全历史或压测。
 
-保留已验证artifact-delivery-v2作为回滚目标。审核文件 `shared/config/rollback-reviews/20261026-task-v6-to-artifact-v2.json`；先暂停新受理并等执行收敛，再执行 `sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261026-task-v6-to-artifact-v2.json`。仅回滚应用/配置，保留任务/数据库/资料/权限；旧版没有新任务UI，恢复新版可读取，不能删除TaskStore来回滚。
+保留已验证task-workspace-v6作为回滚目标。审核文件 `shared/config/rollback-reviews/20261027-chat-v2-to-task-v6.json`；先暂停新受理并等执行收敛，再执行 `sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261027-chat-v2-to-task-v6.json`。仅回滚应用/配置，保留消息/任务/数据库/资料/权限；会恢复v6已知的状态误判、重连和停止缺陷，不能删除TaskStore来回滚。
 
 ## 当前主机与入口
 

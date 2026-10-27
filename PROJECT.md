@@ -1,14 +1,26 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-27。当前范围：任务工作区、任务中心与后台续作；复用知识专家、文件交付、按需Core及组织权限，不制作桌面安装包。
+核对日期：2026-10-27。当前范围：普通聊天的服务端持续回复及原会话重连；复用任务执行、知识专家、文件交付、按需Core及组织权限，不制作桌面安装包。
 
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261026-task-workspace-v6`；准确应用 SHA：`bbfe9447b4711251ff2c82c6b1205dac2224b73e`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。已验证回滚目标保留 `20261026-artifact-delivery-v2` / `f2a07f0378f6b95a1f2354b0eeefa38dc8202538`，不使用未验收中间候选。
+- 激活 release：`20261027-chat-continuity-v2`；准确应用 SHA：`bb5e374ed806309de51a9403edef85a6f54c1abc`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。已验证回滚目标保留 `20261026-task-workspace-v6` / `bbfe9447b4711251ff2c82c6b1205dac2224b73e`，不使用未验收中间候选。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
+
+## 2026-10-27 普通聊天持续回复纠偏
+
+普通文字、长回复和工具调用都从原聊天框发送，不需要计划、执行时间或定时任务入口。受理后继续使用已有TaskRunner和员工独立授权；关闭浏览器只断开订阅，回复及工具结果保存到原会话。未新建后台执行系统，定时任务保持独立。
+
+实际修复：主题关键词被误判成必须执行工具、否定格式要求被误判成双交付；断线漏收结束事件后没有补读历史/运行状态及侧栏残留转圈；受理早于原生turn创建时聊天停止缺少可取消ID。现在以实际操作要求判断，重连后从持久化原会话同步全文和真实状态，稳定受理ID仅用于取消，不作为原生流事件栅栏。
+
+普通员工真实公网：输出中关闭完整验收浏览器进程，服务端回复从364字继续到2279字，完成后重登录原聊天全文一致且仅一条助手回复；另一次返回时原生消息仍为work，随后完整显示2139字。断开全部WS并离线期间继续生成，最终v2重连补齐2491字、无重发或残留转圈。工具离页后真实创建JSON、十进制求和、保存CSV，原聊天可见结果并实际下载，四笔合成金额合计44.00元且下载SHA一致。主动停止实际POST取消，正文停止增长并显示已取消；关闭浏览器没有取消请求。
+
+v1已通过文字、工具及停止；v2仅补侧栏状态，Host产物与v1逐字节相同。v2另做真实重连和原聊天/工具历史读取、下载复验，未重新执行已完成任务。保留一次模型选择不存在源路径的真实部分失败；明确真实源文件后另轮工具验收通过，未将原失败改写成功。私有证据 `.codex/chat-continuity/acceptance-report.md`，服务器 `shared/config/acceptance/20261027-chat-continuity.md`。
+
+本机串行构建Web/Host，复用Admin/Java/Monitor/23迁移与完整amd64镜像。Core容量和回收、身份权限/no-store、资料与任务数据不变。首次原生会话创建仍受Core容量约束，本轮验证的是已受理消息持续执行。回滚审核 `shared/config/rollback-reviews/20261027-chat-v2-to-task-v6.json`；先收敛运行任务，仅回退应用/配置，不回退消息、任务、文件、数据库或授权。回到v6会恢复本轮已知交互缺陷，未实际回滚。
 
 ## 2026-10-27 持久任务工作区
 
