@@ -4,7 +4,17 @@
 
 本轮持久任务说明见 `docs/task-workspace.md`。发布脚本按源码差异复用未变管理网页与监控产物，重建受影响员工网页/Host/Java；manifest记录并验证实际复用摘要。
 
-## 当前普通聊天版本（2026-10-27）
+## 当前登录与共享版本（2026-10-27）
+
+release `20261027-entry-sharing-v10`，应用 SHA `b2edb832ed634ed3844e4970693e3c3a84093706`。后续纯维护提交与应用 SHA 分开。24 条迁移，0024 纯加法；员工/Admin/Java 按受影响范围本机构建，最终 Host-only 按 manifest 复用其余不可变产物，Rust/amd64 镜像及资源预算保持。
+
+登录直达工作台，深链接恢复；浏览 Host 目录不唤醒 Core，执行准备在输入区就地反馈。共享统一对象搜索、默认允许使用及整组依赖事务；敏感连接由管理员在同一弹窗确认现有底层只读范围，尚不能限定仅专家调用。撤回只停用来源关联许可，独立授权保留。原生聊天计算工具和后台任务复用 RC2 精确计算、当前授权及审计，不允许借只读入口执行审批型写入。完整实际范围见 docs/employee-capabilities.md 及 root 私有 `shared/config/acceptance/20261027-entry-sharing.md`、VERIFIED.json。
+
+回滚到已验证 chat-continuity-v2 的精确审核：`shared/config/rollback-reviews/20261027-entry-v10-to-chat-v2.json`。先暂停新受理、等待在途任务退出，再执行 `sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261027-entry-v10-to-chat-v2.json`；保留 24 条 DB 迁移、文件和消息。旧程序不识别关联许可，相关专家可能不可用，也会恢复旧登录/共享限制。未实际回滚。
+
+状态、重启、日志仍为 `sudo bash /srv/apps/zhenwork/deploy/manage.sh status|restart|logs 100`；新发布使用既有冻结构建及 finalize-release.sh。只处理非 current/previous、无 VERIFIED 的失败旧发布，保留数据、备份和有效回滚。没有 down -v、全局 prune 或整机重启。
+
+## 上一轮普通聊天版本（2026-10-27）
 
 release `20261027-chat-continuity-v2`，应用 SHA `bb5e374ed806309de51a9403edef85a6f54c1abc`。后续维护文档提交不重建应用；RELEASE.json的sourceSha为执行版本，VERIFIED.json记录限定验收范围。23条迁移链及完整amd64镜像不变；只构建员工Web/Host，按manifest复用Admin/Java/Monitor等未变产物。
 

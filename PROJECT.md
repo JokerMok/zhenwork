@@ -1,14 +1,26 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-27。当前范围：普通聊天的服务端持续回复及原会话重连；复用任务执行、知识专家、文件交付、按需Core及组织权限，不制作桌面安装包。
+核对日期：2026-10-27。当前范围：员工登录直达工作台、整组资源共享和实际执行接线；保留普通聊天后台持续回复、按需 Core 及组织权限，不制作桌面安装包。
 
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261027-chat-continuity-v2`；准确应用 SHA：`bb5e374ed806309de51a9403edef85a6f54c1abc`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。已验证回滚目标保留 `20261026-task-workspace-v6` / `bbfe9447b4711251ff2c82c6b1205dac2224b73e`，不使用未验收中间候选。
+- 激活 release：`20261027-entry-sharing-v10`；准确应用 SHA：`b2edb832ed634ed3844e4970693e3c3a84093706`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。已验证回滚目标保留 `20261027-chat-continuity-v2` / `bb5e374ed806309de51a9403edef85a6f54c1abc`，不使用未验收中间候选。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
+
+## 2026-10-27 登录直达与整组共享
+
+员工登录默认进入工作台，原会话深链接经登录、身份失效及刷新保留。任务、文件、能力等 Host 目录保持 Core0；原生会话准备就地显示在输入区，导航外壳保持可用。移除可逆密码持久化并清理旧值，保留账号记忆和桌面启动保护。异步认证时关闭请求不再留下永久响应占位，真实任务/请求仍阻止回收。
+
+企业资源共享改统一搜索员工/部门/角色、默认允许使用、折叠高级设置与已有共享。服务端重新解析依赖、最小授权、持久幂等和整组事务；撤回来源保留独立授权。敏感依赖必须在同一弹窗明确确认真实单位、环境与只读方法范围，未实现仅专家专用的连接授权，不把它写成已有能力。凭据仍仅服务端保存。
+
+真实调用发现后台计算工具原来没有接入原生聊天；现通过现有办公 MCP 和 RC2 共用 BigDecimal 实现，并在普通/后台授权下复核当前 USE、工具类型和只读边界。审批型工具不能经该计算入口执行。前台合法只读计算复用原可信办公确认机制，不放行任意命令。
+
+0024 仅增加来源关联许可表与有效 ACL/模型视图，旧 23 条不变。v1 构建员工/Host/Admin/Java，v3 补工具桥接并复用未变 Admin/监控，后续 v4–v10 仅更新 Host，其余产物按 manifest 精确复用；Rust/amd64 镜像未改。实现和边界见 [员工登录与共享](docs/employee-capabilities.md)。私有网页、下载产物、失败记录及限定验收在 `.codex/login-sharing/acceptance-report.md` 和服务器 `shared/config/acceptance/20261027-entry-sharing.md`；结果以 VERIFIED.json 为准。
+
+回滚审核 `shared/config/rollback-reviews/20261027-entry-v10-to-chat-v2.json` 绑定实际 24 条迁移和旧已验证应用。先收敛执行再用 manage.sh rollback，只退应用/配置，保留 DB、消息、任务、文件、版本和授权；旧应用忽略新增关联许可，依赖这些许可的专家可能暂不可用。未实际回滚，不清库。
 
 ## 2026-10-27 普通聊天持续回复纠偏
 
