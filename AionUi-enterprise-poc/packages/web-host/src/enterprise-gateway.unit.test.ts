@@ -842,6 +842,8 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
   const staticDir = await mkdtemp(path.join(tmpdir(), 'enterprise-core-idle-'));
   await writeFile(path.join(staticDir, 'index.html'), '<html></html>');
   let idleReady = false;
+  let validateGate: Promise<void> | undefined;
+  let validationStarted: (() => void) | undefined;
   let starts = 0;
   let stops = 0;
   let releaseHeld!: () => void;
@@ -852,7 +854,7 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
   const gateway = await startEnterpriseGateway({
     staticDir, publicOrigin: 'https://workspace.example', port: 0, coreIdleMs: 5,
     login: async () => ({ actor: { serverId: 'rc2', userId: '1' },
-      validate: async () => true, close: async () => {} }),
+      validate: async () => { validationStarted?.(); await validateGate; return true; }, close: async () => {} }),
     startCore: async () => {
       starts += 1;
       const core = http.createServer((req, res) => {
@@ -923,6 +925,15 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
     await new Promise((resolve) => setTimeout(resolve, 10));
     await gateway.reapIdleCores();
     expect(stops).toBe(0);
+    // A browser may disconnect while identity validation is still awaiting RC2.
+    let releaseValidation!: () => void;
+    validateGate = new Promise<void>(resolve => { releaseValidation = resolve; });
+    const validating = new Promise<void>(resolve => { validationStarted = resolve; });
+    const abandoned = http.request({hostname:'127.0.0.1',port:gateway.port,path:'/api/system/info',headers:{host:'workspace.example',cookie}});
+    abandoned.on('error', () => {});abandoned.end();await validating;
+    const disconnected = new Promise<void>(resolve => abandoned.once('close', resolve));abandoned.destroy();await disconnected;
+    await new Promise(resolve => setTimeout(resolve,5));releaseValidation();validateGate=undefined;validationStarted=undefined;
+    await new Promise(resolve => setTimeout(resolve,10));
     idleReady = true;
     const activeRequest = call('GET', '/api/hold', cookie);
     await held;

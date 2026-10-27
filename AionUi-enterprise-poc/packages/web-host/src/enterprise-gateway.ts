@@ -673,9 +673,13 @@ export async function startEnterpriseGateway(
 
   const actorSessions = (key: string): Session[] => [...sessions.values()].filter((session) =>
     actorKey(session.actor) === key);
+  const hasOpenResponses = (session: Session): boolean => {
+    for (const response of session.responses) if (response.destroyed || response.writableEnded) session.responses.delete(response);
+    return session.responses.size > 0;
+  };
   const idleCandidate = (key: string, entry: CoreEntry, allowSockets = false): boolean => coreIdleMs > 0 &&
     cores.get(key) === entry && entry.ready && Date.now() - entry.lastUsed >= coreIdleMs &&
-    !actorSessions(key).some((session) => session.responses.size > 0 ||
+    !actorSessions(key).some((session) => hasOpenResponses(session) ||
       (!allowSockets && session.sockets.size > 0));
   const closeIdleSocket = (socket: Duplex): Promise<void> => new Promise((resolve) => {
     if (socket.destroyed) { resolve(); return; }
@@ -1016,6 +1020,7 @@ export async function startEnterpriseGateway(
     }
     const authStarted = performance.now();
     const auth = await authenticate(req);
+    if (res.destroyed) return;
     const authDuration = performance.now() - authStarted;
     res.setHeader('server-timing', `auth;dur=${authDuration.toFixed(1)}`);
     if (!auth) {
@@ -1079,7 +1084,7 @@ export async function startEnterpriseGateway(
       const backgroundTasksVerified = await revoke(auth.id);
       return reply(res, 200, { ok: true, backgroundTasksVerified });
     }
-    auth.session.responses.add(res);
+    if (!res.destroyed && !res.writableEnded) auth.session.responses.add(res);
     res.once('close', () => auth.session.responses.delete(res));
     if (req.url === '/enterprise/resources/status' && req.method === 'GET') {
       try {
@@ -1499,7 +1504,7 @@ export async function startEnterpriseGateway(
     if (req.url === '/api/mcp/test-connection' && req.method === 'POST') {
       // Browser reads omit saved credentials; resolve the unchanged transport
       // only from this authenticated actor's Core, never another profile.
-      auth.session.responses.add(res);
+      if (!res.destroyed && !res.writableEnded) auth.session.responses.add(res);
       const abort = new AbortController();
       res.once('close', () => { auth.session.responses.delete(res); abort.abort(); });
       try {
@@ -1537,7 +1542,7 @@ export async function startEnterpriseGateway(
       return;
     }
     if (clientSettingsRoute(req.url) && req.method === 'PUT') {
-      auth.session.responses.add(res);
+      if (!res.destroyed && !res.writableEnded) auth.session.responses.add(res);
       const abort = new AbortController();
       res.once('close', () => { auth.session.responses.delete(res); abort.abort(); });
       try {
@@ -1576,7 +1581,7 @@ export async function startEnterpriseGateway(
     }
     if (/^\/api\/fs\/dir(?:\?|$)/.test(req.url)) {
       if (req.method !== 'POST') return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
-      auth.session.responses.add(res);
+      if (!res.destroyed && !res.writableEnded) auth.session.responses.add(res);
       const abort = new AbortController();
       res.once('close', () => { auth.session.responses.delete(res); abort.abort(); });
       try {
@@ -1612,7 +1617,7 @@ export async function startEnterpriseGateway(
     const cronCollection = req.url === '/api/cron/jobs' && req.method === 'POST';
     const cronItem = /^\/api\/cron\/jobs\/(cron_[A-Za-z0-9_-]{8,80})$/.exec(req.url);
     if (opts.syncCronGrant && (cronCollection || (cronItem && ['PUT', 'DELETE'].includes(req.method || '')))) {
-      auth.session.responses.add(res);
+      if (!res.destroyed && !res.writableEnded) auth.session.responses.add(res);
       res.once('close', () => auth.session.responses.delete(res));
       try {
         const requestBody = req.method === 'DELETE' ? undefined : await body(req, 1024 * 1024);
@@ -1693,7 +1698,7 @@ export async function startEnterpriseGateway(
     }
     if (req.url.startsWith('/api/') || req.url.startsWith('/api?')) {
       if (Number(req.headers['content-length'] || 0) > MAX_BODY) return reply(res, 413, { error: 'PAYLOAD_TOO_LARGE' });
-      auth.session.responses.add(res);
+      if (!res.destroyed && !res.writableEnded) auth.session.responses.add(res);
       res.once('close', () => auth.session.responses.delete(res));
       try {
         if (opts.profileRoot && req.method === 'GET' && !cores.has(actorKey(auth.session.actor)))
