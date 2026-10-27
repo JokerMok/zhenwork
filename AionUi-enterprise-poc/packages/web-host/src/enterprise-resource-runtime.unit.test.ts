@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, symlink } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { enterpriseProfilePath } from './enterprise-core.js';
-import { enterpriseManagedResourcePath, syncEnterpriseWebResources } from './enterprise-resource-runtime.js';
+import { enterpriseManagedResourcePath, syncEnterpriseWebResources, trustedEnterpriseRead } from './enterprise-resource-runtime.js';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 
 test.each(['assistant dependencies', 'standalone authorization', 'mixed authorization',
@@ -247,3 +247,20 @@ test('a new organization default requests an idle refresh without revoking an al
     await rm(root, { recursive: true, force: true });
   }
 }, 10000);
+
+
+test('trusted read-only enterprise queries require current policy and the exact actor proxy transport', async () => {
+ const id='44444444-4444-4444-8444-444444444444';const binding={resourceId:id,port:'18888',key:'private-test-capability',host:'model-gateway',version:2,connectionId:id};
+ let effect='READ',allowed=true,validProxy=true;
+ const client={authorizedResource:async()=>{if(!allowed)throw Error('revoked');return {version:2,config:{managedProfile:'external-query',allowedTools:['entInfo'],toolEffects:{entInfo:effect}}}},authorizedMcpConnection:async()=>({})} as unknown as Rc2GatewayClient;
+ const core={port:3000,localToken:'private-core-token'} as never;
+ const fetchImpl=(async()=>new Response(JSON.stringify({success:true,data:[{name:'rc2-enterprise-'+id,description:'RC2 authorized enterprise MCP',enabled:true,transport:{url:validProxy?'http://model-gateway:18888/mcp':'https://untrusted.example/mcp',headers:{Authorization:'Bearer '+binding.key}}}]}))) as typeof fetch;
+ const c={description:'MCP rc2-enterprise-'+id+'/entInfo: {}'};
+ expect(await trustedEnterpriseRead(core,c,[binding],async()=>client,fetchImpl)).toBe(true);
+ effect='WRITE';expect(await trustedEnterpriseRead(core,c,[binding],async()=>client,fetchImpl)).toBe(false);effect='READ';
+ validProxy=false;expect(await trustedEnterpriseRead(core,c,[binding],async()=>client,fetchImpl)).toBe(false);validProxy=true;
+ allowed=false;expect(await trustedEnterpriseRead(core,c,[binding],async()=>client,fetchImpl)).toBe(false);allowed=true;
+ expect(await trustedEnterpriseRead(core,{...c,questions:[{question:'confirm'}]},[binding],async()=>client,fetchImpl)).toBe(false);
+ expect(await trustedEnterpriseRead(core,{description:'Execute: anything'},[binding],async()=>client,fetchImpl)).toBe(false);
+ expect(await trustedEnterpriseRead(core,c,[],async()=>client,fetchImpl)).toBe(false);
+});

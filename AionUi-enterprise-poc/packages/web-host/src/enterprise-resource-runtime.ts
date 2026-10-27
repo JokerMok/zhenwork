@@ -8,7 +8,7 @@ import { enterpriseProfilePath } from './enterprise-core.js';
 import { removeManagedSkillCache } from './enterprise-skill-cleanup.js';
 import type { EnterpriseActor, EnterpriseCore } from './enterprise-gateway.js';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
-import { enterpriseProxyBindHost, enterpriseProxyHost } from './enterprise-core-address.js';
+import { enterpriseCoreBase, enterpriseProxyBindHost, enterpriseProxyHost } from './enterprise-core-address.js';
 
 type Model = { id: string; code: string; name?: string;
   availableModels?: Array<{ id: string; code: string; name?: string }> };
@@ -22,6 +22,29 @@ type Assistant = CatalogItem & { instruction: string; modelId: string; modelCode
 type SkillResource = { id: string; name: string; source: string; version: number;
   files: SkillFile[]; dependencyIds: string[] };
 export type RuntimeResourceIssue = { type: 'SKILL' | 'MCP' | 'ASSISTANT'; id: string; code: string };
+
+type McpBinding = {resourceId: string; port: string; key: string; host: string; version: number; connectionId: string};
+
+/** Only administrator-managed READ queries on this exact registered actor proxy are trusted. */
+export async function trustedEnterpriseRead(core: EnterpriseCore, confirmation: Record<string, unknown>, bindings: McpBinding[],
+  activeClient: () => Promise<Rc2GatewayClient>, fetchImpl: typeof fetch = fetch): Promise<boolean> {
+  if (confirmation.questions || typeof confirmation.description !== 'string') return false;
+  const match = /^MCP rc2-enterprise-([0-9a-f-]{36})\/([A-Za-z0-9_.-]{1,100}): /i.exec(confirmation.description);
+  const binding = bindings.find(item => item.resourceId === match?.[1]);
+  if (!match || !binding) return false;
+  try {
+    const client=await activeClient();const resource=await client.authorizedResource(binding.resourceId,'MCP') as Resource;
+    const config=resource.config||{};const effects=config.toolEffects as Record<string,unknown>|undefined;
+    if(resource.version!==binding.version || config.managedProfile!=='external-query' || effects?.[match[2]]!=='READ' ||
+       !Array.isArray(config.allowedTools) || !config.allowedTools.includes(match[2])) return false;
+    await client.authorizedMcpConnection(binding.connectionId,binding.resourceId);
+    const response=await fetchImpl(enterpriseCoreBase(core)+'/api/mcp/servers',{headers:{'x-aion-enterprise-local-token':core.localToken},signal:AbortSignal.timeout(3000)});
+    const body=await response.json() as {success?:boolean;data?:Array<{name?:string;description?:string;enabled?:boolean;transport?:{url?:string;headers?:Record<string,string>}}>};
+    const server=body.data?.find(item=>item.name==='rc2-enterprise-'+binding.resourceId);
+    return response.ok && body.success===true && server?.enabled===true && server.description==='RC2 authorized enterprise MCP' &&
+      server.transport?.url===`http://${binding.host}:${binding.port}/mcp` && server.transport.headers?.Authorization==='Bearer '+binding.key;
+  } catch { return false; }
+}
 
 const MAX_SYNC_SKILL_BYTES = 48 * 1024 * 1024;
 
@@ -168,7 +191,7 @@ export async function syncEnterpriseWebResources(
   activeClient: () => Promise<Rc2GatewayClient>,
   relayClient: (conversationId?: string) => Promise<Rc2GatewayClient>,
   onCatalogChange?: () => void
-): Promise<{ stop: () => Promise<void>; invalidated: Promise<void>; issues: RuntimeResourceIssue[] }> {
+): Promise<{ stop: () => Promise<void>; invalidated: Promise<void>; issues: RuntimeResourceIssue[]; trustedConfirmation: (c:Record<string,unknown>)=>Promise<boolean> }> {
   const profile = enterpriseProfilePath(profileRoot, actor);
   const stage = await mkdtemp(path.join(profile, 'rc2-stage-'));
   await mkdir(stage, { recursive: true, mode: 0o700 });
@@ -236,8 +259,7 @@ export async function syncEnterpriseWebResources(
     const skillIds = mergedIds(assistants.flatMap((item) => item.skillIds), catalogs.skills);
     const mcpIds = mergedIds(assistants.flatMap((item) => item.mcpIds), catalogs.mcps);
     const bundle: { skills: Array<{ id: string; name: string; path: string; version: number }>;
-      mcps: Array<{ resourceId: string; port: string; key: string; host: string;
-        version: number; connectionId: string }> } =
+      mcps: McpBinding[] } =
       { skills: [], mcps: [] };
     const skillResources: SkillResource[] = [];
     const pendingSkillIds = [...skillIds];
@@ -403,7 +425,7 @@ export async function syncEnterpriseWebResources(
     };
     const monitor = setInterval(() => { void check(); }, 5000);
     monitor.unref();
-    return { invalidated, issues: syncResult.issues, stop: async () => {
+    return { invalidated, issues: syncResult.issues, trustedConfirmation: c => trustedEnterpriseRead(core,c,bundle.mcps,activeClient), stop: async () => {
       clearInterval(monitor);
       await closeProxies();
       await rm(stage, { recursive: true, force: true });

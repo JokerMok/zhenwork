@@ -482,7 +482,7 @@ export function createEnterpriseModelRuntime(
         let stopHistory = (): void => {};
         if (options.profileRoot) {
           office = await startOfficeTools(actor, core, options.profileRoot, (conversationId) => relayClient(actor, conversationId), options.publicOrigin);
-          officeTrust.set(key(actor), office.trustedConfirmation);
+          officeTrust.set(key(actor), async c => (await office?.trustedConfirmation(c)) === true || (await resources?.trustedConfirmation(c)) === true);
           await ensureOfficeAssistant(core, office.mcpId, model);
           if (core.workspaceRoot) {
             const store = await OfficeStore.create(options.profileRoot, actor), workspace = core.workspaceRoot;
