@@ -60,7 +60,7 @@
     "error": "错误",
     "cancelled": "已取消",
     "preparationQueued": "正在等待可用容量",
-    "preparationStarting": "正在启动你的工作区",
+    "preparationStarting": "正在连接会话服务",
     "preparationReady": "运行环境已就绪",
     "preparationTimedOut": "环境准备时间过长，请重试以继续。",
     "preparationElapsed": "已用时 {{seconds}} 秒",
@@ -72,7 +72,8 @@
     "bootstrapLoadFailed": "页面加载失败，请重新加载后再试。",
     "identityExpired": "登录已过期，请重新登录。",
     "resourceUpdatePending": "能力更新已排队，将在执行与工作区占用安全释放后生效；现有可用能力仍可使用。",
-    "resourceCheckDeferred": "暂时无法检查能力更新，可继续使用现有授权能力；稍后自动检查。"
+    "resourceCheckDeferred": "暂时无法检查能力更新，可继续使用现有授权能力；稍后自动检查。",
+    "capacityBusy": "当前执行容量已满，请稍后重试"
   },
   "errors": {
     "load": "无法加载此区域（{{code}}）。",

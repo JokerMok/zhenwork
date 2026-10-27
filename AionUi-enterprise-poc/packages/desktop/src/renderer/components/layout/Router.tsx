@@ -47,6 +47,7 @@ const CapabilitiesRedirect: React.FC = () => {
 
 const ProtectedLayout: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
   const { status, user } = useAuth();
+  const location = useLocation();
   // Mounted once for every authenticated route: the loop warning has to reach
   // the user even when they are looking at a THIRD conversation, which is the
   // whole reason it is a broadcast rather than an in-conversation banner.
@@ -57,7 +58,7 @@ const ProtectedLayout: React.FC<{ layout: React.ReactElement }> = ({ layout }) =
   }
 
   if (status !== 'authenticated') {
-    return <Navigate to='/login' replace />;
+    return <Navigate to='/login' state={{ from: location.pathname + location.search }} replace />;
   }
 
   return React.cloneElement(layout);
@@ -70,10 +71,7 @@ const PanelRoute: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
     <HashRouter>
       <DocumentTitle />
       <Routes>
-        <Route
-          path='/login'
-          element={status === 'authenticated' ? <Navigate to={enterpriseHome()} replace /> : withRouteFallback(LoginPage)}
-        />
+        <Route path='/login' element={withRouteFallback(LoginPage)} />
         <Route element={<ProtectedLayout layout={layout} />}>
           <Route index element={<Navigate to={enterpriseHome()} replace />} />
           <Route path='/workspace' element={withRouteFallback(Workspace)} />
@@ -104,7 +102,10 @@ const PanelRoute: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
           <Route path='/settings/skills-hub' element={<Navigate to='/settings/skills' replace />} />
           <Route path='/settings/appearance' element={withRouteFallback(AppearanceSettings)} />
           <Route path='/settings/display' element={<Navigate to='/settings/appearance' replace />} />
-          <Route path='/settings/webui' element={isEnterpriseWeb() ? <Navigate to='/settings/system' replace /> : withRouteFallback(WebuiSettings)} />
+          <Route
+            path='/settings/webui'
+            element={isEnterpriseWeb() ? <Navigate to='/settings/system' replace /> : withRouteFallback(WebuiSettings)}
+          />
           <Route path='/settings/pet' element={<Navigate to='/settings/system' replace />} />
           <Route path='/settings/archived' element={withRouteFallback(ArchivedSettings)} />
           <Route path='/settings/system' element={withRouteFallback(SystemSettings)} />

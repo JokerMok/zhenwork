@@ -20,6 +20,8 @@ public class WorkspaceResourceController {
     public record Edit(@Min(1) int expectedVersion,@NotBlank @Size(max=100) String name,@Size(max=500) String description,@NotNull Map<String,Object> config){}
     public record Activate(@Min(1) int version){}
     public record Share(@NotBlank String subjectType,@NotBlank @Pattern(regexp="[0-9]{1,19}") String subjectId,@NotEmpty Set<String> actions){}
+    public record SharePlan(@NotEmpty @Size(max=50) List<WorkspaceShareSupport.Target> targets,@NotEmpty Set<String> actions) {}
+    public record ShareBatch(@NotEmpty @Size(max=50) List<WorkspaceShareSupport.Target> targets,@NotEmpty Set<String> actions,@NotBlank String fingerprint,@NotNull Set<String> confirmedDependencies,@NotNull UUID idempotencyKey) {}
     public record ReviewDecision(boolean approve,@NotBlank @Size(max=1000) String reason){}
     public record Enable(boolean enabled,@Size(max=1000) String reason){}
     private long subject(String value){try{return Long.parseLong(value);}catch(NumberFormatException e){throw new WorkspaceDenied(400,"InvalidShareSubject");}}
@@ -34,6 +36,8 @@ public class WorkspaceResourceController {
     @PutMapping("/resources/{id}") public R<?> edit(@PathVariable UUID id,@Valid @RequestBody Edit input){return R.ok(resources.edit(id,actor(),input.expectedVersion(),input.name(),Objects.toString(input.description(),""),input.config()));}
     @PostMapping("/resources/{id}/activate") public R<?> activate(@PathVariable UUID id,@Valid @RequestBody Activate input){return R.ok(resources.activate(id,actor(),input.version()));}
     @PostMapping("/resources/{id}/shares") public R<?> share(@PathVariable UUID id,@Valid @RequestBody Share input){return R.ok(resources.share(id,actor(),input.subjectType(),subject(input.subjectId()),input.actions()));}
+    @PostMapping("/resources/{id}/shares/plan") public R<?> sharePlan(@PathVariable UUID id,@Valid @RequestBody SharePlan input){return R.ok(shareSupport.plan(id,actor(),input.targets(),input.actions().contains("USE")));}
+    @PostMapping("/resources/{id}/shares/batch") public R<?> shareBatch(@PathVariable UUID id,@Valid @RequestBody ShareBatch input){return R.ok(resources.shareBatch(id,actor(),input.targets(),input.actions(),input.fingerprint(),input.confirmedDependencies(),input.idempotencyKey()));}
     @GetMapping("/resources/{id}/shares/preflight") public R<?> sharePreflight(@PathVariable UUID id,@RequestParam String subjectType,@RequestParam @Pattern(regexp="[0-9]{1,19}") String subjectId,@RequestParam(defaultValue="true") boolean use){return R.ok(shareSupport.preflight(id,actor(),subjectType,subject(subjectId),use));}
     @DeleteMapping("/resources/{id}/shares/{share}") public R<?> revoke(@PathVariable UUID id,@PathVariable UUID share){resources.revoke(id,share,actor());return R.ok();}
     @GetMapping("/resources/{id}/shares") public R<?> shares(@PathVariable UUID id){return R.ok(publication.shares(id,actor()));}

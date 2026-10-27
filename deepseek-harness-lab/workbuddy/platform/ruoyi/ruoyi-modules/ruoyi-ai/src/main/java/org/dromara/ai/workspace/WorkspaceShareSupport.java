@@ -60,6 +60,122 @@ public class WorkspaceShareSupport {
         return result(issues.isEmpty(),new ArrayList<>(issues.values()),members.size(),dynamic);
     }
 
+    public record Target(String subjectType, String subjectId) {}
+
+    /** A fresh authorization plan, not a grant or a cached runtime capability. */
+    public Map<String,Object> plan(UUID id,long actor,List<Target> targets,boolean use) {
+        if(targets==null||targets.isEmpty()||targets.size()>50||new HashSet<>(targets).size()!=targets.size())throw new WorkspaceDenied(400,"InvalidShareTargets");
+        var resource=guard.require(id,actor,AiResourceGuard.Action.SHARE);
+        if(!guard.owner(resource,actor))throw new WorkspaceDenied(403,"OwnerSharingRequired");
+        guard.require(id,actor,AiResourceGuard.Action.USE);
+        List<Dependency> dependencies=use?allDependencies(id,resource,actor,new LinkedHashSet<>()):List.of();
+        List<Map<String,Object>> additions=new ArrayList<>(),issues=new ArrayList<>(),recipients=new ArrayList<>();
+        Set<Long> checkedMembers=new HashSet<>();
+        for(var target:targets){
+            long subjectId=targetId(target);String subject=target.subjectType();
+            String name=targetName(subject,subjectId);
+            List<Long> users=members(subject,subjectId);
+            checkedMembers.addAll(users);
+            if(checkedMembers.size()>MAX_GROUP_MEMBERS||checkedMembers.size()*Math.max(1,dependencies.size())>2000)throw new WorkspaceDenied(409,"ShareTargetTooLarge");
+            recipients.add(Map.of("subjectType",subject,"subjectId",target.subjectId(),"name",name,"checkedUsers",users.size()));
+            if(users.isEmpty()||users.size()>MAX_GROUP_MEMBERS){issues.add(issue("SUBJECT",target.subjectId(),name,users.isEmpty()?"NoActiveMembersToVerify":"ShareTargetTooLarge"));continue;}
+            for(long user:users)if(use)try{permissions.require(user,guard.qualification(resource.get("resource_type").toString(),AiResourceGuard.Action.USE));}catch(WorkspaceDenied denied){issues.add(issue("SUBJECT",target.subjectId(),name,"PermissionDenied"));}
+            for(var dependency:dependencies){
+                boolean missing=!"USER".equals(subject)&&!scopeGranted(dependency,subject,subjectId);
+                for(long user:users)try{verify(dependency,user);}catch(WorkspaceDenied denied){missing=true;if("PermissionDenied".equals(denied.getMessage()))issues.add(issue(dependency.type(),dependency.id().toString(),name+" / "+dependency.name(),"PermissionDenied"));}
+                if(!missing)continue;
+                try{
+                    var grant=delegation(dependency,actor);
+                    grant.put("subjectType",subject);grant.put("subjectId",target.subjectId());grant.put("subjectName",name);
+                    additions.add(grant);
+                }catch(WorkspaceDenied denied){issues.add(issue(dependency.type(),dependency.id().toString(),dependency.name(),denied.getMessage()));}
+            }
+        }
+        var result=new LinkedHashMap<String,Object>();
+        result.put("dependencyConfig",referenceConfig(id,resource));
+        result.put("resourceVersion",resource.get("published_version"));result.put("resourceAuthVersion",resource.get("auth_version"));
+        result.put("dependencies",dependencies.stream().map(d->d.type()+":"+d.id()).toList());
+        result.put("recipients",recipients);result.put("additions",additions);result.put("issues",issues);result.put("ready",issues.isEmpty());
+        // Include versions, scopes, targets and required additions in the confirmation fence.
+        result.put("fingerprint",WorkspaceResources.hash(JsonUtils.toJsonString(result)));
+        return result;
+    }
+
+    static long targetId(Target target){
+        if(target==null||target.subjectType()==null||!Set.of("USER","ROLE","DEPARTMENT").contains(target.subjectType())||target.subjectId()==null||!target.subjectId().matches("[0-9]{1,19}"))throw new WorkspaceDenied(400,"InvalidShareSubject");
+        try{return Long.parseLong(target.subjectId());}catch(Exception e){throw new WorkspaceDenied(400,"InvalidShareSubject");}
+    }
+
+    private List<Dependency> allDependencies(UUID id,Map<String,Object> resource,long actor,Set<UUID> visited){
+        if(!visited.add(id))return List.of();
+        if(visited.size()>64)throw new WorkspaceDenied(409,"TooManyResourceDependencies");
+        Map<String,Dependency> result=new LinkedHashMap<>();
+        for(var dependency:dependencies(id,resource,actor)){
+            result.put(dependency.type()+dependency.id(),dependency);
+            if("SKILL".equals(dependency.type())){
+                var row=guard.require(dependency.id(),actor,AiResourceGuard.Action.USE);
+                for(var nested:allDependencies(dependency.id(),row,actor,visited))result.put(nested.type()+nested.id(),nested);
+            }
+        }
+        return new ArrayList<>(result.values());
+    }
+
+    private Map<String,Object> referenceConfig(UUID id,Map<String,Object> resource){
+        var rows=jdbc.queryForList("SELECT config::text FROM ai_resource_version WHERE resource_id=? AND version=?",id,resource.get("published_version"));
+        if(rows.size()!=1)throw new WorkspaceDenied(404,"VersionNotFound");
+        var config=JsonUtils.parseMap(rows.getFirst().get("config").toString());
+        var result=new LinkedHashMap<String,Object>();
+        if("ASSISTANT".equals(resource.get("resource_type"))){
+            result.put("modelId",config.get("modelId"));
+            for(String key:List.of("skillIds","mcpIds","toolIds","knowledgeIds"))result.put(key,config.getOrDefault(key,List.of()));
+        }else if("SKILL".equals(resource.get("resource_type"))){
+            var manifest=(Map<?,?>)config.get("manifest");
+            for(String key:List.of("dependencies","requiredTools"))result.put(key,manifest.containsKey(key)?manifest.get(key):List.of());
+        }
+        return result;
+    }
+
+    private boolean scopeGranted(Dependency dependency,String subject,long subjectId){
+        if("MODEL".equals(dependency.type()))return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_office_defaults WHERE singleton AND model_id=?) OR EXISTS(SELECT 1 FROM ai_effective_model_policy WHERE model_id=? AND (subject_type='ALL' OR (subject_type=? AND subject_id=?)))",Boolean.class,dependency.id(),dependency.id(),subject,subjectId));
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_resource WHERE id=? AND visibility='ENTERPRISE_PUBLIC') OR EXISTS(SELECT 1 FROM ai_effective_resource_acl WHERE resource_id=? AND action='USE' AND subject_type=? AND subject_id=?)",Boolean.class,dependency.id(),dependency.id(),subject,subjectId));
+    }
+
+    /** Never infer that permission to use a resource includes permission to delegate it. */
+    private Map<String,Object> delegation(Dependency dependency,long actor){
+        var out=new LinkedHashMap<String,Object>();
+        out.put("type",dependency.type());out.put("id",dependency.id().toString());out.put("name",dependency.name());
+        out.put("key",dependency.type()+":"+dependency.id());
+        if("MODEL".equals(dependency.type())){
+            permissions.require(actor,"ai:model:admin");var model=models.model(actor,dependency.id());
+            out.put("version",model.get("model_version"));out.put("sensitive",false);out.put("scope","模型调用；不包含密钥或供应商配置");return out;
+        }
+        verify(dependency,actor);
+        var row=guard.require(dependency.id(),actor,AiResourceGuard.Action.SHARE);
+        if(!guard.owner(row,actor))throw new WorkspaceDenied(403,"DependencyDelegationDenied");
+        guard.require(dependency.id(),actor,AiResourceGuard.Action.USE);
+        int version=((Number)row.get("published_version")).intValue();
+        out.put("version",version);out.put("authVersion",row.get("auth_version"));
+        boolean sensitive=!"TOOL".equals(dependency.type());
+        String scope="查看和使用此资源；不包含编辑、转授或凭据";
+        if("MCP".equals(dependency.type())){
+            var enterpriseConnections=jdbc.queryForList("SELECT auth_version FROM ai_mcp_connection WHERE resource_id=? AND scope='ENTERPRISE' AND enabled AND status='READY' AND template_version=?",dependency.id(),version);
+            if(enterpriseConnections.size()!=1)throw new WorkspaceDenied(409,"EnterpriseMcpConnectionRequired");
+            out.put("connectionAuthVersion",enterpriseConnections.getFirst().get("auth_version"));
+            var connections=jdbc.queryForList("SELECT e.business_unit,e.environment,e.tested_status,e.identity_verified,e.connector_type,e.allowed_methods::text,e.verified_identity::text FROM ai_external_connection e JOIN ai_mcp_connection c ON c.id=e.id WHERE c.resource_id=?",dependency.id());
+            if(!connections.isEmpty()){
+                var c=connections.getFirst();
+                if(!"READY".equals(c.get("tested_status")))throw new WorkspaceDenied(409,"ExternalConnectionNotReady");
+                if(Objects.toString(c.get("business_unit"),"").isBlank()||("CSWM_IOT".equals(c.get("connector_type"))&&!Boolean.TRUE.equals(c.get("identity_verified"))))throw new WorkspaceDenied(409,"DataScopeUnverified");
+                scope="业务单位："+c.get("business_unit")+"；环境："+c.get("environment")+"；已开放只读方法："+c.get("allowed_methods")+"。授权后也可独立调用该连接；不授予凭据或任意数据源访问。";
+                out.put("connectionScope",Objects.toString(c.get("verified_identity"),"{}"));
+            }
+            var config=JsonUtils.parseMap(guard.version(dependency.id(),version,actor,AiResourceGuard.Action.USE).get("config").toString());
+            if(!(config.get("toolEffects") instanceof Map<?,?> effects)||effects.values().stream().anyMatch(effect->!"READ".equals(effect)))throw new WorkspaceDenied(409,"McpDelegationRequiresReadOnlyScope");
+        }
+        if("KNOWLEDGE".equals(dependency.type()))scope="可检索、预览和下载该知识库内有权使用的资料；不限于当前专家";
+        out.put("sensitive",sensitive);out.put("scope",scope);return out;
+    }
+
     private Map<String,Object> result(boolean ready,List<Map<String,Object>> issues,int checkedUsers,boolean dynamic){
         Map<String,Object> result=new LinkedHashMap<>();
         result.put("ready",ready);result.put("issues",issues);result.put("checkedUsers",checkedUsers);
@@ -128,7 +244,7 @@ public class WorkspaceShareSupport {
 
     private void verify(Dependency dependency,long user){
         switch(dependency.type()){
-            case "MODEL" -> models.model(user,dependency.id());
+            case "MODEL" -> {permissions.require(user,"ai:model:use");permissions.require(user,"ai:session:use");models.model(user,dependency.id());}
             case "SKILL" -> {var resolved=skills.resolve(List.of(dependency.id().toString()),user);tools.resolve(List.of(),resolved,user);}
             case "MCP" -> mcp.resolve(List.of(dependency.id().toString()),user);
             case "TOOL" -> tools.resolve(List.of(dependency.id().toString()),List.of(),user);

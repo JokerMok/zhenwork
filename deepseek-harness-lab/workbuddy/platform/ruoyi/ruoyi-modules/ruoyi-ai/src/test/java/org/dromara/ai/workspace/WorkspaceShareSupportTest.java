@@ -109,4 +109,59 @@ class WorkspaceShareSupportTest {
 
         assertEquals("InvalidResourceDependencies",denied.getMessage());
     }
+    @Test
+    void missingDelegableModelIsPlannedWithoutCopyingASecretOrChangingAnyGrant() {
+        UUID resource=UUID.randomUUID(),model=UUID.randomUUID();long actor=7L,user=9L;
+        var row=Map.<String,Object>of("resource_type","ASSISTANT","published_version",1,"auth_version",1L);
+        when(guard.require(resource,actor,AiResourceGuard.Action.SHARE)).thenReturn(row);
+        when(guard.owner(row,actor)).thenReturn(true);
+        when(jdbc.queryForList("SELECT nick_name FROM sys_user WHERE user_id=? AND status='0' AND del_flag='0'",String.class,user)).thenReturn(List.of("新员工"));
+        when(jdbc.queryForList("SELECT config::text FROM ai_resource_version WHERE resource_id=? AND version=?",resource,1)).thenReturn(List.of(Map.of("config",JsonUtils.toJsonString(Map.of("modelId",model.toString())))));
+        when(models.model(actor,model)).thenReturn(Map.of("name","组织模型","model_version",4));
+        when(models.model(user,model)).thenThrow(new WorkspaceDenied(403,"ModelPermissionDenied"));
+        var plan=support.plan(resource,actor,List.of(new WorkspaceShareSupport.Target("USER",Long.toString(user))),true);
+        assertEquals(true,plan.get("ready"));
+        var additions=(List<Map<String,Object>>)plan.get("additions");
+        assertEquals(false,additions.getFirst().get("sensitive"));
+        assertFalse(JsonUtils.toJsonString(plan).contains("api_key"));
+        verify(jdbc,never()).update(anyString(),any(Object[].class));
+    }
+
+    @Test
+    void authorityToUseAModelDoesNotImplyAuthorityToDelegateIt() {
+        UUID resource=UUID.randomUUID(),model=UUID.randomUUID();long actor=7L,user=9L;
+        var row=Map.<String,Object>of("resource_type","ASSISTANT","published_version",1,"auth_version",1L);
+        when(guard.require(resource,actor,AiResourceGuard.Action.SHARE)).thenReturn(row);
+        when(guard.owner(row,actor)).thenReturn(true);
+        when(jdbc.queryForList("SELECT nick_name FROM sys_user WHERE user_id=? AND status='0' AND del_flag='0'",String.class,user)).thenReturn(List.of("新员工"));
+        when(jdbc.queryForList("SELECT config::text FROM ai_resource_version WHERE resource_id=? AND version=?",resource,1)).thenReturn(List.of(Map.of("config",JsonUtils.toJsonString(Map.of("modelId",model.toString())))));
+        when(models.model(actor,model)).thenReturn(Map.of("name","组织模型"));
+        when(models.model(user,model)).thenThrow(new WorkspaceDenied(403,"ModelPermissionDenied"));
+        doThrow(new WorkspaceDenied(403,"PermissionDenied")).when(permissions).require(actor,"ai:model:admin");
+        var plan=support.plan(resource,actor,List.of(new WorkspaceShareSupport.Target("USER",Long.toString(user))),true);
+        assertEquals(false,plan.get("ready"));
+        assertTrue(((List<?>)plan.get("additions")).isEmpty());
+        verify(jdbc,never()).update(anyString(),any(Object[].class));
+    }
+
+    @Test
+    void confirmedBusinessScopeIsRequiredBeforePlanningNationalPlatformAccess() {
+        UUID resource=UUID.randomUUID(),model=UUID.randomUUID(),connection=UUID.randomUUID();long actor=7L,user=9L;
+        var row=Map.<String,Object>of("resource_type","ASSISTANT","published_version",1,"auth_version",1L);
+        var dependency=Map.<String,Object>of("resource_type","MCP","published_version",2,"auth_version",5L,"name","国家平台");
+        when(guard.require(resource,actor,AiResourceGuard.Action.SHARE)).thenReturn(row);
+        when(guard.owner(row,actor)).thenReturn(true);
+        when(guard.require(eq(connection),eq(actor),any())).thenReturn(dependency);
+        when(guard.owner(dependency,actor)).thenReturn(true);
+        when(jdbc.queryForList("SELECT nick_name FROM sys_user WHERE user_id=? AND status='0' AND del_flag='0'",String.class,user)).thenReturn(List.of("新员工"));
+        when(jdbc.queryForList("SELECT config::text FROM ai_resource_version WHERE resource_id=? AND version=?",resource,1)).thenReturn(List.of(Map.of("config",JsonUtils.toJsonString(Map.of("modelId",model.toString(),"mcpIds",List.of(connection.toString()))))));
+        when(models.model(actor,model)).thenReturn(Map.of("name","模型"));
+        when(mcp.resolve(List.of(connection.toString()),user)).thenThrow(new WorkspaceDenied(404,"ResourceNotFound"));
+        when(jdbc.queryForList(contains("SELECT auth_version FROM ai_mcp_connection"),eq(connection),eq(2))).thenReturn(List.of(Map.of("auth_version",3L)));
+        when(jdbc.queryForList(contains("e.business_unit"),eq(connection))).thenReturn(List.of(Map.of("business_unit","待确认单位","connector_type","CSWM_IOT","tested_status","READY","identity_verified",false)));
+        var plan=support.plan(resource,actor,List.of(new WorkspaceShareSupport.Target("USER",Long.toString(user))),true);
+        assertEquals(false,plan.get("ready"));
+        assertEquals("DataScopeUnverified",((List<Map<String,Object>>)plan.get("issues")).getFirst().get("code"));
+    }
+
 }

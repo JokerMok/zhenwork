@@ -15,6 +15,7 @@ vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 vi.mock('@arco-design/web-react', () => ({
   Alert: ({ content }: { content: string }) => <span>{content}</span>,
   Spin: () => <span>spinner</span>,
+  Input: { TextArea: () => <textarea disabled aria-label='common.send' /> },
   Collapse: Object.assign(({ children }: React.PropsWithChildren) => <div>{children}</div>, {
     Item: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
   }),
@@ -42,6 +43,8 @@ test('keeps execution unavailable while queued and automatically mounts it only 
     </EnterpriseRuntimeGate>
   );
   expect(screen.queryByText('execution')).toBeNull();
+  expect(screen.getByRole('textbox').hasAttribute('disabled')).toBe(true);
+  expect(screen.getByTestId('inline-execution-preparation')).toBeTruthy();
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 1050));
@@ -66,4 +69,18 @@ test('a final failure offers an explicit retry without starting an infinite prep
 test('Host-only layout shortcuts can mount before an execution history provider exists', () => {
   const hook = renderHook(() => useVisibleConversationIds());
   expect(hook.result.current).toEqual([]);
+});
+
+test('a failed HTTP response without a code becomes a recoverable inline error instead of waiting forever', async () => {
+  const fetcher = vi.fn().mockResolvedValue({ status: 503, json: async () => ({}) });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EnterpriseRuntimeGate>
+      <span>execution</span>
+    </EnterpriseRuntimeGate>
+  );
+  await screen.findByText('workspace.status.environmentUnavailable');
+  expect(screen.queryByText('spinner')).toBeNull();
+  await act(async () => screen.getByText('common.retry').click());
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
 });

@@ -50,7 +50,8 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const AUTH_USER_ENDPOINT = '/api/auth/user';
 
 const isDesktopRuntime = typeof window !== 'undefined' && Boolean(window.electronAPI);
-const isEnterpriseWebRuntime = typeof window !== 'undefined' &&
+const isEnterpriseWebRuntime =
+  typeof window !== 'undefined' &&
   Boolean((window as typeof window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__);
 
 // Clear expired auth cache including cookies and localStorage
@@ -100,7 +101,7 @@ async function fetchCurrentUser(signal?: AbortSignal): Promise<AuthUser | null> 
     // refreshSession() single-flights with the httpBridge refresh path.
     if (response.status === 401 && isEnterpriseWebRuntime) {
       clearAuthCache();
-      window.location.replace('/enterprise/login');
+      window.location.replace('/enterprise/login' + window.location.hash);
       return null;
     }
     if (response.status === 401) {
@@ -179,7 +180,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         return { success: true };
       }
       if (isEnterpriseWebRuntime) {
-        window.location.replace('/enterprise/login');
+        window.location.replace('/enterprise/login' + window.location.hash);
         return { success: false, message: 'Use enterprise login' };
       }
 
@@ -304,7 +305,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       setStatus('unauthenticated');
       // Clear cache on logout for security
       clearAuthCache();
-      if (isEnterpriseWebRuntime) window.location.replace('/enterprise/login');
+      if (isEnterpriseWebRuntime) window.location.replace('/enterprise/login' + window.location.hash);
     }
   }, []);
 

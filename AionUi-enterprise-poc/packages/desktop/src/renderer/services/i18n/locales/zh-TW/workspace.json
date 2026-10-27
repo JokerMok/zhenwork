@@ -60,7 +60,7 @@
     "error": "錯誤",
     "cancelled": "已取消",
     "preparationQueued": "正在等待可用容量",
-    "preparationStarting": "正在啟動你的工作區",
+    "preparationStarting": "正在連接對話服務",
     "preparationReady": "執行環境已就緒",
     "preparationTimedOut": "環境準備時間過長，請重試以繼續。",
     "preparationElapsed": "已用時 {{seconds}} 秒",
@@ -72,7 +72,8 @@
     "bootstrapLoadFailed": "頁面載入失敗，請重新載入後再試。",
     "identityExpired": "登入已過期，請重新登入。",
     "resourceUpdatePending": "能力更新已排隊，將在執行與工作區佔用安全釋放後生效；現有可用能力仍可使用。",
-    "resourceCheckDeferred": "暫時無法檢查能力更新，可繼續使用既有授權能力；稍後自動檢查。"
+    "resourceCheckDeferred": "暫時無法檢查能力更新，可繼續使用既有授權能力；稍後自動檢查。",
+    "capacityBusy": "目前執行容量已滿，請稍後重試"
   },
   "errors": {
     "load": "無法載入此區域（{{code}}）。",

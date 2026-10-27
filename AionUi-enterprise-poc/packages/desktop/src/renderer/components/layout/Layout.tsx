@@ -13,6 +13,7 @@ import { Layout as ArcoLayout, Tooltip } from '@arco-design/web-react';
 import classNames from 'classnames';
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import EnterpriseRuntimeGate from './runtime/EnterpriseRuntimeGate';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { setGlobalNavigate } from '@/renderer/utils/navigation';
 import { usePreviewContext } from '@renderer/pages/conversation/Preview';
@@ -102,7 +103,6 @@ const MOBILE_SIDER_WIDTH_RATIO = 0.67;
 const MOBILE_SIDER_MIN_WIDTH = 260;
 const MOBILE_SIDER_MAX_WIDTH = 420;
 
-
 const detectMobileViewportOrTouch = (): boolean => {
   if (typeof window === 'undefined') return false;
   if (isElectronDesktop()) {
@@ -164,7 +164,8 @@ const Layout: React.FC<{
       window.removeEventListener('focus', refreshBrand);
     };
   }, []);
-  const brandName = enterpriseBrand?.productName || (isEnterpriseWeb() ? document.title.trim() || 'ZhenWork' : 'AionUi');
+  const brandName =
+    enterpriseBrand?.productName || (isEnterpriseWeb() ? document.title.trim() || 'ZhenWork' : 'AionUi');
   const brandLogo = enterpriseBrand?.logoDataUrl?.startsWith('data:image/png;base64,')
     ? enterpriseBrand.logoDataUrl
     : null;
@@ -536,7 +537,14 @@ const Layout: React.FC<{
                       : undefined
                 }
               >
-                <Outlet />
+                {isEnterpriseWeb() &&
+                (location.pathname === '/guid' || location.pathname.startsWith('/conversation/')) ? (
+                  <EnterpriseRuntimeGate key={location.pathname}>
+                    <Outlet />
+                  </EnterpriseRuntimeGate>
+                ) : (
+                  <Outlet />
+                )}
                 <PwaPullToRefresh />
                 <Suspense fallback={null}>
                   <UpdateModal />

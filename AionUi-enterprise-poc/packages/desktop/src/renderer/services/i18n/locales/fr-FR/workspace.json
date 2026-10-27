@@ -60,7 +60,7 @@
     "error": "Error",
     "cancelled": "Cancelled",
     "preparationQueued": "En attente de capacité disponible",
-    "preparationStarting": "Démarrage de votre espace de travail",
+    "preparationStarting": "Connexion au service de discussion",
     "preparationReady": "Environnement prêt",
     "preparationTimedOut": "La préparation prend trop de temps. Réessayez pour continuer.",
     "preparationElapsed": "Temps écoulé : {{seconds}} s",
@@ -72,7 +72,8 @@
     "bootstrapLoadFailed": "La page n’a pas pu se charger. Rechargez-la pour réessayer.",
     "identityExpired": "Votre session a expiré. Reconnectez-vous.",
     "resourceUpdatePending": "The capability update is queued until execution and workspace leases are safely released. Existing authorized capabilities remain available.",
-    "resourceCheckDeferred": "Capability updates could not be checked. Existing authorized capabilities remain available; a check will run later."
+    "resourceCheckDeferred": "Capability updates could not be checked. Existing authorized capabilities remain available; a check will run later.",
+    "capacityBusy": "La capacité d’exécution est pleine. Réessayez dans un instant."
   },
   "errors": {
     "load": "Unable to load this section ({{code}}).",

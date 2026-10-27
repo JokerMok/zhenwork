@@ -60,7 +60,7 @@
     "error": "Error",
     "cancelled": "Cancelled",
     "preparationQueued": "در انتظار ظرفیت آزاد",
-    "preparationStarting": "در حال راه‌اندازی فضای کاری شما",
+    "preparationStarting": "در حال اتصال به سرویس گفتگو",
     "preparationReady": "محیط آماده است",
     "preparationTimedOut": "آماده‌سازی محیط بیش از حد طول کشید. دوباره تلاش کنید.",
     "preparationElapsed": "زمان سپری‌شده: {{seconds}} ثانیه",
@@ -72,7 +72,8 @@
     "bootstrapLoadFailed": "صفحه بارگیری نشد. برای تلاش دوباره، صفحه را بازخوانی کنید.",
     "identityExpired": "نشست شما منقضی شده است. دوباره وارد شوید.",
     "resourceUpdatePending": "The capability update is queued until execution and workspace leases are safely released. Existing authorized capabilities remain available.",
-    "resourceCheckDeferred": "Capability updates could not be checked. Existing authorized capabilities remain available; a check will run later."
+    "resourceCheckDeferred": "Capability updates could not be checked. Existing authorized capabilities remain available; a check will run later.",
+    "capacityBusy": "ظرفیت اجرا پر است. کمی بعد دوباره تلاش کنید."
   },
   "errors": {
     "load": "Unable to load this section ({{code}}).",

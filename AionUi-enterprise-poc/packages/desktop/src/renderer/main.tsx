@@ -95,7 +95,6 @@ import { registerPwa } from './services/registerPwa';
 import { ipcBridge } from '@/common';
 import { useLocation } from 'react-router-dom';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
-import EnterpriseRuntimeGate from './components/layout/runtime/EnterpriseRuntimeGate';
 import { repairAllCronJobTimeZonesOnce } from '@renderer/pages/cron/repairCronJobTimeZone';
 import { bootstrapRendererConfig } from '@renderer/services/bootstrapRenderer';
 
@@ -349,7 +348,7 @@ const RoutedLayout = () => {
   const content = <Layout sider={<Sider />} />;
   if (browsing) return content;
   const execution = <ConversationHistoryProvider>{content}</ConversationHistoryProvider>;
-  return enterprise ? <EnterpriseRuntimeGate key={location.pathname}>{execution}</EnterpriseRuntimeGate> : execution;
+  return execution;
 };
 
 const Main = () => {
@@ -490,7 +489,9 @@ const BackendStartupFailureDialog: React.FC<{ failure: BackendStartupFailureInfo
           <Typography.Paragraph className='mb-0 text-t-secondary'>{description}</Typography.Paragraph>
           {requiredVersions ? (
             <Typography.Paragraph className='mt-12px mb-0 text-12px text-t-tertiary'>
-              {t('common.backendStartup.incompatibleRuntime.requiredVersions', { versions: requiredVersions })}
+              {t('common.backendStartup.incompatibleRuntime.requiredVersions', {
+                versions: requiredVersions,
+              })}
             </Typography.Paragraph>
           ) : null}
         </div>

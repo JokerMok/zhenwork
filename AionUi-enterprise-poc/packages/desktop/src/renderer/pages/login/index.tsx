@@ -2,10 +2,11 @@ import loginLogo from '@renderer/assets/logos/brand/app.png';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { changeLanguage } from '@/renderer/services/i18n';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AppLoader from '@renderer/components/layout/AppLoader';
 import { useAuth } from '../../hooks/context/AuthContext';
 import './LoginPage.css';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 
 type MessageState = {
   type: 'error' | 'success';
@@ -15,12 +16,6 @@ type MessageState = {
 const REMEMBER_ME_KEY = 'rememberMe';
 const REMEMBERED_USERNAME_KEY = 'rememberedUsername';
 const REMEMBERED_PASSWORD_KEY = 'rememberedPassword';
-
-// Simple obfuscation for stored credentials (not cryptographically secure, but prevents plain text storage)
-const obfuscate = (text: string): string => {
-  const encoded = btoa(encodeURIComponent(text));
-  return encoded.split('').toReversed().join('');
-};
 
 const deobfuscate = (text: string): string => {
   try {
@@ -34,6 +29,14 @@ const deobfuscate = (text: string): string => {
 const LoginPage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from;
+  const destination =
+    from?.startsWith('/') && !from.startsWith('//') && !from.startsWith('/login')
+      ? from
+      : isEnterpriseWeb()
+        ? '/workspace'
+        : '/guid';
   const { status, login } = useAuth();
 
   const [username, setUsername] = useState('');
@@ -64,12 +67,17 @@ const LoginPage: React.FC = () => {
   useEffect(() => {
     const isRememberMe = localStorage.getItem(REMEMBER_ME_KEY) === 'true';
     if (isRememberMe) {
-      const storedUsername = localStorage.getItem(REMEMBERED_USERNAME_KEY);
-      const storedPassword = localStorage.getItem(REMEMBERED_PASSWORD_KEY);
-      if (storedUsername) setUsername(deobfuscate(storedUsername));
-      if (storedPassword) setPassword(deobfuscate(storedPassword));
+      const storedUsername = localStorage.getItem('rememberedAccount');
+      const legacyUsername = localStorage.getItem(REMEMBERED_USERNAME_KEY);
+      if (storedUsername || legacyUsername) {
+        const account = storedUsername || deobfuscate(legacyUsername!);
+        setUsername(account);
+        localStorage.setItem('rememberedAccount', account);
+      }
       setRememberMe(true);
     }
+    localStorage.removeItem(REMEMBERED_PASSWORD_KEY);
+    localStorage.removeItem(REMEMBERED_USERNAME_KEY);
     window.setTimeout(() => {
       usernameRef.current?.focus();
     }, 0);
@@ -83,9 +91,9 @@ const LoginPage: React.FC = () => {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      void navigate('/guid', { replace: true });
+      void navigate(destination, { replace: true });
     }
-  }, [navigate, status]);
+  }, [navigate, status, destination]);
 
   const clearMessageLater = useCallback(() => {
     if (messageTimer.current) {
@@ -148,10 +156,10 @@ const LoginPage: React.FC = () => {
       if (result.success) {
         if (rememberMe) {
           localStorage.setItem(REMEMBER_ME_KEY, 'true');
-          localStorage.setItem(REMEMBERED_USERNAME_KEY, obfuscate(trimmedUsername));
-          localStorage.setItem(REMEMBERED_PASSWORD_KEY, obfuscate(password));
+          localStorage.setItem('rememberedAccount', trimmedUsername);
         } else {
           localStorage.removeItem(REMEMBER_ME_KEY);
+          localStorage.removeItem('rememberedAccount');
           localStorage.removeItem(REMEMBERED_USERNAME_KEY);
           localStorage.removeItem(REMEMBERED_PASSWORD_KEY);
         }
@@ -159,9 +167,7 @@ const LoginPage: React.FC = () => {
         const successText = t('login.success');
         showMessage({ type: 'success', text: successText });
 
-        window.setTimeout(() => {
-          void navigate('/guid', { replace: true });
-        }, 600);
+        void navigate(destination, { replace: true });
       } else {
         const errorText = (() => {
           switch (result.code) {
@@ -184,7 +190,7 @@ const LoginPage: React.FC = () => {
 
       setLoading(false);
     },
-    [login, navigate, password, rememberMe, showMessage, t, username]
+    [login, navigate, destination, password, rememberMe, showMessage, t, username]
   );
 
   if (status === 'checking') {
@@ -312,7 +318,7 @@ const LoginPage: React.FC = () => {
               checked={rememberMe}
               onChange={(event) => setRememberMe(event.target.checked)}
             />
-            <label htmlFor='remember-me'>{t('login.rememberMe')}</label>
+            <label htmlFor='remember-me'>{t('login.rememberAccount')}</label>
           </div>
 
           <button type='submit' className='login-page__submit' disabled={loading}>

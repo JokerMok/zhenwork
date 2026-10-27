@@ -42,5 +42,6 @@
   "enterpriseSavedAccount": "Saved enterprise account",
   "enterpriseForgetAccount": "Forget this account on this computer",
   "enterpriseSecureStorageUnavailable": "Secure storage is unavailable. Sign in manually.",
-  "enterpriseSavedPasswordHint": "Saved password; leave blank to use it"
+  "enterpriseSavedPasswordHint": "Saved password; leave blank to use it",
+  "rememberAccount": "به خاطر سپردن حساب"
 }
