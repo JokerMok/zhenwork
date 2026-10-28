@@ -1951,6 +1951,9 @@ test('Host browsing and file reads do not start a worker; idle invalidation reta
     ]) {
       expect((await call(route, first)).status).toBe(200);
     }
+    const missingView = await call('/enterprise/conversations/11111111/view', first);
+    expect(missingView.status).toBe(404);
+    expect(JSON.parse(missingView.body).error).toBe('CONVERSATION_NOT_FOUND');
     expect((await call('/api/shell/check-tool-installed', first, { tool: 'python3' })).status).toBe(409);
     expect((await call('/api/conversations/11111111/runtime/ensure', first, {})).status).toBe(409);
     expect((await call('/api/excel-preview/stop', first, {})).status).toBe(200);

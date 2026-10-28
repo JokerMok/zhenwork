@@ -1552,6 +1552,22 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         return reply(res, 400, { error: (error as Error).message.slice(0, 200) });
       }
     }
+    const conversationView =
+      req.method === 'GET' && /^\/enterprise\/conversations\/([A-Za-z0-9_-]{1,100})\/view$/.exec(req.url || '');
+    if (conversationView) {
+      if (!opts.profileRoot) return reply(res, 503, { error: 'PROFILE_UNAVAILABLE' });
+      try {
+        const view = await readProfile(opts.profileRoot, auth.session.actor, 'conversationView', conversationView[1]);
+        if (!(await validateSession(auth.session))) {
+          await revoke(auth.id);
+          return reply(res, 401, { error: 'UNAUTHENTICATED' });
+        }
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        return view ? reply(res, 200, view) : reply(res, 404, { error: 'CONVERSATION_NOT_FOUND' });
+      } catch {
+        return reply(res, 503, { error: 'PROFILE_UNAVAILABLE' });
+      }
+    }
     if (
       opts.profileRoot &&
       req.method === 'GET' &&
@@ -2180,17 +2196,6 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         if (!res.destroyed) return replyCoreFailure(res, error);
       }
       return;
-    }
-    const conversationView =
-      req.method === 'GET' && /^\/enterprise\/conversations\/([A-Za-z0-9_-]{1,100})\/view$/.exec(req.url || '');
-    if (conversationView) {
-      if (!opts.profileRoot) return reply(res, 503, { error: 'PROFILE_UNAVAILABLE' });
-      try {
-        const view = await readProfile(opts.profileRoot, auth.session.actor, 'conversationView', conversationView[1]);
-        return view ? reply(res, 200, view) : reply(res, 404, { error: 'CONVERSATION_NOT_FOUND' });
-      } catch {
-        return reply(res, 503, { error: 'PROFILE_UNAVAILABLE' });
-      }
     }
     if (req.url === '/login' || req.url === '/logout') return reply(res, 404, { error: 'NOT_FOUND' });
     if (req.url === '/sw.js') return reply(res, 404, { error: 'OFFLINE_MODE_DISABLED' });
