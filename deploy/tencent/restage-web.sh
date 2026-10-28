@@ -45,7 +45,7 @@ while IFS= read -r -d '' path; do
       # Managed Skill source, distributed separately through RC2; not imported
       # by the renderer, native Core, or reused Java/Admin artifacts.
       ;;
-    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/index.vue|deepseek-harness-lab/workbuddy/platform/plus-ui/src/components/ResourceShareDialog/index.vue)
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/index.vue|deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/BusinessRuleEditor.vue|deepseek-harness-lab/workbuddy/platform/plus-ui/src/components/ResourceShareDialog/index.vue)
       host_change=1 ;;
     AionUi-enterprise-poc/vitest.config.ts|AionUi-enterprise-poc/tests/*|AionUi-enterprise-poc/docs/*|deploy/tencent/*|docs/*|PROJECT.md|README.md|justfile)
       ;;
