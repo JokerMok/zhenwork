@@ -64,7 +64,7 @@ const AionrsChat: React.FC<{
   assistantId,
   forkCapability,
 }) => {
-  useMessageLstCache(conversation_id);
+  const reloadMessages = useMessageLstCache(conversation_id);
   usePendingConfirmationsRecovery(conversation_id);
   usePlanRecovery(conversation_id);
   const { isFileDragging, dragHandlers } = useDragUpload({
@@ -112,6 +112,7 @@ const AionrsChat: React.FC<{
           <FlexFullContainer>
             <MessageList
               className='flex-1'
+              onExecutionSettled={reloadMessages}
               emptySlot={emptySlot}
               activityFooter={<TaskWork conversationId={conversation_id} embedded />}
             />

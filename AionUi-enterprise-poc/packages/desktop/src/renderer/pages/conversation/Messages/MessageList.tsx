@@ -333,10 +333,12 @@ const MessageItem: React.FC<{
         (prev.turnTexts ?? []).every((segment, i) => segment === next.turnTexts?.[i])))
 );
 
-const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode; activityFooter?: React.ReactNode }> = ({
-  emptySlot,
-  activityFooter,
-}) => {
+const MessageList: React.FC<{
+  className?: string;
+  emptySlot?: React.ReactNode;
+  activityFooter?: React.ReactNode;
+  onExecutionSettled?: () => Promise<unknown>;
+}> = ({ emptySlot, activityFooter, onExecutionSettled }) => {
   const list = useMessageList();
   const isMessageListLoading = useMessageListLoading();
   const pagination = useMessagePaginationState();
@@ -352,6 +354,12 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode; a
   const { isProcessing } = useConversationRuntimeView(conversationContext?.conversation_id ?? '');
   const { t } = useTranslation();
   const location = useLocation();
+  // A durable pause can cancel the native in-memory wait before turn.completed
+  // reaches this subscriber. Reconcile saved messages at that real boundary too.
+  useEffect(() => {
+    if (!isEnterpriseWeb() || !currentWork || ['queued', 'running', 'cancelling'].includes(currentWork.state)) return;
+    void onExecutionSettled?.().catch((error) => console.error('[MessageList] Saved execution read failed', error));
+  }, [currentWork?.id, currentWork?.state, onExecutionSettled]);
   const locationState = (location.state || {}) as ConversationLocationState;
   const targetMessageId = locationState.targetMessageId;
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | undefined>();
@@ -745,7 +753,7 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode; a
     return <MessageListSkeleton rowWidthClass={rowWidthClass} />;
   }
 
-  if (processedList.length === 0 && emptySlot) {
+  if (processedList.length === 0 && emptySlot && !currentWork) {
     return <div className='relative flex-1 h-full flex items-center justify-center'>{emptySlot}</div>;
   }
 

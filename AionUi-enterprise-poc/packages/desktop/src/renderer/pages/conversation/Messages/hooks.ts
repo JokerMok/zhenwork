@@ -1056,6 +1056,7 @@ export const useMessageLstCache = (key: string) => {
       });
     });
   }, [key, loadMessages]);
+  return loadMessages;
 };
 
 export const beforeUpdateMessageList = (fn: (list: TMessage[]) => TMessage[]) => {

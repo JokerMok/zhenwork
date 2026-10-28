@@ -17,10 +17,14 @@ import {
 } from '@/renderer/pages/conversation/Messages/hooks';
 import MessageList from '@/renderer/pages/conversation/Messages/MessageList';
 
-const { parseDiffMock, useTeamPermissionMock } = vi.hoisted(() => ({
+const { parseDiffMock, useTeamPermissionMock, workState } = vi.hoisted(() => ({
+  workState: { enterprise: false, attempt: undefined as undefined | { id: string; state: string } },
   parseDiffMock: vi.fn(),
   useTeamPermissionMock: vi.fn(),
 }));
+
+vi.mock('@/renderer/utils/platform', () => ({ isEnterpriseWeb: () => workState.enterprise }));
+vi.mock('@/renderer/pages/workspace/TaskWork/api', () => ({ useTaskWork: () => ({ attempt: workState.attempt }) }));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -137,6 +141,7 @@ vi.mock('@/renderer/pages/conversation/Messages/components/MessageSkillSuggest',
 }));
 
 vi.mock('@/renderer/pages/conversation/Messages/components/MessageToolGroupSummary', () => ({
+  TaskDeliverySummary: () => null,
   default: ({ messages }: { messages: Array<IMessageToolGroup | IMessageAcpToolCall> }) => (
     <div data-testid='tool-summary'>{messages.map((message) => message.id).join(',')}</div>
   ),
@@ -252,6 +257,8 @@ function ReplaceMessagesButton({ messages }: { messages: TMessage[] }): JSX.Elem
 
 describe('MessageList', () => {
   beforeEach(() => {
+    workState.enterprise = false;
+    workState.attempt = undefined;
     mockIsProcessing = false;
     parseDiffMock.mockReset();
     parseDiffMock.mockReturnValue({
@@ -657,4 +664,19 @@ describe('MessageList', () => {
     expect(screen.queryByTestId('file-changes')).not.toBeInTheDocument();
     expect(screen.queryByTestId('tool-group')).not.toBeInTheDocument();
   });
+});
+
+it('shows a saved approval in an initially empty chat and reconciles once per durable transition', () => {
+  workState.enterprise = true;
+  workState.attempt = { id: 'attempt-1', state: 'waiting_confirmation' };
+  const reload = vi.fn().mockResolvedValue([]);
+  const view = render(<Wrapper messages={[]}><MessageList emptySlot={<span>welcome</span>} activityFooter={<span>approval</span>} onExecutionSettled={reload}/></Wrapper>);
+  expect(screen.queryByText('welcome')).toBeNull();
+  expect(screen.getByText('approval')).toBeTruthy();
+  expect(reload).toHaveBeenCalledTimes(1);
+  view.rerender(<Wrapper messages={[]}><MessageList emptySlot={<span>welcome</span>} activityFooter={<span>approval</span>} onExecutionSettled={reload}/></Wrapper>);
+  expect(reload).toHaveBeenCalledTimes(1);
+  workState.attempt = { id: 'attempt-1', state: 'cancelled' };
+  view.rerender(<Wrapper messages={[]}><MessageList emptySlot={<span>welcome</span>} activityFooter={<span>cancelled</span>} onExecutionSettled={reload}/></Wrapper>);
+  expect(reload).toHaveBeenCalledTimes(2);
 });
