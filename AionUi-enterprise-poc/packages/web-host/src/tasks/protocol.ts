@@ -112,6 +112,7 @@ export async function recordTool(
     ];
   };
   const artifactTools = new Set([
+    "generate_waste_report",
     "create_office_document",
     "create_evidence_deliverables",
     "revise_office_document",

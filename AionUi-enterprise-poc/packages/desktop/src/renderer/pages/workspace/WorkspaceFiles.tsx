@@ -1,3 +1,4 @@
+import DataAnalysisControl from './TaskWork/DataAnalysis';
 import OfficePreview from '@/renderer/components/media/OfficePreview';
 import { formatFileSize } from '@/renderer/services/FileService';
 import {
@@ -113,6 +114,7 @@ const WorkspaceFiles: React.FC = () => {
   const [diff, setDiff] = useState<EnterpriseFileDiff | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [workspaceRoot, setWorkspaceRoot] = useState('');
+  const [dataPath, setDataPath] = useState<string>();
   const [preview, setPreview] = useState<FilePreview | null>(null);
 
   const loadFiles = useCallback(async () => {
@@ -299,6 +301,7 @@ const WorkspaceFiles: React.FC = () => {
       onSuccess?.({});
       message.success(t('workspace.files.uploaded'));
       await loadFiles();
+      if(/\.(xlsx|csv)$/i.test(result.uploaded[0]))setDataPath(result.uploaded[0]);
     } catch (error) {
       onError?.(error as Error);
       message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
@@ -307,6 +310,7 @@ const WorkspaceFiles: React.FC = () => {
 
   return (
     <div className='flex flex-col gap-12px'>
+      {dataPath && <DataAnalysisControl key={dataPath} filePath={dataPath} autoOpen />}
       {messageContext}
       <div className='flex flex-wrap items-center justify-between gap-8px'>
         <div>
@@ -345,6 +349,7 @@ const WorkspaceFiles: React.FC = () => {
               <List.Item
                 key={file.path}
                 actions={[
+                  /\.(xlsx|csv)$/i.test(file.path) ? <DataAnalysisControl key='data-analysis' filePath={file.path} /> : null,
                   <Button key='preview' type='text' icon={<PreviewOpen />} onClick={() => openPreview(file)}>
                     {t('workspace.files.preview')}
                   </Button>,

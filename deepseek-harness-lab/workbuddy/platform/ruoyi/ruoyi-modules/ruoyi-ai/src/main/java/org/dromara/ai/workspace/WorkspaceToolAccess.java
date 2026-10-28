@@ -8,7 +8,38 @@ import java.util.*;
 @RequiredArgsConstructor
 public class WorkspaceToolAccess {
  private final JdbcTemplate jdbc;private final AiResourceGuard guard;
- public static Map<String,Object> configuration(Map<String,Object> input){if(!Set.of("toolType","precision").containsAll(input.keySet())||!Set.of("CALCULATOR","TEXT_DOCUMENT").contains(input.get("toolType")))throw new WorkspaceDenied(400,"UnsupportedToolType");int precision=4;if(input.containsKey("precision"))try{precision=Integer.parseInt(input.get("precision").toString());}catch(Exception e){throw new WorkspaceDenied(400,"InvalidToolPrecision");}if(precision<0||precision>8)throw new WorkspaceDenied(400,"InvalidToolPrecision");return Map.of("toolType",input.get("toolType"),"precision",precision);}
+ public static Map<String,Object> configuration(Map<String,Object> input){
+  if(!Set.of("toolType","precision","businessRule").containsAll(input.keySet())||!Set.of("CALCULATOR","TEXT_DOCUMENT").contains(input.get("toolType")))throw new WorkspaceDenied(400,"UnsupportedToolType");
+  int precision=4;if(input.containsKey("precision"))try{precision=Integer.parseInt(input.get("precision").toString());}catch(Exception e){throw new WorkspaceDenied(400,"InvalidToolPrecision");}
+  if(precision<0||precision>8)throw new WorkspaceDenied(400,"InvalidToolPrecision");
+  Map<String,Object> result=new LinkedHashMap<>();result.put("toolType",input.get("toolType"));result.put("precision",precision);
+  if(input.containsKey("businessRule")){
+   if(!"CALCULATOR".equals(input.get("toolType"))||!(input.get("businessRule") instanceof Map<?,?> raw))throw new WorkspaceDenied(400,"InvalidBusinessRule");
+   result.put("businessRule",businessRule(raw));
+  }return result;
+ }
+ private static Map<String,Object> businessRule(Map<?,?> raw){
+  Set<String> keys=Set.of("kind","meaning","scope","grain","timeField","period","duplicateRule","precision","unitFactors","includeNodes","nodeAliases","sourceAliases","categoryAliases","organizationAliases","allowedOrganizations","statusAliases","summaryRows","reversal","negative");
+  if(!raw.keySet().equals(keys)||!"WASTE_MONTHLY".equals(raw.get("kind"))||!"business_record_id".equals(raw.get("grain"))||!"business_date".equals(raw.get("timeField"))||!"calendar_month_Asia_Shanghai".equals(raw.get("period"))||!Set.of("identical_first","block").contains(raw.get("duplicateRule"))||!"exclude_with_warning".equals(raw.get("summaryRows"))||!"block".equals(raw.get("reversal"))||!"block".equals(raw.get("negative")))throw new WorkspaceDenied(400,"InvalidBusinessRule");
+  for(String key:List.of("meaning","scope"))if(!(raw.get(key) instanceof String v)||v.isBlank()||v.length()>1000)throw new WorkspaceDenied(400,"BusinessRuleMeaningAndScopeRequired");
+  if(!(raw.get("precision") instanceof Number n)||n.doubleValue()!=n.intValue()||n.intValue()<0||n.intValue()>6)throw new WorkspaceDenied(400,"InvalidBusinessRulePrecision");
+  for(String key:List.of("unitFactors","nodeAliases","sourceAliases","categoryAliases","organizationAliases","statusAliases")){
+   if(!(raw.get(key) instanceof Map<?,?> values)||values.size()>200||(!Set.of("organizationAliases","statusAliases").contains(key)&&values.isEmpty()))throw new WorkspaceDenied(400,"BusinessRuleMappingRequired");
+   for(var entry:values.entrySet()){
+    if(!(entry.getKey() instanceof String k)||k.isBlank()||k.length()>120||!(entry.getValue() instanceof String v)||v.isBlank()||v.length()>120)throw new WorkspaceDenied(400,"InvalidBusinessRuleMapping");
+    if(key.equals("unitFactors"))try{if(!v.matches("[0-9]{1,8}(\\.[0-9]{1,12})?")||new java.math.BigDecimal(v).signum()<=0)throw new IllegalArgumentException();}catch(Exception e){throw new WorkspaceDenied(400,"InvalidBusinessUnitFactor");}
+    if(key.equals("statusAliases")&&!Set.of("active","cancelled","reversal").contains(v))throw new WorkspaceDenied(400,"InvalidBusinessStatus");
+   }
+  }
+  var factors=(Map<?,?>)raw.get("unitFactors");if(!"1".equals(factors.get("kg")))throw new WorkspaceDenied(400,"BusinessBaseUnitKgRequired");
+  for(String key:List.of("includeNodes","allowedOrganizations")){
+   if(!(raw.get(key) instanceof List<?> values)||values.size()>200||(key.equals("includeNodes")&&values.isEmpty()))throw new WorkspaceDenied(400,"InvalidBusinessRuleFilter");
+   Map<?,?> aliases=(Map<?,?>)raw.get(key.equals("includeNodes")?"nodeAliases":"organizationAliases");
+   for(Object value:values)if(!(value instanceof String v)||v.isBlank()||v.length()>120||!aliases.containsValue(v))throw new WorkspaceDenied(400,"BusinessRuleFilterNotMapped");
+  }
+  Map<String,Object> result=new LinkedHashMap<>();for(String key:keys)result.put(key,raw.get(key));return result;
+ }
+
  public List<Map<String,Object>> resolve(Object input,List<Map<String,Object>> skills,long user){Set<UUID> ids=new LinkedHashSet<>();add(ids,input);for(var skill:skills)add(ids,skill.get("requiredTools"));if(ids.size()>16)throw new WorkspaceDenied(400,"TooManyTools");List<Map<String,Object>> result=new ArrayList<>();for(UUID id:ids){var r=guard.require(id,user,AiResourceGuard.Action.USE);if(!"TOOL".equals(r.get("resource_type")))throw new WorkspaceDenied(400,"ToolResourceRequired");int version=((Number)r.get("published_version")).intValue();var config=JsonUtils.parseMap(guard.version(id,version,user,AiResourceGuard.Action.USE).get("config").toString());var type=jdbc.queryForMap("SELECT * FROM ai_tool_type WHERE code=?",config.get("toolType"));if(!Boolean.TRUE.equals(type.get("enabled")))throw new WorkspaceDenied(403,"ToolTypeDisabled");Map<String,Object> item=new LinkedHashMap<>();item.put("id",id.toString());item.put("version",version);item.put("authVersion",r.get("auth_version"));item.put("type",type.get("code"));item.put("typeVersion",type.get("version"));item.put("requiresApproval",type.get("requires_approval"));item.put("precision",config.get("precision"));item.put("name","tool_"+id.toString().replace("-",""));result.add(item);}return result;}
  public Map<String,Object> calculate(long user,UUID resource,Map<String,Object> args){
   var tool=resolve(List.of(resource.toString()),List.of(),user).getFirst();

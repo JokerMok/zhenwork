@@ -1,3 +1,4 @@
+import { DataAnalysis, type DataClient } from './office/workbook/analysis/service.js';
 import { TaskRunner } from './tasks/runner.js';
 import { TaskError } from './tasks/types.js';
 import type { TaskRuntime } from './tasks/integration.js';
@@ -1448,6 +1449,39 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       }
       return;
     }
+    const dataClient: DataClient = {
+      me: async()=>{if(!(await validateSession(auth.session)))throw new Error('UNAUTHENTICATED');return {userId:auth.session.actor.userId};},
+      resources: async(type:string)=>{
+        if(!opts.controlRequest)throw new Error('BUSINESS_RULE_UNAVAILABLE');const found=[];
+        for(let page=1;page<=100;page++){
+          const response=await opts.controlRequest(auth.session.actor,`/ai/resources?scope=available&type=${type}&page=${page}`,{method:'GET'});
+          const body=await response.json() as {code:number;data:Array<{id:string;name:string;publishedVersion:number;actions:string[]}>};
+          if(!response.ok||body.code!==200||!Array.isArray(body.data))throw new Error('BUSINESS_RULE_UNAVAILABLE');
+          found.push(...body.data.filter(r=>r.actions.includes('USE')&&Number.isInteger(r.publishedVersion)).map(r=>({...r,version:r.publishedVersion})));
+          if(body.data.length<30)return found;
+        }throw new Error('BUSINESS_RULE_CATALOG_LIMIT');
+      },
+      authorizedResource: async(id:string,type:string)=>{
+        if(!opts.controlRequest||! /^[a-f0-9-]{36}$/i.test(id))throw new Error('BUSINESS_RULE_NOT_AUTHORIZED');
+        const response=await opts.controlRequest(auth.session.actor,`/ai/resources/${id}?active=true`,{method:'GET'});
+        const body=await response.json() as {code:number;data:{resourceType:string;actions:string[];publishedVersion:number;version:number}};
+        if(!response.ok||body.code!==200||body.data?.resourceType!==type||!body.data.actions?.includes('USE')||body.data.version!==body.data.publishedVersion)throw new Error('BUSINESS_RULE_NOT_AUTHORIZED');return body.data;
+      },
+    };
+    if(req.url.startsWith('/enterprise/data')){
+      if(!opts.profileRoot)return reply(res,503,{error:'PROFILE_UNAVAILABLE'});
+      try{
+        const {workDir}=await prepareEnterpriseProfile(opts.profileRoot,auth.session.actor);if(!workDir)throw new Error('WORKSPACE_UNAVAILABLE');
+        const data=await DataAnalysis.create(opts.profileRoot,auth.session.actor,workDir,dataClient,origin.origin);const url=new URL(req.url,origin);
+        if(url.pathname==='/enterprise/data'&&req.method==='GET')return reply(res,200,await data.list(url.searchParams.get('conversation')||undefined));
+        if(url.pathname==='/enterprise/data/import'&&req.method==='POST'){const input=JSON.parse((await body(req,8192)).toString());const result=await data.inspect(String(input.path),input.options||{},typeof input.conversation==='string'?input.conversation:undefined);return reply(res,200,result);}
+        const match=/^\/enterprise\/data\/([a-f0-9]{64})(?:\/(mapping|analysis))?$/.exec(url.pathname);
+        if(match&&req.method==='GET'&&!match[2])return reply(res,200,await data.get(match[1]));
+        if(match&&req.method==='PUT'&&match[2]==='mapping')return reply(res,200,await data.saveMapping(match[1],JSON.parse((await body(req,16384)).toString())));
+        if(match&&req.method==='GET'&&match[2]==='analysis')return reply(res,200,await data.analysis(match[1],Number(url.searchParams.get('offset')||0)));
+        return reply(res,404,{error:'NOT_FOUND'});
+      }catch(error){const code=(error as Error).message;return reply(res,code==='UNAUTHENTICATED'?401:code==='DATA_NOT_FOUND'?404:400,{error:/^[A-Z0-9_:]+$/.test(code)?code:'DATA_ACCESS_OR_PROCESSING_FAILED'});}
+    }
     if (req.url.startsWith('/enterprise/memories') || req.url.startsWith('/enterprise/files')) {
       if (!opts.profileRoot) return reply(res, 503, { error: 'OFFICE_STORAGE_UNAVAILABLE' });
       const url = new URL(req.url, origin);
@@ -1477,6 +1511,8 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         const inputRoot = attachment ? uploadRoot : workspaceRoot;
         const name = path.isAbsolute(requested) ? path.relative(inputRoot, requested) : requested;
         const version = url.searchParams.get('version') || undefined;
+        const dataAccess=await DataAnalysis.create(opts.profileRoot,auth.session.actor,workspaceRoot,dataClient,origin.origin);
+        if(name)await dataAccess.guardFile(name);
         if (attachment && version) return reply(res, 400, { error: 'ATTACHMENT_HISTORY_UNAVAILABLE' });
         if (url.pathname === '/enterprise/files/preview' && req.method === 'GET') {
           const bytes = await store.downloadOriginal(inputRoot, name, version);
@@ -1516,6 +1552,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
           return reply(res, 200, await store.diff(workspaceRoot, name, url.searchParams.get('version') || ''));
         if (url.pathname === '/enterprise/files/restore' && req.method === 'POST') {
           const input = JSON.parse((await body(req, 8192)).toString()) as { path: string; version: string };
+          await dataAccess.guardFile(input.path);
           await store.restore(workspaceRoot, input.path, input.version);
           return reply(res, 200, { ok: true });
         }

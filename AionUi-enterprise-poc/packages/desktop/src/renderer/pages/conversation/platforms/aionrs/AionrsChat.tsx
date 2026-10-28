@@ -1,3 +1,4 @@
+import DataAnalysisControl from '@/renderer/pages/workspace/TaskWork/DataAnalysis';
 import TaskWork from '@/renderer/pages/workspace/TaskWork';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
 /**
@@ -118,6 +119,7 @@ const AionrsChat: React.FC<{
             />
           </FlexFullContainer>
           {!isEnterpriseWeb() && <ConversationPlanBar conversation_id={conversation_id} />}
+          <DataAnalysisControl conversationId={conversation_id} />
           <AionrsSendBox
             conversation_id={conversation_id}
             modelSelection={modelSelection}

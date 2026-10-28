@@ -1,3 +1,5 @@
+import { DataAnalysis } from './workbook/analysis/service.js';
+import { dataTools } from './workbook/analysis/tools.js';
 import { taskProtocol } from '../tasks/instructions.js';
 import { beginTool, checkpoint, currentTaskScope, recordTool, reusableOutput, taskCheckpointTool, taskOfficeContext } from '../tasks/protocol.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -178,6 +180,7 @@ export function buildEvidenceTable(rows: EvidenceRowInput[], sources: VerifiedSo
 }
 
 const tools = [
+  ...dataTools,
   taskCheckpointTool,
   evidenceDeliveryTool,
   summaryTool,
@@ -420,7 +423,7 @@ export async function startOfficeTools(
     return { sourceRef, quoteOptions: evidence.quoteOptions(conversation, sourceRef) };
   };
   const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  const readInput = async (file: string): Promise<{ root: string; relative: string; bytes: Buffer; inputPath: string }> => {
+  const readInput = async (file: string, conversation?:string): Promise<{ root: string; relative: string; bytes: Buffer; inputPath: string }> => {
     if (!core.workspaceRoot || !file) throw new Error('WORKSPACE_PATH_REQUIRED');
     // Guid uploads exist before a conversation ID is allocated, under general/.
     // The entire upload root belongs to this actor; another actor's tree never
@@ -429,6 +432,7 @@ export async function startOfficeTools(
     const taskInput = path.isAbsolute(file) && file.startsWith(uploadRoot + path.sep);
     const root = taskInput ? uploadRoot : core.workspaceRoot;
     const relative = path.isAbsolute(file) ? path.relative(root, file) : file;
+    if(conversation&&site)await (await DataAnalysis.create(profileRoot,actor,core.workspaceRoot,await clientFor(conversation),site.origin)).guardFile(relative);
     return { root, relative, bytes: await store.download(root, relative), inputPath: taskInput ? file : relative };
   };
   const knowledgeContext = async (conversation: string, client: Rc2GatewayClient) => {
@@ -466,7 +470,7 @@ export async function startOfficeTools(
         if (!reply.response.ok || reply.body?.code !== 200 || record(reply.body.data).sha256 !== locator.sha256)
           throw new Error('SOURCE_EVIDENCE_REVOKED_OR_CHANGED');
       } else if (source.kind === 'workspace') {
-        const input = await readInput(String(locator.path));
+        const input = await readInput(String(locator.path),conversation);
         if (createHash('sha256').update(input.bytes).digest('hex') !== locator.sha256) throw new Error('SOURCE_EVIDENCE_CHANGED_READ_AGAIN');
       }
     }
@@ -546,7 +550,7 @@ export async function startOfficeTools(
         if (res.destroyed) abort.abort();
         abort.signal.throwIfAborted();
         let value: unknown;
-        const reused = await reusableOutput(
+        const reused = dataTools.some(t=>t.name===tool) ? undefined : await reusableOutput(
           profileRoot,
           actor,
           conversation,
@@ -563,9 +567,16 @@ export async function startOfficeTools(
           value = reused;
         } else if (tool === 'task_checkpoint') {
           value = await checkpoint(profileRoot, actor, conversation, args, executionId);
+        } else if (dataTools.some(t=>t.name===tool)) {
+          if(!core.workspaceRoot || !site) throw new Error('WORKSPACE_UNAVAILABLE');
+          const data = await DataAnalysis.create(profileRoot,actor,core.workspaceRoot,client,site.origin);
+          if(tool==='inspect_structured_data'){const {path:file,...options}=args;value=await data.inspect(String(file),options,conversation,abort.signal);}
+          else if(tool==='analyze_waste_data')value=await data.compute(String(args.datasetId),args.period as string|undefined,args.ruleId as string|undefined,abort.signal,conversation);
+          else if(tool==='generate_waste_report')value=await data.generate(String(args.analysisId),args.baseName as string|undefined,abort.signal);
+          else value=await data.analysis(String(args.analysisId));
         } else if (tool === 'office_context') {
           const knowledge = await knowledgeContext(conversation, client);
-          value = { task:await taskOfficeContext(profileRoot,actor,conversation), workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, enterpriseCalculators: await authorizedCalculators(client), enterpriseQueries: await authorizedQueryCatalog(client, conversation), outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
+          value = { task:await taskOfficeContext(profileRoot,actor,conversation), workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, businessRules: core.workspaceRoot && site ? await (await DataAnalysis.create(profileRoot,actor,core.workspaceRoot,client,site.origin)).policies() : [], enterpriseCalculators: await authorizedCalculators(client), enterpriseQueries: await authorizedQueryCatalog(client, conversation), outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
             python: '/opt/aionui/skill-python/bin/python', knowledge: knowledge.resources, knowledgeScope: knowledge.scope || 'current authorized bases; assistant may select its declared defaults',
           };
         } else if (tool === 'calculate_enterprise_tool') {
@@ -608,7 +619,7 @@ export async function startOfficeTools(
           const relative = path.isAbsolute(file) ? path.relative(core.workspaceRoot, file) : file;
           if (!relative) throw new Error('WORKSPACE_PATH_REQUIRED');
           if (tool === 'read_document') {
-            const input = await readInput(file);
+            const input = await readInput(file,conversation);
             const parsed = await readOfficeDocument(input.relative, input.bytes, { start: args.start as number | undefined, limit: args.limit as number | undefined,
             });
             const pinned = await store.pinSource(path.basename(input.inputPath), input.bytes);
@@ -979,6 +990,7 @@ export async function startOfficeTools(
       if (typeof c.description !== 'string' || !c.description.startsWith(prefix) || c.questions) return false;
       const tool = c.description.slice(prefix.length).split(': ', 1)[0];
       const safe = new Set([
+        ...dataTools.map(t=>t.name),
         'task_checkpoint',
         'office_context',
         'calculate_enterprise_tool',
@@ -1034,6 +1046,7 @@ const instructions = `Execution contract (applies before choosing tools):
 - For business dates, audit the actual primary summary and use its grouping.groupCount, date keys and per-group totals. Event rows can cover multiple dates; never replace the summary date count with event-row count or declare the summary dates wrong without independently reading the source evidence. detailCount means numeric cells, not business dates or invoices.
 - For amounts only report audit_workbook results for the CURRENT delivered file; never turn source-file count into business detail count, infer an empty value as zero, or claim a failure was successful.
 You are the enterprise general office assistant. Use the user's language automatically. Employees need no API or engine configuration.
+For monthly waste XLSX/CSV analysis, use inspect_structured_data -> analyze_waste_data -> generate_waste_report. These tools scan ALL bounded rows using authorized published business rules. Never derive whole-file totals from read_document/inspect_workbook previews or model arithmetic. If needs_input, ask the employee to open Data mapping in the current conversation, save fields/rule/period and reply; checkpoint waiting_input and stop. A blocked calculation is NOT partial statistics: name issues and request correction. Generated reports share a single saved result, and receipts are authoritative. Never paste raw ledger rows into an external model.
 Before working, call office_context for the ACTUAL output directory and authorized knowledge IDs; never guess a default ID or use the profile root as the output directory. Read user-confirmed preferences and relevant project context with read_preferences. Personal chat is never an enterprise rule. Ask before saving or sharing knowledge.
 Read Word, Excel, PPT, PDF, image and text inputs first with read_document (follow nextStart for more pages), or available OfficeCLI/Python tools and installed skills. Scan-based inputs need OCR; state uncertainty. Save structured skill manifests with write_workspace_json; data is an object/array, not a string. Respect original templates, formulas, styles and company constraints; preserve originals, write outputs as real workspace files. Use audit_workbook on the CURRENT actual XLSX for every final amount or reconciliation answer: inspect_workbook first to find the real sheet and detail/total ranges, then pass explicit ranges and totalCell. It recalculates supported formulas with exact Decimal and reports unsupported formulas instead of using stale caches. Keep currency, rounding, detail count, total and difference identical to the tool result; any mismatch or unsupported formula means verification has NOT passed. Use summarize_json_data for source manifests: inspect the actual fields first; nested daily_amounts arrays require flatten, never treat a list as an amount. Source manifest summaries never replace rereading the current delivered workbook. Never mental-arithmetic final evidence. For complex WPS embedded pictures use the reimbursement skill's OOXML-safe engine instead of ordinary openpyxl save.
 Prefer already authorized independent Skills and MCPs when appropriate; do not require a user to build an assistant. A missing optional resource must produce a specific error and a next step, not fabricated success.
