@@ -1,4 +1,4 @@
-import { previewWorkbook } from '../index.js';
+import { previewWorkbook, inspectWorkbook } from '../index.js';
 import { decimalDifference } from './service.js';
 import { execFileSync } from 'node:child_process';
 import { describe, it, expect } from 'vitest';
@@ -206,5 +206,11 @@ b=io.BytesIO();w.save(b);print(base64.b64encode(b.getvalue()).decode())`,
     expect(view.rows[1].cells[0].text).toBe('0.002');
     expect(view.rows[0].cells[1].text).toBe('12.35');
     expect(view.rows[0].cells[2].text).toBe('0.015100');
+    const inspected = await inspectWorkbook(Buffer.from(file.trim(), 'base64'));
+    const cells = (
+      inspected.sheets as Array<{ rows: Array<{ cells: Array<{ cell: string; numberFormat?: string }> }> }>
+    )[0].rows[0].cells;
+    expect(cells.find((c) => c.cell === 'A1')?.numberFormat).toBe('0.000');
+    expect(cells.find((c) => c.cell === 'C1')?.numberFormat).toBe('0.000000');
   }
 );

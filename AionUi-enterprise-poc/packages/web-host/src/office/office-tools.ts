@@ -190,7 +190,7 @@ const tools = [
   {
     name: 'inspect_workbook',
     description:
-      'Read the CURRENT real XLSX structure before editing or auditing. Returns SHA256, actual sheets, rows/cells, header candidates, merges, formulas, auditSuggestions and print areas. Use recommendedAudit when its actual sheet title/headers match the requested summary, otherwise choose ONE matching auditSuggestions subtotal/detail range; hidden history data is omitted unless explicitly requested. Use real sheet/header/data positions, not row 1 assumptions. Bounded to requested maxRows (default 40) and maxColumns. Does not modify the file.',
+      'Read the CURRENT real XLSX structure before editing or auditing. Returns SHA256, actual sheets, rows/cells including numberFormat, header candidates, merges, formulas, auditSuggestions and print areas. Use recommendedAudit when its actual sheet title/headers match the requested summary, otherwise choose ONE matching auditSuggestions subtotal/detail range; hidden history data is omitted unless explicitly requested. Use real sheet/header/data positions, not row 1 assumptions. Bounded to requested maxRows (default 40) and maxColumns. Numeric values are raw values; display precision comes from numberFormat, never infer it from trailing zeros in raw values. Does not modify the file.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,

@@ -63,5 +63,5 @@ def ds_report(data):
  loaded.close()
  from docx import Document
  if total+' kg' not in '\n'.join(p.text for p in Document(io.BytesIO(word)).paragraphs):ds_fail('REPORT_WORD_TOTAL_MISMATCH')
- return {'docx':base64.b64encode(word).decode(),'xlsx':base64.b64encode(excel).decode(),'validation':{'completeScan':True,'reopened':True,'weightKg':total,'includedCount':len(included),'resultHash':data['resultHash']}}
+ return {'docx':base64.b64encode(word).decode(),'xlsx':base64.b64encode(excel).decode(),'validation':{'completeScan':True,'reopened':True,'weightKg':total,'weightTon':summary['weightTon'],'numberFormats':{'kg':'0'+('.'+'0'*policy['definition']['precision'] if policy['definition']['precision'] else ''),'tonnes':'0.'+'0'*(policy['definition']['precision']+3),'count':'0'},'includedCount':len(included),'resultHash':data['resultHash']}}
 `;

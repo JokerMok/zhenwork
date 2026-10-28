@@ -257,6 +257,19 @@ def merge_references(root: ET.Element) -> list[str]:
     return [merge.attrib["ref"] for merge in root.findall("x:mergeCells/x:mergeCell", NS) if "ref" in merge.attrib]
 
 
+def number_format(package: WorkbookPackage, cell: ET.Element) -> str:
+    if "xl/styles.xml" not in package.parts:
+        return "General"
+    styles = package.xml("xl/styles.xml")
+    xfs = styles.findall("x:cellXfs/x:xf", NS)
+    try:
+        fmt_id = int(xfs[int(cell.attrib.get("s", "0"))].attrib.get("numFmtId", "0"))
+    except (IndexError, ValueError):
+        return "Unknown"
+    custom = {int(x.attrib["numFmtId"]): x.attrib.get("formatCode", "") for x in styles.findall("x:numFmts/x:numFmt", NS)}
+    return custom.get(fmt_id, {0: "General", 1: "0", 2: "0.00", 3: "#,##0", 4: "#,##0.00", 9: "0%", 10: "0.00%"}.get(fmt_id, "builtin:" + str(fmt_id)))
+
+
 def inspect(content: bytes, args: dict[str, object]) -> dict[str, object]:
     package = WorkbookPackage(content)
     max_rows = args.get("maxRows", 50)
@@ -286,7 +299,7 @@ def inspect(content: bytes, args: dict[str, object]) -> dict[str, object]:
                 if value["kind"] == "formula":
                     formulas.append({"cell": reference, "formula": str(value["formula"])})
                 if value.get("value") not in (None, "") or value["kind"] == "formula":
-                    values.append({"cell": reference, **value})
+                    values.append({"cell": reference, **value, **({"numberFormat": number_format(package, cell)} if value["kind"] in ("number", "formula") else {})})
                     if value["kind"] == "text" and value.get("value"):
                         text_count += 1
             if values:
@@ -319,6 +332,7 @@ def inspect(content: bytes, args: dict[str, object]) -> dict[str, object]:
     primary = visible[0] if visible else None
     recommended = primary["auditSuggestions"][0] if primary and len(primary["auditSuggestions"]) == 1 else None
     return {"sheets": result_sheets, "sheetCount": len(package.sheets), "recommendedAudit": recommended,
+            "valueBoundary": "Numeric value is the raw exact OOXML value, not display text. Trailing zeros are controlled by numberFormat; never infer General format or rewrite a correct number from value alone.",
             "recommendationBoundary": "A unique subtotal on the first visible sheet is a summary candidate, not proof of business scope; verify the sheet title/headers match the task."}
 
 
@@ -1018,4 +1032,7 @@ if __name__ == "__main__":
 `;
 
 /** Definitions only, shared by generation and revision for the same Decimal formula semantics. */
-export const WORKBOOK_SUPPORT_PYTHON = WORKBOOK_PYTHON_SCRIPT.slice(0, WORKBOOK_PYTHON_SCRIPT.indexOf('\ndef main() -> None:'));
+export const WORKBOOK_SUPPORT_PYTHON = WORKBOOK_PYTHON_SCRIPT.slice(
+  0,
+  WORKBOOK_PYTHON_SCRIPT.indexOf('\ndef main() -> None:')
+);
