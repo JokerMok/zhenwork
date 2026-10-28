@@ -311,6 +311,7 @@ export async function taskOfficeContext(
     round: a.round,
     attempt: a.attempt,
     requiredFormats: a.requiredFormats,
+    selectedInput: {description:a.inputs.content,files:a.inputs.files},
     previousState: context?.priorState || prior?.state,
     pendingIssue: context?.question || prior?.question || prior?.reason,
     retryOnly: !!a.retryOf,

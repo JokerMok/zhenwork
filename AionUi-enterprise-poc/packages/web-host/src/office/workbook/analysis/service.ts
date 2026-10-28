@@ -194,6 +194,38 @@ export class DataAnalysis {
       },
     };
   }
+  async context(conversation: string, description: string) {
+    return this.serial(async () => {
+      const ix = await this.index();
+      const selected = [];
+      for (const id of ix.datasets) {
+        const d = await this.read<Dataset>('dataset-' + id);
+        if (!d.conversations.includes(conversation) && !description.includes(d.sourcePath)) continue;
+        await this.authorize(d);
+        if (!d.conversations.includes(conversation)) {
+          d.conversations.push(conversation);
+          await this.write('dataset-' + id, d);
+        }
+        selected.push({
+          datasetId: d.id,
+          name: d.name,
+          sourcePath: d.sourcePath,
+          sourceSha256: d.source.sha256,
+          mappingVersion: d.mapping.version,
+          mappingConfirmed: d.mapping.confirmed,
+          period: d.period,
+          ruleId: d.ruleId,
+        });
+      }
+      return {
+        imports: selected,
+        tools: ['inspect_structured_data', 'analyze_waste_data', 'generate_waste_report', 'inspect_waste_analysis'],
+        nextStep: selected.length
+          ? 'The employee already imported these selected files and saved mappings. Use ToolSearch with ONE EXACT name analyze_waste_data, then call it with the matching datasetId, saved period and ruleId. Do not list directories or run Exec/Read/Python to rediscover files. If mappingConfirmed=false, request the employee Data mapping UI once. Then generate_waste_report from its validated analysisId.'
+          : 'For XLSX/CSV monthly waste tasks, use ToolSearch with ONE EXACT name inspect_structured_data and the employee attachment/path to import. Never use shell directory scans or preview samples as monthly statistics.',
+      };
+    });
+  }
   async list(conversation?: string) {
     const ix = await this.index();
     const rows = await Promise.all(ix.datasets.map((id) => this.read<Dataset>('dataset-' + id)));

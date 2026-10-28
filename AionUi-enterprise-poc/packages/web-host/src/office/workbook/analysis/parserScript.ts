@@ -1,5 +1,6 @@
 export const PARSER_PYTHON = String.raw`import csv,datetime as dt,io,zipfile,re,hashlib,collections,calendar,ast
-from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
+from decimal import Decimal,InvalidOperation,ROUND_HALF_UP,getcontext
+getcontext().prec=50
 DS_MAX_ROWS=50000
 DS_MAX_COLS=64
 DS_MAX_SHEETS=10
