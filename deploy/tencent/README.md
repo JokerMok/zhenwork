@@ -4,7 +4,13 @@
 
 本轮持久任务说明见 `docs/task-workspace.md`。发布脚本按源码差异复用未变管理网页与监控产物，重建受影响员工网页/Host/Java；manifest记录并验证实际复用摘要。
 
-## 当前登录与共享版本（2026-10-27）
+## 当前员工聊天版本（2026-10-28）
+
+release `20261028-employee-experience-v4`，实际应用 `151871d1b3e778afc5a6e4c51025f1e0adcef7ac`；后续文档提交另计。仅本机构建员工/Host，复用原Admin、Java、监控及amd64镜像，24迁移一致；数据、账号、密钥、授权和原Core预算不变。功能/真实验收见PROJECT.md与docs/employee-chat-experience.md，私有记录shared/config/acceptance/20261028-employee-experience.md及VERIFIED.json。
+
+最终Core0、磁盘约3.2GiB，两份一致备份；只归档本轮未验收中间版本metadata并移除其构建产物，current/已验证v10/业务数据/有效备份保留。previous为entry-sharing-v10，兼容审核 `shared/config/rollback-reviews/20261028-experience-v4-to-entry-v10.json`。收敛在途执行后 `sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261028-experience-v4-to-entry-v10.json`；只退应用/配置，保留DB及文件，恢复旧UI/暂停限制，未实际回滚。更新/重启/日志入口沿用下文现有流程。
+
+## 上一轮登录与共享版本（2026-10-27）
 
 release `20261027-entry-sharing-v10`，应用 SHA `b2edb832ed634ed3844e4970693e3c3a84093706`。后续纯维护提交与应用 SHA 分开。24 条迁移，0024 纯加法；员工/Admin/Java 按受影响范围本机构建，最终 Host-only 按 manifest 复用其余不可变产物，Rust/amd64 镜像及资源预算保持。
 

@@ -1,14 +1,26 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-27。当前范围：员工登录直达工作台、整组资源共享和实际执行接线；保留普通聊天后台持续回复、按需 Core 及组织权限，不制作桌面安装包。
+核对日期：2026-10-28。当前范围：员工聊天体验、实际Host登录账号记忆、同页准备及等待/错误接线；保留共享、普通聊天后台持续回复、按需Core与组织权限。
 
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261027-entry-sharing-v10`；准确应用 SHA：`b2edb832ed634ed3844e4970693e3c3a84093706`；平台 `linux/amd64`。本文件之后的纯维护文档提交不会重建应用，不能把文档 HEAD 当作实际应用 SHA。已验证回滚目标保留 `20261027-chat-continuity-v2` / `bb5e374ed806309de51a9403edef85a6f54c1abc`，不使用未验收中间候选。
+- 激活 release：`20261028-employee-experience-v4`；准确应用 SHA：`151871d1b3e778afc5a6e4c51025f1e0adcef7ac`；平台 `linux/amd64`。后续纯维护文档提交不重建应用，不把文档 HEAD 当应用 SHA。已验证回滚保留 `20261027-entry-sharing-v10` / `b2edb832ed634ed3844e4970693e3c3a84093706`；未验收中间构建只保留 metadata。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
+
+## 2026-10-28 员工聊天与实际登录入口
+
+聊天保留一个主输入，普通问答无任务大卡片；执行详情默认折叠、按调用标识去重，真实确认绑定具体提案且只显示一次。可读模型名替代rc2别名，空右栏收起，员工错误简明，技术诊断保留服务端。Host `/enterprise/login` 与React成功登录都记最近账号、密码空，可主动清除；退出保留账号。品牌/13语言及桌面保护保留。
+
+原优废会话查询成功后，等待检查点的本地暂停被误转为模型401，现单独处理暂停，不改密钥、不换模型。真实命令等待缺turn.completed导致聊天漏读，现以持久状态边界补读消息，欢迎页不遮住操作；冷准备的授权文本快照路由先于目录处理。工作台Core0，准备/失败/有界超时仍在同页输入区。
+
+真实公网：普通问答、自然业务问题的entSummary/deviceSummary只读调用与六个数值字段核对、待补充后程序计算20.75、唯一命令确认/实际拒绝及刷新去残留通过。长回复中关闭完整测试Chrome，原会话337→2161字、单回复/单发送/无cancel；工具离页后完成JSON/精确计算/CSV，成果按钮真实下载哈希一致、独立核对4明细44.00元并网页预览。主动停止后内容不增长。受控401/准备失败/超时均简明反馈可恢复，未破坏生产凭据。1366/1440布局与第二账号快照404通过。
+
+最终仅构建员工/Host，24迁移/管理端/Java/监控/Rust镜像按manifest复用。Core1/启动1/闲120秒/等180秒不改；最终Core0、有效备份2份、磁盘约3.2GiB，其他项目与TLS正常。实现与限制见 [员工聊天](docs/employee-chat-experience.md)；私有截图/下载/原生消息/故障证据在 `.codex/employee-experience/acceptance-report.md` 及服务器 `shared/config/acceptance/20261028-employee-experience.md`，不提交公司原件、账号或Cookie。
+
+回滚审核 `shared/config/rollback-reviews/20261028-experience-v4-to-entry-v10.json`；先收敛执行再manage.sh rollback，仅退应用/配置，保留DB、任务、消息、文件版本与授权，会恢复旧UI及暂停误报限制。未实际回滚。没有全历史/后台巡检、桌面或压测，未将受控401视作生产密钥失效实测。
 
 ## 2026-10-27 登录直达与整组共享
 

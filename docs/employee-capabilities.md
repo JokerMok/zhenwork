@@ -2,6 +2,10 @@
 
 组织能力继承基线为 `20261023-employee-inheritance-v7` / `cea46c0ef395f1a3e3c5712af477a55ecbb27e37`。下面保留其验收边界，当前登录与共享变更见本节及 PROJECT.md。
 
+## 2026-10-28 员工聊天收敛
+
+当前 `20261028-employee-experience-v4` / `151871d1b3e778afc5a6e4c51025f1e0adcef7ac`。实际Host与React登录成功后记账号、密码空，退出保留；同页准备/授权文本快照，工作台只读Core0。单主输入、执行日志折叠去重、具体提案确认、可读模型名及简明错误；修复等待误转401和命令暂停后消息漏读。普通员工真实模型、优废自然查询、补充后程序计算、拒绝确认、长文/文件离页执行、预览下载和越权抽查已过。细节及具体边界见 [员工聊天体验](employee-chat-experience.md)，私有证据见项目.codex/employee-experience/acceptance-report.md。原共享和业务权限没有扩大。
+
 ## 2026-10-27 登录直达与整组共享
 
 发布 `20261027-entry-sharing-v10`，应用源码 `b2edb832ed634ed3844e4970693e3c3a84093706`。新增 0024 加法迁移，既有 23 条摘要不变；复用原 Rust、amd64 Core/Gateway 和监控。最终 v10 仅更新 Host，按 manifest 精确复用 v9 的其余不可变产物；中间版本未作为通过依据。
