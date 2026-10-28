@@ -1,14 +1,30 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-28。当前范围：员工聊天体验、实际Host登录账号记忆、同页准备及等待/错误接线；保留共享、普通聊天后台持续回复、按需Core与组织权限。
+核对日期：2026-10-28。当前范围：正式业务口径、XLSX/CSV结构化导入、精确月度分析及同源Word/Excel交付；保留员工聊天、共享、后台持续回复与按需Core。
 
 ## 当前发布与访问
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261028-employee-experience-v4`；准确应用 SHA：`151871d1b3e778afc5a6e4c51025f1e0adcef7ac`；平台 `linux/amd64`。后续纯维护文档提交不重建应用，不把文档 HEAD 当应用 SHA。已验证回滚保留 `20261027-entry-sharing-v10` / `b2edb832ed634ed3844e4970693e3c3a84093706`；未验收中间构建只保留 metadata。
+- 激活 release：`20261028-business-analysis-v9`；准确应用 SHA：`033da5d311b8175284018b950a9589307e40076b`；平台 `linux/amd64`。后续纯维护文档提交不重建应用，不把文档 HEAD 当应用 SHA。已验证回滚保留 `20261028-employee-experience-v4` / `151871d1b3e778afc5a6e4c51025f1e0adcef7ac`；未验收中间构建只保留 metadata。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
+
+## 2026-10-28 业务口径与结构化数据导入
+
+已部署 `20261028-business-analysis-v9` / 实际应用 `033da5d311b8175284018b950a9589307e40076b`。复用现有TOOL/CALCULATOR资源的版本、激活、共享及审计，新增结构化业务口径；不新建权限系统、数据库表或调度器。使用说明见 [产废月度分析](docs/waste-monthly-analysis.md)。管理员从AI资源管理→企业资源→工具开启“业务统计口径”，配置、激活并按对象授权；员工从原会话上传或文件页“数据映射”选择列、月份及已发布口径，使用同一个聊天框继续，成果仍在原聊天和文件页。
+
+公网普通员工真实模型与文件工具：BOM CSV/双表XLSX完整6行扫描，按9月/产生/同编号同内容去重纳入3条，2150.000kg（2.150000吨），A1350/B800，独立Decimal复算下载字节一致。151行文件只预览12行但完整计算151条/15.100kg，实际使用口径v2。五类异常阻断、取消不虚报完成；修改映射后2151.250kg、差1.250kg；Word仅标题续改、其余内容/表格/链接不变，历史恢复原SHA；口径更新后旧报告仍v1且旧下载哈希不变。
+
+关闭完整测试浏览器后服务器继续生成两份成果，原会话返回全文并真实下载；受控单项输出失败只重试缺失Excel，成功Word的SHA/版本不变。第二账号隔离、专用口径撤权后旧分析/成果预览/版本下载拒绝及重新授权恢复通过。最终v9普通员工新命名副本、两份下载、原聊天重载和精度预览再次通过；检查工具返回真实numberFormat，避免模型因原始数值无末尾零而误修文件。Word/Excel同份追溯元数据，原生固定版本来源链接实际下载原件，中文LibreOffice渲染检查通过；不声称Microsoft Office客户端验收。
+
+本轮本机构建受影响员工/管理网页、Host及Java；最终Host-only复用已冻结其余产物。24迁移未变，无Rust/桌面/镜像构建及新常驻服务。Core1/启动1/队列2/等180秒/闲120秒及原后台预算保持，完整扫描限20MiB/50000行/64列/10表/60秒/384MiB/全Host并行1，私有控制区128MiB及原文件历史预算。读取列表/预览仍Core0。最终Core0、可用内存5324624 kB、盘余2634928128B；本项目/拼豆/Caddy active，三站正常TLS200，ops-check200。
+
+发布前一致备份 `20261028T125203417196Z.tar.gz` / 766566481B，归档SHA及原件/映射/分析/Word/Excel隔离提取哈希通过，原生PG dump目录861项/24迁移；未生产还原，既有DB隔离恢复证据复用。保留2份共1533324185B、原2GiB预算。只归档清理本轮无VERIFIED且非current/previous的失败中间产物，不动业务数据/有效备份/镜像。
+
+previous保留已验证employee-experience-v4；审核 `shared/config/rollback-reviews/20261028-business-v9-to-experience-v4.json`，仅在维护窗口先隔离员工入口、停用新口径并收敛在途，再按审核manage.sh rollback，仅应用/配置，保留数据库、授权、原件、结果及文件版本；旧程序不识别新口径且不具备本轮派生权限门禁，旧版期间员工公网入口须保持隔离，补齐门禁并复验前不能恢复公开服务；不能把回滚当成数据回退。未实际回滚。私有证据 `.codex/waste-analysis/acceptance-report.md` 与服务器 `shared/config/acceptance/20261028-business-analysis.md`、当前VERIFIED。
+
+结论CONDITIONAL GO：通用功能及合成业务主流程通过；真实客户生产明细、最终企业正式口径与共享目录未提供，需独立验收。不做跨工作簿/任意公式、全历史/后台巡检/压测或生产故障破坏性验证。
 
 ## 2026-10-28 员工聊天与实际登录入口
 

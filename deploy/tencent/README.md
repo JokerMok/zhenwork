@@ -4,7 +4,17 @@
 
 本轮持久任务说明见 `docs/task-workspace.md`。发布脚本按源码差异复用未变管理网页与监控产物，重建受影响员工网页/Host/Java；manifest记录并验证实际复用摘要。
 
-## 当前员工聊天版本（2026-10-28）
+## 当前业务分析发布（2026-10-28）
+
+`20261028-business-analysis-v9` / 应用 `033da5d311b8175284018b950a9589307e40076b`；GitHub纯维护提交另计。功能与定向公网证据范围见PROJECT.md、docs/waste-monthly-analysis.md及root私有acceptance/20261028-business-analysis.md。初始构建员工/管理网页、Host、Java，最终Host-only复用其余不可变摘要；24迁移不变，监控/Rust/amd64镜像复用。没有新服务、端口或DB表。
+
+持久数据新增员工Host私有控制区data-analysis/，原件/成果继续OfficeStore；纳入既有shared.tar.gz一致备份，不应单独复制某个执行容器。全Host解析/计算并行1、60秒/384MiB，Core1/启动1/空闲120秒保持。只读列表/文件/预览不唤醒Core。
+
+最新备份20261028T125203417196Z.tar.gz（766566481B），2份/2GiB预算保持；已校验归档SHA、原件/映射/分析与两格式文件隔离提取哈希，未生产还原。回滚审核shared/config/rollback-reviews/20261028-business-v9-to-experience-v4.json；先在维护窗口隔离员工入口、停用新口径并收敛在途，`sudo bash /srv/apps/zhenwork/deploy/manage.sh rollback /srv/apps/zhenwork/shared/config/rollback-reviews/20261028-business-v9-to-experience-v4.json`。仅应用/配置回退，保留DB、口径版本、数据/文件历史；旧版不识别新口径且缺派生访问门禁，回退后员工入口须保持隔离，补齐派生门禁并复验后才可重新公开。未实际回滚。
+
+更新继续采用冻结源码deploy.sh或只对匹配差异使用restage-web/restage-host，`finalize-release.sh RELEASE`先检查Core0、磁盘底线、一致备份和精确迁移链。维护命令status|restart|logs 100不变。
+
+## 前一员工聊天版本（2026-10-28）
 
 release `20261028-employee-experience-v4`，实际应用 `151871d1b3e778afc5a6e4c51025f1e0adcef7ac`；后续文档提交另计。仅本机构建员工/Host，复用原Admin、Java、监控及amd64镜像，24迁移一致；数据、账号、密钥、授权和原Core预算不变。功能/真实验收见PROJECT.md与docs/employee-chat-experience.md，私有记录shared/config/acceptance/20261028-employee-experience.md及VERIFIED.json。
 
