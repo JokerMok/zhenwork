@@ -128,6 +128,8 @@ export async function recordTool(
       input?.basePath ||
       input?.baseName ||
       input?.basename ||
+      input?.datasetId ||
+      input?.analysisId ||
       input?.baseId ||
       input?.query ||
       "",

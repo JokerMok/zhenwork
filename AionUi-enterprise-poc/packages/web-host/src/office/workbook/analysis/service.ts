@@ -194,13 +194,21 @@ export class DataAnalysis {
       },
     };
   }
+  async requireFormalGenerator(conversation: string, description: string) {
+    const ix = await this.index();
+    for (const id of ix.datasets) {
+      const d = await this.read<Dataset>('dataset-' + id);
+      if (d.conversations.includes(conversation) || (d.ruleId && description.includes(d.sourcePath)))
+        throw new Error('DATA_USE_FORMAL_REPORT_GENERATOR');
+    }
+  }
   async context(conversation: string, description: string) {
     return this.serial(async () => {
       const ix = await this.index();
       const selected = [];
       for (const id of ix.datasets) {
         const d = await this.read<Dataset>('dataset-' + id);
-        if (!d.conversations.includes(conversation) && !description.includes(d.sourcePath)) continue;
+        if (!d.conversations.includes(conversation) && !(d.ruleId && description.includes(d.sourcePath))) continue;
         await this.authorize(d);
         if (!d.conversations.includes(conversation)) {
           d.conversations.push(conversation);
@@ -617,6 +625,9 @@ export class DataAnalysis {
       }
       return {
         error: outputError,
+        instruction: outputError
+          ? 'Partial output retained. Do not use shell commands or overwrite successful files. Explain the failed deliverable and stop; after the user resolves it, retry this same analysisId/baseName only.'
+          : undefined,
         analysisId: id,
         resultHash: a.resultHash,
         validation: built.validation,

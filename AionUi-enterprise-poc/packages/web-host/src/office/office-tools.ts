@@ -550,6 +550,7 @@ export async function startOfficeTools(
         if (res.destroyed) abort.abort();
         abort.signal.throwIfAborted();
         let value: unknown;
+        if(['create_office_document','create_evidence_deliverables'].includes(tool!)&&core.workspaceRoot&&site){const context=record(await taskOfficeContext(profileRoot,actor,conversation));await (await DataAnalysis.create(profileRoot,actor,core.workspaceRoot,client,site.origin)).requireFormalGenerator(conversation,String(record(context.selectedInput).description||''));}
         const reused = dataTools.some(t=>t.name===tool) ? undefined : await reusableOutput(
           profileRoot,
           actor,
@@ -916,7 +917,9 @@ export async function startOfficeTools(
         // A grant revoked during network/parse work cannot release results to Core.
         await client.me();
         abort.signal.throwIfAborted();
-        await recordTool(profileRoot, actor, conversation, tool!, args, value, undefined, executionId, toolStepId);
+        const dataStatus=record(value).status||record(record(value).result).status;
+        const dataError=dataTools.some(t=>t.name===tool)&&['blocked','needs_input'].includes(String(dataStatus))?'DATA_VALIDATION_OR_MAPPING_REQUIRED':undefined;
+        await recordTool(profileRoot, actor, conversation, tool!, args, value, dataError, executionId, toolStepId);
         failedCall = undefined;
         result = { content: [{ type: 'text', text: JSON.stringify(value) }] };
       } else throw new Error('METHOD_NOT_SUPPORTED');

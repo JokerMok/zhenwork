@@ -4,13 +4,14 @@ def ds_report(data):
  result=data['result'];summary=result.get('summary')
  if result['status']!='validated' or not summary:ds_fail('DATA_VALIDATION_BLOCKED')
  source=data['source'];policy=data['policy'];mapping=data['mapping'];period=result['period'];total=summary['weightKg']
+ metric='产生重量' if policy['definition']['includeNodes']==['产生'] else '所选节点登记重量（非企业总产废量）'
  notes=['统计期间：'+period+'；业务节点：'+ '、'.join(policy['definition']['includeNodes'])+'；采用业务日期（Asia/Shanghai），不使用上传时间。',
   '完整扫描 '+str(result['rowCount'])+' 条数据；纳入 '+str(result['includedCount'])+' 条；排除 '+str(result['excludedCount'])+' 条；异常 '+str(result['invalidCount'])+' 条。',
   '本表按记录逐条换算为 kg，以 HALF_UP 保留 '+str(policy['definition']['precision'])+' 位小数，再求和。相同编号的处理规则：'+policy['definition']['duplicateRule']+'。',
   '月度趋势只表示本次文件中提供的有效记录，不代表完整企业历史。不具备生产量、合同、价格、费用及清运约束，不能推导单位产废、降本或最优清运方案。']
  provenance={'analysisId':data['id'],'resultHash':data['resultHash'],'source':source,'policy':policy,'mapping':mapping}
  sourceRef={'id':'S1','title':source['name'],'version':source['versionId'],'location':mapping['sheet']+'；原始行号见明细表','url':data['sourceUrl'],'quotes':[]}
- payload={'title':period+' 产废月度分析报告','paragraphs':['本期产生重量 '+total+' kg（'+summary['weightTon']+' 吨），纳入有效产生记录 '+str(result['includedCount'])+' 条。',*notes],
+ payload={'title':period+' 产废月度分析报告','paragraphs':['本期'+metric+' '+total+' kg（'+summary['weightTon']+' 吨），纳入有效产生记录 '+str(result['includedCount'])+' 条。',*notes],
  'table':{'headers':['维度','对象','重量（kg）','占比（%）'],'rows':[[kind,x['name'],x['weightKg'],x['percent'] if x['percent'] is not None else '未知'] for kind,key in [('废物类别','byCategory'),('来源部门/车间','bySource')] for x in summary[key]]},
  'sections':[{'heading':'数据质量与排除说明','paragraphs':[DS_REASON.get(k,k)+'：'+str(v)+' 条' for k,v in result['counts'].items() if k!='INCLUDED'] or ['未发现排除项。']},
  {'heading':'趋势与范围','paragraphs':[x['month']+'：'+x['weightKg']+' kg（仅本文件范围）' for x in summary['trend']]},
@@ -33,8 +34,8 @@ def ds_report(data):
   detail.write_number(r,7,float(Decimal(x['weightKg'])),number);write(detail,r,8,x['sheet']);detail.write_number(r,9,x['row'])
  detail.write_string(len(included)+1,6,'合计',head)
  detail.write_formula(len(included)+1,7,'=SUM(H2:H'+str(len(included)+1)+')' if included else '=0',number,float(Decimal(total)));finish(detail,len(included)+1,10)
- main=sheet('汇总',['指标','数值','单位/说明'],[28,24,80])
- for r,(label,value,unit) in enumerate([('统计期间',period,'业务日期'),('纳入记录数',result['includedCount'],'条'),('产生重量',float(Decimal(total)),'kg'),('产生重量（吨）',float(Decimal(summary['weightTon'])),'吨'),('扫描记录数',result['rowCount'],'完整扫描'),('排除记录数',result['excludedCount'],'条'),('异常记录数',result['invalidCount'],'条')],1):
+ main=sheet('汇总',['指标','数值','单位/说明'],[28,24,80]);main.activate()
+ for r,(label,value,unit) in enumerate([('统计期间',period,'业务日期'),('纳入记录数',result['includedCount'],'条'),(metric,float(Decimal(total)),'kg'),(metric+'（吨）',float(Decimal(summary['weightTon'])),'吨'),('扫描记录数',result['rowCount'],'完整扫描'),('排除记录数',result['excludedCount'],'条'),('异常记录数',result['invalidCount'],'条')],1):
   write(main,r,0,label)
   if isinstance(value,(float,int)):main.write_number(r,1,value,number)
   else:write(main,r,1,value)
@@ -48,7 +49,7 @@ def ds_report(data):
  w=sheet('月度趋势',['月份','重量（kg）','范围'],[18,24,80])
  for r,x in enumerate(summary['trend'],1):write(w,r,0,x['month']);w.write_number(r,1,float(Decimal(x['weightKg'])),number);write(w,r,2,'仅本文件、指定业务节点和有效记录')
  finish(w,len(summary['trend']),3)
- w=sheet('排除及异常',['原工作表','原行号','业务编号','处理','原因','原始行内容'],[22,12,18,18,38,90]);other=[x for x in result['rows'] if x['outcome']!='included']
+ w=sheet('排除及异常',['原工作表','原行号','业务编号','处理','原因','原始行内容（节选；完整原件见来源）'],[22,12,18,18,38,90]);other=[x for x in result['rows'] if x['outcome']!='included']
  for r,x in enumerate(other,1):
   for c,v in enumerate([x['sheet'],x['row'],x.get('id',''),'阻断' if x['outcome']=='invalid' else '排除',DS_REASON.get(x['reason'],x['reason']),' | '.join(x['original'])]):write(w,r,c,v)
  finish(w,len(other),6)

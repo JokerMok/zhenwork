@@ -107,6 +107,8 @@ def ds_structure(raw,name,options):
    indices=[i for i,c in enumerate(columns) if ds_key(c) in [ds_key(a) for a in aliases] or field=='weight' and any(ds_key(c)==ds_key(a)+u for a in ['净重','重量','产生重量','产废重量'] for u in ['kg','吨','t'])]
    if len(indices)==1:mapping[field]=indices[0]
    elif len(indices)>1:ambiguities.append(field)
+  for field,pattern in [('weight',r'(重量|净重|产生量)(?:[\s(（\[]*(?:kg|吨|t|g)[)）\]]*)?$'),('date',r'(日期|时间|date|time)$')]:
+   if sum(bool(re.search(pattern,c,re.I)) for c in columns)>1 and field not in ambiguities:ambiguities.append(field)
   inferred=None
   if 'weight' in mapping:
    h=columns[mapping['weight']]
