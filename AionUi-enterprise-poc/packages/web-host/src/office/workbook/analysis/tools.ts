@@ -34,7 +34,7 @@ export const dataTools = [
   {
     name: 'generate_waste_report',
     description:
-      'Produce BOTH editable DOCX monthly report and XLSX details/summaries/issues directly from ONE validated analysisId, not model numbers. Reopens outputs to check totals/counts. Returns actual versioned receipts, preview/download URLs. Failed partial delivery can retry the SAME id/baseName without replacing successful artifacts. Use a new analysis after changing mapping or source; old reports remain pinned to their original rule version. Never claim production coverage, savings or transport optimization without inputs.',
+      'Produce BOTH editable DOCX monthly report and XLSX details/summaries/issues directly from ONE validated analysisId, not model numbers. Reopens outputs to check totals/counts. Returns actual versioned receipts, preview/download URLs. Failed partial delivery must retry the SAME id/baseName without replacing successful artifacts. After BOTH files completed, an explicitly requested DIFFERENT baseName creates a version-traced copy from the same verified facts, preserving old files. Use a new analysis after changing mapping or source; old reports remain pinned to their original rule version. Never claim production coverage, savings or transport optimization without inputs.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,

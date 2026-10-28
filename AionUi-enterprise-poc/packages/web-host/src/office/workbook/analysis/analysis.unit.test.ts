@@ -1,3 +1,4 @@
+import { previewWorkbook } from '../index.js';
 import { decimalDifference } from './service.js';
 import { execFileSync } from 'node:child_process';
 import { describe, it, expect } from 'vitest';
@@ -180,3 +181,30 @@ it('compares changed verified totals with exact decimal subtraction', () => {
   expect(decimalDifference('0.300', '0.100')).toBe('-0.200');
   expect(decimalDifference('9999999999999999.999', '10000000000000000.001')).toBe('0.002');
 });
+
+it.skipIf(!available)(
+  'preserves numeric and formula preview precision instead of forcing monetary decimals',
+  async () => {
+    const file = execFileSync(
+      process.env.ZHENWORK_OFFICE_PYTHON!,
+      [
+        '-c',
+        String.raw`import openpyxl,io,base64
+w=openpyxl.Workbook();s=w.active
+s['A1']=0.001;s['A1'].number_format='0.000'
+s['A2']='=A1+A1';s['A2'].number_format='0.000'
+s['B1']=12.35;s['B1'].number_format='0.00'
+s['C1']=0.0151;s['C1'].number_format='0.000000'
+b=io.BytesIO();w.save(b);print(base64.b64encode(b.getvalue()).decode())`,
+      ],
+      { encoding: 'utf8' }
+    );
+    const view = (await previewWorkbook(Buffer.from(file.trim(), 'base64'))) as {
+      rows: Array<{ cells: Array<{ text: string }> }>;
+    };
+    expect(view.rows[0].cells[0].text).toBe('0.001');
+    expect(view.rows[1].cells[0].text).toBe('0.002');
+    expect(view.rows[0].cells[1].text).toBe('12.35');
+    expect(view.rows[0].cells[2].text).toBe('0.015100');
+  }
+);

@@ -18,7 +18,7 @@ def ds_report(data):
  {'heading':'口径与追溯','paragraphs':['口径：'+policy['name']+' v'+str(policy['version'])+'；'+policy['definition']['meaning'],'适用范围：'+policy['definition']['scope'],'映射版本：'+str(mapping['version'])+'；原件及完整追溯信息保存在成果元数据和 Excel「口径与来源」。']}], 'sources':[sourceRef], 'provenance':provenance}
  word=docx(payload)
  output=io.BytesIO();book=xlsxwriter.Workbook(output,{'in_memory':True,'strings_to_formulas':False,'strings_to_urls':False});book.set_properties({'title':period+' 产废分析','comments':data['resultHash']})
- head=book.add_format({'bold':True,'bg_color':'#DBEAFE','border':1,'text_wrap':True});normal=book.add_format({'text_wrap':True,'valign':'top'});number=book.add_format({'num_format':'0.'+'0'*policy['definition']['precision']});link=book.add_format({'font_color':'blue','underline':1});pct=book.add_format({'num_format':'0.00'})
+ head=book.add_format({'bold':True,'bg_color':'#DBEAFE','border':1,'text_wrap':True});normal=book.add_format({'text_wrap':True,'valign':'top'});number=book.add_format({'num_format':'0.'+'0'*policy['definition']['precision']});link=book.add_format({'font_color':'blue','underline':1});integer=book.add_format({'num_format':'0'});tonnes=book.add_format({'num_format':'0.'+'0'*(policy['definition']['precision']+3)});pct=book.add_format({'num_format':'0.00'})
  def sheet(name,headers,widths):
   w=book.add_worksheet(name);w.freeze_panes(1,0);w.repeat_rows(0);w.set_landscape();w.fit_to_pages(1,0);w.set_paper(9)
   for col,(h,width) in enumerate(zip(headers,widths)):w.write_string(0,col,h,head);w.set_column(col,col,width)
@@ -37,7 +37,7 @@ def ds_report(data):
  main=sheet('汇总',['指标','数值','单位/说明'],[28,24,80]);main.activate()
  for r,(label,value,unit) in enumerate([('统计期间',period,'业务日期'),('纳入记录数',result['includedCount'],'条'),(metric,float(Decimal(total)),'kg'),(metric+'（吨）',float(Decimal(summary['weightTon'])),'吨'),('扫描记录数',result['rowCount'],'完整扫描'),('排除记录数',result['excludedCount'],'条'),('异常记录数',result['invalidCount'],'条')],1):
   write(main,r,0,label)
-  if isinstance(value,(float,int)):main.write_number(r,1,value,number)
+  if isinstance(value,(float,int)):main.write_number(r,1,value,integer if isinstance(value,int) else tonnes if unit=='吨' else number)
   else:write(main,r,1,value)
   write(main,r,2,unit)
  for r,note in enumerate(notes,10):write(main,r,0,'计算说明');write(main,r,2,note)

@@ -6,6 +6,8 @@ def preview(content, args):
         resource.setrlimit(resource.RLIMIT_AS,(384*1024*1024,384*1024*1024))
         resource.setrlimit(resource.RLIMIT_CPU,(12,12))
     except (ImportError,ValueError): pass
+    from decimal import getcontext
+    getcontext().prec=max(50,getcontext().prec)
     package=WorkbookPackage(content)
     visible=[s for s in package.sheets if s['state']=='visible']
     require(bool(visible),'WORKBOOK_NO_VISIBLE_SHEETS')
@@ -50,8 +52,19 @@ def preview(content, args):
         if fmt_id in range(14,23) or fmt_id in range(45,48) or (fmt and re.search('[yd]',re.sub(r'"[^"]*"|\[[^\]]*\]','',fmt),re.I)):
             try:return (epoch+datetime.timedelta(days=float(numeric))).isoformat(sep=' ').removesuffix(' 00:00:00')
             except (ValueError,OverflowError):return value
-        if fmt_id in (9,10) or '%' in fmt:return format(numeric*100,'.2f' if fmt_id==10 or '.00' in fmt else '.0f')+'%'
-        if fmt_id in (2,4,7,8) or re.search(r'\.[0#]{2}',fmt):return format(numeric,'.2f')
+        basic=fmt or {1:'0',2:'0.00',3:'#,##0',4:'#,##0.00',7:'0.00',8:'0.00',9:'0%',10:'0.00%'}.get(fmt_id,'')
+        match=re.fullmatch(r'([#0,]+)(?:\.([#0]+))?(%)?',basic)
+        if match:
+            places=len(match[2] or '')
+            if places>12:return value
+            amount=numeric*(100 if match[3] else 1)
+            amount=amount.quantize(Decimal(1).scaleb(-places),rounding=ROUND_HALF_UP)
+            text=format(amount,(',' if ',' in match[1] else '')+'.'+str(places)+'f')
+            optional=len(match[2] or '')-len((match[2] or '').rstrip('#'))
+            for _ in range(optional):
+                if text.endswith('0'):text=text[:-1]
+            return text.rstrip('.')+('%' if match[3] else '')
+
         return value
     merges=[];covered=set();origins={}
     for merge in root.findall('x:mergeCells/x:mergeCell',NS):

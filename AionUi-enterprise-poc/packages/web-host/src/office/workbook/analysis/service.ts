@@ -86,6 +86,7 @@ export interface Analysis {
     deltaWeightKg?: string | null;
   };
   outputBase?: string;
+  deliveries?: Record<string, Receipt[]>;
   pending?: Record<string, string>;
 }
 interface Index {
@@ -533,6 +534,15 @@ export class DataAnalysis {
   private summary(a: Analysis, reused = false, offset = 0) {
     return {
       ...a,
+      changedFrom: a.changedFrom
+        ? {
+            ...a.changedFrom,
+            deltaWeightKg:
+              a.changedFrom.previousWeightKg !== null && a.changedFrom.currentWeightKg !== null
+                ? decimalDifference(a.changedFrom.previousWeightKg, a.changedFrom.currentWeightKg)
+                : null,
+          }
+        : undefined,
       result: { ...a.result, rows: undefined, issues: a.result.issues.slice(offset, offset + 80) },
       reused,
       issueCount: a.result.issues.length,
@@ -589,7 +599,15 @@ export class DataAnalysis {
         /[\\\x00-\x1f]/.test(base)
       )
         throw new Error('DATA_OUTPUT_PATH_INVALID');
-      if (a.outputBase && a.outputBase !== base) throw new Error('DATA_RETRY_USE_ORIGINAL_OUTPUT');
+      if (a.outputBase && a.outputBase !== base) {
+        if (a.artifacts.length === 1 || (!a.artifacts.length && Object.keys(a.pending || {}).length))
+          throw new Error('DATA_RETRY_USE_ORIGINAL_OUTPUT');
+        if (Object.keys(a.deliveries || {}).length >= 10 && !Object.hasOwn(a.deliveries || {}, base))
+          throw new Error('DATA_DELIVERY_COPY_LIMIT_10');
+        a.deliveries = { ...a.deliveries, [a.outputBase]: a.artifacts };
+        a.artifacts = Object.hasOwn(a.deliveries, base) ? a.deliveries[base] : [];
+        a.pending = {};
+      }
       a.outputBase = base;
       const built = await dataPython<{
         docx: string;
@@ -644,6 +662,9 @@ export class DataAnalysis {
       }
       return {
         error: outputError,
+        nextStep: !outputError
+          ? 'Both files were reopened and their exact mass totals/counts verified. Do not audit mass with the financial two-decimal audit_workbook. Use inspect_waste_analysis for exact kg/ton totals; only binary-format validate_artifact is additionally useful. Use returned versioned receipts verbatim.'
+          : undefined,
         instruction: outputError
           ? 'Partial output retained. Do not use shell commands or overwrite successful files. Explain the failed deliverable and stop; after the user resolves it, retry this same analysisId/baseName only.'
           : undefined,
