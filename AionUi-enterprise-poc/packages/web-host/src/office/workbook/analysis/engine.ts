@@ -103,7 +103,7 @@ const entry = String.raw`
 import sys,base64,resource,os
 def text(value):return '' if value is None else str(value)
 if sys.platform=='linux':
- resource.setrlimit(resource.RLIMIT_AS,(640*1024*1024,640*1024*1024))
+ resource.setrlimit(resource.RLIMIT_AS,(384*1024*1024,384*1024*1024))
 resource.setrlimit(resource.RLIMIT_CPU,(55,55))
 try:
  request=json.loads(sys.stdin.read(32*1024*1024))
@@ -115,7 +115,7 @@ try:
  else:raise ValueError('DATA_ACTION_INVALID')
  print(json.dumps({'data':out},ensure_ascii=False,separators=(',',':')))
 except Exception as e:
- code=str(e) if isinstance(e,ValueError) and re.fullmatch(r'[A-Z0-9_:]+',str(e)) else 'DATA_PROCESSING_FAILED'
+ code='DATA_MEMORY_LIMIT_384MB' if isinstance(e,MemoryError) else str(e) if isinstance(e,ValueError) and re.fullmatch(r'[A-Z0-9_:]+',str(e)) else 'DATA_PROCESSING_FAILED'
  print(json.dumps({'error':code}));sys.exit(2)
 `;
 export async function dataPython<T>(

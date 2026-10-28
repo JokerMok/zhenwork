@@ -1534,10 +1534,12 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
               .digest('hex') !== hash
           )
             return reply(res, 409, { error: 'FILE_CHANGED_RETRY' });
+          await dataAccess.guardFile(name);
           return reply(res, 200, preview);
         }
         if (url.pathname === '/enterprise/files/download' && req.method === 'GET') {
           const bytes = await store.downloadOriginal(inputRoot, name, version);
+          await dataAccess.guardFile(name);
           if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
           res.writeHead(200, {
             'content-type': 'application/octet-stream',

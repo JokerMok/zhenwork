@@ -81,6 +81,7 @@ interface Index {
 }
 const initial = (): Index => ({ datasets: [], analyses: [], templates: [], outputs: {} });
 const locks = new Map<string, Promise<unknown>>();
+const queued = new Map<string, number>();
 const safeId = (id: string) => {
   if (!/^[a-f0-9]{64}$/.test(id)) throw new Error('DATA_NOT_FOUND');
   return id;
@@ -120,6 +121,9 @@ export class DataAnalysis {
     await rename(temp, path.join(this.directory, name + '.json'));
   }
   private async serial<T>(work: () => Promise<T>): Promise<T> {
+    const count = queued.get(this.directory) || 0;
+    if (count >= 2) throw new Error('DATA_PROCESSOR_BUSY_RETRY');
+    queued.set(this.directory, count + 1);
     const before = locks.get(this.directory) || Promise.resolve();
     const next = before.catch(() => {}).then(work);
     locks.set(this.directory, next);
@@ -127,6 +131,9 @@ export class DataAnalysis {
       return await next;
     } finally {
       if (locks.get(this.directory) === next) locks.delete(this.directory);
+      const remaining = (queued.get(this.directory) || 1) - 1;
+      if (remaining) queued.set(this.directory, remaining);
+      else queued.delete(this.directory);
     }
   }
   private async index() {
@@ -489,10 +496,21 @@ export class DataAnalysis {
       const a = await this.read<Analysis>('analysis-' + id);
       await this.authorize(await this.dataset(a.datasetId), a.policy.id);
     }
+    let sourceMatch = false;
+    let allowed = false;
     for (const id of ix.datasets) {
       const d = await this.read<Dataset>('dataset-' + id);
-      if (d.source.path === name) await this.authorize(d);
+      if (d.source.path !== name) continue;
+      sourceMatch = true;
+      try {
+        await this.authorize(d);
+        allowed = true;
+        break;
+      } catch {
+        /* Another independently authorized reference to identical bytes may remain. */
+      }
     }
+    if (sourceMatch && !allowed) throw new Error('DATA_SOURCE_ACCESS_REVOKED');
   }
   async generate(id: string, baseName?: string, signal?: AbortSignal) {
     return this.serial(async () => {
