@@ -32,6 +32,20 @@ const hash = (value: unknown) =>
     .update(typeof value === 'string' ? value : JSON.stringify(canonical(value)))
     .digest('hex');
 
+/** Exact comparison of verified fixed-point totals; never binary float arithmetic. */
+export function decimalDifference(previous: string, current: string): string {
+  if (![previous, current].every((v) => /^[0-9]{1,40}(?:\.[0-9]{1,6})?$/.test(v)))
+    throw new Error('DATA_DELTA_VALUE_INVALID');
+  const scale = Math.max(previous.split('.')[1]?.length || 0, current.split('.')[1]?.length || 0);
+  const integer = (v: string) => {
+    const [a, b = ''] = v.split('.');
+    return BigInt(a) * 10n ** BigInt(scale) + BigInt(b.padEnd(scale, '0') || '0');
+  };
+  const delta = integer(current) - integer(previous);
+  const sign = delta < 0n ? '-' : '';
+  const digits = (delta < 0n ? -delta : delta).toString().padStart(scale + 1, '0');
+  return sign + (scale ? digits.slice(0, -scale) + '.' + digits.slice(-scale) : digits);
+}
 export interface Dataset {
   id: string;
   name: string;
@@ -69,6 +83,7 @@ export interface Analysis {
     analysisId: string;
     previousWeightKg: string | null;
     currentWeightKg: string | null;
+    deltaWeightKg?: string | null;
   };
   outputBase?: string;
   pending?: Record<string, string>;
@@ -499,6 +514,10 @@ export class DataAnalysis {
                 analysisId: last.id,
                 previousWeightKg: last.result.summary?.weightKg || null,
                 currentWeightKg: result.summary?.weightKg || null,
+                deltaWeightKg:
+                  last.result.summary && result.summary
+                    ? decimalDifference(last.result.summary.weightKg, result.summary.weightKg)
+                    : null,
               },
             }
           : {}),

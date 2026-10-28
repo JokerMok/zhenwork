@@ -1,3 +1,4 @@
+import { decimalDifference } from './service.js';
 import { execFileSync } from 'node:child_process';
 import { describe, it, expect } from 'vitest';
 import { dataPython, type Structure, type Result, type Definition } from './engine.js';
@@ -172,4 +173,10 @@ print(json.dumps(out))`,
     expect(Buffer.from(out.xlsx, 'base64').length).toBeGreaterThan(5000);
     expect(out.validation).toMatchObject({ weightKg: '2150.000', includedCount: 3 });
   });
+});
+
+it('compares changed verified totals with exact decimal subtraction', () => {
+  expect(decimalDifference('2150.000', '2151.250')).toBe('1.250');
+  expect(decimalDifference('0.300', '0.100')).toBe('-0.200');
+  expect(decimalDifference('9999999999999999.999', '10000000000000000.001')).toBe('0.002');
 });

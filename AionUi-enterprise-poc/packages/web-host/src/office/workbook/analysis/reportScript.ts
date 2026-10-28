@@ -7,10 +7,10 @@ def ds_report(data):
  metric='产生重量' if policy['definition']['includeNodes']==['产生'] else '所选节点登记重量（非企业总产废量）'
  notes=['统计期间：'+period+'；业务节点：'+ '、'.join(policy['definition']['includeNodes'])+'；采用业务日期（Asia/Shanghai），不使用上传时间。',
   '完整扫描 '+str(result['rowCount'])+' 条数据；纳入 '+str(result['includedCount'])+' 条；排除 '+str(result['excludedCount'])+' 条；异常 '+str(result['invalidCount'])+' 条。',
-  '本表按记录逐条换算为 kg，以 HALF_UP 保留 '+str(policy['definition']['precision'])+' 位小数，再求和。相同编号的处理规则：'+policy['definition']['duplicateRule']+'。',
+  '本表按记录逐条换算为 kg，按四舍五入保留 '+str(policy['definition']['precision'])+' 位小数，再求和。同编号处理：'+('同内容保留首条，内容冲突阻断' if policy['definition']['duplicateRule']=='identical_first' else '发现重复即阻断')+'。',
   '月度趋势只表示本次文件中提供的有效记录，不代表完整企业历史。不具备生产量、合同、价格、费用及清运约束，不能推导单位产废、降本或最优清运方案。']
  provenance={'analysisId':data['id'],'resultHash':data['resultHash'],'source':source,'policy':policy,'mapping':mapping}
- sourceRef={'id':'S1','title':source['name'],'version':source['versionId'],'location':mapping['sheet']+'；原始行号见明细表','url':data['sourceUrl'],'quotes':[]}
+ sourceRef={'id':'S1','title':source['name'],'version':'快照 '+source['versionId'][:8],'location':mapping['sheet']+'；原始行号见明细表','url':data['sourceUrl'],'quotes':[]}
  payload={'title':period+' 产废月度分析报告','paragraphs':['本期'+metric+' '+total+' kg（'+summary['weightTon']+' 吨），纳入有效产生记录 '+str(result['includedCount'])+' 条。',*notes],
  'table':{'headers':['维度','对象','重量（kg）','占比（%）'],'rows':[[kind,x['name'],x['weightKg'],x['percent'] if x['percent'] is not None else '未知'] for kind,key in [('废物类别','byCategory'),('来源部门/车间','bySource')] for x in summary[key]]},
  'sections':[{'heading':'数据质量与排除说明','paragraphs':[DS_REASON.get(k,k)+'：'+str(v)+' 条' for k,v in result['counts'].items() if k!='INCLUDED'] or ['未发现排除项。']},
