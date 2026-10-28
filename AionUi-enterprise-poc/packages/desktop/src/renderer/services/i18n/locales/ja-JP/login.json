@@ -43,5 +43,15 @@
   "enterpriseForgetAccount": "Forget this account on this computer",
   "enterpriseSecureStorageUnavailable": "Secure storage is unavailable. Sign in manually.",
   "enterpriseSavedPasswordHint": "Saved password; leave blank to use it",
-  "rememberAccount": "アカウントを記憶"
+  "rememberAccount": "アカウントを記憶",
+  "clearAccount": "アカウントの記憶を解除",
+  "passwordFlow": {
+    "passwordRequired": "新しいパスワードを設定してください。",
+    "newPassword": "新しいパスワード（英数字8～16文字）",
+    "confirmPassword": "新しいパスワードの確認",
+    "passwordRule": "英字と数字を含む8～16文字を使用してください。",
+    "mismatch": "パスワードが一致しません。",
+    "passwordUpdate": "設定してログイン",
+    "passwordFailed": "更新できませんでした。現在のパスワードを確認してください。"
+  }
 }

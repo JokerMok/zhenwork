@@ -213,6 +213,7 @@ vi.mock('@/renderer/pages/conversation/runtime/useConversationRuntimeView', () =
       return runtimeViewIsProcessingRef.current;
     },
     state: 'idle',
+    view: { pendingConfirmations: 0 },
     markSendStarted: markSendStartedMock,
     markSendAccepted: markSendAcceptedMock,
     markSendFailed: markSendFailedMock,

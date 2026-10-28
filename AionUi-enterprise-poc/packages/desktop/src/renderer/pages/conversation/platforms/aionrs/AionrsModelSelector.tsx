@@ -72,8 +72,8 @@ const AionrsModelSelector: React.FC<{
   const { providers, getAvailableModels, handleSelectModel } = selection;
 
   const label = getModelDisplayLabel({
-    selected_value: current_model?.use_model,
-    selectedLabel: current_model?.use_model || '',
+    selected_value: selection.getDisplayModelName(current_model?.use_model),
+    selectedLabel: selection.getDisplayModelName(current_model?.use_model),
     defaultModelLabel,
     fallbackLabel: t('conversation.welcome.selectModel'),
   });
@@ -96,7 +96,7 @@ const AionrsModelSelector: React.FC<{
       models: models.map((modelName) => {
         const id = compositeId(provider.id, modelName);
         modelLookup.set(id, { provider, modelName });
-        return { id, label: modelName };
+        return { id, label: selection.getDisplayModelName(modelName) };
       }),
     });
   }

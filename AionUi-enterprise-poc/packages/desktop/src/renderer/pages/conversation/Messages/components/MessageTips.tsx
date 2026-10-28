@@ -1,3 +1,4 @@
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -85,6 +86,14 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
   // what the Butler diagnoses best.
   const shouldShowButler = type === 'error';
   const shouldShowFeedback = type === 'error' && structuredError?.feedback_recommended !== false;
+
+  if (isEnterpriseWeb() && type === 'error') {
+    return (
+      <div role='alert' className='my-8px text-13px text-danger leading-6' data-testid='employee-chat-error'>
+        {t('workspace.experience.aiUnavailable')}
+      </div>
+    );
+  }
 
   if (structuredError) {
     const errorCode = structuredError.code;

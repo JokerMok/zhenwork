@@ -21,6 +21,7 @@ type ThoughtDisplayProps = {
   onStop?: () => void;
   // Directed per-member attach retry, shown next to a runtime-failed status text.
   onRetryStart?: () => void;
+  retryLabel?: string;
   // Absolute start timestamp (ms) supplied by an external source (e.g. team slot work).
   startedAtMs?: number | null;
   // Explicit flag declaring elapsed time is driven by an external timestamp (team chain).
@@ -34,6 +35,7 @@ const ThoughtDisplay: React.FC<ThoughtDisplayProps> = ({
   statusText,
   onStop: _onStop,
   onRetryStart,
+  retryLabel,
   startedAtMs,
   externalElapsedSource,
 }) => {
@@ -150,7 +152,7 @@ const ThoughtDisplay: React.FC<ThoughtDisplayProps> = ({
         </span>
         {onRetryStart && (
           <Button className='flex-shrink-0' size='mini' type='text' onClick={onRetryStart}>
-            {t('team.work.retryStart', { defaultValue: 'Retry start' })}
+            {retryLabel || t('team.work.retryStart', { defaultValue: 'Retry start' })}
           </Button>
         )}
       </div>

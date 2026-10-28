@@ -1,3 +1,5 @@
+import { useTaskWork } from '@/renderer/pages/workspace/TaskWork/api';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -331,12 +333,16 @@ const MessageItem: React.FC<{
         (prev.turnTexts ?? []).every((segment, i) => segment === next.turnTexts?.[i])))
 );
 
-const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }> = ({ emptySlot }) => {
+const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode; activityFooter?: React.ReactNode }> = ({
+  emptySlot,
+  activityFooter,
+}) => {
   const list = useMessageList();
   const isMessageListLoading = useMessageListLoading();
   const pagination = useMessagePaginationState();
   const artifacts = useConversationArtifacts();
   const conversationContext = useConversationContextSafe();
+  const { attempt: currentWork } = useTaskWork(conversationContext?.conversation_id);
   const rowWidthClass = getChatSurfaceWidthClass();
   const loadPreviousMessagePage = useLoadPreviousMessagePage(conversationContext?.conversation_id);
   const loadAnchorMessageWindow = useLoadAnchorMessageWindow(conversationContext?.conversation_id);
@@ -395,8 +401,10 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }>
       diffsSourceMessageIds = [];
     };
     const pushStandaloneMessage = (message: TMessage) => {
-      toolList = [];
-      toolSourceMessageIds = [];
+      if (!isEnterpriseWeb() || message.position === 'right') {
+        toolList = [];
+        toolSourceMessageIds = [];
+      }
       diffsChanges = [];
       diffsSourceMessageIds = [];
       result.push(message);
@@ -406,6 +414,14 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }>
       const message = list[i];
       // Skip hidden and available_commands messages
       if (message.hidden) continue;
+      if (isEnterpriseWeb() && ['agent_status', 'thinking', 'ask'].includes(message.type)) continue;
+      if (
+        isEnterpriseWeb() &&
+        message.type === 'permission' &&
+        currentWork &&
+        (currentWork.stopReason || !['running', 'queued'].includes(currentWork.state))
+      )
+        continue;
       if (message.type === 'available_commands') continue;
       // A plan renders in ConversationPlanBar, never in the stream. Filtered
       // here rather than rendered as null: a null row still occupies a slot.
@@ -457,7 +473,7 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }>
     return [...result, ...visibleArtifacts].toSorted(
       (a, b) => getProcessedItemCreatedAt(a) - getProcessedItemCreatedAt(b)
     );
-  }, [artifacts, list]);
+  }, [artifacts, list, currentWork?.id, currentWork?.state, currentWork?.stopReason]);
 
   // An AI reply can be split into several messages (thinking / multiple text /
   // tool blocks). The hover copy + timestamp row should appear once per turn,
@@ -759,6 +775,9 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }>
               }}
             >
               <div className='h-10px' />
+              {processedList.map((item, index) => (
+                <React.Fragment key={getProcessedItemAnchorId(item) || index}>{renderItem(index, item)}</React.Fragment>
+              ))}
               <TaskDeliverySummary
                 processing={isProcessing}
                 messages={list
@@ -767,9 +786,7 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }>
                     ['tool_group', 'tool_call', 'acp_tool_call'].includes(message.type)
                   )}
               />
-              {processedList.map((item, index) => (
-                <React.Fragment key={getProcessedItemAnchorId(item) || index}>{renderItem(index, item)}</React.Fragment>
-              ))}
+              {activityFooter && <div className={`${rowWidthClass} min-w-0 px-8px`}>{activityFooter}</div>}
               <div className='h-20px' />
             </div>
           </div>

@@ -39,7 +39,6 @@ test('remember account stores only the account and goes directly to the enterpri
   fireEvent.change(screen.getByLabelText('login.password'), {
     target: { value: 'synthetic-credential' },
   });
-  fireEvent.click(screen.getByLabelText('login.rememberAccount'));
   fireEvent.submit(document.querySelector('form')!);
   await waitFor(() => expect(screen.getByTestId('route').textContent).toBe('/workspace'));
   expect(localStorage.getItem('rememberedAccount')).toBe('employee');
@@ -56,4 +55,17 @@ test('authentication returns to the requested conversation rather than the homep
     </MemoryRouter>
   );
   await waitFor(() => expect(screen.getByTestId('route').textContent).toBe('/conversation/abcd1234'));
+});
+
+test('last successful enterprise account is restored without a remembered password or opt-in', () => {
+  localStorage.setItem('rememberedAccount', 'previous-employee');
+  render(
+    <MemoryRouter>
+      <LoginPage />
+    </MemoryRouter>
+  );
+  expect((screen.getByLabelText('login.username') as HTMLInputElement).value).toBe('previous-employee');
+  expect((screen.getByLabelText('login.password') as HTMLInputElement).value).toBe('');
+  fireEvent.click(screen.getByText('login.clearAccount'));
+  expect(localStorage.getItem('rememberedAccount')).toBeNull();
 });

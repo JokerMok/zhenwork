@@ -51,7 +51,7 @@
     "pending": "Pending",
     "queued": "Queued",
     "running": "Running",
-    "preparing": "実行環境を準備中",
+    "preparing": "アシスタントに接続中…",
     "processing": "処理中",
     "waitingUser": "操作待ち",
     "waiting": "Waiting",
@@ -59,15 +59,15 @@
     "failed": "Failed",
     "error": "Error",
     "cancelled": "Cancelled",
-    "preparationQueued": "空き容量を待っています",
-    "preparationStarting": "チャットに接続中",
+    "preparationQueued": "利用可能なリソースを待っています…",
+    "preparationStarting": "アシスタントに接続中…",
     "preparationReady": "実行環境の準備が完了しました",
-    "preparationTimedOut": "環境の準備に時間がかかりすぎました。再試行してください。",
+    "preparationTimedOut": "接続に時間がかかっています。再試行してください。",
     "preparationElapsed": "経過時間 {{seconds}} 秒",
     "preparationTechnicalDetails": "技術的な詳細",
     "preparationFailed": "環境の準備が完了しませんでした。下記の理由を確認して再試行してください。",
     "capabilityForbidden": "このアカウントにはワークスペースの利用権限がありません。管理者に権限の確認を依頼してください。",
-    "environmentUnavailable": "実行環境を利用できません。再試行するか、管理者にサービスの確認を依頼してください。",
+    "environmentUnavailable": "会話を開始できません。再試行するか管理者に連絡してください。",
     "connectionRecovering": "接続が一時的に中断されました。復旧を試みています…",
     "bootstrapLoadFailed": "ページを読み込めませんでした。再読み込みしてもう一度お試しください。",
     "identityExpired": "セッションの有効期限が切れました。再度ログインしてください。",
@@ -395,5 +395,12 @@
     "externalNotApplied": "Confirmed not applied",
     "pendingArtifact": "Pending deliverable: {{path}}",
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
+  },
+  "experience": {
+    "executionDetails": "実行の詳細",
+    "actionFailed": "操作を完了できませんでした。再試行してください。",
+    "aiUnavailable": "AIサービスを一時的に利用できません。再試行するか管理者に連絡してください。",
+    "confirmScope": "次の操作だけを確認します：",
+    "assistant": "アシスタント"
   }
 }

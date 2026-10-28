@@ -43,5 +43,15 @@
   "enterpriseForgetAccount": "Forget this account on this computer",
   "enterpriseSecureStorageUnavailable": "Secure storage is unavailable. Sign in manually.",
   "enterpriseSavedPasswordHint": "Saved password; leave blank to use it",
-  "rememberAccount": "記住帳號"
+  "rememberAccount": "記住帳號",
+  "clearAccount": "清除記憶帳號",
+  "passwordFlow": {
+    "passwordRequired": "請先設定新密碼，再進入工作台。",
+    "newPassword": "新密碼（8–16位英文字母和數字）",
+    "confirmPassword": "確認新密碼",
+    "passwordRule": "密碼須為8–16位，且同時包含英文字母和數字。",
+    "mismatch": "兩次輸入的密碼不一致。",
+    "passwordUpdate": "設定密碼並登入",
+    "passwordFailed": "未能更新密碼，請檢查目前密碼後重試。"
+  }
 }

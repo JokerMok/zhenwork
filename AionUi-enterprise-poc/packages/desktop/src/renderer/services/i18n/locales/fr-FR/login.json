@@ -43,5 +43,15 @@
   "enterpriseForgetAccount": "Forget this account on this computer",
   "enterpriseSecureStorageUnavailable": "Secure storage is unavailable. Sign in manually.",
   "enterpriseSavedPasswordHint": "Saved password; leave blank to use it",
-  "rememberAccount": "Mémoriser le compte"
+  "rememberAccount": "Mémoriser le compte",
+  "clearAccount": "Oublier le compte",
+  "passwordFlow": {
+    "passwordRequired": "Définissez un nouveau mot de passe pour continuer.",
+    "newPassword": "Nouveau mot de passe (8–16 lettres et chiffres)",
+    "confirmPassword": "Confirmer le nouveau mot de passe",
+    "passwordRule": "Utilisez 8 à 16 caractères avec des lettres et des chiffres.",
+    "mismatch": "Les mots de passe ne correspondent pas.",
+    "passwordUpdate": "Enregistrer et se connecter",
+    "passwordFailed": "Échec de la modification. Vérifiez le mot de passe actuel et réessayez."
+  }
 }

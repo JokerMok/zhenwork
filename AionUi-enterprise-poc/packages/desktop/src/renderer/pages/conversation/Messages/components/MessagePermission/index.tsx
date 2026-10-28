@@ -1,3 +1,5 @@
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import { fetchPendingConfirmations } from '../../usePendingConfirmationsRecovery';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -6,7 +8,7 @@
 
 import { ipcBridge } from '@/common';
 import type { IMessagePermission } from '@/common/chat/chatLib';
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PermissionRequestPanel } from './PermissionRequestPanel';
 import {
@@ -24,6 +26,26 @@ const MessagePermission: React.FC<MessagePermissionProps> = React.memo(({ messag
   const content = message.content || ({} as IMessagePermission['content']);
   const { description, title, action, call_id, command_type } = content;
   const options = Array.isArray(content.options) ? content.options : [];
+  const [pending, setPending] = useState(!isEnterpriseWeb());
+  useEffect(() => {
+    if (!isEnterpriseWeb()) return;
+    let stopped = false;
+    void fetchPendingConfirmations(message.conversation_id)
+      .then((items) => {
+        if (!stopped) setPending(items.some((item) => item.call_id === call_id));
+      })
+      .catch(() => {
+        if (!stopped) setPending(false);
+      });
+    const off = ipcBridge.conversation.confirmation.remove.on((event) => {
+      if (event.conversation_id === message.conversation_id && [call_id, content.id].includes(event.id))
+        setPending(false);
+    });
+    return () => {
+      stopped = true;
+      off();
+    };
+  }, [message.conversation_id, call_id, content.id]);
   const displayTitle = title || description || t('messages.permissionRequest');
 
   const panelOptions = useMemo<PermissionPanelOption[]>(
@@ -56,6 +78,7 @@ const MessagePermission: React.FC<MessagePermissionProps> = React.memo(({ messag
     [call_id, message.conversation_id, message.msg_id]
   );
 
+  if (!pending) return null;
   return (
     <PermissionRequestPanel
       requestKey={`${message.id}:${call_id}`}

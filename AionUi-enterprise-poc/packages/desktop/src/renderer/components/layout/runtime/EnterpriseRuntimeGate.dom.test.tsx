@@ -11,7 +11,7 @@ vi.mock('@/renderer/pages/conversation/GroupedHistory/hooks/useConversationListS
 vi.mock('@/renderer/hooks/context/LayoutContext', () => ({ useLayoutContext: (): null => null }));
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useLocation: () => ({ pathname: '/guid' }) }));
 vi.mock('@arco-design/web-react', () => ({
   Alert: ({ content }: { content: string }) => <span>{content}</span>,
   Spin: () => <span>spinner</span>,
@@ -83,4 +83,25 @@ test('a failed HTTP response without a code becomes a recoverable inline error i
   expect(screen.queryByText('spinner')).toBeNull();
   await act(async () => screen.getByText('common.retry').click());
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+});
+
+test('preparation timeout ends polling and exposes a local retry without raw technical codes', async () => {
+  vi.useFakeTimers();
+  const fetcher = vi.fn().mockResolvedValue({ status: 202, json: async () => ({ phase: 'queued' }) });
+  vi.stubGlobal('fetch', fetcher);
+  render(
+    <EnterpriseRuntimeGate>
+      <span>execution</span>
+    </EnterpriseRuntimeGate>
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(181000);
+  });
+  expect(screen.getByText('workspace.status.preparationTimedOut')).toBeTruthy();
+  const count = fetcher.mock.calls.length;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(count);
+  expect(document.body.textContent).not.toContain('PREPARATION_TIMEOUT');
 });

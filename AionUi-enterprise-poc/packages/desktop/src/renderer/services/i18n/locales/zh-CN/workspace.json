@@ -51,7 +51,7 @@
     "pending": "等待中",
     "queued": "已排队",
     "running": "执行中",
-    "preparing": "正在准备运行环境",
+    "preparing": "正在连接助手…",
     "processing": "正在处理",
     "waitingUser": "等待你的操作",
     "waiting": "等待处理",
@@ -59,15 +59,15 @@
     "failed": "失败",
     "error": "错误",
     "cancelled": "已取消",
-    "preparationQueued": "正在等待可用容量",
-    "preparationStarting": "正在连接会话服务",
+    "preparationQueued": "正在等待可用资源…",
+    "preparationStarting": "正在连接助手…",
     "preparationReady": "运行环境已就绪",
-    "preparationTimedOut": "环境准备时间过长，请重试以继续。",
+    "preparationTimedOut": "连接时间较长，请重试。",
     "preparationElapsed": "已用时 {{seconds}} 秒",
     "preparationTechnicalDetails": "技术详情",
     "preparationFailed": "环境准备未完成，请按下方原因处理后重试。",
     "capabilityForbidden": "当前账号没有工作台使用权限，请联系管理员核对员工角色和授权。",
-    "environmentUnavailable": "运行环境暂时不可用，请重试；仍失败时联系管理员检查服务。",
+    "environmentUnavailable": "暂时无法开始对话，请重试或联系管理员。",
     "connectionRecovering": "连接暂时中断，正在尝试恢复…",
     "bootstrapLoadFailed": "页面加载失败，请重新加载后再试。",
     "identityExpired": "登录已过期，请重新登录。",
@@ -411,5 +411,12 @@
     "externalNotApplied": "已确认外部操作未生效",
     "pendingArtifact": "待交付：{{path}}",
     "replaceRequirements": "用本次要求替换未完成交付（保留已成功成果）"
+  },
+  "experience": {
+    "executionDetails": "执行详情",
+    "actionFailed": "操作未完成，请重试。",
+    "aiUnavailable": "AI 服务暂时不可用，请重试或联系管理员。",
+    "confirmScope": "仅确认下面这一次操作：",
+    "assistant": "小优助手"
   }
 }

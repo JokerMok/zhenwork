@@ -68,8 +68,11 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
     getJobStatus,
   } = props;
   const { t } = useTranslation();
-  const executionSource = isEnterpriseWeb() ? 'web' :
-    (window as Window & { enterpriseContext?: unknown }).enterpriseContext ? 'desktop' : null;
+  const executionSource = isEnterpriseWeb()
+    ? null
+    : (window as Window & { enterpriseContext?: unknown }).enterpriseContext
+      ? 'desktop'
+      : null;
   const { info: assistantInfo } = usePresetAssistantInfo(conversation);
   const isPinned = isConversationPinned(conversation);
   // Fork-lineage badge: present only on forked conversations (extra.fork is
@@ -238,11 +241,12 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
           >
             <div className='chat-history__item-name overflow-hidden text-ellipsis flex items-center gap-4px w-full text-14px font-[500] lh-24px whitespace-nowrap min-w-0 text-t-primary'>
               <span className='block overflow-hidden text-ellipsis whitespace-nowrap min-w-0'>{conversation.name}</span>
-              <TaskBadge id={conversation.id}/>
-              {executionSource && <span className='text-10px text-t-tertiary flex-shrink-0'>
-                {t(executionSource === 'web' ? 'conversation.history.webConversationSource' :
-                  'conversation.history.desktopConversationSource')}
-              </span>}
+              <TaskBadge id={conversation.id} />
+              {executionSource && (
+                <span className='text-10px text-t-tertiary flex-shrink-0'>
+                  {t('conversation.history.desktopConversationSource')}
+                </span>
+              )}
               {forkLineage && (
                 <Tooltip
                   content={

@@ -150,7 +150,7 @@ export function createEnterpriseModelRuntime(
       if (options.profileRoot) {
         const taskState = await currentTaskScope(options.profileRoot,actor,conversationId);
         if(!taskState.active)throw new Error('Task execution is no longer active');
-        if(taskState.waiting)throw new Error('Task is waiting for employee input');
+        if(taskState.waiting)throw new Error('TASK_EXECUTION_PAUSED');
         const scope = taskState.scope;
         for (const baseId of new Set([...(scope?.baseIds || []), ...(scope?.documents.map((d) => d.baseId) || [])]))
           await taskClient.authorizedResource(baseId, 'KNOWLEDGE');
@@ -165,6 +165,12 @@ export function createEnterpriseModelRuntime(
         if (id?.startsWith('rc2-')) await taskClient.authorizedResource(id.slice(4), 'ASSISTANT');
       } else throw new Error('Task assistant identity unavailable');
       return taskClient;
+    }
+    if (options.profileRoot) {
+      const task = await currentTaskScope(options.profileRoot, actor, conversationId);
+      if (task.waiting && ['running','waiting_input','waiting_confirmation'].includes(task.state || '')) {
+        throw new Error('TASK_EXECUTION_PAUSED');
+      }
     }
     for (const candidate of clients.get(key(actor)) || []) {
       try { if ((await candidate.me()).userId === actor.userId) return candidate; }
@@ -395,7 +401,13 @@ export function createEnterpriseModelRuntime(
               return new Response(null, { status: 403 });
             }
             return current.relayModel(modelId, raw, signal, conversationId);
-          } catch { return new Response(null, { status: 403 }); }
+          } catch (error) {
+            if (error instanceof Error && error.message === 'TASK_EXECUTION_PAUSED') {
+              return new Response(null, { status: 409, headers: { 'X-Aion-Execution-State': 'paused' } });
+            }
+            console.warn('[Enterprise model] relay authorization rejected', { code: 'EXECUTION_AUTHORIZATION_DENIED', conversationId, modelId });
+            return new Response(null, { status: 403 });
+          }
         },
       },
       });

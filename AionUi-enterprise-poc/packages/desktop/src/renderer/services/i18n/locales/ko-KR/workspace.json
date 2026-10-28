@@ -51,7 +51,7 @@
     "pending": "Pending",
     "queued": "Queued",
     "running": "Running",
-    "preparing": "실행 환경 준비 중",
+    "preparing": "어시스턴트에 연결 중…",
     "processing": "처리 중",
     "waitingUser": "사용자 작업 대기 중",
     "waiting": "Waiting",
@@ -59,15 +59,15 @@
     "failed": "Failed",
     "error": "Error",
     "cancelled": "Cancelled",
-    "preparationQueued": "사용 가능한 용량을 기다리는 중",
-    "preparationStarting": "대화 서비스 연결 중",
+    "preparationQueued": "사용 가능한 자원을 기다리는 중…",
+    "preparationStarting": "어시스턴트에 연결 중…",
     "preparationReady": "실행 환경 준비 완료",
-    "preparationTimedOut": "환경 준비 시간이 너무 오래 걸렸습니다. 다시 시도해 주세요.",
+    "preparationTimedOut": "연결이 지연되고 있습니다. 다시 시도하세요.",
     "preparationElapsed": "경과 시간 {{seconds}}초",
     "preparationTechnicalDetails": "기술 세부 정보",
     "preparationFailed": "환경 준비가 완료되지 않았습니다. 아래 원인을 확인하고 다시 시도해 주세요.",
     "capabilityForbidden": "이 계정에는 작업 공간 사용 권한이 없습니다. 관리자에게 역할과 권한을 확인해 달라고 요청하세요.",
-    "environmentUnavailable": "실행 환경을 사용할 수 없습니다. 다시 시도하거나 관리자에게 서비스를 확인해 달라고 요청하세요.",
+    "environmentUnavailable": "대화를 시작할 수 없습니다. 다시 시도하거나 관리자에게 문의하세요.",
     "connectionRecovering": "연결이 일시적으로 끊겼습니다. 복구를 시도하는 중입니다…",
     "bootstrapLoadFailed": "페이지를 불러오지 못했습니다. 새로고침하여 다시 시도해 주세요.",
     "identityExpired": "세션이 만료되었습니다. 다시 로그인하세요.",
@@ -395,5 +395,12 @@
     "externalNotApplied": "Confirmed not applied",
     "pendingArtifact": "Pending deliverable: {{path}}",
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
+  },
+  "experience": {
+    "executionDetails": "실행 세부 정보",
+    "actionFailed": "작업을 완료하지 못했습니다. 다시 시도하세요.",
+    "aiUnavailable": "AI 서비스를 일시적으로 사용할 수 없습니다. 다시 시도하거나 관리자에게 문의하세요.",
+    "confirmScope": "다음 작업만 확인합니다:",
+    "assistant": "어시스턴트"
   }
 }

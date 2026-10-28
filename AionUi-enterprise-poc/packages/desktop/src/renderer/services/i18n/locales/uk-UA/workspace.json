@@ -51,7 +51,7 @@
     "pending": "Pending",
     "queued": "Queued",
     "running": "Running",
-    "preparing": "Підготовка середовища",
+    "preparing": "Підключення до помічника…",
     "processing": "Виконується",
     "waitingUser": "Очікує на вашу дію",
     "waiting": "Waiting",
@@ -59,15 +59,15 @@
     "failed": "Failed",
     "error": "Error",
     "cancelled": "Cancelled",
-    "preparationQueued": "Очікування вільних ресурсів",
-    "preparationStarting": "Підключення до чату",
+    "preparationQueued": "Очікування доступних ресурсів…",
+    "preparationStarting": "Підключення до помічника…",
     "preparationReady": "Середовище готове",
-    "preparationTimedOut": "Підготовка середовища триває надто довго. Повторіть спробу.",
+    "preparationTimedOut": "Підключення триває довше. Спробуйте ще раз.",
     "preparationElapsed": "Минуло: {{seconds}} с",
     "preparationTechnicalDetails": "Технічні відомості",
     "preparationFailed": "Не вдалося підготувати середовище. Перевірте причину нижче та повторіть спробу.",
     "capabilityForbidden": "Цей обліковий запис не має доступу до робочого простору. Попросіть адміністратора перевірити ролі та дозволи.",
-    "environmentUnavailable": "Середовище виконання недоступне. Повторіть спробу або попросіть адміністратора перевірити службу.",
+    "environmentUnavailable": "Не вдалося почати розмову. Спробуйте ще раз або зверніться до адміністратора.",
     "connectionRecovering": "З’єднання тимчасово перервано. Триває спроба відновлення…",
     "bootstrapLoadFailed": "Не вдалося завантажити сторінку. Перезавантажте її, щоб повторити спробу.",
     "identityExpired": "Термін дії сеансу минув. Увійдіть знову.",
@@ -395,5 +395,12 @@
     "externalNotApplied": "Confirmed not applied",
     "pendingArtifact": "Pending deliverable: {{path}}",
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
+  },
+  "experience": {
+    "executionDetails": "Деталі виконання",
+    "actionFailed": "Дію не завершено. Спробуйте ще раз.",
+    "aiUnavailable": "Сервіс ШІ тимчасово недоступний. Спробуйте ще раз або зверніться до адміністратора.",
+    "confirmScope": "Підтвердити лише цю операцію:",
+    "assistant": "Помічник"
   }
 }

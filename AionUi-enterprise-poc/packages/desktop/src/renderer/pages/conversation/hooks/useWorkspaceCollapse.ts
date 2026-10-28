@@ -1,3 +1,4 @@
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { blurActiveElement } from '@/renderer/utils/ui/focus';
 import {
   WORKSPACE_HAS_FILES_EVENT,
@@ -145,7 +146,7 @@ export function useWorkspaceCollapse({
         //   show up mid-session.
         const isUserPicked = !isTemporaryWorkspace;
         const isMidSession = !detail.isInitial;
-        const allowAutoExpand = isUserPicked || isMidSession;
+        const allowAutoExpand = !isEnterpriseWeb() && (isUserPicked || isMidSession);
         if (allowAutoExpand && detail.hasFiles && rightSiderCollapsed) {
           setRightSiderCollapsed(false);
         } else if (!detail.hasFiles && !rightSiderCollapsed) {

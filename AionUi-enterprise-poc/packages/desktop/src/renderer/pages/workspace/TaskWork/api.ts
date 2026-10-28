@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { enterpriseRequest, workspaceErrorCode } from "../workspaceApi";
-import { isEnterpriseWeb } from "@/renderer/utils/platform";
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { enterpriseRequest, workspaceErrorCode } from '../workspaceApi';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 export type WorkAttempt = {
   id: string;
   round: number;
   attempt: number;
   state: string;
   phase: string;
+  stopReason?: string;
   updatedAt: number;
   progress?: string;
   assistant?: { id: string; name: string };
@@ -60,7 +61,7 @@ export function useTaskWork(id?: string) {
     } catch (e) {
       const code = workspaceErrorCode(e);
       if (n === generation.current) {
-        if (code === "TASK_NOT_FOUND") setTask(undefined);
+        if (code === 'TASK_NOT_FOUND') setTask(undefined);
         else setError(code);
       }
     }
@@ -71,29 +72,27 @@ export function useTaskWork(id?: string) {
     if (!id || !isEnterpriseWeb()) return;
     void reload();
     const tick = () => {
-      if (document.visibilityState === "visible") void reload();
+      if (document.visibilityState === 'visible') void reload();
     };
     const timer = setInterval(tick, 3000);
-    window.addEventListener("task-work:changed", tick);
-    document.addEventListener("visibilitychange", tick);
+    window.addEventListener('task-work:changed', tick);
+    document.addEventListener('visibilitychange', tick);
     return () => {
       generation.current++;
       clearInterval(timer);
-      window.removeEventListener("task-work:changed", tick);
-      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener('task-work:changed', tick);
+      document.removeEventListener('visibilitychange', tick);
     };
   }, [id, reload]);
   return { task, attempt: task?.attempts.at(-1), error, reload };
 }
 export async function taskRequestId(id: string, payload: unknown): Promise<string> {
   const hash = Array.from(
-    new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(payload))),
-    ),
+    new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(payload))))
   )
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
-  const key = "zhenwork:pending-send:" + id;
+    .map((x) => x.toString(16).padStart(2, '0'))
+    .join('');
+  const key = 'zhenwork:pending-send:' + id;
   const saved = sessionStorage.getItem(key);
   if (saved) {
     try {
@@ -108,6 +107,16 @@ export async function taskRequestId(id: string, payload: unknown): Promise<strin
   return requestId;
 }
 export function taskAccepted(id: string): void {
-  sessionStorage.removeItem("zhenwork:pending-send:" + id);
-  window.dispatchEvent(new Event("task-work:changed"));
+  sessionStorage.removeItem('zhenwork:pending-send:' + id);
+  window.dispatchEvent(new Event('task-work:changed'));
+}
+
+/** Routine prose has no task card; real waiting, failure, queue and file/tool work have one compact status. */
+export function taskStatusVisible(a: WorkAttempt): boolean {
+  return (
+    !['running', 'completed'].includes(a.state) ||
+    !!a.question ||
+    a.artifacts.length > 0 ||
+    a.steps.some((step) => !['office_context', 'task_checkpoint'].includes(step.tool))
+  );
 }

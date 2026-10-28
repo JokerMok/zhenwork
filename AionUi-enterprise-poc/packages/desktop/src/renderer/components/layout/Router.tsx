@@ -30,7 +30,7 @@ const Workspace = React.lazy(() => import('@renderer/pages/workspace'));
 const enterpriseHome = (): string => (isEnterpriseWeb() ? '/workspace' : '/guid');
 
 const withRouteFallback = (Component: React.LazyExoticComponent<React.ComponentType>) => (
-  <Suspense fallback={<AppLoader />}>
+  <Suspense fallback={<AppLoader contained />}>
     <Component />
   </Suspense>
 );

@@ -25,8 +25,13 @@ const conversationNames = new Map<string, string>();
 let lastDirRoot = '';
 const edgeToken = 'fixed-edge-token-for-enterprise-unit-tests';
 let lastLoginClient: { ipAddress: string; userAgent: string } | undefined;
-let publicBrandValue: unknown = { productName: 'ZhenWork', companyName: '示例企业',
-  loginTitle: '欢迎使用ZhenWork', loginSubtitle: '使用企业账号继续', primaryColor: '#2563eb' };
+let publicBrandValue: unknown = {
+  productName: 'ZhenWork',
+  companyName: '示例企业',
+  loginTitle: '欢迎使用ZhenWork',
+  loginSubtitle: '使用企业账号继续',
+  primaryColor: '#2563eb',
+};
 
 function request(
   method: string,
@@ -36,36 +41,43 @@ function request(
   origin = 'https://workspace.example',
   extraHeaders: Record<string, string> = {}
 ) {
-  return new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string; bytes: Buffer }>((resolve, reject) => {
-    const req = http.request(
-      {
-        hostname: '127.0.0.1',
-        port,
-        path: url,
-        method,
-        headers: {
-          host: 'workspace.example',
-          ...(origin ? { origin } : {}),
-          ...(cookie ? { cookie } : {}),
-          ...(payload ? { 'content-type': 'application/json' } : {}),
-          'x-aion-enterprise-local-token': 'browser-forged',
-          'x-zhenwork-edge-token': edgeToken,
-          'x-zhenwork-client-ip': '203.0.113.10',
-          'x-zhenwork-client-user-agent': 'Mozilla/5.0 Unit Chrome/120',
-          ...extraHeaders,
+  return new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string; bytes: Buffer }>(
+    (resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port,
+          path: url,
+          method,
+          headers: {
+            host: 'workspace.example',
+            ...(origin ? { origin } : {}),
+            ...(cookie ? { cookie } : {}),
+            ...(payload ? { 'content-type': 'application/json' } : {}),
+            'x-aion-enterprise-local-token': 'browser-forged',
+            'x-zhenwork-edge-token': edgeToken,
+            'x-zhenwork-client-ip': '203.0.113.10',
+            'x-zhenwork-client-user-agent': 'Mozilla/5.0 Unit Chrome/120',
+            ...extraHeaders,
+          },
         },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk: Buffer) => chunks.push(chunk));
-        res.on('end', () =>
-          resolve({ status: res.statusCode || 0, headers: res.headers, body: Buffer.concat(chunks).toString(), bytes: Buffer.concat(chunks) })
-        );
-      }
-    );
-    req.once('error', reject);
-    req.end(payload ? JSON.stringify(payload) : undefined);
-  });
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode || 0,
+              headers: res.headers,
+              body: Buffer.concat(chunks).toString(),
+              bytes: Buffer.concat(chunks),
+            })
+          );
+        }
+      );
+      req.once('error', reject);
+      req.end(payload ? JSON.stringify(payload) : undefined);
+    }
+  );
 }
 
 beforeAll(async () => {
@@ -94,8 +106,12 @@ beforeAll(async () => {
       return {
         actor: { serverId: 'rc2', userId: username },
         username: `employee-${username}`,
-        brand: async () => ({ productName: `Workspace ${username}`, primaryColor: '#123abc',
-          logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=', internalToken: 'never-expose' }),
+        brand: async () => ({
+          productName: `Workspace ${username}`,
+          primaryColor: '#123abc',
+          logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+          internalToken: 'never-expose',
+        }),
         validate: async () => allowed.get(username) === true,
         close: async () => {},
       };
@@ -105,16 +121,24 @@ beforeAll(async () => {
     },
     resume: async (rc2Cookie) => {
       if (rc2Cookie !== '__Host-workspace-rc2=valid-desktop-session') throw new Error('Invalid RC2 cookie');
-      return { actor: { serverId: 'rc2', userId: '2' }, validate: async () => allowed.get('2') === true,
-        close: async () => {} };
+      return {
+        actor: { serverId: 'rc2', userId: '2' },
+        validate: async () => allowed.get('2') === true,
+        close: async () => {},
+      };
     },
     startCore: async (actor) => {
       started.push(actor.userId);
       const token = `core-token-${actor.userId}`;
       const core = http.createServer((req, res) => {
         if (req.url === '/api/conversations' && req.method === 'POST') {
-          const chunks: Buffer[] = [];req.on('data', (part: Buffer) => chunks.push(part));
-          req.on('end', () => { res.setHeader('content-type','application/json');res.end(JSON.stringify({success:true,data:JSON.parse(Buffer.concat(chunks).toString())})); });return;
+          const chunks: Buffer[] = [];
+          req.on('data', (part: Buffer) => chunks.push(part));
+          req.on('end', () => {
+            res.setHeader('content-type', 'application/json');
+            res.end(JSON.stringify({ success: true, data: JSON.parse(Buffer.concat(chunks).toString()) }));
+          });
+          return;
         }
         if (req.url === '/api/fs/dir') {
           const chunks: Buffer[] = [];
@@ -123,20 +147,37 @@ beforeAll(async () => {
             lastDirRoot = (JSON.parse(Buffer.concat(chunks).toString()) as { root: string }).root;
             const folder = path.join(tempDir, `workspace-${actor.userId}`);
             res.setHeader('content-type', 'application/json');
-            res.end(JSON.stringify({ success: true, data: [
-              { name: 'own.txt', full_path: path.join(folder, 'own.txt'), is_dir: false },
-              { name: 'outside-file', full_path: path.join(folder, 'outside-file'), is_dir: false },
-              { name: 'outside-directory', full_path: path.join(folder, 'outside-directory'), is_dir: true },
-            ] }));
+            res.end(
+              JSON.stringify({
+                success: true,
+                data: [
+                  { name: 'own.txt', full_path: path.join(folder, 'own.txt'), is_dir: false },
+                  { name: 'outside-file', full_path: path.join(folder, 'outside-file'), is_dir: false },
+                  { name: 'outside-directory', full_path: path.join(folder, 'outside-directory'), is_dir: true },
+                ],
+              })
+            );
           });
           return;
         }
         if (req.url?.startsWith('/api/settings/client')) {
-          const current = clientPrefs.get(actor.userId) || { 'tools.speechToText': {
-            provider: 'openai', openai: { api_key: 'speech-secret', model: 'gpt-4o-transcribe' },
-          }, 'google.config': { proxy: 'http://user:proxy-secret@127.0.0.1:9999' },
-          'mcp.config': [{ id: 'private-mcp', transport: { type: 'http',
-            url: 'https://mcp.example/?token=hidden', headers: { Authorization: 'Bearer hidden' } } }] };
+          const current = clientPrefs.get(actor.userId) || {
+            'tools.speechToText': {
+              provider: 'openai',
+              openai: { api_key: 'speech-secret', model: 'gpt-4o-transcribe' },
+            },
+            'google.config': { proxy: 'http://user:proxy-secret@127.0.0.1:9999' },
+            'mcp.config': [
+              {
+                id: 'private-mcp',
+                transport: {
+                  type: 'http',
+                  url: 'https://mcp.example/?token=hidden',
+                  headers: { Authorization: 'Bearer hidden' },
+                },
+              },
+            ],
+          };
           if (req.method === 'PUT') {
             const chunks: Buffer[] = [];
             req.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -159,22 +200,47 @@ beforeAll(async () => {
         }
         if (req.url === '/api/providers') {
           res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ success: true, data: [{ id: 'own', api_key: 'sk-secret-a,sk-secret-b',
-            base_url: 'https://url-user:url-secret@example.test/v1?key=query-secret',
-            bedrock_config: { access_key_id: 'AKIASECRET', secret_access_key: 'aws-secret' } },
-          { id: 'public', api_key: 'public-key-secret', base_url: 'https://api.example.test/v1' }] }));
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: [
+                {
+                  id: 'own',
+                  api_key: 'sk-secret-a,sk-secret-b',
+                  base_url: 'https://url-user:url-secret@example.test/v1?key=query-secret',
+                  bedrock_config: { access_key_id: 'AKIASECRET', secret_access_key: 'aws-secret' },
+                },
+                { id: 'public', api_key: 'public-key-secret', base_url: 'https://api.example.test/v1' },
+              ],
+            })
+          );
           return;
         }
         const conversationId = actor.userId === '1' ? 'a1b2c3d4' : '11111111-1111-4111-8111-111111111111';
         if (req.url === '/api/sidebar?limit=1&win=pinned%3A100') {
           res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ success: true, data: { groups: pinnedConversations.get(actor.userId) ? [
-            { scope: { type: 'pinned' }, items: [{ type: 'conversation', conversation: { id: conversationId } }],
-              has_more: false },
-          ] : [] } }));
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: {
+                groups: pinnedConversations.get(actor.userId)
+                  ? [
+                      {
+                        scope: { type: 'pinned' },
+                        items: [{ type: 'conversation', conversation: { id: conversationId } }],
+                        has_more: false,
+                      },
+                    ]
+                  : [],
+              },
+            })
+          );
           return;
         }
-        if (req.url === `/api/order/pinned/conversation/${conversationId}` && ['PUT', 'DELETE'].includes(req.method || '')) {
+        if (
+          req.url === `/api/order/pinned/conversation/${conversationId}` &&
+          ['PUT', 'DELETE'].includes(req.method || '')
+        ) {
           pinnedConversations.set(actor.userId, req.method === 'PUT');
           res.setHeader('content-type', 'application/json');
           res.end(JSON.stringify({ success: true }));
@@ -184,44 +250,113 @@ beforeAll(async () => {
           const chunks: Buffer[] = [];
           req.on('data', (chunk: Buffer) => chunks.push(chunk));
           req.on('end', () => {
-            conversationNames.set(actor.userId, (JSON.parse(Buffer.concat(chunks).toString()) as { name: string }).name);
+            conversationNames.set(
+              actor.userId,
+              (JSON.parse(Buffer.concat(chunks).toString()) as { name: string }).name
+            );
             res.setHeader('content-type', 'application/json');
             res.end(JSON.stringify({ success: true }));
           });
           return;
         }
-        if (req.url === '/api/conversations?limit=100' ||
-          req.url === `/api/conversations?limit=100&cursor=${conversationId}`) {
+        if (
+          req.url === '/api/conversations?limit=100' ||
+          req.url === `/api/conversations?limit=100&cursor=${conversationId}`
+        ) {
           res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ success: true, data: { items: req.url.includes('cursor=') ? [] : [
-            { id: conversationId, name: conversationNames.get(actor.userId) || `Chat ${actor.userId}`,
-              modified_at: 1234, status: 'finished', extra: { workspace: '/private/path' },
-              runtime: { state: 'waiting_confirmation', pending_confirmations: 2, is_processing: false, private_path: '/private/runtime' } },
-          ], has_more: !req.url.includes('cursor=') } }));
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: {
+                items: req.url.includes('cursor=')
+                  ? []
+                  : [
+                      {
+                        id: conversationId,
+                        name: conversationNames.get(actor.userId) || `Chat ${actor.userId}`,
+                        modified_at: 1234,
+                        status: 'finished',
+                        extra: { workspace: '/private/path' },
+                        runtime: {
+                          state: 'waiting_confirmation',
+                          pending_confirmations: 2,
+                          is_processing: false,
+                          private_path: '/private/runtime',
+                        },
+                      },
+                    ],
+                has_more: !req.url.includes('cursor='),
+              },
+            })
+          );
           return;
         }
         if (req.url?.startsWith('/api/messages/search?')) {
           res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ success: true, data: { items: [
-            { message_id: 'message-1', message_created_at: 4567, preview_text: 'private answer',
-              conversation: { id: conversationId, name: `Chat ${actor.userId}`,
-                extra: { workspace: '/private/path' } } },
-          ], has_more: false } }));
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: {
+                items: [
+                  {
+                    message_id: 'message-1',
+                    message_created_at: 4567,
+                    preview_text: 'private answer',
+                    conversation: {
+                      id: conversationId,
+                      name: `Chat ${actor.userId}`,
+                      extra: { workspace: '/private/path' },
+                    },
+                  },
+                ],
+                has_more: false,
+              },
+            })
+          );
           return;
         }
         if (req.url === '/api/mcp/servers') {
           res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ success: true, data: [{ id: 'mcp-a', name: 'Private MCP',
-            original_json: '{"token":"hidden"}', transport: { type: 'http',
-              url: 'https://example.test/mcp?key=hidden', headers: { Authorization: 'Bearer hidden' } } }] }));
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: [
+                {
+                  id: 'mcp-a',
+                  name: 'Private MCP',
+                  original_json: '{"token":"hidden"}',
+                  transport: {
+                    type: 'http',
+                    url: 'https://example.test/mcp?key=hidden',
+                    headers: { Authorization: 'Bearer hidden' },
+                  },
+                },
+              ],
+            })
+          );
           return;
         }
         if (req.url?.startsWith('/api/mcp/servers/')) {
           res.setHeader('content-type', 'application/json');
-          if (req.url !== '/api/mcp/servers/mcp-a') { res.writeHead(404); res.end('{}'); return; }
-          res.end(JSON.stringify({ success: true, data: { id: 'mcp-a', name: 'Private MCP', transport: {
-            type: 'http', url: 'https://example.test/mcp?key=hidden', headers: { Authorization: 'Bearer hidden' },
-          } } }));
+          if (req.url !== '/api/mcp/servers/mcp-a') {
+            res.writeHead(404);
+            res.end('{}');
+            return;
+          }
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: {
+                id: 'mcp-a',
+                name: 'Private MCP',
+                transport: {
+                  type: 'http',
+                  url: 'https://example.test/mcp?key=hidden',
+                  headers: { Authorization: 'Bearer hidden' },
+                },
+              },
+            })
+          );
           return;
         }
         if (req.url === '/api/mcp/test-connection') {
@@ -229,7 +364,8 @@ beforeAll(async () => {
           req.on('data', (chunk: Buffer) => chunks.push(chunk));
           req.on('end', () => {
             const tested = JSON.parse(Buffer.concat(chunks).toString());
-            const success = tested.transport.url === 'https://example.test/mcp?key=hidden' &&
+            const success =
+              tested.transport.url === 'https://example.test/mcp?key=hidden' &&
               tested.transport.headers.Authorization === 'Bearer hidden';
             res.setHeader('content-type', 'application/json');
             res.end(JSON.stringify({ success: true, data: { success, tools: [{ name: 'read' }] } }));
@@ -281,10 +417,16 @@ beforeAll(async () => {
 });
 
 test('anonymous login page uses only safe public RC2 brand fields and a nonce CSP', async () => {
-  publicBrandValue = { productName: '<script>alert(1)</script>', companyName: '示例企业',
-    loginTitle: '登录 <b>工作台</b>', loginSubtitle: '使用企业账号继续',
-    primaryColor: 'red; background:url(evil)', logoDataUrl: 'javascript:alert(1)',
-    supportText: '请联系管理员', copyright: '企业内部使用' };
+  publicBrandValue = {
+    productName: '<script>alert(1)</script>',
+    companyName: '示例企业',
+    loginTitle: '登录 <b>工作台</b>',
+    loginSubtitle: '使用企业账号继续',
+    primaryColor: 'red; background:url(evil)',
+    logoDataUrl: 'javascript:alert(1)',
+    supportText: '请联系管理员',
+    copyright: '企业内部使用',
+  };
   try {
     const page = await request('GET', '/enterprise/login');
     expect(page.status).toBe(200);
@@ -296,9 +438,10 @@ test('anonymous login page uses only safe public RC2 brand fields and a nonce CS
     expect(page.body).toContain('--brand:#2563eb');
     expect(page.headers['content-security-policy']).toMatch(/script-src 'nonce-[^']+';/);
     expect(page.headers['content-security-policy']).not.toContain('unsafe-inline');
-    const english = await request('GET', '/enterprise/login', undefined, undefined,
-      'https://workspace.example', { 'accept-language': 'en-US,en;q=0.9' });
-    expect(english.body).toContain('<html lang="en">');
+    const english = await request('GET', '/enterprise/login', undefined, undefined, 'https://workspace.example', {
+      'accept-language': 'en-US,en;q=0.9',
+    });
+    expect(english.body).toContain('<html lang="en-US">');
     expect(english.body).toContain('Enterprise account');
   } finally {
     publicBrandValue = { productName: 'ZhenWork', primaryColor: '#2563eb' };
@@ -307,23 +450,59 @@ test('anonymous login page uses only safe public RC2 brand fields and a nonce CS
 
 test('login accepts metadata only from the authenticated loopback proxy boundary', async () => {
   lastLoginClient = undefined;
-  const forwarded = await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' },
-    'https://workspace.example', {
+  const forwarded = await request(
+    'POST',
+    '/enterprise/login',
+    undefined,
+    { username: '1', password: 'test' },
+    'https://workspace.example',
+    {
       'x-forwarded-for': '198.51.100.99',
       'x-zhenwork-client-ip': '2001:db8::25',
       'x-zhenwork-client-user-agent': 'Mozilla/5.0 Test Safari/18',
-    });
+    }
+  );
   expect(forwarded.status).toBe(200);
   expect(lastLoginClient).toEqual({ ipAddress: '2001:db8::25', userAgent: 'Mozilla/5.0 Test Safari/18' });
 
   lastLoginClient = undefined;
-  expect((await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' },
-    'https://workspace.example', { 'x-zhenwork-edge-token': 'browser-forged-edge-token' })).status).toBe(401);
+  expect(
+    (
+      await request(
+        'POST',
+        '/enterprise/login',
+        undefined,
+        { username: '1', password: 'test' },
+        'https://workspace.example',
+        { 'x-zhenwork-edge-token': 'browser-forged-edge-token' }
+      )
+    ).status
+  ).toBe(401);
   expect(lastLoginClient).toBeUndefined();
-  expect((await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' },
-    'https://workspace.example', { 'x-zhenwork-edge-token': 'é'.repeat(edgeToken.length) })).status).toBe(401);
-  expect((await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' },
-    'https://workspace.example', { 'x-zhenwork-client-ip': '203.0.113.10, 127.0.0.1' })).status).toBe(401);
+  expect(
+    (
+      await request(
+        'POST',
+        '/enterprise/login',
+        undefined,
+        { username: '1', password: 'test' },
+        'https://workspace.example',
+        { 'x-zhenwork-edge-token': 'é'.repeat(edgeToken.length) }
+      )
+    ).status
+  ).toBe(401);
+  expect(
+    (
+      await request(
+        'POST',
+        '/enterprise/login',
+        undefined,
+        { username: '1', password: 'test' },
+        'https://workspace.example',
+        { 'x-zhenwork-client-ip': '203.0.113.10, 127.0.0.1' }
+      )
+    ).status
+  ).toBe(401);
 });
 
 test('enterprise brand is available only to its authenticated session and exposes display fields only', async () => {
@@ -333,8 +512,12 @@ test('enterprise brand is available only to its authenticated session and expose
   const cookie = login.headers['set-cookie']?.[0].split(';')[0];
   const brand = await request('GET', '/enterprise/brand', cookie);
   expect(brand.status).toBe(200);
-  expect(JSON.parse(brand.body)).toEqual({ adminUrl: null, productName: 'Workspace 1', primaryColor: '#123abc',
-    logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=' });
+  expect(JSON.parse(brand.body)).toEqual({
+    adminUrl: null,
+    productName: 'Workspace 1',
+    primaryColor: '#123abc',
+    logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+  });
   expect(brand.body).not.toContain('never-expose');
   expect((await request('POST', '/enterprise/logout', cookie)).status).toBe(200);
   expect((await request('GET', '/enterprise/brand', cookie)).status).toBe(401);
@@ -351,10 +534,13 @@ test('hosted directory picker stays inside the actor workspace and hides symlink
   expect(lastDirRoot).toBe(workspace);
   expect(JSON.parse(own.body).data.map((entry: { name: string }) => entry.name)).toEqual(['own.txt']);
   expect((await request('POST', '/api/fs/dir', cookie, { dir: tempDir, root: tempDir })).status).toBe(403);
-  expect((await request('POST', '/api/fs/dir', cookie,
-    { dir: path.join(tempDir, 'workspace-2'), root: workspace })).status).toBe(403);
-  expect((await request('POST', '/api/fs/dir', cookie,
-    { dir: path.join(workspace, 'outside-directory'), root: workspace })).status).toBe(403);
+  expect(
+    (await request('POST', '/api/fs/dir', cookie, { dir: path.join(tempDir, 'workspace-2'), root: workspace })).status
+  ).toBe(403);
+  expect(
+    (await request('POST', '/api/fs/dir', cookie, { dir: path.join(workspace, 'outside-directory'), root: workspace }))
+      .status
+  ).toBe(403);
   expect((await request('POST', '/enterprise/logout', cookie)).status).toBe(200);
 });
 
@@ -385,17 +571,26 @@ test('revocation also terminates an in-flight HTTP response', async () => {
   const cookie = login.headers['set-cookie']?.[0].split(';')[0];
   expect(cookie).toBeTruthy();
   let releaseOpen: () => void = () => {};
-  const opened = new Promise<void>((resolve) => { releaseOpen = resolve; });
+  const opened = new Promise<void>((resolve) => {
+    releaseOpen = resolve;
+  });
   const closed = new Promise<void>((resolve, reject) => {
-    const req = http.get({ hostname: '127.0.0.1', port, path: '/api/hold',
-      headers: { host: 'workspace.example', origin: 'https://workspace.example', cookie } }, (res) => {
-      res.once('data', () => releaseOpen());
-      res.once('close', resolve);
-      res.once('error', (error: NodeJS.ErrnoException) => {
-        if (error.message === 'aborted' || error.code === 'ECONNRESET') resolve();
-        else reject(error);
-      });
-    });
+    const req = http.get(
+      {
+        hostname: '127.0.0.1',
+        port,
+        path: '/api/hold',
+        headers: { host: 'workspace.example', origin: 'https://workspace.example', cookie },
+      },
+      (res) => {
+        res.once('data', () => releaseOpen());
+        res.once('close', resolve);
+        res.once('error', (error: NodeJS.ErrnoException) => {
+          if (error.message === 'aborted' || error.code === 'ECONNRESET') resolve();
+          else reject(error);
+        });
+      }
+    );
     req.once('error', reject);
   });
   await opened;
@@ -415,10 +610,19 @@ test('provider responses expose key state without returning stored credentials',
   expect(response.body).not.toContain('AKIASECRET');
   expect(response.body).not.toContain('url-secret');
   expect(response.body).not.toContain('query-secret');
-  expect(JSON.parse(response.body).data[0]).toMatchObject({ api_key: '', api_key_configured: true,
-    api_key_count: 2, base_url: '', base_url_configured: true,
-    bedrock_config: { access_key_id: '', access_key_id_configured: true,
-      secret_access_key: '', secret_access_key_configured: true } });
+  expect(JSON.parse(response.body).data[0]).toMatchObject({
+    api_key: '',
+    api_key_configured: true,
+    api_key_count: 2,
+    base_url: '',
+    base_url_configured: true,
+    bedrock_config: {
+      access_key_id: '',
+      access_key_id_configured: true,
+      secret_access_key: '',
+      secret_access_key_configured: true,
+    },
+  });
   expect(JSON.parse(response.body).data[1]).toMatchObject({ base_url: 'https://api.example.test/v1' });
   const saved = await request('POST', '/api/providers', cookie, { base_url: 'https://api.example.test/v1' });
   expect(saved.status).toBe(200);
@@ -433,8 +637,11 @@ test('MCP server responses never return stored transport credentials', async () 
   const response = await request('GET', '/api/mcp/servers', cookie);
   expect(response.status).toBe(200);
   expect(response.body).not.toContain('hidden');
-  expect(JSON.parse(response.body).data[0]).toMatchObject({ id: 'mcp-a', original_json: '',
-    transport: { type: 'http', url: '', headers: {}, credentials_configured: true } });
+  expect(JSON.parse(response.body).data[0]).toMatchObject({
+    id: 'mcp-a',
+    original_json: '',
+    transport: { type: 'http', url: '', headers: {}, credentials_configured: true },
+  });
 });
 
 test('MCP probe resolves redacted credentials only within this actor Core', async () => {
@@ -446,12 +653,22 @@ test('MCP probe resolves redacted credentials only within this actor Core', asyn
   expect(tested.status).toBe(200);
   expect(JSON.parse(tested.body).data.success).toBe(true);
   expect(tested.body).not.toContain('hidden');
-  expect((await request('POST', '/api/mcp/test-connection', cookie, {
-    ...servers[0], id: 'other-profile-server',
-  })).status).toBe(404);
-  expect((await request('POST', '/api/mcp/test-connection', cookie, {
-    ...servers[0], id: '../mcp-a',
-  })).status).toBe(400);
+  expect(
+    (
+      await request('POST', '/api/mcp/test-connection', cookie, {
+        ...servers[0],
+        id: 'other-profile-server',
+      })
+    ).status
+  ).toBe(404);
+  expect(
+    (
+      await request('POST', '/api/mcp/test-connection', cookie, {
+        ...servers[0],
+        id: '../mcp-a',
+      })
+    ).status
+  ).toBe(400);
 });
 
 test('client preferences withhold saved keys and preserve them through ordinary web edits', async () => {
@@ -466,28 +683,42 @@ test('client preferences withhold saved keys and preserve them through ordinary 
   expect(first.body).not.toContain('token=hidden');
   expect(first.body).not.toContain('proxy-secret');
   expect(JSON.parse(first.body).data['google.config']).toEqual({ proxy: '', proxy_configured: true });
-  expect(JSON.parse(first.body).data['tools.speechToText'].openai)
-    .toMatchObject({ api_key: '', api_key_configured: true });
-  const changed = await request('PUT', '/api/settings/client', cookie, { 'google.config': {
-    proxy: '', proxy_configured: true,
-  }, 'tools.speechToText': {
-    provider: 'openai', openai: { api_key: '', api_key_configured: true, model: 'whisper-1' },
-  } });
+  expect(JSON.parse(first.body).data['tools.speechToText'].openai).toMatchObject({
+    api_key: '',
+    api_key_configured: true,
+  });
+  const changed = await request('PUT', '/api/settings/client', cookie, {
+    'google.config': {
+      proxy: '',
+      proxy_configured: true,
+    },
+    'tools.speechToText': {
+      provider: 'openai',
+      openai: { api_key: '', api_key_configured: true, model: 'whisper-1' },
+    },
+  });
   expect(changed.status).toBe(200);
   const changedPrefs = clientPrefs.get('1');
   expect(changedPrefs).toBeDefined();
-  expect((changedPrefs!['tools.speechToText'] as { openai: { api_key: string; model: string } }).openai)
-    .toMatchObject({ api_key: 'speech-secret', model: 'whisper-1' });
+  expect((changedPrefs!['tools.speechToText'] as { openai: { api_key: string; model: string } }).openai).toMatchObject({
+    api_key: 'speech-secret',
+    model: 'whisper-1',
+  });
   expect(changed.body).not.toContain('speech-secret');
   expect(changed.body).not.toContain('Bearer hidden');
   expect(changed.body).not.toContain('token=hidden');
   expect(changed.body).not.toContain('proxy-secret');
   expect(changedPrefs!['google.config']).toEqual({ proxy: 'http://user:proxy-secret@127.0.0.1:9999' });
-  expect(JSON.parse(changed.body).data['tools.speechToText'].openai)
-    .toMatchObject({ api_key: '', api_key_configured: true });
-  const cleared = await request('PUT', '/api/settings/client', cookie, { 'tools.speechToText': {
-    provider: 'openai', openai: { api_key: '', api_key_configured: false, model: 'whisper-1' },
-  } });
+  expect(JSON.parse(changed.body).data['tools.speechToText'].openai).toMatchObject({
+    api_key: '',
+    api_key_configured: true,
+  });
+  const cleared = await request('PUT', '/api/settings/client', cookie, {
+    'tools.speechToText': {
+      provider: 'openai',
+      openai: { api_key: '', api_key_configured: false, model: 'whisper-1' },
+    },
+  });
   expect(cleared.status).toBe(200);
   const clearedPrefs = clientPrefs.get('1');
   expect(clearedPrefs).toBeDefined();
@@ -509,9 +740,18 @@ test('conversation catalog derives origin and key from the authenticated actor a
   const cookie = login.headers['set-cookie']?.[0].split(';')[0];
   const response = await request('GET', '/enterprise/conversations', cookie);
   expect(response.status).toBe(200);
-  expect(JSON.parse(response.body).items).toEqual([{ key: 'enterprise_web:rc2:1:a1b2c3d4',
-    id: 'a1b2c3d4', source: 'enterprise_web', name: 'Chat 1',
-    modified_at: 1234, status: 'finished', runtime: { state: 'waiting_confirmation', pending_confirmations: 2, is_processing: false }, pinned: true }]);
+  expect(JSON.parse(response.body).items).toEqual([
+    {
+      key: 'enterprise_web:rc2:1:a1b2c3d4',
+      id: 'a1b2c3d4',
+      source: 'enterprise_web',
+      name: 'Chat 1',
+      modified_at: 1234,
+      status: 'finished',
+      runtime: { state: 'waiting_confirmation', pending_confirmations: 2, is_processing: false },
+      pinned: true,
+    },
+  ]);
   expect(JSON.parse(response.body).next_cursor).toBe('a1b2c3d4');
   const next = await request('GET', '/enterprise/conversations?cursor=a1b2c3d4', cookie);
   expect(JSON.parse(next.body)).toEqual({ items: [], next_cursor: null });
@@ -524,25 +764,41 @@ test('web conversation changes stay in the authenticated actor Core and update c
   allowed.set('2', true);
   const login = await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' });
   const cookie = login.headers['set-cookie']?.[0].split(';')[0];
-  expect((await request('PATCH', '/api/conversations/a1b2c3d4', cookie,
-    { name: 'Renamed', name_source: 'user' })).status).toBe(200);
+  expect(
+    (await request('PATCH', '/api/conversations/a1b2c3d4', cookie, { name: 'Renamed', name_source: 'user' })).status
+  ).toBe(200);
   expect((await request('DELETE', '/api/order/pinned/conversation/a1b2c3d4', cookie)).status).toBe(200);
   const catalog = await request('GET', '/enterprise/conversations', cookie);
   expect(JSON.parse(catalog.body).items[0]).toMatchObject({ name: 'Renamed', pinned: false });
   const other = await request('POST', '/enterprise/login', undefined, { username: '2', password: 'test' });
   const otherCookie = other.headers['set-cookie']?.[0].split(';')[0];
-  expect(JSON.parse((await request('GET', '/enterprise/conversations', otherCookie)).body).items[0])
-    .toMatchObject({ name: 'Chat 2', pinned: false });
-  expect((await request('PATCH', '/api/conversations/a1b2c3d4', cookie,
-    { name: 'Forbidden' }, 'https://wrong.example')).status).toBe(403);
+  expect(JSON.parse((await request('GET', '/enterprise/conversations', otherCookie)).body).items[0]).toMatchObject({
+    name: 'Chat 2',
+    pinned: false,
+  });
+  expect(
+    (await request('PATCH', '/api/conversations/a1b2c3d4', cookie, { name: 'Forbidden' }, 'https://wrong.example'))
+      .status
+  ).toBe(403);
 });
 
 test('desktop session exchange is tied to a validated RC2 cookie, not an actor supplied by the caller', async () => {
   allowed.set('2', true);
-  expect((await request('POST', '/enterprise/desktop-session', undefined, undefined,
-    'https://workspace.example', { 'x-aion-rc2-session': 'forged' })).status).toBe(401);
-  const exchange = await request('POST', '/enterprise/desktop-session', undefined, undefined,
-    'https://workspace.example', { 'x-aion-rc2-session': '__Host-workspace-rc2=valid-desktop-session' });
+  expect(
+    (
+      await request('POST', '/enterprise/desktop-session', undefined, undefined, 'https://workspace.example', {
+        'x-aion-rc2-session': 'forged',
+      })
+    ).status
+  ).toBe(401);
+  const exchange = await request(
+    'POST',
+    '/enterprise/desktop-session',
+    undefined,
+    undefined,
+    'https://workspace.example',
+    { 'x-aion-rc2-session': '__Host-workspace-rc2=valid-desktop-session' }
+  );
   expect(exchange.status).toBe(200);
   expect(JSON.parse(exchange.body).actor).toEqual({ serverId: 'rc2', userId: '2' });
   const cookie = exchange.headers['set-cookie']?.[0].split(';')[0];
@@ -557,8 +813,10 @@ test('web search returns actor-derived source metadata without server paths', as
   const result = await request('GET', '/enterprise/search?keyword=private&page=1', cookie);
   expect(result.status).toBe(200);
   expect(JSON.parse(result.body).items[0]).toMatchObject({
-    key: 'enterprise_web:rc2:2:11111111-1111-4111-8111-111111111111', source: 'enterprise_web',
-    conversation_id: '11111111-1111-4111-8111-111111111111', preview_text: 'private answer',
+    key: 'enterprise_web:rc2:2:11111111-1111-4111-8111-111111111111',
+    source: 'enterprise_web',
+    conversation_id: '11111111-1111-4111-8111-111111111111',
+    preview_text: 'private answer',
   });
   expect(result.body).not.toContain('/private/path');
   expect((await request('GET', '/enterprise/search?keyword=&page=1', cookie)).status).toBe(400);
@@ -587,7 +845,13 @@ test('requires enterprise login and correct Origin', async () => {
   const anonymous = await request('GET', '/');
   expect(anonymous.status).toBe(302);
   expect(anonymous.headers.location).toBe('/enterprise/login');
-  for (const api of ['/enterprise/control/ai/me', '/enterprise/control/ai/models/available', '/enterprise/files', '/enterprise/memories', '/enterprise/search?keyword=test']) {
+  for (const api of [
+    '/enterprise/control/ai/me',
+    '/enterprise/control/ai/models/available',
+    '/enterprise/files',
+    '/enterprise/memories',
+    '/enterprise/search?keyword=test',
+  ]) {
     const denied = await request('GET', api);
     expect(denied.status).toBe(401);
     expect(denied.headers.location).toBeUndefined();
@@ -636,11 +900,20 @@ test('revoked Core resources close all browser sessions for that actor', async (
 
 test('reports a Core cleanup failure during gateway shutdown', async () => {
   const gateway = await startEnterpriseGateway({
-    staticDir: tempDir, publicOrigin: 'https://workspace.example', port: 0,
-    login: async () => { throw new Error('unused'); },
+    staticDir: tempDir,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    login: async () => {
+      throw new Error('unused');
+    },
     hasBackgroundJobs: () => true,
-    startCore: async () => ({ port: 1, localToken: 'synthetic',
-      stop: async () => { throw new Error('Docker cleanup failed'); } }),
+    startCore: async () => ({
+      port: 1,
+      localToken: 'synthetic',
+      stop: async () => {
+        throw new Error('Docker cleanup failed');
+      },
+    }),
   });
   await gateway.startBackgroundCore({ serverId: 'rc2', userId: '999' });
   await expect(gateway.stop()).rejects.toThrow('shutdown incomplete');
@@ -650,22 +923,44 @@ test('reserves session capacity before asynchronous RC2 login completes', async 
   const staticDir = await mkdtemp(path.join(tmpdir(), 'enterprise-session-cap-'));
   await writeFile(path.join(staticDir, 'index.html'), '<html></html>');
   let releaseLogin!: () => void;
-  const loginGate = new Promise<void>((resolve) => { releaseLogin = resolve; });
-  const gateway = await startEnterpriseGateway({ staticDir, publicOrigin: 'https://workspace.example',
-    port: 0, maxSessions: 1,
-    login: async () => { await loginGate; return { actor: { serverId: 'rc2', userId: '1' },
-      validate: async () => true, close: async () => {} }; },
-    startCore: async () => { throw new Error('unused'); },
+  const loginGate = new Promise<void>((resolve) => {
+    releaseLogin = resolve;
   });
-  const login = () => new Promise<number>((resolve, reject) => {
-    const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: '/enterprise/login',
-      method: 'POST', headers: { host: 'workspace.example', origin: 'https://workspace.example',
-        'content-type': 'application/json' } }, (res) => {
-      res.resume(); res.on('end', () => resolve(res.statusCode || 0));
+  const gateway = await startEnterpriseGateway({
+    staticDir,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    maxSessions: 1,
+    login: async () => {
+      await loginGate;
+      return { actor: { serverId: 'rc2', userId: '1' }, validate: async () => true, close: async () => {} };
+    },
+    startCore: async () => {
+      throw new Error('unused');
+    },
+  });
+  const login = () =>
+    new Promise<number>((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: gateway.port,
+          path: '/enterprise/login',
+          method: 'POST',
+          headers: {
+            host: 'workspace.example',
+            origin: 'https://workspace.example',
+            'content-type': 'application/json',
+          },
+        },
+        (res) => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode || 0));
+        }
+      );
+      req.once('error', reject);
+      req.end(JSON.stringify({ username: '1', password: 'test' }));
     });
-    req.once('error', reject);
-    req.end(JSON.stringify({ username: '1', password: 'test' }));
-  });
   try {
     const first = login();
     await vi.waitFor(() => expect(gateway.capacity().pendingSessions).toBe(1));
@@ -684,51 +979,95 @@ test('bounds simultaneous Core starts and rejects an overflowing startup queue',
   const staticDir = await mkdtemp(path.join(tmpdir(), 'enterprise-start-cap-'));
   await writeFile(path.join(staticDir, 'index.html'), '<html></html>');
   let releaseFirst!: () => void;
-  const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
   let firstStarted!: () => void;
-  const firstStart = new Promise<void>((resolve) => { firstStarted = resolve; });
+  const firstStart = new Promise<void>((resolve) => {
+    firstStarted = resolve;
+  });
   let activeStarts = 0;
   let peakStarts = 0;
   const startedActors: string[] = [];
   const gateway = await startEnterpriseGateway({
-    staticDir, publicOrigin: 'https://workspace.example', port: 0,
-    maxStartingCores: 1, maxQueuedCoreStarts: 1, coreStartWaitMs: 2000, coreIdleMs: 0,
-    login: async (username) => ({ actor: { serverId: 'rc2', userId: username },
-      validate: async () => true, close: async () => {} }),
+    staticDir,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    maxStartingCores: 1,
+    maxQueuedCoreStarts: 1,
+    coreStartWaitMs: 2000,
+    coreIdleMs: 0,
+    login: async (username) => ({
+      actor: { serverId: 'rc2', userId: username },
+      validate: async () => true,
+      close: async () => {},
+    }),
     startCore: async (actor) => {
       startedActors.push(actor.userId);
       activeStarts += 1;
       peakStarts = Math.max(peakStarts, activeStarts);
-      if (actor.userId === '1') { firstStarted(); await firstGate; }
+      if (actor.userId === '1') {
+        firstStarted();
+        await firstGate;
+      }
       const core = http.createServer((_req, res) => res.end(JSON.stringify({ actor: actor.userId })));
       await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
       activeStarts -= 1;
-      return { port: (core.address() as { port: number }).port, localToken: 'private-core-token',
-        stop: async () => { core.closeAllConnections();
-          await new Promise<void>((resolve) => core.close(() => resolve())); } };
+      return {
+        port: (core.address() as { port: number }).port,
+        localToken: 'private-core-token',
+        stop: async () => {
+          core.closeAllConnections();
+          await new Promise<void>((resolve) => core.close(() => resolve()));
+        },
+      };
     },
   });
   const call = (method: string, route: string, cookie?: string, payload?: object) =>
     new Promise<{ status: number; cookie?: string; body: string; retryAfter?: string }>((resolve, reject) => {
-      const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method,
-        headers: { host: 'workspace.example', origin: 'https://workspace.example',
-          ...(cookie ? { cookie } : {}), ...(payload ? { 'content-type': 'application/json' } : {}) } },
-      (res) => { const chunks: Buffer[] = []; res.on('data', (chunk: Buffer) => chunks.push(chunk));
-        res.on('end', () => resolve({ status: res.statusCode || 0,
-          cookie: res.headers['set-cookie']?.[0].split(';')[0],
-          body: Buffer.concat(chunks).toString(), retryAfter: res.headers['retry-after'] })); });
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: gateway.port,
+          path: route,
+          method,
+          headers: {
+            host: 'workspace.example',
+            origin: 'https://workspace.example',
+            ...(cookie ? { cookie } : {}),
+            ...(payload ? { 'content-type': 'application/json' } : {}),
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode || 0,
+              cookie: res.headers['set-cookie']?.[0].split(';')[0],
+              body: Buffer.concat(chunks).toString(),
+              retryAfter: res.headers['retry-after'],
+            })
+          );
+        }
+      );
       req.once('error', reject);
       req.end(payload ? JSON.stringify(payload) : undefined);
     });
   try {
-    const cookies = await Promise.all(['1', '2', '3'].map(async (id) =>
-      (await call('POST', '/enterprise/login', undefined, { username: id, password: 'test' })).cookie!));
+    const cookies = await Promise.all(
+      ['1', '2', '3'].map(
+        async (id) => (await call('POST', '/enterprise/login', undefined, { username: id, password: 'test' })).cookie!
+      )
+    );
     const first = call('GET', '/api/system/info', cookies[0]);
     await firstStart;
     const second = call('GET', '/api/system/info', cookies[1]);
     await vi.waitFor(() => expect(gateway.capacity()).toMatchObject({ starting: 1, queuedStarts: 1 }));
     expect(await call('GET', '/api/system/info', cookies[2])).toMatchObject({
-      status: 503, body: '{"error":"CORE_CAPACITY"}', retryAfter: '5',
+      status: 503,
+      body: '{"error":"CORE_CAPACITY"}',
+      retryAfter: '5',
     });
     releaseFirst();
     expect((await first).status).toBe(200);
@@ -746,29 +1085,55 @@ test('coalesces concurrent session checks without skipping RC2 validation', asyn
   const staticDir = await mkdtemp(path.join(tmpdir(), 'enterprise-validation-'));
   await writeFile(path.join(staticDir, 'index.html'), '<html></html>');
   let releaseValidation!: () => void;
-  const validationGate = new Promise<void>((resolve) => { releaseValidation = resolve; });
+  const validationGate = new Promise<void>((resolve) => {
+    releaseValidation = resolve;
+  });
   let validations = 0;
-  const gateway = await startEnterpriseGateway({ staticDir,
-    publicOrigin: 'https://workspace.example', port: 0,
-    login: async () => ({ actor: { serverId: 'rc2', userId: '1' },
+  const gateway = await startEnterpriseGateway({
+    staticDir,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    login: async () => ({
+      actor: { serverId: 'rc2', userId: '1' },
       brand: async () => ({ productName: 'Workspace' }),
-      validate: async () => { validations += 1; await validationGate; return true; },
-      close: async () => {} }),
-    startCore: async () => { throw new Error('Core not needed'); },
+      validate: async () => {
+        validations += 1;
+        await validationGate;
+        return true;
+      },
+      close: async () => {},
+    }),
+    startCore: async () => {
+      throw new Error('Core not needed');
+    },
   });
   const call = (method: string, route: string, cookie?: string, payload?: object) =>
     new Promise<{ status: number; cookie?: string }>((resolve, reject) => {
-      const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method,
-        headers: { host: 'workspace.example', origin: 'https://workspace.example',
-          ...(cookie ? { cookie } : {}), ...(payload ? { 'content-type': 'application/json' } : {}) } },
-      (res) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode || 0,
-        cookie: res.headers['set-cookie']?.[0].split(';')[0] })); });
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: gateway.port,
+          path: route,
+          method,
+          headers: {
+            host: 'workspace.example',
+            origin: 'https://workspace.example',
+            ...(cookie ? { cookie } : {}),
+            ...(payload ? { 'content-type': 'application/json' } : {}),
+          },
+        },
+        (res) => {
+          res.resume();
+          res.on('end', () =>
+            resolve({ status: res.statusCode || 0, cookie: res.headers['set-cookie']?.[0].split(';')[0] })
+          );
+        }
+      );
       req.once('error', reject);
       req.end(payload ? JSON.stringify(payload) : undefined);
     });
   try {
-    const cookie = (await call('POST', '/enterprise/login', undefined,
-      { username: '1', password: 'test' })).cookie!;
+    const cookie = (await call('POST', '/enterprise/login', undefined, { username: '1', password: 'test' })).cookie!;
     const checks = Array.from({ length: 12 }, () => call('GET', '/enterprise/brand', cookie));
     await vi.waitFor(() => expect(validations).toBe(1));
     releaseValidation();
@@ -789,44 +1154,81 @@ test('admits 20 active employees from 50 signed-in sessions without a Core start
   let peakStarting = 0;
   let coreStarts = 0;
   let coreStops = 0;
-  const gateway = await startEnterpriseGateway({ staticDir, publicOrigin: 'https://workspace.example',
-    port: 0, maxSessions: 60, maxCores: 20, maxStartingCores: 4,
-    maxQueuedCoreStarts: 20, coreStartWaitMs: 2000, coreIdleMs: 5,
-    login: async (username) => ({ actor: { serverId: 'rc2', userId: username },
-      validate: async () => true, close: async () => {} }),
+  const gateway = await startEnterpriseGateway({
+    staticDir,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    maxSessions: 60,
+    maxCores: 20,
+    maxStartingCores: 4,
+    maxQueuedCoreStarts: 20,
+    coreStartWaitMs: 2000,
+    coreIdleMs: 5,
+    login: async (username) => ({
+      actor: { serverId: 'rc2', userId: username },
+      validate: async () => true,
+      close: async () => {},
+    }),
     startCore: async () => {
       starting += 1;
       peakStarting = Math.max(peakStarting, starting);
       coreStarts += 1;
       await new Promise((resolve) => setTimeout(resolve, 10));
-      const core = http.createServer((req, res) => res.end(req.url === '/api/cron/internal/idle-ready'
-        ? JSON.stringify({ success: true, data: { idle: true } }) : '{}'));
+      const core = http.createServer((req, res) =>
+        res.end(
+          req.url === '/api/cron/internal/idle-ready' ? JSON.stringify({ success: true, data: { idle: true } }) : '{}'
+        )
+      );
       await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
       starting -= 1;
-      return { port: (core.address() as { port: number }).port, localToken: 'private-core-token',
-        stop: async () => { coreStops += 1; core.closeAllConnections();
-          await new Promise<void>((resolve) => core.close(() => resolve())); } };
+      return {
+        port: (core.address() as { port: number }).port,
+        localToken: 'private-core-token',
+        stop: async () => {
+          coreStops += 1;
+          core.closeAllConnections();
+          await new Promise<void>((resolve) => core.close(() => resolve()));
+        },
+      };
     },
   });
   const call = (method: string, route: string, cookie?: string, payload?: object) =>
     new Promise<{ status: number; cookie?: string }>((resolve, reject) => {
-      const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method,
-        headers: { host: 'workspace.example', origin: 'https://workspace.example',
-          ...(cookie ? { cookie } : {}), ...(payload ? { 'content-type': 'application/json' } : {}) } },
-      (res) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode || 0,
-        cookie: res.headers['set-cookie']?.[0].split(';')[0] })); });
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: gateway.port,
+          path: route,
+          method,
+          headers: {
+            host: 'workspace.example',
+            origin: 'https://workspace.example',
+            ...(cookie ? { cookie } : {}),
+            ...(payload ? { 'content-type': 'application/json' } : {}),
+          },
+        },
+        (res) => {
+          res.resume();
+          res.on('end', () =>
+            resolve({ status: res.statusCode || 0, cookie: res.headers['set-cookie']?.[0].split(';')[0] })
+          );
+        }
+      );
       req.once('error', reject);
       req.end(payload ? JSON.stringify(payload) : undefined);
     });
   try {
-    const cookies = await Promise.all(Array.from({ length: 50 }, async (_, index) => {
-      const login = await call('POST', '/enterprise/login', undefined,
-        { username: String(index + 1), password: 'test' });
-      expect(login.status).toBe(200);
-      return login.cookie!;
-    }));
-    const responses = await Promise.all(cookies.slice(0, 20).map((cookie) =>
-      call('GET', '/api/system/info', cookie)));
+    const cookies = await Promise.all(
+      Array.from({ length: 50 }, async (_, index) => {
+        const login = await call('POST', '/enterprise/login', undefined, {
+          username: String(index + 1),
+          password: 'test',
+        });
+        expect(login.status).toBe(200);
+        return login.cookie!;
+      })
+    );
+    const responses = await Promise.all(cookies.slice(0, 20).map((cookie) => call('GET', '/api/system/info', cookie)));
     expect(responses.every((response) => response.status === 200)).toBe(true);
     expect(gateway.capacity()).toMatchObject({ sessions: 50, cores: 20, queuedStarts: 0 });
     expect(coreStarts).toBe(20);
@@ -851,23 +1253,52 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
   let starts = 0;
   let stops = 0;
   let releaseHeld!: () => void;
-  const heldGate = new Promise<void>((resolve) => { releaseHeld = resolve; });
+  const heldGate = new Promise<void>((resolve) => {
+    releaseHeld = resolve;
+  });
   let markHeld!: () => void;
-  const held = new Promise<void>((resolve) => { markHeld = resolve; });
+  const held = new Promise<void>((resolve) => {
+    markHeld = resolve;
+  });
   let idleSocket: WebSocket | undefined;
   const gateway = await startEnterpriseGateway({
-    staticDir, publicOrigin: 'https://workspace.example', port: 0, coreIdleMs: 5,
-    login: async () => ({ actor: { serverId: 'rc2', userId: '1' },
-      validate: async () => { validationStarted?.(); await validateGate; return true; }, close: async () => {} }),
+    staticDir,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    coreIdleMs: 5,
+    login: async () => ({
+      actor: { serverId: 'rc2', userId: '1' },
+      validate: async () => {
+        validationStarted?.();
+        await validateGate;
+        return true;
+      },
+      close: async () => {},
+    }),
     startCore: async () => {
       starts += 1;
       const core = http.createServer((req, res) => {
         if (req.url?.startsWith('/api/mcp/servers/')) {
           res.setHeader('content-type', 'application/json');
-          if (req.url !== '/api/mcp/servers/mcp-a') { res.writeHead(404); res.end('{}'); return; }
-          res.end(JSON.stringify({ success: true, data: { id: 'mcp-a', name: 'Private MCP', transport: {
-            type: 'http', url: 'https://example.test/mcp?key=hidden', headers: { Authorization: 'Bearer hidden' },
-          } } }));
+          if (req.url !== '/api/mcp/servers/mcp-a') {
+            res.writeHead(404);
+            res.end('{}');
+            return;
+          }
+          res.end(
+            JSON.stringify({
+              success: true,
+              data: {
+                id: 'mcp-a',
+                name: 'Private MCP',
+                transport: {
+                  type: 'http',
+                  url: 'https://example.test/mcp?key=hidden',
+                  headers: { Authorization: 'Bearer hidden' },
+                },
+              },
+            })
+          );
           return;
         }
         if (req.url === '/api/mcp/test-connection') {
@@ -875,7 +1306,8 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
           req.on('data', (chunk: Buffer) => chunks.push(chunk));
           req.on('end', () => {
             const tested = JSON.parse(Buffer.concat(chunks).toString());
-            const success = tested.transport.url === 'https://example.test/mcp?key=hidden' &&
+            const success =
+              tested.transport.url === 'https://example.test/mcp?key=hidden' &&
               tested.transport.headers.Authorization === 'Bearer hidden';
             res.setHeader('content-type', 'application/json');
             res.end(JSON.stringify({ success: true, data: { success, tools: [{ name: 'read' }] } }));
@@ -888,38 +1320,68 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
           return;
         }
         res.setHeader('content-type', 'application/json');
-        res.end(req.url === '/api/cron/internal/idle-ready'
-          ? JSON.stringify({ success: true, data: { idle: idleReady &&
-            req.headers['x-aionui-internal'] === '1' &&
-            req.headers['x-aion-enterprise-local-token'] === 'private-core-token' } })
-          : JSON.stringify({ success: true }));
+        res.end(
+          req.url === '/api/cron/internal/idle-ready'
+            ? JSON.stringify({
+                success: true,
+                data: {
+                  idle:
+                    idleReady &&
+                    req.headers['x-aionui-internal'] === '1' &&
+                    req.headers['x-aion-enterprise-local-token'] === 'private-core-token',
+                },
+              })
+            : JSON.stringify({ success: true })
+        );
       });
       const wss = new WebSocketServer({ noServer: true });
       core.on('upgrade', (req, socket, head) => {
         wss.handleUpgrade(req, socket, head, (connected) => wss.emit('connection', connected, req));
       });
       await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
-      return { port: (core.address() as { port: number }).port, localToken: 'private-core-token',
-        stop: async () => { stops += 1; core.closeAllConnections(); wss.close();
-          await new Promise<void>((resolve) => core.close(() => resolve())); } };
+      return {
+        port: (core.address() as { port: number }).port,
+        localToken: 'private-core-token',
+        stop: async () => {
+          stops += 1;
+          core.closeAllConnections();
+          wss.close();
+          await new Promise<void>((resolve) => core.close(() => resolve()));
+        },
+      };
     },
   });
   const call = (method: string, route: string, cookie?: string, payload?: object) =>
     new Promise<{ status: number; cookie?: string }>((resolve, reject) => {
-      const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method,
-        headers: { host: 'workspace.example', origin: 'https://workspace.example',
-          ...(cookie ? { cookie } : {}), ...(payload ? { 'content-type': 'application/json' } : {}) } },
-      (res) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode || 0,
-        cookie: res.headers['set-cookie']?.[0].split(';')[0] })); });
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: gateway.port,
+          path: route,
+          method,
+          headers: {
+            host: 'workspace.example',
+            origin: 'https://workspace.example',
+            ...(cookie ? { cookie } : {}),
+            ...(payload ? { 'content-type': 'application/json' } : {}),
+          },
+        },
+        (res) => {
+          res.resume();
+          res.on('end', () =>
+            resolve({ status: res.statusCode || 0, cookie: res.headers['set-cookie']?.[0].split(';')[0] })
+          );
+        }
+      );
       req.once('error', reject);
       req.end(payload ? JSON.stringify(payload) : undefined);
     });
   try {
-    const cookie = (await call('POST', '/enterprise/login', undefined,
-      { username: '1', password: 'test' })).cookie!;
+    const cookie = (await call('POST', '/enterprise/login', undefined, { username: '1', password: 'test' })).cookie!;
     expect((await call('GET', '/api/system/info', cookie)).status).toBe(200);
     idleSocket = new WebSocket(`ws://127.0.0.1:${gateway.port}/ws`, {
-      origin: 'https://workspace.example', headers: { host: 'workspace.example', cookie },
+      origin: 'https://workspace.example',
+      headers: { host: 'workspace.example', cookie },
     });
     await new Promise<void>((resolve, reject) => {
       idleSocket!.once('open', resolve);
@@ -931,13 +1393,29 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
     expect(stops).toBe(0);
     // A browser may disconnect while identity validation is still awaiting RC2.
     let releaseValidation!: () => void;
-    validateGate = new Promise<void>(resolve => { releaseValidation = resolve; });
-    const validating = new Promise<void>(resolve => { validationStarted = resolve; });
-    const abandoned = http.request({hostname:'127.0.0.1',port:gateway.port,path:'/api/system/info',headers:{host:'workspace.example',cookie}});
-    abandoned.on('error', () => {});abandoned.end();await validating;
-    const disconnected = new Promise<void>(resolve => abandoned.once('close', resolve));abandoned.destroy();await disconnected;
-    await new Promise(resolve => setTimeout(resolve,5));releaseValidation();validateGate=undefined;validationStarted=undefined;
-    await new Promise(resolve => setTimeout(resolve,10));
+    validateGate = new Promise<void>((resolve) => {
+      releaseValidation = resolve;
+    });
+    const validating = new Promise<void>((resolve) => {
+      validationStarted = resolve;
+    });
+    const abandoned = http.request({
+      hostname: '127.0.0.1',
+      port: gateway.port,
+      path: '/api/system/info',
+      headers: { host: 'workspace.example', cookie },
+    });
+    abandoned.on('error', () => {});
+    abandoned.end();
+    await validating;
+    const disconnected = new Promise<void>((resolve) => abandoned.once('close', resolve));
+    abandoned.destroy();
+    await disconnected;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    releaseValidation();
+    validateGate = undefined;
+    validationStarted = undefined;
+    await new Promise((resolve) => setTimeout(resolve, 10));
     idleReady = true;
     const activeRequest = call('GET', '/api/hold', cookie);
     await held;
@@ -960,7 +1438,6 @@ test('reclaims only a quiescent idle Core and resumes it for its existing sessio
   }
 });
 
-
 test('reset password credentials require setup without granting a web identity or Core', async () => {
   const before = started.length;
   const result = await request('POST', '/enterprise/login', undefined, { username: 'reset', password: 'test' });
@@ -970,12 +1447,20 @@ test('reset password credentials require setup without granting a web identity o
 });
 
 test('password setup reauthenticates the old password before changing it', async () => {
-  const result = await request('POST', '/enterprise/password', undefined, { username: 'reset', password: 'wrong', newPassword: 'Abcd1234' });
+  const result = await request('POST', '/enterprise/password', undefined, {
+    username: 'reset',
+    password: 'wrong',
+    newPassword: 'Abcd1234',
+  });
   expect(result.status).toBe(401);
 });
 
 test('password setup accepts eight mixed letters and digits without issuing a web session', async () => {
-  const result = await request('POST', '/enterprise/password', undefined, { username: 'reset', password: 'test', newPassword: 'Abcd1234' });
+  const result = await request('POST', '/enterprise/password', undefined, {
+    username: 'reset',
+    password: 'test',
+    newPassword: 'Abcd1234',
+  });
   expect(result.status).toBe(200);
   expect(result.headers['set-cookie']).toBeUndefined();
 });
@@ -983,23 +1468,65 @@ test('password setup accepts eight mixed letters and digits without issuing a we
 test('password setup refuses weak format and foreign origins', async () => {
   const payload = { username: 'reset', password: 'test', newPassword: '12345678' };
   expect((await request('POST', '/enterprise/password', undefined, payload)).status).toBe(400);
-  expect((await request('POST', '/enterprise/password', undefined, { ...payload, newPassword: 'Abcd1234' }, 'https://foreign.invalid')).status).toBe(403);
+  expect(
+    (
+      await request(
+        'POST',
+        '/enterprise/password',
+        undefined,
+        { ...payload, newPassword: 'Abcd1234' },
+        'https://foreign.invalid'
+      )
+    ).status
+  ).toBe(403);
 });
 
 test('a second employee gets a bounded preparation page instead of a blank SPA at Core capacity', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'enterprise-ready-'));
   await writeFile(path.join(dir, 'index.html'), '<html><head></head><body>Workspace</body></html>');
-  const gateway = await startEnterpriseGateway({ staticDir: dir, publicOrigin: 'https://workspace.example', port: 0,
-    maxCores: 1, coreIdleMs: 0,
-    login: async username => ({ actor: { serverId: 'rc2', userId: username }, validate: async () => true, close: async () => {} }),
+  const gateway = await startEnterpriseGateway({
+    staticDir: dir,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    maxCores: 1,
+    coreIdleMs: 0,
+    login: async (username) => ({
+      actor: { serverId: 'rc2', userId: username },
+      validate: async () => true,
+      close: async () => {},
+    }),
     startCore: async () => ({ port: 9, localToken: 'local-test', stop: async () => {} }),
   });
-  const call = (method: string, route: string, cookie?: string, payload?: object) => new Promise<{ status: number; cookie?: string; body: string }>((resolve, reject) => {
-    const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method,
-      headers: { host: 'workspace.example', origin: 'https://workspace.example', ...(cookie ? { cookie } : {}), ...(payload ? { 'content-type': 'application/json' } : {}) } }, res => {
-      const chunks: Buffer[] = [];res.on('data', c => chunks.push(c));res.on('end', () => resolve({ status: res.statusCode || 0, cookie: res.headers['set-cookie']?.[0].split(';')[0], body: Buffer.concat(chunks).toString() }));
-    });req.once('error', reject);req.end(payload ? JSON.stringify(payload) : undefined);
-  });
+  const call = (method: string, route: string, cookie?: string, payload?: object) =>
+    new Promise<{ status: number; cookie?: string; body: string }>((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: gateway.port,
+          path: route,
+          method,
+          headers: {
+            host: 'workspace.example',
+            origin: 'https://workspace.example',
+            ...(cookie ? { cookie } : {}),
+            ...(payload ? { 'content-type': 'application/json' } : {}),
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode || 0,
+              cookie: res.headers['set-cookie']?.[0].split(';')[0],
+              body: Buffer.concat(chunks).toString(),
+            })
+          );
+        }
+      );
+      req.once('error', reject);
+      req.end(payload ? JSON.stringify(payload) : undefined);
+    });
   try {
     expect((await call('GET', '/enterprise/ready')).status).toBe(401);
     const first = (await call('POST', '/enterprise/login', undefined, { username: '1', password: 'test' })).cookie;
@@ -1007,239 +1534,289 @@ test('a second employee gets a bounded preparation page instead of a blank SPA a
     expect((await call('GET', '/enterprise/ready', first)).status).toBe(202);
     await new Promise((resolve) => setImmediate(resolve));
     expect((await call('GET', '/enterprise/ready', first)).status).toBe(200);
-    const page = await call('GET', '/', second);expect(page.status).toBe(200);expect(page.body).toContain('data-enterprise-readiness');expect(page.body).toContain('180000');
-    expect(page.body).toContain('<title>ZhenWork');expect(page.body).toContain('data:image/svg+xml');
+    const page = await call('GET', '/', second);
+    expect(page.status).toBe(200);
+    expect(page.body).toContain('data-enterprise-readiness');
+    expect(page.body).toContain('180000');
+    expect(page.body).toContain('<title>ZhenWork');
+    expect(page.body).toContain('data:image/svg+xml');
     const queued = await call('GET', '/enterprise/ready', second);
-    expect(queued.status).toBe(202);expect(JSON.parse(queued.body).phase).toBe('queued');
+    expect(queued.status).toBe(202);
+    expect(JSON.parse(queued.body).phase).toBe('queued');
     await call('POST', '/enterprise/logout', first, {});
     expect([200, 202]).toContain((await call('GET', '/enterprise/ready', second)).status);
     await new Promise((resolve) => setImmediate(resolve));
     expect((await call('GET', '/enterprise/ready', second)).status).toBe(200);
     const bootstrap = (await call('GET', '/', second)).body;
     expect(bootstrap).toContain('window.__AION_ENTERPRISE_WEB__=true');
-    expect(bootstrap).toContain('<title>ZhenWork</title>');expect(bootstrap).toContain('data:image/svg+xml');
-  } finally { await gateway.stop();await rm(dir, { recursive: true, force: true }); }
+    expect(bootstrap).toContain('<title>ZhenWork</title>');
+    expect(bootstrap).toContain('data:image/svg+xml');
+  } finally {
+    await gateway.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('coalesces readiness polling and exposes only safe startup diagnostics before retry', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'enterprise-ready-retry-'));
   const info = vi.spyOn(console, 'info').mockImplementation(() => {});
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-  await writeFile(path.join(dir, 'index.html'),
-    '<html><head><title>AionUi</title></head><body><div id="root"></div><script src="app.js"></script></body></html>');
+  await writeFile(
+    path.join(dir, 'index.html'),
+    '<html><head><title>AionUi</title></head><body><div id="root"></div><script src="app.js"></script></body></html>'
+  );
   let starts = 0;
   let releaseStart!: () => void;
-  const startGate = new Promise<void>((resolve) => { releaseStart = resolve; });
-  const gateway = await startEnterpriseGateway({ staticDir: dir, publicOrigin: 'https://workspace.example', port: 0,
-    login: async () => ({ actor: { serverId: 'rc2', userId: '1' },
-      brand: async () => ({ productName: 'Acme Workspace', primaryColor: '#123abc',
-        logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=' }),
-      validate: async () => true, close: async () => {} }),
+  const startGate = new Promise<void>((resolve) => {
+    releaseStart = resolve;
+  });
+  const gateway = await startEnterpriseGateway({
+    staticDir: dir,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    login: async () => ({
+      actor: { serverId: 'rc2', userId: '1' },
+      brand: async () => ({
+        productName: 'Acme Workspace',
+        primaryColor: '#123abc',
+        logoDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      }),
+      validate: async () => true,
+      close: async () => {},
+    }),
     startCore: async () => {
       starts += 1;
-      if (starts === 1) throw Object.assign(new Error('DEFAULT_MODEL_UNAVAILABLE'),
-        { secret: 'never-expose' });
+      if (starts === 1) throw Object.assign(new Error('DEFAULT_MODEL_UNAVAILABLE'), { secret: 'never-expose' });
       await startGate;
       return { port: 9, localToken: 'local-test', stop: async () => {} };
     },
   });
   const call = (route: string, cookie?: string, method = 'GET', payload?: object) =>
     new Promise<{ status: number; cookie?: string; body: string }>((resolve, reject) => {
-      const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method,
-        headers: { host: 'workspace.example', origin: 'https://workspace.example',
-          ...(cookie ? { cookie } : {}), ...(payload ? { 'content-type': 'application/json' } : {}),
-          'accept-language': 'zh-TW' } }, res => {
-        const chunks: Buffer[] = [];res.on('data', chunk => chunks.push(chunk));
-        res.on('end', () => resolve({ status: res.statusCode || 0,
-          cookie: res.headers['set-cookie']?.[0].split(';')[0],
-          body: Buffer.concat(chunks).toString() }));
-      });req.once('error', reject);req.end(payload ? JSON.stringify(payload) : undefined);
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: gateway.port,
+          path: route,
+          method,
+          headers: {
+            host: 'workspace.example',
+            origin: 'https://workspace.example',
+            ...(cookie ? { cookie } : {}),
+            ...(payload ? { 'content-type': 'application/json' } : {}),
+            'accept-language': 'zh-TW',
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode || 0,
+              cookie: res.headers['set-cookie']?.[0].split(';')[0],
+              body: Buffer.concat(chunks).toString(),
+            })
+          );
+        }
+      );
+      req.once('error', reject);
+      req.end(payload ? JSON.stringify(payload) : undefined);
     });
   try {
-    const cookie = (await call('/enterprise/login', undefined, 'POST',
-      { username: '1', password: 'test' })).cookie;
+    const cookie = (await call('/enterprise/login', undefined, 'POST', { username: '1', password: 'test' })).cookie;
     const page = await call('/', cookie);
-    expect(page.body).toContain('<html lang="zh-TW"');
-    expect(page.body).toContain('<title>Acme Workspace · 正在準備執行環境</title>');
-    expect(page.body).toContain('<link rel="icon" href="data:image/png;base64,iVBORw0KGgo=">');
-    expect(page.body).toContain('目前帳號沒有可用模型，請聯絡組織管理員檢查預設模型與授權。');
-    const script = /<script nonce="[^"]+">([\s\S]+)<\/script>/.exec(page.body)?.[1];
-    expect(script).toBeTruthy();
-    const elements = new Map<string, { textContent: string; hidden: boolean; disabled: boolean;
-      addEventListener: () => void }>();
-    const element = (id: string) => {
-      if (!elements.has(id)) elements.set(id,
-        { textContent: '', hidden: false, disabled: false, addEventListener: () => {} });
-      return elements.get(id)!;
-    };
-    let fetches = 0;
-    let resolveReady!: (value: { ok: boolean; status: number; json: () => Promise<object> }) => void;
-    const readyResponse = new Promise<{ ok: boolean; status: number; json: () => Promise<object> }>(
-      (resolve) => { resolveReady = resolve; });
-    const replacements: string[] = [];
-    const runningPage = vm.runInNewContext(script!, {
-      document: { getElementById: element },
-      fetch: async () => {
-        fetches += 1;
-        if (fetches <= 3) throw new Error('temporary network error');
-        return readyResponse;
-      },
-      location: { replace: (target: string) => replacements.push(target) },
-      AbortSignal,
-      Intl,
-      Date,
-      Promise,
-      setTimeout: (callback: () => void) => { callback();return 0; },
-    }) as Promise<void>;
-    for (let turn = 0; turn < 10 && fetches < 4; turn += 1)
-      await new Promise((resolve) => setImmediate(resolve));
-    expect(fetches).toBe(4);
-    expect(element('failure').hidden).toBe(false);expect(element('progress').hidden).toBe(false);
-    expect(element('reason').textContent).toBe('連線暫時中斷，正在嘗試恢復…');
-    expect(element('status').textContent).toBe('正在等待可用容量');
-    expect(element('trace').textContent).toContain('CONNECTION_UNAVAILABLE');
-    resolveReady({ ok: true, status: 200, json: async () => ({ ready: true, phase: 'ready',
-      timings: { totalMs: 4000, phaseMs: 0 }, trace: [{ phase: 'ready', atMs: 4000 }] }) });
-    await runningPage;
-    expect(replacements).toEqual(['/']);expect(element('failure').hidden).toBe(true);
-    expect(element('status').textContent).toBe('執行環境已就緒');
-    expect(element('trace').textContent).not.toContain('CONNECTION_UNAVAILABLE');
-
-    const retryListeners: Array<() => void> = [];
-    const retryElements = new Map<string, { textContent: string; hidden: boolean; disabled: boolean;
-      addEventListener: (event: string, callback: () => void) => void }>();
-    const retryElement = (id: string) => {
-      if (!retryElements.has(id)) retryElements.set(id, { textContent: '', hidden: false, disabled: false,
-        addEventListener: (_event, callback) => retryListeners.push(callback) });
-      return retryElements.get(id)!;
-    };
-    let resolveRetry!: (value: { ok: boolean; status: number; json: () => Promise<object> }) => void;
-    const retriedResponse = new Promise<{ ok: boolean; status: number; json: () => Promise<object> }>(
-      (resolve) => { resolveRetry = resolve; });
-    const retryRoutes: string[] = [];
-    await vm.runInNewContext(script!, {
-      document: { getElementById: retryElement },
-      fetch: async (route: string) => {
-        retryRoutes.push(route);
-        if (retryRoutes.length === 1) return { ok: false, status: 503, json: async () => ({ ready: false,
-          phase: 'failed', error: 'CORE_START_FAILED', traceId: 'old-attempt',
-          timings: { totalMs: 20, phaseMs: 10 }, trace: [{ phase: 'CORE_START_FAILED', atMs: 20 }] }) };
-        return retriedResponse;
-      },
-      location: { hash: '#/guid?from=refresh', replace: (target: string) => replacements.push(target) }, AbortSignal, Intl, Date, Promise,
-      setTimeout: (callback: () => void) => { callback();return 0; },
-    });
-    expect(retryElement('trace').textContent).toContain('CORE_START_FAILED');
-    retryListeners[0]!();
-    expect(retryRoutes).toEqual(['/enterprise/ready', '/enterprise/ready?retry=1']);
-    expect(retryElement('trace').textContent).toBe('');expect(retryElement('reason').textContent).toBe('');
-    expect(retryElement('timing').textContent).toBe('');
-    expect(retryElement('status').textContent).toBe('正在等待可用容量');
-    resolveRetry({ ok: true, status: 200, json: async () => ({ ready: true, phase: 'ready',
-      timings: { totalMs: 5, phaseMs: 0 }, trace: [{ phase: 'ready', atMs: 5 }] }) });
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(replacements.at(-1)).toBe('/#/guid?from=refresh');
-    expect(retryElement('failure').hidden).toBe(true);
-    expect(retryElement('trace').textContent).not.toContain('CORE_START_FAILED');
-    expect((await call('/enterprise/ready', cookie)).status).toBe(202);
+    expect(page.status).toBe(200);
+    expect(starts).toBe(0);
+    expect(page.body).toContain('enterprise-bootstrap-nav');
+    expect(page.body).not.toContain('data-enterprise-readiness');
+    const initial = await call('/enterprise/ready', cookie);
+    expect(initial.status).toBe(202);
     await new Promise((resolve) => setImmediate(resolve));
     const failed = await call('/enterprise/ready', cookie);
-    expect(failed.status).toBe(503);expect(failed.body).toContain('DEFAULT_MODEL_UNAVAILABLE');
-    expect(failed.body).not.toContain('never-expose');
+    expect(failed.status).toBe(503);
     const failedData = JSON.parse(failed.body);
-    expect(failedData.traceId).toMatch(/^[a-f0-9]{16}$/);
-    expect(failedData.trace.at(-1).phase).toBe('DEFAULT_MODEL_UNAVAILABLE');
-    const results = await Promise.all([
-      call('/enterprise/ready?retry=1', cookie), call('/enterprise/ready', cookie),
-    ]);
-    expect(results.every((result) => result.status === 202)).toBe(true);expect(starts).toBe(2);
-    releaseStart();await new Promise((resolve) => setImmediate(resolve));
+    expect(failedData.error).toBe('DEFAULT_MODEL_UNAVAILABLE');
+    expect(failed.body).not.toContain('never-expose');
+    const results = await Promise.all([call('/enterprise/ready?retry=1', cookie), call('/enterprise/ready', cookie)]);
+    expect(results.every((result) => result.status === 202)).toBe(true);
+    expect(starts).toBe(2);
+    releaseStart();
+    await new Promise((resolve) => setImmediate(resolve));
     const ready = await call('/enterprise/ready', cookie);
-    expect([ready.status, JSON.parse(ready.body).phase]).toEqual([200, 'ready']);
+    expect(JSON.parse(ready.body).ready).toBe(true);
     const bootstrap = await call('/', cookie);
     expect(bootstrap.body).toContain('data-enterprise-bootstrap');
     expect(bootstrap.body).toContain('<title>Acme Workspace</title>');
-    expect(bootstrap.body).toContain('執行環境已就緒');
+    expect(bootstrap.body).not.toContain('enterprise-bootstrap-card');
+    expect(bootstrap.body).not.toContain('position:fixed');
     expect(bootstrap.body).toContain('nonce=');
     expect(bootstrap.body).toContain('data-testid="enterprise-bootstrap-error"');
     expect(bootstrap.body).toContain('data-testid="enterprise-bootstrap-retry"');
     const shellScript = /<script nonce="[^"]+" data-enterprise-bootstrap-shell>([\s\S]*?)<\/script>/.exec(
-      bootstrap.body)?.[1];
+      bootstrap.body
+    )?.[1];
     expect(shellScript).toBeTruthy();
     const bootstrapMonitor = () => {
-      class ScriptElement { src = '/boot.js?token=do-not-log'; }
-      class LinkElement { href = '/app.css?key=do-not-log'; }
-      class ImageElement { src = '/logo.png'; }
+      class ScriptElement {
+        src = '/boot.js?token=do-not-log';
+      }
+      class LinkElement {
+        href = '/app.css?key=do-not-log';
+      }
+      class ImageElement {
+        src = '/logo.png';
+      }
       type Listener = (event: { target?: object; reason?: unknown }) => void;
       const listeners = new Map<string, Listener>();
-      let shellPresent = true;let observerCallback = () => {};let retryCallback = () => {};
-      let reloaded = 0;let disconnected = 0;let now = 0;
+      let shellPresent = true;
+      let observerCallback = () => {};
+      let retryCallback = () => {};
+      let reloaded = 0;
+      let disconnected = 0;
+      let now = 0;
       const status = { textContent: '執行環境已就緒' };
       const progress = { hidden: false };
       const error = { hidden: true };
-      const retry = { addEventListener: (_event: string, callback: () => void) => { retryCallback = callback; } };
-      let removed = false;const shell = { remove: () => { removed = true; } };
-      const root = { querySelector: () => shellPresent ? shell : null, childElementCount: 0, textContent: '' };
-      const infos: unknown[][] = [];const warnings: unknown[][] = [];
+      const retry = {
+        addEventListener: (_event: string, callback: () => void) => {
+          retryCallback = callback;
+        },
+      };
+      let removed = false;
+      const shell = {
+        remove: () => {
+          removed = true;
+        },
+      };
+      const root = {
+        querySelector: () => (shellPresent ? shell : null),
+        contains: () => shellPresent,
+        childElementCount: 0,
+        textContent: '',
+      };
+      const infos: unknown[][] = [];
+      const warnings: unknown[][] = [];
       class Observer {
-        constructor(callback: () => void) { observerCallback = callback; }
+        constructor(callback: () => void) {
+          observerCallback = callback;
+        }
         observe() {}
-        disconnect() { disconnected += 1; }
+        disconnect() {
+          disconnected += 1;
+        }
       }
       vm.runInNewContext(shellScript!, {
-        document: { body: { appendChild: () => {} }, getElementById: (id: string) => id === 'root' ? root
-          : id === 'enterprise-bootstrap-status' ? status : progress,
-        querySelector: (selector: string) => selector.includes('error') ? error : retry },
-        window: { addEventListener: (event: string, callback: Listener) => listeners.set(event, callback),
-          removeEventListener: (event: string) => listeners.delete(event) },
-        HTMLScriptElement: ScriptElement, HTMLLinkElement: LinkElement,
-        MutationObserver: Observer, performance: { now: () => { now += 7;return now; } },
-        location: { reload: () => { reloaded += 1; } },
+        document: {
+          body: { appendChild: () => {} },
+          getElementById: (id: string) =>
+            id === 'root' ? root : id === 'enterprise-bootstrap-status' ? status : progress,
+          querySelector: (selector: string) => (selector.includes('error') ? error : retry),
+        },
+        window: {
+          addEventListener: (event: string, callback: Listener) => listeners.set(event, callback),
+          removeEventListener: (event: string) => listeners.delete(event),
+        },
+        HTMLScriptElement: ScriptElement,
+        HTMLLinkElement: LinkElement,
+        MutationObserver: Observer,
+        performance: {
+          now: () => {
+            now += 7;
+            return now;
+          },
+        },
+        location: {
+          reload: () => {
+            reloaded += 1;
+          },
+        },
         console: { info: (...args: unknown[]) => infos.push(args), warn: (...args: unknown[]) => warnings.push(args) },
-        setTimeout: () => 1, clearTimeout: () => {},
+        setTimeout: () => 1,
+        clearTimeout: () => {},
       });
-      return { status, progress, error, infos, warnings,
+      return {
+        status,
+        progress,
+        error,
+        infos,
+        warnings,
         imageError: () => listeners.get('error')?.({ target: new ImageElement() }),
         scriptError: () => listeners.get('error')?.({ target: new ScriptElement() }),
-        emptyMount: () => { shellPresent = false;observerCallback();return removed; },
-        mount: () => { shellPresent = false;root.childElementCount = 1;root.textContent = 'Acme Workspace';observerCallback(); },
-        retry: () => retryCallback(), reloaded: () => reloaded, disconnected: () => disconnected };
+        emptyMount: () => {
+          shellPresent = false;
+          observerCallback();
+          return removed;
+        },
+        mount: () => {
+          shellPresent = false;
+          root.childElementCount = 1;
+          root.textContent = 'Acme Workspace';
+          observerCallback();
+        },
+        retry: () => retryCallback(),
+        reloaded: () => reloaded,
+        disconnected: () => disconnected,
+      };
     };
     const brokenShell = bootstrapMonitor();
-    brokenShell.imageError();expect(brokenShell.error.hidden).toBe(true);
+    brokenShell.imageError();
+    expect(brokenShell.error.hidden).toBe(true);
     brokenShell.scriptError();
     expect(brokenShell.status.textContent).toBe('頁面載入失敗，請重新載入後再試。');
-    expect(brokenShell.progress.hidden).toBe(true);expect(brokenShell.error.hidden).toBe(false);
-    expect(brokenShell.warnings).toHaveLength(1);expect(brokenShell.infos).toHaveLength(0);
+    expect(brokenShell.progress.hidden).toBe(true);
+    expect(brokenShell.error.hidden).toBe(false);
+    expect(brokenShell.warnings).toHaveLength(1);
+    expect(brokenShell.infos).toHaveLength(0);
     expect(brokenShell.warnings[0]?.[1]).toContain('"phase":"asset_failed"');
     expect(JSON.stringify(brokenShell.warnings)).not.toContain('boot.js');
     expect(JSON.stringify(brokenShell.warnings)).not.toContain('do-not-log');
-    brokenShell.retry();expect(brokenShell.reloaded()).toBe(1);
-    brokenShell.mount();expect(brokenShell.warnings).toHaveLength(1);
-    const mountedShell = bootstrapMonitor();expect(mountedShell.emptyMount()).toBe(false);
-    expect(mountedShell.infos).toHaveLength(0);mountedShell.mount();
-    expect(mountedShell.error.hidden).toBe(true);expect(mountedShell.progress.hidden).toBe(false);
-    expect(mountedShell.warnings).toHaveLength(0);expect(mountedShell.infos).toHaveLength(1);
+    brokenShell.retry();
+    expect(brokenShell.reloaded()).toBe(1);
+    brokenShell.mount();
+    expect(brokenShell.warnings).toHaveLength(1);
+    const mountedShell = bootstrapMonitor();
+    expect(mountedShell.emptyMount()).toBe(false);
+    expect(mountedShell.infos).toHaveLength(0);
+    mountedShell.mount();
+    expect(mountedShell.error.hidden).toBe(true);
+    expect(mountedShell.progress.hidden).toBe(false);
+    expect(mountedShell.warnings).toHaveLength(0);
+    expect(mountedShell.infos).toHaveLength(1);
     expect(mountedShell.infos[0]?.[1]).toContain('"phase":"mounted"');
     expect(mountedShell.disconnected()).toBe(1);
     const preparationWarnings = warn.mock.calls.filter(([label]) => label === '[Enterprise preparation]');
     const preparationInfos = info.mock.calls.filter(([label]) => label === '[Enterprise preparation]');
-    expect(preparationWarnings).toHaveLength(1);expect(preparationInfos).toHaveLength(1);
+    expect(preparationWarnings).toHaveLength(1);
+    expect(preparationInfos).toHaveLength(1);
     const failedLog = JSON.parse(String(preparationWarnings[0]?.[1]));
     const readyLog = JSON.parse(String(preparationInfos[0]?.[1]));
-    expect(failedLog).toMatchObject({ event: 'enterprise_core_initialization', outcome: 'failure',
-      phase: 'failed', code: 'DEFAULT_MODEL_UNAVAILABLE', traceId: failedData.traceId });
-    expect(readyLog).toMatchObject({ event: 'enterprise_core_initialization', outcome: 'success',
-      phase: 'ready', code: 'READY' });
-    expect(failedLog.timings).toMatchObject({ totalMs: expect.any(Number), queuedMs: expect.any(Number),
-      startingMs: expect.any(Number) });
+    expect(failedLog).toMatchObject({
+      event: 'enterprise_core_initialization',
+      outcome: 'failure',
+      phase: 'failed',
+      code: 'DEFAULT_MODEL_UNAVAILABLE',
+      traceId: failedData.traceId,
+    });
+    expect(readyLog).toMatchObject({
+      event: 'enterprise_core_initialization',
+      outcome: 'success',
+      phase: 'ready',
+      code: 'READY',
+    });
+    expect(failedLog.timings).toMatchObject({
+      totalMs: expect.any(Number),
+      queuedMs: expect.any(Number),
+      startingMs: expect.any(Number),
+    });
     expect(JSON.stringify([...preparationWarnings, ...preparationInfos])).not.toContain('never-expose');
   } finally {
-    info.mockRestore();warn.mockRestore();releaseStart();await gateway.stop();
+    info.mockRestore();
+    warn.mockRestore();
+    releaseStart();
+    await gateway.stop();
     await rm(dir, { recursive: true, force: true });
   }
 });
-
 
 test('release assets negotiate precompressed bytes, remain authenticated and keep user APIs uncached', async () => {
   allowed.set('1', true);
@@ -1266,8 +1843,10 @@ test('release assets negotiate precompressed bytes, remain authenticated and kee
   const plain = await request('GET', asset, cookie, undefined, undefined, { 'accept-encoding': 'br;q=0,gzip;q=0' });
   expect(plain.headers['content-encoding']).toBeUndefined();
   expect(plain.bytes).toEqual(source);
-  const unchanged = await request('GET', asset, cookie, undefined, undefined,
-    { 'accept-encoding': 'br', 'if-none-match': String(br.headers.etag) });
+  const unchanged = await request('GET', asset, cookie, undefined, undefined, {
+    'accept-encoding': 'br',
+    'if-none-match': String(br.headers.etag),
+  });
   expect(unchanged.status).toBe(304);
   expect(unchanged.bytes.length).toBe(0);
   const head = await request('HEAD', asset, cookie, undefined, undefined, { 'accept-encoding': 'br' });
@@ -1277,8 +1856,10 @@ test('release assets negotiate precompressed bytes, remain authenticated and kee
   const api = await request('GET', '/api/settings/client', cookie);
   expect(api.headers['cache-control']).toBe('no-store');
   allowed.set('1', false);
-  const revoked = await request('GET', asset, cookie, undefined, undefined,
-    { 'accept-encoding': 'br', 'if-none-match': String(br.headers.etag) });
+  const revoked = await request('GET', asset, cookie, undefined, undefined, {
+    'accept-encoding': 'br',
+    'if-none-match': String(br.headers.etag),
+  });
   expect(revoked.status).toBe(302);
   expect(revoked.headers['cache-control']).toBe('no-store');
   allowed.set('1', true);
@@ -1299,11 +1880,18 @@ test('Host browsing and file reads do not start a worker; idle invalidation reta
     maxStartingCores: 1,
     maxQueuedCoreStarts: 2,
     coreIdleMs: 5,
-    login: async username => ({ actor: { serverId: 'rc2', userId: username }, validate: async () => true, close: async () => {} }),
+    login: async (username) => ({
+      actor: { serverId: 'rc2', userId: username },
+      validate: async () => true,
+      close: async () => {},
+    }),
     startCore: async () => {
       starts += 1;
-      const core = http.createServer((req, res) => res.end(req.url === '/api/cron/internal/idle-ready'
-        ? JSON.stringify({ success: true, data: { idle: true } }) : '{}'));
+      const core = http.createServer((req, res) =>
+        res.end(
+          req.url === '/api/cron/internal/idle-ready' ? JSON.stringify({ success: true, data: { idle: true } }) : '{}'
+        )
+      );
       await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
       let invalidate!: () => void;
       const invalidated = new Promise<void>((resolve) => {
@@ -1338,7 +1926,7 @@ test('Host browsing and file reads do not start a worker; idle invalidation reta
         },
         (res) => {
           const chunks: Buffer[] = [];
-          res.on('data', chunk => chunks.push(chunk));
+          res.on('data', (chunk) => chunks.push(chunk));
           res.on('end', () =>
             resolve({
               status: res.statusCode || 0,
@@ -1377,7 +1965,10 @@ test('Host browsing and file reads do not start a worker; idle invalidation reta
     await vi.waitFor(() => expect(starts).toBe(2));
     expect(stops).toBe(1);
     expect((await call('/api/auth/user', first)).status).toBe(200);
-  } finally { await gateway.stop();await rm(dir, { recursive: true, force: true }); }
+  } finally {
+    await gateway.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('capacity and startup waiting do not consume the usable worker idle budget', async () => {
@@ -1385,21 +1976,53 @@ test('capacity and startup waiting do not consume the usable worker idle budget'
   const worker = http.createServer((_req, res) => res.end(JSON.stringify({ success: true, data: { idle: true } })));
   await new Promise<void>((resolve) => worker.listen(0, '127.0.0.1', resolve));
   let stops = 0;
-  const gateway = await startEnterpriseGateway({ staticDir: dir, publicOrigin: 'https://workspace.example', port: 0,
-    coreIdleMs: 100, login: async () => ({ actor: { serverId: 'rc2', userId: '1' }, validate: async () => true, close: async () => {} }),
+  const gateway = await startEnterpriseGateway({
+    staticDir: dir,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    coreIdleMs: 100,
+    login: async () => ({ actor: { serverId: 'rc2', userId: '1' }, validate: async () => true, close: async () => {} }),
     startCore: async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      return { port: (worker.address() as { port: number }).port, localToken: 'unit-local-token', stop: async () => { stops += 1; } };
-    } });
-  const call = (url: string, cookie?: string) => new Promise<{ data: { ready?: boolean }; cookie?: string }>((resolve, reject) => {
-    const login = url === '/enterprise/login';
-    const req = http.request({ host: '127.0.0.1', port: gateway.port, path: url, method: login ? 'POST' : 'GET',
-      headers: { host: 'workspace.example', origin: 'https://workspace.example', ...(cookie ? { cookie } : {}),
-        ...(login ? { 'content-type': 'application/json' } : {}) } }, (res) => {
-      const chunks: Buffer[] = [];res.on('data', (chunk) => chunks.push(chunk));res.on('end', () => resolve({
-        data: JSON.parse(Buffer.concat(chunks).toString()), cookie: res.headers['set-cookie']?.[0].split(';')[0] }));
-    });req.once('error', reject);req.end(login ? JSON.stringify({ username: '1', password: 'test' }) : undefined);
+      return {
+        port: (worker.address() as { port: number }).port,
+        localToken: 'unit-local-token',
+        stop: async () => {
+          stops += 1;
+        },
+      };
+    },
   });
+  const call = (url: string, cookie?: string) =>
+    new Promise<{ data: { ready?: boolean }; cookie?: string }>((resolve, reject) => {
+      const login = url === '/enterprise/login';
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port: gateway.port,
+          path: url,
+          method: login ? 'POST' : 'GET',
+          headers: {
+            host: 'workspace.example',
+            origin: 'https://workspace.example',
+            ...(cookie ? { cookie } : {}),
+            ...(login ? { 'content-type': 'application/json' } : {}),
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () =>
+            resolve({
+              data: JSON.parse(Buffer.concat(chunks).toString()),
+              cookie: res.headers['set-cookie']?.[0].split(';')[0],
+            })
+          );
+        }
+      );
+      req.once('error', reject);
+      req.end(login ? JSON.stringify({ username: '1', password: 'test' }) : undefined);
+    });
   try {
     const cookie = (await call('/enterprise/login')).cookie;
     await call('/enterprise/ready', cookie);
@@ -1410,21 +2033,97 @@ test('capacity and startup waiting do not consume the usable worker idle budget'
     await gateway.reapIdleCores();
     expect(stops).toBe(1);
   } finally {
-    await gateway.stop();await new Promise<void>((resolve) => worker.close(() => resolve()));
+    await gateway.stop();
+    await new Promise<void>((resolve) => worker.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-
 test('conversation creation uses stored MCP IDs instead of redacted browser transport snapshots', async () => {
-  const login=await request('POST','/enterprise/login',undefined,{username:'1',password:'test'});
-  const cookie=login.headers['set-cookie']?.[0].split(';')[0];
-  const ids=['office-id','query-id'];const personal={id:'session',name:'personal-session',transport:{type:'http',url:'https://example.test/mcp'}};
-  const created=await request('POST','/api/conversations',cookie,{name:'中文长度检查',assistant:{id:'rc2-test'},extra:{selected_mcp_server_ids:ids,selected_session_mcp_servers:[
-    {id:'office-id',name:'rc2-enterprise-zhenwork-office-tools',transport:{type:'http',url:'',headers:{},credentials_configured:true}},
-    {id:'query-id',name:'rc2-enterprise-11111111-1111-4111-8111-111111111111',transport:{type:'http',url:'untrusted-browser-override'}},personal,
-  ]}});
-  expect(created.status).toBe(200);const body=JSON.parse(created.body).data;
-  expect(body.name).toBe('中文长度检查');expect(body.extra.selected_mcp_server_ids).toEqual(ids);
-  expect(body.extra.selected_session_mcp_servers).toEqual([personal]);expect(created.body).not.toContain('untrusted-browser-override');
+  const login = await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' });
+  const cookie = login.headers['set-cookie']?.[0].split(';')[0];
+  const ids = ['office-id', 'query-id'];
+  const personal = {
+    id: 'session',
+    name: 'personal-session',
+    transport: { type: 'http', url: 'https://example.test/mcp' },
+  };
+  const created = await request('POST', '/api/conversations', cookie, {
+    name: '中文长度检查',
+    assistant: { id: 'rc2-test' },
+    extra: {
+      selected_mcp_server_ids: ids,
+      selected_session_mcp_servers: [
+        {
+          id: 'office-id',
+          name: 'rc2-enterprise-zhenwork-office-tools',
+          transport: { type: 'http', url: '', headers: {}, credentials_configured: true },
+        },
+        {
+          id: 'query-id',
+          name: 'rc2-enterprise-11111111-1111-4111-8111-111111111111',
+          transport: { type: 'http', url: 'untrusted-browser-override' },
+        },
+        personal,
+      ],
+    },
+  });
+  expect(created.status).toBe(200);
+  const body = JSON.parse(created.body).data;
+  expect(body.name).toBe('中文长度检查');
+  expect(body.extra.selected_mcp_server_ids).toEqual(ids);
+  expect(body.extra.selected_session_mcp_servers).toEqual([personal]);
+  expect(created.body).not.toContain('untrusted-browser-override');
+});
+
+test('real Host login remembers only successful accounts and preserves the conversation hash', async () => {
+  const page = await request('GET', '/enterprise/login?lang=zh-CN');
+  expect(page.status).toBe(200);
+  const script = /<script nonce="[^"]+">([\s\S]*?)<\/script>/.exec(page.body)?.[1];
+  expect(script).toBeTruthy();
+  const values = new Map<string, string>([
+    ['rememberedAccount', 'old-account'],
+    ['rememberedPassword', 'legacy-secret'],
+  ]);
+  const listeners = new Map<string, (event: unknown) => Promise<void>>();
+  const elements = new Map<string, Record<string, unknown>>();
+  const element = (id: string) => {
+    if (!elements.has(id))
+      elements.set(id, {
+        value: '',
+        hidden: false,
+        focus: () => {},
+        addEventListener: (_event: string, fn: (event: unknown) => Promise<void>) => listeners.set(id, fn),
+      });
+    return elements.get(id)!;
+  };
+  const replace = vi.fn();
+  let success = false;
+  vm.runInNewContext(script!, {
+    document: { getElementById: element, documentElement: { lang: 'zh-CN' } },
+    localStorage: {
+      getItem: (k: string) => values.get(k),
+      setItem: (k: string, v: string) => values.set(k, v),
+      removeItem: (k: string) => values.delete(k),
+    },
+    URLSearchParams,
+    location: { search: '?lang=zh-CN', hash: '#/conversation/abcd1234', replace },
+    FormData: class {
+      get(k: string) {
+        return element(k).value;
+      }
+    },
+    fetch: async () => ({ ok: success, status: success ? 200 : 401, json: async () => ({}) }),
+  });
+  expect(element('username').value).toBe('old-account');
+  expect(values.has('rememberedPassword')).toBe(false);
+  element('username').value = 'new-account';
+  element('password').value = 'synthetic-test-password';
+  await listeners.get('login')!({ preventDefault: () => {} } as never);
+  expect(values.get('rememberedAccount')).toBe('old-account');
+  success = true;
+  await listeners.get('login')!({ preventDefault: () => {} } as never);
+  expect(values.get('rememberedAccount')).toBe('new-account');
+  expect(JSON.stringify([...values])).not.toContain('synthetic-test-password');
+  expect(replace).toHaveBeenCalledWith('/#/conversation/abcd1234');
 });

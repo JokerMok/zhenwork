@@ -60,7 +60,7 @@ export async function checkpoint(
     instruction:
       args.state === "completed"
         ? "Completion will be checked against actual results and required files."
-        : "If waiting, ask the saved question and end this turn.",
+        : "If waiting, the server displays the saved question and ends this turn. Do not make another model or tool request.",
   };
 }
 

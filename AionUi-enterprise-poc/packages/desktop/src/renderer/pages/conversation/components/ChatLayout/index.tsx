@@ -70,8 +70,11 @@ const ChatLayout: React.FC<{
   const { backend, presetAssistant, agent_name, workspaceEnabled = true, workspacePreferenceKey } = props;
   const layout = useLayoutContext();
   const { t } = useTranslation();
-  const executionSource = isEnterpriseWeb() ? 'web' :
-    (window as Window & { enterpriseContext?: unknown }).enterpriseContext ? 'desktop' : null;
+  const executionSource = isEnterpriseWeb()
+    ? null
+    : (window as Window & { enterpriseContext?: unknown }).enterpriseContext
+      ? 'desktop'
+      : null;
   const isDesktop = !layout?.isMobile;
   const isMobile = Boolean(layout?.isMobile);
 
@@ -242,10 +245,11 @@ const ChatLayout: React.FC<{
       {layout?.isMobile
         ? mobileActionsSlot && props.headerExtra && createPortal(props.headerExtra, mobileActionsSlot)
         : desktopHeader}
-      {executionSource && <div className='px-16px py-3px text-11px text-t-tertiary bg-1'>
-        {t(executionSource === 'web' ? 'conversation.history.webConversationLocation' :
-          'conversation.history.desktopConversationLocation')}
-      </div>}
+      {executionSource && (
+        <div className='px-16px py-3px text-11px text-t-tertiary bg-1'>
+          {t('conversation.history.desktopConversationLocation')}
+        </div>
+      )}
       {props.tabsSlot}
     </>
   );

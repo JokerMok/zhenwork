@@ -9,6 +9,21 @@ import type { IConfirmation, IMessageAsk, IMessagePermission, TMessage } from '@
 import { useEffect } from 'react';
 import { useUpdateMessageList } from './hooks';
 
+const confirmationReads = new Map<string, Promise<IConfirmation<unknown>[]>>();
+/** Coalesce only in-flight identity-scoped reads; never cache authorization results. */
+export function fetchPendingConfirmations(conversation_id: string): Promise<IConfirmation<unknown>[]> {
+  const prior = confirmationReads.get(conversation_id);
+  if (prior) return prior;
+  const request = ipcBridge.conversation.confirmation.list
+    .invoke({ conversation_id })
+    .then((value) => value ?? [])
+    .finally(() => {
+      if (confirmationReads.get(conversation_id) === request) confirmationReads.delete(conversation_id);
+    });
+  confirmationReads.set(conversation_id, request);
+  return request;
+}
+
 export const pendingConfirmationMsgId = (confirmationId: string) => `confirmation:${confirmationId}`;
 
 export function buildPendingConfirmationMessage(
@@ -80,8 +95,7 @@ export function usePendingConfirmationsRecovery(conversation_id: string) {
     if (!conversation_id) return;
     let cancelled = false;
 
-    void ipcBridge.conversation.confirmation.list
-      .invoke({ conversation_id })
+    void fetchPendingConfirmations(conversation_id)
       .then((confirmations) => {
         if (cancelled) return;
         updateMessageList((list) => {

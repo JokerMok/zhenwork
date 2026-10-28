@@ -291,7 +291,7 @@ export class TaskRunner {
             ? "Approve the saved action once."
             : "Decline the saved action.");
     }
-    if (action === "approve" && a.confirmation && typeof a.confirmation.fingerprint !== "string")
+    if (action === "approve" && (!a.confirmation || typeof a.confirmation.fingerprint !== "string"))
       throw new TaskError(409, "TASK_APPROVAL_DETAILS_UNAVAILABLE");
     if (!input && action !== "retry") throw new TaskError(400, "TASK_INPUT_REQUIRED");
     const files = body.files || [];

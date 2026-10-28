@@ -1,3 +1,4 @@
+import { Button } from '@arco-design/web-react';
 import loginLogo from '@renderer/assets/logos/brand/app.png';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -65,7 +66,7 @@ const LoginPage: React.FC = () => {
   }, [i18n.language]);
 
   useEffect(() => {
-    const isRememberMe = localStorage.getItem(REMEMBER_ME_KEY) === 'true';
+    const isRememberMe = isEnterpriseWeb() || localStorage.getItem(REMEMBER_ME_KEY) === 'true';
     if (isRememberMe) {
       const storedUsername = localStorage.getItem('rememberedAccount');
       const legacyUsername = localStorage.getItem(REMEMBERED_USERNAME_KEY);
@@ -154,7 +155,7 @@ const LoginPage: React.FC = () => {
       const result = await login({ username: trimmedUsername, password, remember: rememberMe });
 
       if (result.success) {
-        if (rememberMe) {
+        if (rememberMe || isEnterpriseWeb()) {
           localStorage.setItem(REMEMBER_ME_KEY, 'true');
           localStorage.setItem('rememberedAccount', trimmedUsername);
         } else {
@@ -311,15 +312,29 @@ const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          <div className='login-page__checkbox'>
-            <input
-              type='checkbox'
-              id='remember-me'
-              checked={rememberMe}
-              onChange={(event) => setRememberMe(event.target.checked)}
-            />
-            <label htmlFor='remember-me'>{t('login.rememberAccount')}</label>
-          </div>
+          {!isEnterpriseWeb() ? (
+            <div className='login-page__checkbox'>
+              <input
+                type='checkbox'
+                id='remember-me'
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+              />
+              <label htmlFor='remember-me'>{t('login.rememberAccount')}</label>
+            </div>
+          ) : (
+            <Button
+              type='text'
+              onClick={() => {
+                localStorage.removeItem('rememberedAccount');
+                localStorage.removeItem(REMEMBER_ME_KEY);
+                setUsername('');
+                usernameRef.current?.focus();
+              }}
+            >
+              {t('login.clearAccount')}
+            </Button>
+          )}
 
           <button type='submit' className='login-page__submit' disabled={loading}>
             {loading && (

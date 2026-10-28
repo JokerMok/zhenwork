@@ -148,27 +148,36 @@ const ToolItemDetail: React.FC<{ item: NormalizedToolCall }> = ({ item }) => {
 const MessageToolGroupSummary: React.FC<{ messages: ToolMessage[] }> = ({ messages }) => {
   const { t } = useTranslation();
   const hasRunning = hasRunningToolMessages(messages);
-  const [showMore, setShowMore] = useState(hasRunning);
+  const [showMore, setShowMore] = useState(!isEnterpriseWeb() && hasRunning);
 
   useEffect(() => {
-    if (hasRunning) setShowMore(true);
+    if (hasRunning && !isEnterpriseWeb()) setShowMore(true);
   }, [hasRunning]);
 
   const tools = useMemo(() => normalizeToolMessages(messages), [messages]);
 
+  if (isEnterpriseWeb() && tools.every((tool) => ['office_context', 'task_checkpoint'].includes(tool.name)))
+    return null;
   return (
     <div className='tool-group-summary'>
-      <div className='tool-group-summary__header' onClick={() => setShowMore(!showMore)}>
+      <Button
+        type='text'
+        size='mini'
+        className='tool-group-summary__header'
+        aria-expanded={showMore}
+        onClick={() => setShowMore(!showMore)}
+      >
         <span className='tool-group-summary__icon'>
           {hasRunning ? <Spin size={12} /> : <Checklist theme='outline' size='14' />}
         </span>
         <span className='tool-group-summary__label'>
-          {t('conversation.toolSteps.view')} {tools.length > 0 ? `· ${tools.length}` : ''}
+          {t(isEnterpriseWeb() ? 'workspace.experience.executionDetails' : 'conversation.toolSteps.view')}{' '}
+          {tools.length > 0 ? `· ${tools.length}` : ''}
         </span>
         <span className={`tool-group-summary__arrow${showMore ? ' tool-group-summary__arrow--open' : ''}`}>
           <Right theme='outline' size='12' />
         </span>
-      </div>
+      </Button>
       {showMore && (
         <div className='tool-group-summary__body'>
           {tools.map((item) => (
@@ -195,9 +204,9 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
   const running = tools.findLast((tool) => tool.status === 'running' || tool.status === 'pending');
   const [preview, setPreview] = useState<{ path: string; version?: string }>();
   const navigate = useNavigate();
-  if (!isEnterpriseWeb() || (!tools.length && !processing)) return null;
+  if (!isEnterpriseWeb() || !files.length) return null;
   return (
-    <div className='my-12px p-12px rd-8px border border-border-2' data-testid='task-delivery-summary'>
+    <div className='my-8px py-8px border-t border-solid border-border-2' data-testid='task-delivery-summary'>
       <div className='font-medium mb-8px'>
         {t(
           processing
@@ -233,9 +242,19 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
         <div key={file.path} className='flex flex-wrap items-center gap-8px mt-8px'>
           <span className='break-all'>{file.path}</span>
           {file.version ? <Tag>v{file.version}</Tag> : null}
-          {file.headingCount !== undefined ? <span className='text-t-secondary'>{t('workspace.delivery.savedStructure', { headings: file.headingCount, tables: file.tableCount || 0 })}</span> : null}
-          {file.sheetCount !== undefined ? <span className='text-t-secondary'>{t('workspace.delivery.savedWorkbookStructure', { sheets: file.sheetCount })}</span> : null}
-          {file.addedHeadings?.map(heading => <Tag key={heading}>{heading}</Tag>)}
+          {file.headingCount !== undefined ? (
+            <span className='text-t-secondary'>
+              {t('workspace.delivery.savedStructure', { headings: file.headingCount, tables: file.tableCount || 0 })}
+            </span>
+          ) : null}
+          {file.sheetCount !== undefined ? (
+            <span className='text-t-secondary'>
+              {t('workspace.delivery.savedWorkbookStructure', { sheets: file.sheetCount })}
+            </span>
+          ) : null}
+          {file.addedHeadings?.map((heading) => (
+            <Tag key={heading}>{heading}</Tag>
+          ))}
           <Tag color={file.status === 'complete' ? 'green' : 'red'}>
             {t(file.status === 'complete' ? 'workspace.delivery.complete' : 'workspace.delivery.failedFile')}
           </Tag>
@@ -243,10 +262,7 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
             <span>{file.error}</span>
           ) : (
             <>
-              <Button
-                type='text'
-                onClick={() => setPreview({ path: file.path, version: file.versionId })}
-              >
+              <Button type='text' onClick={() => setPreview({ path: file.path, version: file.versionId })}>
                 {t('workspace.files.preview')}
               </Button>
               <Button
@@ -271,7 +287,7 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
           )}
         </div>
       ))}
-      {errors.length ? (
+      {errors.length && !isEnterpriseWeb() ? (
         <div className='text-t-secondary mt-8px'>
           {t('workspace.delivery.errorCount', { count: errors.length })}: {errors.map((tool) => tool.name).join(', ')}
         </div>

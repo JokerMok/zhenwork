@@ -149,7 +149,7 @@ export function publicTask(task: TaskRecord, summary = false): unknown {
                 files: _payload.files,
               },
             }),
-        canApprove: !confirmation || typeof confirmation.fingerprint === "string",
+        canApprove: typeof confirmation?.fingerprint === "string" && !!confirmation?.proposal,
         confirmation: confirmation
           ? {
               title: confirmation.title,

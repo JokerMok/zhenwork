@@ -51,7 +51,7 @@
     "pending": "Pending",
     "queued": "Queued",
     "running": "Running",
-    "preparing": "Ortam hazırlanıyor",
+    "preparing": "Asistana bağlanılıyor…",
     "processing": "İşleniyor",
     "waitingUser": "İşleminiz bekleniyor",
     "waiting": "Waiting",
@@ -59,15 +59,15 @@
     "failed": "Failed",
     "error": "Error",
     "cancelled": "Cancelled",
-    "preparationQueued": "Kullanılabilir kapasite bekleniyor",
-    "preparationStarting": "Sohbet hizmetine bağlanılıyor",
+    "preparationQueued": "Kullanılabilir kaynak bekleniyor…",
+    "preparationStarting": "Asistana bağlanılıyor…",
     "preparationReady": "Ortam hazır",
-    "preparationTimedOut": "Ortamın hazırlanması çok uzun sürdü. Yeniden deneyin.",
+    "preparationTimedOut": "Bağlantı beklenenden uzun sürüyor. Yeniden deneyin.",
     "preparationElapsed": "Geçen süre: {{seconds}} sn",
     "preparationTechnicalDetails": "Teknik ayrıntılar",
     "preparationFailed": "Ortam hazırlanamadı. Aşağıdaki nedeni inceleyip yeniden deneyin.",
     "capabilityForbidden": "Bu hesabın çalışma alanını kullanma yetkisi yok. Yöneticinizden rolleri ve izinleri denetlemesini isteyin.",
-    "environmentUnavailable": "Yürütme ortamı kullanılamıyor. Yeniden deneyin veya yöneticinizden hizmeti denetlemesini isteyin.",
+    "environmentUnavailable": "Konuşma başlatılamadı. Yeniden deneyin veya yöneticinize başvurun.",
     "connectionRecovering": "Bağlantı geçici olarak kesildi. Yeniden bağlanmaya çalışılıyor…",
     "bootstrapLoadFailed": "Sayfa yüklenemedi. Yeniden denemek için sayfayı yenileyin.",
     "identityExpired": "Oturumunuzun süresi doldu. Yeniden giriş yapın.",
@@ -395,5 +395,12 @@
     "externalNotApplied": "Confirmed not applied",
     "pendingArtifact": "Pending deliverable: {{path}}",
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
+  },
+  "experience": {
+    "executionDetails": "Yürütme ayrıntıları",
+    "actionFailed": "İşlem tamamlanamadı. Yeniden deneyin.",
+    "aiUnavailable": "Yapay zekâ hizmeti geçici olarak kullanılamıyor. Yeniden deneyin veya yöneticinize başvurun.",
+    "confirmScope": "Yalnızca bu işlemi onaylayın:",
+    "assistant": "Asistan"
   }
 }

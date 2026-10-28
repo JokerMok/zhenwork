@@ -51,7 +51,7 @@
     "pending": "Pending",
     "queued": "Queued",
     "running": "Running",
-    "preparing": "Preparing environment",
+    "preparing": "Connecting to your assistant…",
     "processing": "Processing",
     "waitingUser": "Waiting for your input",
     "waiting": "Waiting",
@@ -59,15 +59,15 @@
     "failed": "Failed",
     "error": "Error",
     "cancelled": "Cancelled",
-    "preparationQueued": "Waiting for capacity",
-    "preparationStarting": "Connecting chat service",
+    "preparationQueued": "Waiting for available capacity…",
+    "preparationStarting": "Connecting to your assistant…",
     "preparationReady": "Environment ready",
-    "preparationTimedOut": "Environment preparation took too long. Retry to continue.",
+    "preparationTimedOut": "Connection is taking longer than expected. Please retry.",
     "preparationElapsed": "Elapsed {{seconds}} s",
     "preparationTechnicalDetails": "Technical details",
     "preparationFailed": "Environment preparation did not finish. Review the reason below and retry.",
     "capabilityForbidden": "This account is not authorized to use the workspace. Ask your administrator to check employee roles and grants.",
-    "environmentUnavailable": "The execution environment is unavailable. Retry, or ask your administrator to check the service.",
+    "environmentUnavailable": "Cannot start this conversation. Retry or contact your administrator.",
     "connectionRecovering": "Connection interrupted. Trying to reconnect…",
     "bootstrapLoadFailed": "The page could not load. Reload to try again.",
     "identityExpired": "Your session has expired. Sign in again.",
@@ -411,5 +411,12 @@
     "externalNotApplied": "Confirmed not applied",
     "pendingArtifact": "Pending deliverable: {{path}}",
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
+  },
+  "experience": {
+    "executionDetails": "Execution details",
+    "actionFailed": "The action did not finish. Please retry.",
+    "aiUnavailable": "AI service is temporarily unavailable. Retry or contact your administrator.",
+    "confirmScope": "Confirm only this operation:",
+    "assistant": "Assistant"
   }
 }

@@ -1,4 +1,5 @@
-import { taskRequestId, taskAccepted, useTaskWork } from '@/renderer/pages/workspace/TaskWork/api';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import { taskRequestId, taskAccepted, taskStatusVisible, useTaskWork } from '@/renderer/pages/workspace/TaskWork/api';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -175,6 +176,7 @@ const AionrsSendBox: React.FC<{
 
   const [agentWarmed, setAgentWarmed] = useState(false);
   const [agentWarmupFailed, setAgentWarmupFailed] = useState(false);
+  const [warmupAttempt, setWarmupAttempt] = useState(0);
   const prepareRuntimeConfig = useCallback(async () => {
     if (teamPermission) return;
   }, [teamPermission]);
@@ -210,9 +212,13 @@ const AionrsSendBox: React.FC<{
       })
       .catch((error) => {
         setAgentWarmupFailed(true);
-        Message.error(getConversationRuntimeWorkspaceErrorMessage(error, t));
+        Message.error(
+          isEnterpriseWeb()
+            ? t('workspace.status.environmentUnavailable')
+            : getConversationRuntimeWorkspaceErrorMessage(error, t)
+        );
       });
-  }, [conversation_id, prepareRuntimeSync, t]);
+  }, [conversation_id, prepareRuntimeSync, t, warmupAttempt]);
 
   const slash_commands = useSlashCommands(conversation_id, {
     conversation_type: 'aionrs',
@@ -593,7 +599,9 @@ const AionrsSendBox: React.FC<{
 
     const currentModeLabel =
       modeOptions.find((opt) => opt.active)?.label ?? t('agentMode.default', { defaultValue: 'Default' });
-    const currentModelLabel = modelSelection.current_model?.use_model || t('conversation.welcome.selectModel');
+    const currentModelLabel =
+      modelSelection.getDisplayModelName(modelSelection.current_model?.use_model) ||
+      t('conversation.welcome.selectModel');
 
     const entries: MobileActionSheetEntry[] = [
       {
@@ -792,13 +800,32 @@ const AionrsSendBox: React.FC<{
         onClear={clear}
       />
       <ThoughtDisplay
-        thought={thought}
-        running={teamRuntime ? (teamRuntime.loading ?? running) : ordinaryRuntimeRunning}
-        statusText={teamRuntime ? teamRuntime.statusText : ordinaryRuntimeStatusText}
+        thought={isEnterpriseWeb() ? undefined : thought}
+        running={
+          teamRuntime
+            ? (teamRuntime.loading ?? running)
+            : ordinaryRuntimeRunning && !(workAttempt && taskStatusVisible(workAttempt))
+        }
+        statusText={
+          teamRuntime
+            ? teamRuntime.statusText
+            : agentWarmupFailed
+              ? t('workspace.status.environmentUnavailable')
+              : workAttempt && taskStatusVisible(workAttempt)
+                ? undefined
+                : ordinaryRuntimeStatusText
+        }
         externalElapsedSource={Boolean(teamRuntime) || turnStartedAtMs != null}
         startedAtMs={teamRuntime ? (teamRuntime.startedAtMs ?? null) : turnStartedAtMs}
         onStop={effectiveHandleStop}
-        onRetryStart={teamRuntime?.onRetryStart ? () => void teamRuntime.onRetryStart?.() : undefined}
+        onRetryStart={
+          teamRuntime?.onRetryStart
+            ? () => void teamRuntime.onRetryStart?.()
+            : agentWarmupFailed
+              ? () => setWarmupAttempt((value) => value + 1)
+              : undefined
+        }
+        retryLabel={isEnterpriseWeb() ? t('common.retry') : undefined}
       />
       <CrossSessionDisabledBanner />
       <SendBox
@@ -818,7 +845,7 @@ const AionrsSendBox: React.FC<{
         loading={teamRuntime?.loading ?? isBusy}
         active={teamRuntime?.isActive}
         onFocused={teamRuntime?.onFocus}
-        disabled={!current_model?.use_model}
+        disabled={!current_model?.use_model || !agentWarmed}
         sendDisabled={isBusy}
         sendDisabledTooltip={
           isBusy
@@ -831,7 +858,7 @@ const AionrsSendBox: React.FC<{
         placeholder={
           current_model?.use_model
             ? t('acp.sendbox.placeholder', {
-                backend: agent_name || 'AionCLI',
+                backend: isEnterpriseWeb() ? t('workspace.experience.assistant') : agent_name || 'AionCLI',
                 defaultValue: `Send message to {{backend}}...`,
               })
             : t('conversation.chat.noModelSelected')
@@ -854,21 +881,23 @@ const AionrsSendBox: React.FC<{
         }
         rightTools={
           <div className='flex items-center gap-8px min-w-0'>
-            <AgentModeSelector
-              backend='aionrs'
-              conversation_id={conversation_id}
-              compact
-              initialMode={session_mode}
-              dynamicModes={dynamicModes}
-              compactLeadingIcon={<Shield theme='outline' size='14' fill={iconColors.secondary} />}
-              modeLabelFormatter={(mode) => t(`agentMode.${mode.value}`, { defaultValue: mode.label })}
-              compactLabelPrefix={t('agentMode.permission')}
-              hideCompactLabelPrefixOnMobile
-              onModeChanged={propagateMode}
-              beforeRuntimeSync={prepareRuntimeConfig}
-              beforeRuntimeSet={teamPermission?.warmupSession}
-              configOptionsPort={teamPermission?.configOptionsPort}
-            />
+            {!isEnterpriseWeb() && (
+              <AgentModeSelector
+                backend='aionrs'
+                conversation_id={conversation_id}
+                compact
+                initialMode={session_mode}
+                dynamicModes={dynamicModes}
+                compactLeadingIcon={<Shield theme='outline' size='14' fill={iconColors.secondary} />}
+                modeLabelFormatter={(mode) => t(`agentMode.${mode.value}`, { defaultValue: mode.label })}
+                compactLabelPrefix={t('agentMode.permission')}
+                hideCompactLabelPrefixOnMobile
+                onModeChanged={propagateMode}
+                beforeRuntimeSync={prepareRuntimeConfig}
+                beforeRuntimeSet={teamPermission?.warmupSession}
+                configOptionsPort={teamPermission?.configOptionsPort}
+              />
+            )}
           </div>
         }
         prefix={

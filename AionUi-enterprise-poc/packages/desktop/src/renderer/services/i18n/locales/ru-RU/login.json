@@ -43,5 +43,15 @@
   "enterpriseForgetAccount": "Forget this account on this computer",
   "enterpriseSecureStorageUnavailable": "Secure storage is unavailable. Sign in manually.",
   "enterpriseSavedPasswordHint": "Saved password; leave blank to use it",
-  "rememberAccount": "Запомнить аккаунт"
+  "rememberAccount": "Запомнить аккаунт",
+  "clearAccount": "Забыть аккаунт",
+  "passwordFlow": {
+    "passwordRequired": "Задайте новый пароль для продолжения.",
+    "newPassword": "Новый пароль (8–16 букв и цифр)",
+    "confirmPassword": "Подтвердите новый пароль",
+    "passwordRule": "Используйте 8–16 символов, включая буквы и цифры.",
+    "mismatch": "Пароли не совпадают.",
+    "passwordUpdate": "Сохранить пароль и войти",
+    "passwordFailed": "Не удалось обновить пароль. Проверьте текущий пароль."
+  }
 }

@@ -1,3 +1,16 @@
+import faLogin from '../../desktop/src/renderer/services/i18n/locales/fa-IR/login.json' with { type: 'json' };
+import frLogin from '../../desktop/src/renderer/services/i18n/locales/fr-FR/login.json' with { type: 'json' };
+import esLogin from '../../desktop/src/renderer/services/i18n/locales/es-ES/login.json' with { type: 'json' };
+import deLogin from '../../desktop/src/renderer/services/i18n/locales/de-DE/login.json' with { type: 'json' };
+import ptLogin from '../../desktop/src/renderer/services/i18n/locales/pt-BR/login.json' with { type: 'json' };
+import ukLogin from '../../desktop/src/renderer/services/i18n/locales/uk-UA/login.json' with { type: 'json' };
+import ruLogin from '../../desktop/src/renderer/services/i18n/locales/ru-RU/login.json' with { type: 'json' };
+import trLogin from '../../desktop/src/renderer/services/i18n/locales/tr-TR/login.json' with { type: 'json' };
+import koLogin from '../../desktop/src/renderer/services/i18n/locales/ko-KR/login.json' with { type: 'json' };
+import zhTwLogin from '../../desktop/src/renderer/services/i18n/locales/zh-TW/login.json' with { type: 'json' };
+import jaLogin from '../../desktop/src/renderer/services/i18n/locales/ja-JP/login.json' with { type: 'json' };
+import enLogin from '../../desktop/src/renderer/services/i18n/locales/en-US/login.json' with { type: 'json' };
+import zhLogin from '../../desktop/src/renderer/services/i18n/locales/zh-CN/login.json' with { type: 'json' };
 import deCommon from '../../desktop/src/renderer/services/i18n/locales/de-DE/common.json' with { type: 'json' };
 import deWorkspace from '../../desktop/src/renderer/services/i18n/locales/de-DE/workspace.json' with { type: 'json' };
 import enCommon from '../../desktop/src/renderer/services/i18n/locales/en-US/common.json' with { type: 'json' };
@@ -26,35 +39,56 @@ import zhTwCommon from '../../desktop/src/renderer/services/i18n/locales/zh-TW/c
 import zhTwWorkspace from '../../desktop/src/renderer/services/i18n/locales/zh-TW/workspace.json' with { type: 'json' };
 
 type ReadinessBrand = { productName: string; primaryColor: string; logoDataUrl: string };
-type ReadinessMessages = { status: {
-  preparing: string; preparationFailed: string; capabilityForbidden: string;
-  environmentUnavailable: string; connectionRecovering: string; bootstrapLoadFailed: string;
-  identityExpired: string; preparationQueued: string;
-  preparationStarting: string; preparationReady: string; preparationTimedOut: string;
-  preparationElapsed: string; preparationTechnicalDetails: string;
-}; errors: { load: string; action: string; noCapability: string; prepareFailed: string;
-  noModel?: string; authentication?: string; forbidden?: string } };
-type LocaleBundle = { common: { retry: string }; workspace: ReadinessMessages };
+type ReadinessMessages = {
+  status: {
+    preparing: string;
+    preparationFailed: string;
+    capabilityForbidden: string;
+    environmentUnavailable: string;
+    connectionRecovering: string;
+    bootstrapLoadFailed: string;
+    identityExpired: string;
+    preparationQueued: string;
+    preparationStarting: string;
+    preparationReady: string;
+    preparationTimedOut: string;
+    preparationElapsed: string;
+    preparationTechnicalDetails: string;
+  };
+  errors: {
+    load: string;
+    action: string;
+    noCapability: string;
+    prepareFailed: string;
+    noModel?: string;
+    authentication?: string;
+    forbidden?: string;
+  };
+};
+type LocaleBundle = { common: { retry: string; loading: string }; workspace: ReadinessMessages; login: typeof enLogin };
 const FALLBACK_PRODUCT = 'ZhenWork';
 const locales = {
-  'de-DE': { common: deCommon, workspace: deWorkspace },
-  'en-US': { common: enCommon, workspace: enWorkspace },
-  'es-ES': { common: esCommon, workspace: esWorkspace },
-  'fa-IR': { common: faCommon, workspace: faWorkspace },
-  'fr-FR': { common: frCommon, workspace: frWorkspace },
-  'ja-JP': { common: jaCommon, workspace: jaWorkspace },
-  'ko-KR': { common: koCommon, workspace: koWorkspace },
-  'pt-BR': { common: ptCommon, workspace: ptWorkspace },
-  'ru-RU': { common: ruCommon, workspace: ruWorkspace },
-  'tr-TR': { common: trCommon, workspace: trWorkspace },
-  'uk-UA': { common: ukCommon, workspace: ukWorkspace },
-  'zh-CN': { common: zhCommon, workspace: zhWorkspace },
-  'zh-TW': { common: zhTwCommon, workspace: zhTwWorkspace },
+  'de-DE': { common: deCommon, workspace: deWorkspace, login: deLogin },
+  'en-US': { common: enCommon, workspace: enWorkspace, login: enLogin },
+  'es-ES': { common: esCommon, workspace: esWorkspace, login: esLogin },
+  'fa-IR': { common: faCommon, workspace: faWorkspace, login: faLogin },
+  'fr-FR': { common: frCommon, workspace: frWorkspace, login: frLogin },
+  'ja-JP': { common: jaCommon, workspace: jaWorkspace, login: jaLogin },
+  'ko-KR': { common: koCommon, workspace: koWorkspace, login: koLogin },
+  'pt-BR': { common: ptCommon, workspace: ptWorkspace, login: ptLogin },
+  'ru-RU': { common: ruCommon, workspace: ruWorkspace, login: ruLogin },
+  'tr-TR': { common: trCommon, workspace: trWorkspace, login: trLogin },
+  'uk-UA': { common: ukCommon, workspace: ukWorkspace, login: ukLogin },
+  'zh-CN': { common: zhCommon, workspace: zhWorkspace, login: zhLogin },
+  'zh-TW': { common: zhTwCommon, workspace: zhTwWorkspace, login: zhTwLogin },
 } satisfies Record<string, LocaleBundle>;
 type SupportedLocale = keyof typeof locales;
 
 function localeFor(acceptLanguage: string): SupportedLocale {
-  const requested = acceptLanguage.split(',').map((part) => part.split(';')[0]?.trim()).filter(Boolean);
+  const requested = acceptLanguage
+    .split(',')
+    .map((part) => part.split(';')[0]?.trim())
+    .filter(Boolean);
   for (const language of requested) {
     const exact = Object.keys(locales).find((candidate) => candidate.toLowerCase() === language!.toLowerCase());
     if (exact) return exact as SupportedLocale;
@@ -66,9 +100,23 @@ function localeFor(acceptLanguage: string): SupportedLocale {
   return 'en-US';
 }
 
-const html = (value: string): string => value.replace(/[&<>"']/g, (character) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-})[character]!);
+export function enterpriseLoginLocale(hint: string) {
+  const locale = localeFor(hint);
+  return { locale, copy: locales[locale].login };
+}
+
+const html = (value: string): string =>
+  value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character]!
+  );
 const json = (value: unknown): string => JSON.stringify(value).replace(/</g, '\\u003c');
 const productName = (brand: ReadinessBrand | null): string => brand?.productName || FALLBACK_PRODUCT;
 const brandColor = (brand: ReadinessBrand | null): string => brand?.primaryColor || '#2563eb';
@@ -79,28 +127,29 @@ const monogramFavicon = (product: string, color: string): string => {
 };
 const favicon = (brand: ReadinessBrand | null, product: string, color: string): string =>
   brand?.logoDataUrl || monogramFavicon(product, color);
-const brandVisual = (brand: ReadinessBrand | null, product: string): string => brand?.logoDataUrl
-  ? `<img src="${brand.logoDataUrl}" alt="" width="48" height="48">`
-  : `<span class="brand-mark" aria-hidden="true">${html(Array.from(product)[0] || 'Z')}</span>`;
+const brandVisual = (brand: ReadinessBrand | null, product: string): string =>
+  brand?.logoDataUrl
+    ? `<img src="${brand.logoDataUrl}" alt="" width="48" height="48">`
+    : `<span class="brand-mark" aria-hidden="true">${html(Array.from(product)[0] || 'Z')}</span>`;
 
 export function enterpriseBootstrapShell(
-  acceptLanguage: string, nonce: string, brand: ReadinessBrand | null
+  acceptLanguage: string,
+  nonce: string,
+  brand: ReadinessBrand | null
 ): { head: string; body: string } {
   const { common, workspace } = locales[localeFor(acceptLanguage)];
   const product = productName(brand);
   const color = brandColor(brand);
   const icon = favicon(brand, product, color);
   const copy = json({ failed: workspace.status.bootstrapLoadFailed, retry: common.retry });
-  const monitor = `(()=>{const copy=${copy};const root=document.getElementById('root');const shell=root?.querySelector('[data-enterprise-bootstrap]');const status=document.getElementById('enterprise-bootstrap-status');const progress=document.getElementById('enterprise-bootstrap-progress');const error=document.querySelector('[data-testid="enterprise-bootstrap-error"]');const retry=document.querySelector('[data-testid="enterprise-bootstrap-retry"]');if(!root||!shell||!status||!progress||!error||!retry)return;document.body.appendChild(shell);const started=performance.now();performance.mark?.('enterprise:bootstrap_start');let finished=false;let observer;let monitorTimer;const finish=(phase,code)=>{if(finished)return;finished=true;performance.mark?.('enterprise:bootstrap_'+phase);window.removeEventListener('error',onResourceError,true);window.removeEventListener('unhandledrejection',onRejection);observer?.disconnect();if(monitorTimer)clearTimeout(monitorTimer);const entry=JSON.stringify({event:'enterprise_bootstrap_shell',phase,durationMs:Math.max(0,Math.round(performance.now()-started)),code});if(phase==='asset_failed')console.warn('[Enterprise bootstrap]',entry);else console.info('[Enterprise bootstrap]',entry);};const fail=()=>{if(finished)return;status.textContent=copy.failed;progress.hidden=true;error.hidden=false;finish('asset_failed','BOOTSTRAP_ASSET_FAILED');};const onResourceError=event=>{const target=event.target;if(target instanceof HTMLScriptElement||target instanceof HTMLLinkElement)fail();};const onRejection=event=>{const message=String(event.reason?.message||event.reason||'');if(/dynamically imported module|error loading dynamically imported module|importing a module script failed|failed to fetch.*module/i.test(message))fail();};window.addEventListener('error',onResourceError,true);window.addEventListener('unhandledrejection',onRejection);retry.addEventListener('click',()=>location.reload());observer=new MutationObserver(()=>{if(root.childElementCount>0&&root.textContent.trim()){shell.remove();finish('mounted','READY');}});observer.observe(root,{childList:true,subtree:true});monitorTimer=setTimeout(()=>finish('monitor_expired','MONITOR_EXPIRED'),600000);})();`;
+  const monitor = `(()=>{const copy=${copy};const root=document.getElementById('root');const shell=root?.querySelector('[data-enterprise-bootstrap]');const status=document.getElementById('enterprise-bootstrap-status');const progress=document.getElementById('enterprise-bootstrap-progress');const error=document.querySelector('[data-testid="enterprise-bootstrap-error"]');const retry=document.querySelector('[data-testid="enterprise-bootstrap-retry"]');if(!root||!shell||!status||!progress||!error||!retry)return;const started=performance.now();performance.mark?.('enterprise:bootstrap_start');let finished=false;let observer;let monitorTimer;const finish=(phase,code)=>{if(finished)return;finished=true;performance.mark?.('enterprise:bootstrap_'+phase);window.removeEventListener('error',onResourceError,true);window.removeEventListener('unhandledrejection',onRejection);observer?.disconnect();if(monitorTimer)clearTimeout(monitorTimer);const entry=JSON.stringify({event:'enterprise_bootstrap_shell',phase,durationMs:Math.max(0,Math.round(performance.now()-started)),code});if(phase==='asset_failed')console.warn('[Enterprise bootstrap]',entry);else console.info('[Enterprise bootstrap]',entry);};const fail=()=>{if(finished)return;status.textContent=copy.failed;progress.hidden=true;error.hidden=false;finish('asset_failed','BOOTSTRAP_ASSET_FAILED');};const onResourceError=event=>{const target=event.target;if(target instanceof HTMLScriptElement||target instanceof HTMLLinkElement)fail();};const onRejection=event=>{const message=String(event.reason?.message||event.reason||'');if(/dynamically imported module|error loading dynamically imported module|importing a module script failed|failed to fetch.*module/i.test(message))fail();};window.addEventListener('error',onResourceError,true);window.addEventListener('unhandledrejection',onRejection);retry.addEventListener('click',()=>location.reload());observer=new MutationObserver(()=>{if(root.childElementCount>0&&!root.contains(shell)){finish('mounted','RENDERED');}});observer.observe(root,{childList:true,subtree:true});monitorTimer=setTimeout(()=>finish('monitor_expired','MONITOR_EXPIRED'),600000);})();`;
   return {
-    head: `<title>${html(product)}</title><link rel="icon" href="${icon}"><style nonce="${nonce}">body:has([data-enterprise-bootstrap]){margin:0}#root:has(>[data-enterprise-bootstrap]){min-height:100vh;min-height:100dvh}.enterprise-bootstrap{position:fixed;inset:0;z-index:10000;--enterprise-brand:${color};min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px;background:#f3f6fa;color:#1a2b42;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans",sans-serif}.enterprise-bootstrap-card{width:min(100%,520px);padding:44px;border-radius:20px;background:#fff;box-shadow:0 24px 70px -32px rgba(18,36,65,.36)}.enterprise-bootstrap-brand{display:flex;align-items:center;gap:14px;margin-bottom:30px}.enterprise-bootstrap img,.enterprise-bootstrap .brand-mark{width:48px;height:48px;object-fit:contain;border-radius:12px}.enterprise-bootstrap .brand-mark{display:grid;place-items:center;background:var(--enterprise-brand);color:#fff;font-size:25px;font-weight:700}.enterprise-bootstrap h1{margin:0;font-size:30px;line-height:1.25}.enterprise-bootstrap p{margin:0;color:#52647c;line-height:1.7}.enterprise-bootstrap progress{width:100%;height:6px;margin-top:28px;accent-color:var(--enterprise-brand)}.enterprise-bootstrap-error{margin-top:20px}.enterprise-bootstrap button{min-height:44px;padding:10px 22px;border:0;border-radius:10px;background:var(--enterprise-brand);color:#fff;font:inherit;font-weight:700;cursor:pointer}[hidden]{display:none!important}@media(max-width:600px){.enterprise-bootstrap{padding:0;background:#fff}.enterprise-bootstrap-card{min-height:100dvh;padding:40px 24px;border-radius:0;box-shadow:none}}</style>`,
-    body: `<div class="enterprise-bootstrap" data-enterprise-bootstrap><main class="enterprise-bootstrap-card"><div class="enterprise-bootstrap-brand">${brandVisual(brand, product)}<h1>${html(product)}</h1></div><p id="enterprise-bootstrap-status" role="status">${html(workspace.status.preparationReady)}</p><progress id="enterprise-bootstrap-progress"></progress><div class="enterprise-bootstrap-error" data-testid="enterprise-bootstrap-error" hidden><button data-testid="enterprise-bootstrap-retry" type="button">${html(common.retry)}</button></div></main></div><script data-enterprise-bootstrap-shell>${monitor}</script>`,
+    head: `<title>${html(product)}</title><link rel="icon" href="${icon}"><style nonce="${nonce}">body{margin:0}.enterprise-bootstrap{--enterprise-brand:${color};height:100dvh;display:flex;background:var(--color-bg-1,#fff);color:var(--color-text-2,#52647c);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.enterprise-bootstrap-nav{width:224px;box-sizing:border-box;flex:none;padding:24px 20px;background:var(--color-bg-2,#f5f6f8)}.enterprise-bootstrap-line{height:14px;width:75%;margin:24px 0;background:var(--color-fill-2,#e9edf2);border-radius:6px}.enterprise-bootstrap-main{flex:1;min-width:0;display:flex;flex-direction:column}.enterprise-bootstrap-header{height:52px;border-bottom:1px solid var(--color-border-2,#e9edf2)}.enterprise-bootstrap-space{flex:1}.enterprise-bootstrap-input{width:80%;max-width:880px;margin:0 auto 28px}.enterprise-bootstrap-input .enterprise-bootstrap-line{height:64px;width:100%;margin:0;border-radius:12px}.enterprise-bootstrap-status{font-size:12px;margin:8px 0}.enterprise-bootstrap button{font:inherit;color:var(--enterprise-brand);background:transparent;border:0;cursor:pointer;min-height:32px}[hidden]{display:none!important}@media(max-width:768px){.enterprise-bootstrap-nav{display:none}}</style>`,
+    body: `<div class="enterprise-bootstrap" data-enterprise-bootstrap aria-label="${html(common.loading)}"><aside class="enterprise-bootstrap-nav" aria-hidden="true"><div class="enterprise-bootstrap-line"></div><div class="enterprise-bootstrap-line"></div><div class="enterprise-bootstrap-line"></div><div class="enterprise-bootstrap-line"></div></aside><main class="enterprise-bootstrap-main"><div class="enterprise-bootstrap-header"></div><div class="enterprise-bootstrap-space"></div><div class="enterprise-bootstrap-input"><div class="enterprise-bootstrap-line" id="enterprise-bootstrap-progress"></div><p id="enterprise-bootstrap-status" role="status" class="enterprise-bootstrap-status"></p><div data-testid="enterprise-bootstrap-error" hidden><button data-testid="enterprise-bootstrap-retry" type="button">${html(common.retry)}</button></div></div></main></div><script nonce="${nonce}" data-enterprise-bootstrap-shell>${monitor}</script>`,
   };
 }
 
-export function enterpriseReadinessPage(
-  acceptLanguage: string, nonce: string, brand: ReadinessBrand | null
-): string {
+export function enterpriseReadinessPage(acceptLanguage: string, nonce: string, brand: ReadinessBrand | null): string {
   const locale = localeFor(acceptLanguage);
   const { common } = locales[locale];
   const workspace: ReadinessMessages = locales[locale].workspace;

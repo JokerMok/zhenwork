@@ -51,7 +51,7 @@
     "pending": "Pending",
     "queued": "Queued",
     "running": "Running",
-    "preparing": "Preparando o ambiente",
+    "preparing": "Conectando ao assistente…",
     "processing": "Processando",
     "waitingUser": "Aguardando sua ação",
     "waiting": "Waiting",
@@ -59,15 +59,15 @@
     "failed": "Failed",
     "error": "Error",
     "cancelled": "Cancelled",
-    "preparationQueued": "Aguardando capacidade disponível",
-    "preparationStarting": "Conectando ao chat",
+    "preparationQueued": "Aguardando recursos disponíveis…",
+    "preparationStarting": "Conectando ao assistente…",
     "preparationReady": "Ambiente pronto",
-    "preparationTimedOut": "A preparação está demorando demais. Tente novamente.",
+    "preparationTimedOut": "A conexão está demorando mais que o esperado. Tente novamente.",
     "preparationElapsed": "Tempo decorrido: {{seconds}} s",
     "preparationTechnicalDetails": "Detalhes técnicos",
     "preparationFailed": "A preparação do ambiente não foi concluída. Verifique o motivo e tente novamente.",
     "capabilityForbidden": "Esta conta não tem permissão para usar o espaço de trabalho. Peça ao administrador para verificar funções e permissões.",
-    "environmentUnavailable": "O ambiente de execução não está disponível. Tente novamente ou peça ao administrador para verificar o serviço.",
+    "environmentUnavailable": "Não foi possível iniciar a conversa. Tente novamente ou contate o administrador.",
     "connectionRecovering": "A conexão foi interrompida temporariamente. Tentando restabelecê-la…",
     "bootstrapLoadFailed": "Não foi possível carregar a página. Recarregue para tentar novamente.",
     "identityExpired": "Sua sessão expirou. Entre novamente.",
@@ -395,5 +395,12 @@
     "externalNotApplied": "Confirmed not applied",
     "pendingArtifact": "Pending deliverable: {{path}}",
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
+  },
+  "experience": {
+    "executionDetails": "Detalhes da execução",
+    "actionFailed": "A ação não foi concluída. Tente novamente.",
+    "aiUnavailable": "O serviço de IA está temporariamente indisponível. Tente novamente ou contate o administrador.",
+    "confirmScope": "Confirmar somente esta operação:",
+    "assistant": "Assistente"
   }
 }

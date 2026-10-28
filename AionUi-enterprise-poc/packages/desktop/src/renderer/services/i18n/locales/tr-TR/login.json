@@ -43,5 +43,15 @@
   "enterpriseForgetAccount": "Forget this account on this computer",
   "enterpriseSecureStorageUnavailable": "Secure storage is unavailable. Sign in manually.",
   "enterpriseSavedPasswordHint": "Saved password; leave blank to use it",
-  "rememberAccount": "Hesabı hatırla"
+  "rememberAccount": "Hesabı hatırla",
+  "clearAccount": "Hesabı unut",
+  "passwordFlow": {
+    "passwordRequired": "Devam etmek için yeni parola belirleyin.",
+    "newPassword": "Yeni parola (8–16 harf ve rakam)",
+    "confirmPassword": "Yeni parolayı doğrulayın",
+    "passwordRule": "Harf ve rakam içeren 8–16 karakter kullanın.",
+    "mismatch": "Parolalar eşleşmiyor.",
+    "passwordUpdate": "Parolayı kaydet ve giriş yap",
+    "passwordFailed": "Parola güncellenemedi. Mevcut parolayı kontrol edip yeniden deneyin."
+  }
 }

@@ -1,4 +1,5 @@
 import TaskWork from '@/renderer/pages/workspace/TaskWork';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -109,10 +110,13 @@ const AionrsChat: React.FC<{
           onDropCapture={dragHandlers.onDrop}
         >
           <FlexFullContainer>
-            <MessageList className='flex-1' emptySlot={emptySlot} />
+            <MessageList
+              className='flex-1'
+              emptySlot={emptySlot}
+              activityFooter={<TaskWork conversationId={conversation_id} embedded />}
+            />
           </FlexFullContainer>
-          <TaskWork conversationId={conversation_id} />
-          <ConversationPlanBar conversation_id={conversation_id} />
+          {!isEnterpriseWeb() && <ConversationPlanBar conversation_id={conversation_id} />}
           <AionrsSendBox
             conversation_id={conversation_id}
             modelSelection={modelSelection}

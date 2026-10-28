@@ -30,6 +30,17 @@ elif op=='settings':
 elif op=='conversation':
  row=c.execute('SELECT id FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL',(argument,uid)).fetchone()
  result={'exists':row is not None}
+elif op=='conversationView':
+ row=c.execute('SELECT id,name FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL',(argument,uid)).fetchone()
+ result=None
+ if row:
+  result=dict(row);result['messages']=[]
+  for m in reversed(c.execute("SELECT id,position,type,content,status FROM messages WHERE conversation_id=? AND type IN ('text','tips') ORDER BY created_at DESC,id DESC LIMIT 40",(argument,)).fetchall()):
+   v=dict(m)
+   try:content=json.loads(v['content'])
+   except ValueError:content={'content':v['content']}
+   text=content.get('content','') if isinstance(content,dict) else content
+   if v['type']=='text' and isinstance(text,str):result['messages'].append({'id':v['id'],'position':v['position'],'text':text[:16000]})
 elif op=='history':
  cursor=argument
  args=[uid];where='c.user_id=? AND c.archived_at IS NULL'
@@ -48,24 +59,25 @@ c.close()
 export async function readProfile(
   root: string,
   actor: EnterpriseActor,
-  operation: 'preferences' | 'settings' | 'history' | 'conversation',
+  operation: 'preferences' | 'settings' | 'history' | 'conversation' | 'conversationView',
   argument = ''
 ): Promise<unknown> {
   const { profile } = await prepareEnterpriseProfile(root, actor);
   const filename = path.join(await realpath(profile), 'aionui-backend.db');
-  const entry = await lstat(filename).catch((error: NodeJS.ErrnoException) => {
+  const entry = await lstat(filename).catch((error: NodeJS.ErrnoException): null => {
     if (error.code === 'ENOENT') return null;
     throw error;
   });
   if (!entry) {
     if (operation === 'history') return { items: [], next_cursor: null };
+    if (operation === 'conversationView') return null;
     return {};
   }
   if (entry.isSymbolicLink() || !entry.isFile() || (await realpath(filename)) !== filename) {
     throw new Error('PROFILE_DATABASE_DENIED');
   }
   for (const candidate of [filename, filename + '-wal', filename + '-shm']) {
-    const sidecar = await lstat(candidate).catch((error: NodeJS.ErrnoException) => {
+    const sidecar = await lstat(candidate).catch((error: NodeJS.ErrnoException): null => {
       if (error.code === 'ENOENT') return null;
       throw error;
     });

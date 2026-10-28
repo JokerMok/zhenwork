@@ -43,5 +43,15 @@
   "enterpriseForgetAccount": "Forget this account on this computer",
   "enterpriseSecureStorageUnavailable": "Secure storage is unavailable. Sign in manually.",
   "enterpriseSavedPasswordHint": "Saved password; leave blank to use it",
-  "rememberAccount": "Запам’ятати обліковий запис"
+  "rememberAccount": "Запам’ятати обліковий запис",
+  "clearAccount": "Забути обліковий запис",
+  "passwordFlow": {
+    "passwordRequired": "Установіть новий пароль для продовження.",
+    "newPassword": "Новий пароль (8–16 літер і цифр)",
+    "confirmPassword": "Підтвердіть новий пароль",
+    "passwordRule": "Використовуйте 8–16 символів із літерами та цифрами.",
+    "mismatch": "Паролі не збігаються.",
+    "passwordUpdate": "Зберегти пароль і ввійти",
+    "passwordFailed": "Не вдалося змінити пароль. Перевірте поточний пароль."
+  }
 }

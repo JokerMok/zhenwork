@@ -51,7 +51,7 @@
     "pending": "Pending",
     "queued": "Queued",
     "running": "Running",
-    "preparing": "Umgebung wird vorbereitet",
+    "preparing": "Verbindung zum Assistenten…",
     "processing": "Wird verarbeitet",
     "waitingUser": "Wartet auf Ihre Eingabe",
     "waiting": "Waiting",
@@ -59,15 +59,15 @@
     "failed": "Failed",
     "error": "Error",
     "cancelled": "Cancelled",
-    "preparationQueued": "Warten auf freie Kapazität",
-    "preparationStarting": "Chatverbindung wird hergestellt",
+    "preparationQueued": "Warten auf verfügbare Kapazität…",
+    "preparationStarting": "Verbindung zum Assistenten…",
     "preparationReady": "Umgebung ist bereit",
-    "preparationTimedOut": "Die Vorbereitung dauert zu lange. Versuchen Sie es erneut.",
+    "preparationTimedOut": "Die Verbindung dauert länger als erwartet. Bitte erneut versuchen.",
     "preparationElapsed": "Vergangene Zeit: {{seconds}} s",
     "preparationTechnicalDetails": "Technische Details",
     "preparationFailed": "Die Umgebung konnte nicht vorbereitet werden. Prüfen Sie den Grund und versuchen Sie es erneut.",
     "capabilityForbidden": "Dieses Konto darf den Arbeitsbereich nicht verwenden. Bitten Sie Ihre Administration, Rollen und Berechtigungen zu prüfen.",
-    "environmentUnavailable": "Die Ausführungsumgebung ist nicht verfügbar. Versuchen Sie es erneut oder lassen Sie den Dienst prüfen.",
+    "environmentUnavailable": "Die Unterhaltung kann nicht gestartet werden. Erneut versuchen oder die Administration kontaktieren.",
     "connectionRecovering": "Die Verbindung wurde vorübergehend unterbrochen. Die Wiederherstellung wird versucht…",
     "bootstrapLoadFailed": "Die Seite konnte nicht geladen werden. Laden Sie sie erneut, um es noch einmal zu versuchen.",
     "identityExpired": "Ihre Sitzung ist abgelaufen. Melden Sie sich erneut an.",
@@ -395,5 +395,12 @@
     "externalNotApplied": "Confirmed not applied",
     "pendingArtifact": "Pending deliverable: {{path}}",
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
+  },
+  "experience": {
+    "executionDetails": "Ausführungsdetails",
+    "actionFailed": "Die Aktion wurde nicht abgeschlossen. Bitte erneut versuchen.",
+    "aiUnavailable": "Der KI-Dienst ist vorübergehend nicht verfügbar. Erneut versuchen oder die Administration kontaktieren.",
+    "confirmScope": "Nur diesen Vorgang bestätigen:",
+    "assistant": "Assistent"
   }
 }

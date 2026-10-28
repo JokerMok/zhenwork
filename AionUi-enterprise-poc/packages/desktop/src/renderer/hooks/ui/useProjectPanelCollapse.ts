@@ -1,3 +1,4 @@
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -35,11 +36,12 @@ const collapseKey = (projectId: string): string => `${COLLAPSE_KEY_PREFIX}${proj
 
 /** Read the persisted desktop preference for a project (default: expanded). */
 const readStoredCollapsed = (projectId: string | null): boolean => {
-  if (!projectId || typeof window === 'undefined') return false;
+  if (!projectId || typeof window === 'undefined') return isEnterpriseWeb();
   try {
-    return localStorage.getItem(collapseKey(projectId)) === 'collapsed';
+    const preference = localStorage.getItem(collapseKey(projectId));
+    return preference ? preference === 'collapsed' : isEnterpriseWeb();
   } catch {
-    return false;
+    return isEnterpriseWeb();
   }
 };
 

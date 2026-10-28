@@ -106,3 +106,17 @@
   max-height: 200px;
   overflow-y: auto;
 }
+
+/* Enterprise activity stays compact; raw inputs and outputs remain opt-in. */
+.tool-group-summary__header:focus-visible {
+  outline: 2px solid var(--color-primary-6);
+  outline-offset: 2px;
+}
+.tool-group-summary__body {
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+}
+.tool-detail-content {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

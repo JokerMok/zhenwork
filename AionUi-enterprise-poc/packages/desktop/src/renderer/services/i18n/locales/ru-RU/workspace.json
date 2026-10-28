@@ -51,7 +51,7 @@
     "pending": "Pending",
     "queued": "Queued",
     "running": "Running",
-    "preparing": "Подготовка среды",
+    "preparing": "Подключение к помощнику…",
     "processing": "Выполняется",
     "waitingUser": "Ожидает вашего действия",
     "waiting": "Waiting",
@@ -59,15 +59,15 @@
     "failed": "Failed",
     "error": "Error",
     "cancelled": "Cancelled",
-    "preparationQueued": "Ожидание свободных ресурсов",
-    "preparationStarting": "Подключение к чату",
+    "preparationQueued": "Ожидание доступных ресурсов…",
+    "preparationStarting": "Подключение к помощнику…",
     "preparationReady": "Среда готова",
-    "preparationTimedOut": "Подготовка среды занимает слишком много времени. Повторите попытку.",
+    "preparationTimedOut": "Подключение занимает больше времени. Повторите попытку.",
     "preparationElapsed": "Прошло: {{seconds}} с",
     "preparationTechnicalDetails": "Технические сведения",
     "preparationFailed": "Не удалось подготовить среду. Проверьте причину ниже и повторите попытку.",
     "capabilityForbidden": "У этой учётной записи нет доступа к рабочему пространству. Попросите администратора проверить роли и разрешения.",
-    "environmentUnavailable": "Среда выполнения недоступна. Повторите попытку или попросите администратора проверить службу.",
+    "environmentUnavailable": "Не удалось начать беседу. Повторите попытку или обратитесь к администратору.",
     "connectionRecovering": "Соединение временно прервано. Выполняется попытка восстановления…",
     "bootstrapLoadFailed": "Не удалось загрузить страницу. Перезагрузите её, чтобы повторить попытку.",
     "identityExpired": "Срок действия сеанса истёк. Войдите снова.",
@@ -395,5 +395,12 @@
     "externalNotApplied": "Confirmed not applied",
     "pendingArtifact": "Pending deliverable: {{path}}",
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
+  },
+  "experience": {
+    "executionDetails": "Подробности выполнения",
+    "actionFailed": "Действие не завершено. Повторите попытку.",
+    "aiUnavailable": "Сервис ИИ временно недоступен. Повторите попытку или обратитесь к администратору.",
+    "confirmScope": "Подтвердить только эту операцию:",
+    "assistant": "Помощник"
   }
 }

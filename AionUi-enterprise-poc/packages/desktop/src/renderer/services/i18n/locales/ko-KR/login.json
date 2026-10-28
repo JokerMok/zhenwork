@@ -43,5 +43,15 @@
   "enterpriseForgetAccount": "Forget this account on this computer",
   "enterpriseSecureStorageUnavailable": "Secure storage is unavailable. Sign in manually.",
   "enterpriseSavedPasswordHint": "Saved password; leave blank to use it",
-  "rememberAccount": "계정 기억"
+  "rememberAccount": "계정 기억",
+  "clearAccount": "기억된 계정 지우기",
+  "passwordFlow": {
+    "passwordRequired": "계속하려면 새 비밀번호를 설정하세요.",
+    "newPassword": "새 비밀번호 (영문 및 숫자 8~16자)",
+    "confirmPassword": "새 비밀번호 확인",
+    "passwordRule": "영문과 숫자를 포함한 8~16자를 입력하세요.",
+    "mismatch": "비밀번호가 일치하지 않습니다.",
+    "passwordUpdate": "설정 후 로그인",
+    "passwordFailed": "비밀번호를 변경하지 못했습니다. 현재 비밀번호를 확인하세요."
+  }
 }

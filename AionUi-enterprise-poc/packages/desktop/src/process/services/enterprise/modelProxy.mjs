@@ -23,7 +23,9 @@ export class EnterpriseModelProxy {
   async start(listenHost = '127.0.0.1') {
     if (this.server) throw new Error('Model proxy already started');
     if (!validProxyBindHost(listenHost)) throw new Error('Model proxy bind address invalid');
-    this.server = http.createServer((request, response) => { void this.handle(request, response); });
+    this.server = http.createServer((request, response) => {
+      void this.handle(request, response);
+    });
     await new Promise((resolve, reject) => {
       this.server.once('error', reject);
       this.server.listen(0, listenHost, resolve);
@@ -46,8 +48,10 @@ export class EnterpriseModelProxy {
       return response.writeHead(204).end();
     }
     const conversationId = /^\/conversations\/([A-Za-z0-9_-]{1,100})\/chat\/completions$/.exec(request.url || '')?.[1];
-    if (request.method !== 'POST' || (!conversationId &&
-        (this.requireConversationId || request.url !== '/chat/completions'))) {
+    if (
+      request.method !== 'POST' ||
+      (!conversationId && (this.requireConversationId || request.url !== '/chat/completions'))
+    ) {
       response.writeHead(404).end();
       return;
     }
@@ -59,7 +63,10 @@ export class EnterpriseModelProxy {
     this.pending.add(controller);
     if (conversationId) {
       let group = this.pendingByConversation.get(conversationId);
-      if (!group) { group = new Set(); this.pendingByConversation.set(conversationId, group); }
+      if (!group) {
+        group = new Set();
+        this.pendingByConversation.set(conversationId, group);
+      }
       group.add(controller);
     }
     response.once('close', () => controller.abort());
@@ -76,31 +83,76 @@ export class EnterpriseModelProxy {
       }
       const raw = Buffer.concat(chunks).toString('utf8');
       let payload;
-      try { payload = JSON.parse(raw); } catch { response.writeHead(400).end(); return; }
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        response.writeHead(400).end();
+        return;
+      }
       // Stable internal IDs disambiguate two providers exposing the same model code.
       // Legacy conversations using a vendor code remain valid only when unambiguous.
       const legacy = this.models.filter((item) => item.upstreamCode === payload?.model);
-      const selected = this.models.find((item) => item.code === payload?.model) || (legacy.length === 1 ? legacy[0] : undefined);
+      const selected =
+        this.models.find((item) => item.code === payload?.model) || (legacy.length === 1 ? legacy[0] : undefined);
       if (!selected || payload?.stream !== true) {
         response.writeHead(400).end();
         return;
       }
       const forwarded = selected.upstreamCode ? JSON.stringify({ ...payload, model: selected.upstreamCode }) : raw;
       const upstream = await this.client.relayModel(selected.id, forwarded, controller.signal, conversationId);
+      // A persisted waiting checkpoint is a transport stop, not a provider
+      // credential failure. End without content and without another model call;
+      // the durable task remains waiting, never completed by this envelope.
+      if (upstream.status === 409 && upstream.headers.get('x-aion-execution-state') === 'paused') {
+        const id = `pause-${crypto.randomUUID()}`;
+        response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store' });
+        response.end(
+          `data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: payload.model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`
+        );
+        return;
+      }
       const contentType = upstream.headers.get('content-type') || '';
-      if (upstream.status === 401 || upstream.status === 403 || (upstream.ok && !contentType.includes('text/event-stream'))) {
+      if (
+        upstream.status === 401 ||
+        upstream.status === 403 ||
+        (upstream.ok && !contentType.includes('text/event-stream'))
+      ) {
         let errorCode;
         if (upstream.ok) {
           const body = await upstream.json().catch(() => null);
           errorCode = body?.code;
         }
         const revoked = upstream.status === 401 || upstream.status === 403 || errorCode === 401 || errorCode === 403;
-        response.writeHead(revoked ? 401 : 502).end();
+        const traceId = crypto.randomUUID();
+        console.warn(
+          '[Enterprise model diagnostic]',
+          JSON.stringify({
+            traceId,
+            conversationId,
+            modelId: selected.id,
+            stage: 'relay',
+            code: revoked ? 'RELAY_AUTHORIZATION_DENIED' : 'MODEL_RELAY_PROTOCOL_ERROR',
+            httpStatus: upstream.status,
+          })
+        );
+        response.writeHead(revoked ? (upstream.status === 403 ? 403 : 401) : 502, { 'X-Aion-Trace-Id': traceId }).end();
         if (revoked) queueMicrotask(this.onRevoked);
         return;
       }
       if (!upstream.ok || !upstream.body) {
-        response.writeHead(502).end();
+        const traceId = crypto.randomUUID();
+        console.warn(
+          '[Enterprise model diagnostic]',
+          JSON.stringify({
+            traceId,
+            conversationId,
+            modelId: selected.id,
+            stage: 'upstream',
+            code: 'MODEL_RELAY_UNAVAILABLE',
+            httpStatus: upstream.status,
+          })
+        );
+        response.writeHead(502, { 'X-Aion-Trace-Id': traceId }).end();
         return;
       }
       response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'X-Accel-Buffering': 'no' });

@@ -1,3 +1,4 @@
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -208,15 +209,21 @@ const AionrsConversationPanel: React.FC<{ conversation: AionrsConversation; slid
     sider: <ChatSlider conversation={conversation} />,
     headerExtra: (
       <div className='flex items-center gap-8px'>
-        <CronJobManager conversation_id={conversation.id} cron_job_id={cronJobId} />
-        {!isMobile && (
-          <AionrsModelSelector
-            selection={modelSelection}
-            thoughtLevel={runtimeConfig.thoughtLevel}
-            setStatus={runtimeConfig.setStatus}
-            onSetThoughtLevel={handleThoughtLevelSetOption}
-          />
-        )}
+        {!isEnterpriseWeb() && <CronJobManager conversation_id={conversation.id} cron_job_id={cronJobId} />}
+        {!isMobile &&
+          (isEnterpriseWeb() &&
+          modelSelection.providers.flatMap((provider) => modelSelection.getAvailableModels(provider)).length < 2 ? (
+            <span className='text-12px text-t-secondary truncate max-w-220px'>
+              {modelSelection.getDisplayModelName(modelSelection.current_model?.use_model)}
+            </span>
+          ) : (
+            <AionrsModelSelector
+              selection={modelSelection}
+              thoughtLevel={isEnterpriseWeb() ? null : runtimeConfig.thoughtLevel}
+              setStatus={runtimeConfig.setStatus}
+              onSetThoughtLevel={isEnterpriseWeb() ? undefined : handleThoughtLevelSetOption}
+            />
+          ))}
       </div>
     ),
     workspaceEnabled,
@@ -409,7 +416,7 @@ const ChatConversation: React.FC<{
     <div className='flex items-center gap-8px'>
       {conversation && (
         <div className='shrink-0'>
-          <CronJobManager conversation_id={conversation.id} cron_job_id={cronJobId} />
+          {!isEnterpriseWeb() && <CronJobManager conversation_id={conversation.id} cron_job_id={cronJobId} />}
         </div>
       )}
       {modelSelector && <div className='shrink-0'>{modelSelector}</div>}

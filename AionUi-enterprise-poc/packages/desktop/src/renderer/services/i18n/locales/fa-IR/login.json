@@ -43,5 +43,15 @@
   "enterpriseForgetAccount": "Forget this account on this computer",
   "enterpriseSecureStorageUnavailable": "Secure storage is unavailable. Sign in manually.",
   "enterpriseSavedPasswordHint": "Saved password; leave blank to use it",
-  "rememberAccount": "به خاطر سپردن حساب"
+  "rememberAccount": "به خاطر سپردن حساب",
+  "clearAccount": "فراموش کردن حساب",
+  "passwordFlow": {
+    "passwordRequired": "برای ادامه رمز جدیدی تنظیم کنید.",
+    "newPassword": "رمز جدید (۸ تا ۱۶ حرف و عدد)",
+    "confirmPassword": "تأیید رمز جدید",
+    "passwordRule": "از ۸ تا ۱۶ نویسه شامل حروف و اعداد استفاده کنید.",
+    "mismatch": "رمزها یکسان نیستند.",
+    "passwordUpdate": "ذخیره رمز و ورود",
+    "passwordFailed": "رمز به‌روزرسانی نشد. رمز فعلی را بررسی و دوباره تلاش کنید."
+  }
 }

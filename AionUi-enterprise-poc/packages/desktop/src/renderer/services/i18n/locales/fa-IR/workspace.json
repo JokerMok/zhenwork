@@ -51,7 +51,7 @@
     "pending": "Pending",
     "queued": "Queued",
     "running": "Running",
-    "preparing": "در حال آماده‌سازی محیط",
+    "preparing": "در حال اتصال به دستیار…",
     "processing": "در حال پردازش",
     "waitingUser": "در انتظار اقدام شما",
     "waiting": "Waiting",
@@ -59,15 +59,15 @@
     "failed": "Failed",
     "error": "Error",
     "cancelled": "Cancelled",
-    "preparationQueued": "در انتظار ظرفیت آزاد",
-    "preparationStarting": "در حال اتصال به سرویس گفتگو",
+    "preparationQueued": "در انتظار منابع آزاد…",
+    "preparationStarting": "در حال اتصال به دستیار…",
     "preparationReady": "محیط آماده است",
-    "preparationTimedOut": "آماده‌سازی محیط بیش از حد طول کشید. دوباره تلاش کنید.",
+    "preparationTimedOut": "اتصال بیش از حد طول کشیده است. دوباره تلاش کنید.",
     "preparationElapsed": "زمان سپری‌شده: {{seconds}} ثانیه",
     "preparationTechnicalDetails": "جزئیات فنی",
     "preparationFailed": "آماده‌سازی محیط کامل نشد. دلیل زیر را بررسی و دوباره تلاش کنید.",
     "capabilityForbidden": "این حساب مجوز استفاده از فضای کاری را ندارد. از مدیر بخواهید نقش‌ها و مجوزها را بررسی کند.",
-    "environmentUnavailable": "محیط اجرا در دسترس نیست. دوباره تلاش کنید یا از مدیر بخواهید سرویس را بررسی کند.",
+    "environmentUnavailable": "گفتگو شروع نشد. دوباره تلاش کنید یا با مدیر تماس بگیرید.",
     "connectionRecovering": "اتصال موقتاً قطع شده است. در حال تلاش برای بازیابی…",
     "bootstrapLoadFailed": "صفحه بارگیری نشد. برای تلاش دوباره، صفحه را بازخوانی کنید.",
     "identityExpired": "نشست شما منقضی شده است. دوباره وارد شوید.",
@@ -395,5 +395,12 @@
     "externalNotApplied": "Confirmed not applied",
     "pendingArtifact": "Pending deliverable: {{path}}",
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
+  },
+  "experience": {
+    "executionDetails": "جزئیات اجرا",
+    "actionFailed": "عملیات کامل نشد. دوباره تلاش کنید.",
+    "aiUnavailable": "سرویس هوش مصنوعی موقتاً در دسترس نیست. دوباره تلاش کنید یا با مدیر تماس بگیرید.",
+    "confirmScope": "فقط این عملیات را تأیید کنید:",
+    "assistant": "دستیار"
   }
 }
