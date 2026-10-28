@@ -1,4 +1,4 @@
-import { toolDeliveryReceipts } from '../../../packages/desktop/src/common/chat/normalizeToolCall';
+import { toolDeliveryReceipts, normalizeToolMessages, hasRunningToolMessages } from '../../../packages/desktop/src/common/chat/normalizeToolCall';
 import { describe, expect, it } from 'vitest';
 import type { IMessageAcpToolCall } from '@/common/chat/chatLib';
 import { normalizeAcpToolCall } from '@/common/chat/normalizeToolCall';
@@ -104,4 +104,15 @@ describe('verified tool delivery receipts', () => {
 it('uses the saved artifact version and actual appended heading in delivery receipts', () => {
   const receipts = toolDeliveryReceipts([{ key: 'revision', name: 'revise_office_document', status: 'completed', output: JSON.stringify({ path: 'actual.docx', sha256: 'a'.repeat(64), downloadUrl: 'https://workspace.example/enterprise/files/download?path=actual.docx', version: 3, versionId: '11111111-1111-4111-8111-111111111111', inspection: { headingCount: 6, tables: [{ rows: 3, columns: 2 }] }, changes: [{ kind: 'append_section', actualHeading: '6 核实资料' }] }) }]);
   expect(receipts[0]).toMatchObject({ path: 'actual.docx', version: 3, versionId: '11111111-1111-4111-8111-111111111111', headingCount: 6, tableCount: 1, addedHeadings: ['6 核实资料'] });
+});
+
+it('merges live/history copies by call identity without reviving an old running state', () => {
+  const message = (id: string, call_id: string, status: string, output?: string) => ({
+    id, type: 'tool_call', content: { call_id, name: 'query', status, output },
+  }) as unknown as import('@/common/chat/normalizeToolCall').ToolMessage;
+  const messages = [message('live', 'one', 'running'), message('saved', 'one', 'completed', 'saved result'), message('late', 'one', 'running'), message('different', 'two', 'completed', 'another result')];
+  expect(normalizeToolMessages(messages).map(({key,status,output}) => ({key,status,output}))).toEqual([
+    {key:'one',status:'completed',output:'saved result'}, {key:'two',status:'completed',output:'another result'},
+  ]);
+  expect(hasRunningToolMessages(messages)).toBe(false);
 });

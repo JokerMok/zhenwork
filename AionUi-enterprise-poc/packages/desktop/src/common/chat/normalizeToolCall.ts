@@ -224,29 +224,31 @@ export function normalizeToolCall(message: IMessageToolCall): NormalizedToolCall
 export type ToolMessage = IMessageToolGroup | IMessageAcpToolCall | IMessageToolCall;
 
 export function normalizeToolMessages(messages: ToolMessage[]): NormalizedToolCall[] {
-  return messages
-    .flatMap((m) => {
-      if (m.type === 'tool_group') return normalizeToolGroup(m);
-      if (m.type === 'acp_tool_call') return normalizeAcpToolCall(m);
-      if (m.type === 'tool_call') return normalizeToolCall(m);
-      return undefined;
-    })
-    .filter((item): item is NormalizedToolCall => item !== undefined);
+  // Streaming updates and a refreshed history can briefly contain the same call.
+  // Keep its first position, freshest details and terminal result, never count it twice.
+  const calls = new Map<string, NormalizedToolCall>();
+  for (const message of messages) {
+    const items =
+      message.type === 'tool_group'
+        ? normalizeToolGroup(message)
+        : message.type === 'acp_tool_call'
+          ? [normalizeAcpToolCall(message)]
+          : message.type === 'tool_call'
+            ? [normalizeToolCall(message)]
+            : [];
+    for (const item of items) {
+      if (!item) continue;
+      const previous = calls.get(item.key);
+      const terminal = (value: NormalizedToolCall) => ['completed', 'error', 'canceled'].includes(value.status);
+      if (previous && terminal(previous) && !terminal(item)) continue;
+      calls.set(item.key, { ...previous, ...item });
+    }
+  }
+  return [...calls.values()];
 }
 
 export function hasRunningToolMessages(messages: ToolMessage[]): boolean {
-  return messages.some((m) => {
-    if (m.type === 'tool_group') {
-      return Array.isArray(m.content) && m.content.some((t) => normalizeToolGroupStatus(t.status) === 'running');
-    }
-    if (m.type === 'acp_tool_call') {
-      return m.content?.update && normalizeAcpStatus(m.content.update.status) === 'running';
-    }
-    if (m.type === 'tool_call') {
-      return normalizeToolCallStatus(m.content?.status) === 'running';
-    }
-    return false;
-  });
+  return normalizeToolMessages(messages).some((item) => item.status === 'running');
 }
 
 /** Only server tool receipts establish deliverables; chat prose is not a receipt. */
