@@ -1,4 +1,5 @@
 <template>
+<div>
   <el-form-item label="指标含义" required><el-input v-model="rule.meaning" maxlength="1000" placeholder="例如：按业务日期、产生节点汇总有效记录的重量" /></el-form-item>
   <el-form-item label="适用业务及数据范围" required><el-input v-model="rule.scope" maxlength="1000" /></el-form-item>
   <el-form-item label="统计节点" required><el-select v-model="rule.includeNodes" multiple><el-option v-for="value in nodeValues" :key="value" :value="value" /></el-select></el-form-item>
@@ -10,6 +11,7 @@
   </el-form-item>
   <el-form-item label="允许的业务单位"><el-select v-model="rule.allowedOrganizations" multiple clearable><el-option v-for="value in orgValues" :key="value" :value="value" /></el-select><div class="text-gray-500">留空表示仅按当前员工已授权的输入文件；选择后，逐行校验业务单位字段，范围之外阻断。</div></el-form-item>
   <el-alert v-if="error" :title="error" type="error" :closable="false" />
+</div>
 </template>
 <script setup lang="ts">
 import { computed, ref } from 'vue';
