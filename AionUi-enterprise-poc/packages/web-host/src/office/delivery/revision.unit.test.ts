@@ -197,6 +197,14 @@ test("text lines and web excerpt offsets retain real readable source positions",
   expect(actual.entries.map(s => s.location)).toEqual(['第 1–9 行', '网页正文字符 190000–194000']);
 });
 
+test('source storage versions are labelled separately from product document versions', () => {
+  const actual = buildOfficeSources([
+    { ...source, kind: 'knowledge', locator: { title: 'Product manual v2.0', version: 1 } },
+    { ...source, kind: 'workspace', locator: { path: 'manual-v2.docx', version: 3 } },
+  ]);
+  expect(actual.entries.map(s => s.version)).toEqual(['知识文档版本 1', '文件版本 3']);
+});
+
 integration(
   "typed parameter values survive real Word/Excel rendering and context is excluded from checklist",
   async () => {

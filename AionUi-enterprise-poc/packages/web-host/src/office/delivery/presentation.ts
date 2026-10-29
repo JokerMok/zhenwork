@@ -181,7 +181,9 @@ export function buildOfficeSources(sources: VerifiedSourceEvidence[]) {
               ? locator.sha256
                 ? "读取时版本"
                 : "未提供版本"
-              : `v${locator.version}`),
+              : source.kind === "knowledge"
+                ? `知识文档版本 ${locator.version}`
+                : `文件版本 ${locator.version}`),
         ),
         location: locationText(locator.location),
         url: safeOfficeSourceUrl(locator.sourceUrl || locator.url || locator.downloadUrl),
