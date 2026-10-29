@@ -126,7 +126,7 @@ final class WorkspaceSkillPackage {
                 if (names.size() >= 4000 || !names.add(path) || path.startsWith("/") || path.contains("\\") ||
                     Arrays.asList(path.split("/", -1)).contains("..") || lower.contains("vbaproject") ||
                     lower.contains("activex") || lower.contains("/embeddings/") || lower.contains("oleobject") ||
-                    lower.endsWith(".bin") || lower.endsWith(".js") || lower.endsWith(".vbs")) throw new IOException();
+                    lower.endsWith(".bin") && !path.matches("ppt/printerSettings/printerSettings[0-9]+\\.bin") || lower.endsWith(".js") || lower.endsWith(".vbs")) throw new IOException();
                 if (entry.isDirectory()) continue;
                 var output = new ByteArrayOutputStream(); byte[] buffer = new byte[8192]; int count, part = 0;
                 while ((count = zip.read(buffer)) != -1) {
@@ -134,6 +134,7 @@ final class WorkspaceSkillPackage {
                     if (part > 20 * 1024 * 1024 || total > 80 * 1024 * 1024) throw new IOException();
                     output.write(buffer, 0, count);
                 }
+                if (lower.endsWith(".bin") && part > 64 * 1024) throw new IOException();
                 presentation |= "ppt/presentation.xml".equals(path);
                 contentTypes |= "[Content_Types].xml".equals(path);
                 if (!lower.endsWith(".xml") && !lower.endsWith(".rels")) continue;

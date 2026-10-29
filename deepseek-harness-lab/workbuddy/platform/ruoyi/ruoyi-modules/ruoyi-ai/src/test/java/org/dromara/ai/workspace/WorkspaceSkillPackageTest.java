@@ -66,6 +66,7 @@ class WorkspaceSkillPackageTest {
     @Test
     void presentationTemplateIsValidatedAtSaveTime() throws Exception {
         assertEquals(2, WorkspaceSkillPackage.files(presentation(null, null)).size());
+        assertEquals(2, WorkspaceSkillPackage.files(presentation("ppt/printerSettings/printerSettings1.bin", "passive-printer-settings")).size());
         assertThrows(WorkspaceDenied.class, () -> WorkspaceSkillPackage.files(presentation("ppt/vbaProject.bin", "macro")));
         assertThrows(WorkspaceDenied.class, () -> WorkspaceSkillPackage.files(presentation("ppt/_rels/presentation.xml.rels",
             "<Relationships><Relationship TargetMode=\"External\" Target=\"https://invalid.example/font\"/></Relationships>")));
