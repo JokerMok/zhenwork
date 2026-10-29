@@ -26,6 +26,8 @@ def read_provenance(parts):
     except Exception:raise ValueError('PROVENANCE_INVALID')
 
 def inspect_office(content,format):
+    if format=='pptx':
+        result=ppt_inspect(content);return result,ppt_package(content),result.get('provenance')
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         if len(archive.infolist())>10000 or sum(i.file_size for i in archive.infolist())>209715200:raise ValueError('OFFICE_EXPANSION_LIMIT')
         if archive.testzip() is not None:raise ValueError('OFFICE_CRC_INVALID')

@@ -3442,6 +3442,7 @@ export type I18nKey =
   | 'workspace.preview.page'
   | 'workspace.preview.previous'
   | 'workspace.preview.retry'
+  | 'workspace.preview.slideSelect'
   | 'workspace.preview.timeout'
   | 'workspace.preview.tooLarge'
   | 'workspace.preview.worksheet'

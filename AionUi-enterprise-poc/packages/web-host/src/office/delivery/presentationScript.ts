@@ -19,7 +19,7 @@ def put_provenance(content,metadata):
         PX.SubElement(ct,'{'+ns+'}Override',PartName='/'+PROVENANCE_PART,ContentType='application/xml')
     parts['[Content_Types].xml']=PX.tostring(ct,encoding='utf-8',xml_declaration=True)
     relns='http://schemas.openxmlformats.org/package/2006/relationships'
-    rel_path='word/_rels/document.xml.rels' if 'word/document.xml' in parts else 'xl/_rels/workbook.xml.rels'
+    rel_path='word/_rels/document.xml.rels' if 'word/document.xml' in parts else 'ppt/_rels/presentation.xml.rels' if 'ppt/presentation.xml' in parts else 'xl/_rels/workbook.xml.rels'
     rels=PX.fromstring(parts[rel_path]);target='../'+PROVENANCE_PART
     if not any(n.get('Target')==target for n in rels):
         ids={n.get('Id') for n in rels};rid='rIdZhenworkProvenance'

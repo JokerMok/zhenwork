@@ -290,7 +290,8 @@
     "busy": "Outro arquivo está sendo processado. Tente novamente em breve.",
     "tooLarge": "O arquivo excede o limite da prévia. Baixe o original.",
     "timeout": "Tempo esgotado. Tente novamente ou baixe o original.",
-    "failed": "Falha na prévia ({{code}}). Tente novamente ou confira o original."
+    "failed": "Falha na prévia ({{code}}). Tente novamente ou confira o original.",
+    "slideSelect": "Slide"
   },
   "delivery": {
     "processing": "Processando",

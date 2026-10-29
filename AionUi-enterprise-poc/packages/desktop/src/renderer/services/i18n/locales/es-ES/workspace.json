@@ -290,7 +290,8 @@
     "busy": "Se está procesando otro archivo. Reintente en breve.",
     "tooLarge": "El archivo supera el límite de vista previa. Descargue el original.",
     "timeout": "Tiempo agotado. Reintente o descargue el original.",
-    "failed": "Error de vista previa ({{code}}). Reintente o revise el original."
+    "failed": "Error de vista previa ({{code}}). Reintente o revise el original.",
+    "slideSelect": "Diapositiva"
   },
   "delivery": {
     "processing": "Procesando",

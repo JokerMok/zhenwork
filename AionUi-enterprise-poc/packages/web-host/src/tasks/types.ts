@@ -1,15 +1,15 @@
-import { createHash } from "node:crypto";
+import { createHash } from 'node:crypto';
 export type TaskState =
-  | "queued"
-  | "running"
-  | "waiting_input"
-  | "waiting_confirmation"
-  | "completed"
-  | "partial"
-  | "failed"
-  | "cancelled"
-  | "cancelling"
-  | "interrupted";
+  | 'queued'
+  | 'running'
+  | 'waiting_input'
+  | 'waiting_confirmation'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'cancelled'
+  | 'cancelling'
+  | 'interrupted';
 export type TaskArtifact = {
   path: string;
   sha256: string;
@@ -24,7 +24,7 @@ export type TaskStep = {
   tool: string;
   digest: string;
   target?: string;
-  state: "running" | "completed" | "failed";
+  state: 'running' | 'completed' | 'failed';
   at: number;
   summary: string;
   result?: unknown;
@@ -38,7 +38,7 @@ export type TaskAttempt = {
   attempt: number;
   jobId: string;
   state: TaskState;
-  phase: "authorizing" | "queued" | "preparing" | "dispatching" | "executing" | "settled";
+  phase: 'authorizing' | 'queued' | 'preparing' | 'dispatching' | 'executing' | 'settled';
   createdAt: number;
   updatedAt: number;
   startedAt?: number;
@@ -67,40 +67,44 @@ export type TaskAttempt = {
     approvedKind?: string;
   };
   terminalReported?: boolean;
-  stopReason?: "waiting_input" | "waiting_confirmation";
+  stopReason?: 'waiting_input' | 'waiting_confirmation';
   retryOf?: string;
   scope?: unknown;
   approval?: { fingerprint: string; used: boolean };
 };
 export type TaskRecord = { id: string; title: string; updatedAt: number; attempts: TaskAttempt[] };
-export const activeStates = new Set<TaskState>(["queued", "running", "cancelling"]);
+export const activeStates = new Set<TaskState>(['queued', 'running', 'cancelling']);
 export const digest = (value: unknown): string =>
-  createHash("sha256")
+  createHash('sha256')
     .update(
       JSON.stringify(value, (_k, v: unknown) =>
-        v && typeof v === "object" && !Array.isArray(v)
+        v && typeof v === 'object' && !Array.isArray(v)
           ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
-          : v,
-      ),
+          : v
+      )
     )
-    .digest("hex");
-export const currentAttempt = (task: TaskRecord): TaskAttempt =>
-  task.attempts[task.attempts.length - 1];
+    .digest('hex');
+export const currentAttempt = (task: TaskRecord): TaskAttempt => task.attempts[task.attempts.length - 1];
 const operationClauses = (content: string): string[] =>
-  content.split(/(?:[。；;,，\n]|但(?:是)?|\bbut\b)/i).map(c => c.trim()).filter(c =>
-    !/^(?:(?:请|务必|一定|暂时|暂|先|绝对|绝)\s*)?(?:不要|无需|不必|不|勿|禁止|严禁|切勿|do not|don't|no need to|without|never)/i.test(c),
-  );
+  content
+    .split(/(?:[。；;,，\n]|但(?:是)?|\bbut\b)/i)
+    .map((c) => c.trim())
+    .filter(
+      (c) =>
+        !/^(?:(?:请|务必|一定|暂时|暂|先|绝对|绝)\s*)?(?:不要|无需|不必|不|勿|禁止|严禁|切勿|do not|don't|no need to|without|never)/i.test(
+          c
+        )
+    );
 export function requiredFormats(content: string): string[] {
   content = operationClauses(content)
-    .filter(c => !/^(?:请问|请)?(?:什么是|如何|怎么|为什么|解释|介绍|what is|how|explain|why)/i.test(c))
-    .join("\n");
-  if (
-    !/生成|制作|交付|输出|修改|编辑|调整|generate|create|produce|revise|modify|edit/i.test(content)
-  )
+    .filter((c) => !/^(?:请问|请)?(?:什么是|如何|怎么|为什么|解释|介绍|what is|how|explain|why)/i.test(c))
+    .join('\n');
+  if (!/生成|制作|交付|输出|修改|编辑|调整|做成|做一份|generate|create|produce|revise|modify|edit/i.test(content))
     return [];
   return [
-    ...(/word|docx|文档报告/i.test(content) ? ["docx"] : []),
-    ...(/excel|xlsx|电子表格/i.test(content) ? ["xlsx"] : []),
+    ...(/word|docx|文档报告/i.test(content) ? ['docx'] : []),
+    ...(/excel|xlsx|电子表格/i.test(content) ? ['xlsx'] : []),
+    ...(/\bpptx?\b|powerpoint|幻灯片|演示文稿/i.test(content) ? ['pptx'] : []),
   ];
 }
 export function requiresToolEvidence(content: string, files: unknown): boolean {
@@ -121,7 +125,7 @@ export function requiresToolEvidence(content: string, files: unknown): boolean {
 export class TaskError extends Error {
   constructor(
     public readonly status: number,
-    message: string,
+    message: string
   ) {
     super(message);
   }
@@ -130,17 +134,9 @@ export function publicTask(task: TaskRecord, summary = false): unknown {
   return {
     ...task,
     attempts: (summary ? [currentAttempt(task)] : task.attempts).map(
-      ({
-        payload: _payload,
-        approval: _approval,
-        resumeContext: _context,
-        confirmation,
-        steps,
-        ...a
-      }) => ({
+      ({ payload: _payload, approval: _approval, resumeContext: _context, confirmation, steps, ...a }) => ({
         ...a,
-        requiresExternalReview:
-          !!_approval?.used && !["read", "info", "search"].includes(_context?.approvedKind || ""),
+        requiresExternalReview: !!_approval?.used && !['read', 'info', 'search'].includes(_context?.approvedKind || ''),
         ...(summary
           ? {}
           : {
@@ -149,7 +145,7 @@ export function publicTask(task: TaskRecord, summary = false): unknown {
                 files: _payload.files,
               },
             }),
-        canApprove: typeof confirmation?.fingerprint === "string" && !!confirmation?.proposal,
+        canApprove: typeof confirmation?.fingerprint === 'string' && !!confirmation?.proposal,
         confirmation: confirmation
           ? {
               title: confirmation.title,
@@ -159,7 +155,7 @@ export function publicTask(task: TaskRecord, summary = false): unknown {
             }
           : undefined,
         steps: summary ? [] : steps.map(({ result: _result, ...s }) => s),
-      }),
+      })
     ),
   };
 }

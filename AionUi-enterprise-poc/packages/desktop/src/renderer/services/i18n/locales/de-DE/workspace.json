@@ -290,7 +290,8 @@
     "busy": "Eine andere Datei wird verarbeitet. Bitte gleich erneut versuchen.",
     "tooLarge": "Die Datei überschreitet die Vorschaugrenze. Original herunterladen.",
     "timeout": "Zeitlimit erreicht. Erneut versuchen oder Original herunterladen.",
-    "failed": "Vorschau fehlgeschlagen ({{code}}). Erneut versuchen oder Original prüfen."
+    "failed": "Vorschau fehlgeschlagen ({{code}}). Erneut versuchen oder Original prüfen.",
+    "slideSelect": "Folie"
   },
   "delivery": {
     "processing": "In Bearbeitung",

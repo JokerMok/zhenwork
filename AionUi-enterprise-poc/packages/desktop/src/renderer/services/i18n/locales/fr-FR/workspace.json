@@ -290,7 +290,8 @@
     "busy": "Un autre fichier est en cours de traitement. Réessayez bientôt.",
     "tooLarge": "Le fichier dépasse la limite d’aperçu. Téléchargez l’original.",
     "timeout": "Délai dépassé. Réessayez ou téléchargez l’original.",
-    "failed": "Échec de l’aperçu ({{code}}). Réessayez ou vérifiez l’original."
+    "failed": "Échec de l’aperçu ({{code}}). Réessayez ou vérifiez l’original.",
+    "slideSelect": "Diapositive"
   },
   "delivery": {
     "processing": "Traitement",

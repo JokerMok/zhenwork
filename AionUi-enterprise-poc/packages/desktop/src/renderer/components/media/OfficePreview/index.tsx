@@ -119,7 +119,9 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
         {onContinue ? <Button onClick={onContinue}>{t('workspace.files.continue')}</Button> : null}
         {data ? <Tag>{data.sourceSha256.slice(0, 12)}</Tag> : null}
       </Space>
-      <Alert type='info' content={t('workspace.preview.basicHint')} />
+      {!path.toLowerCase().endsWith('.pptx') && data?.visualMode !== 'libreoffice' ? (
+        <Alert type='info' content={t('workspace.preview.basicHint')} />
+      ) : null}
       {loading ? (
         <Spin loading className='min-h-120px' />
       ) : error ? (
@@ -132,6 +134,33 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
             </Space>
           }
         />
+      ) : data?.format === 'pptx' && data.visualMode === 'libreoffice' ? (
+        <>
+          <Select
+            aria-label={t('workspace.preview.slideSelect')}
+            value={start}
+            onChange={setStart}
+            options={data.slideTitles || []}
+          />
+          <div className='overflow-auto max-h-[65vh]'>
+            {data.visualPages?.map((page) =>
+              /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(page.image) ? (
+                <img
+                  key={page.slide}
+                  src={page.image}
+                  alt={data.slideTitles?.find(s => s.value === page.slide - 1)?.label || t('workspace.preview.location.slide', { count: page.slide })}
+                  className='w-full object-contain'
+                />
+              ) : null
+            )}
+          </div>
+          <div className={styles.transcript} data-testid='slide-transcript'>
+            {data.locations?.map((location, index) => <section key={index}>
+              {location.texts?.map((item, row) => <p key={row}>{item.text}</p>)}
+              {location.tables?.map((item, tableIndex) => <table key={tableIndex}><tbody>{item.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, column) => <td key={column}>{String(cell ?? '')}</td>)}</tr>)}</tbody></table>)}
+            </section>)}
+          </div>
+        </>
       ) : data?.format === 'xlsx' ? (
         <>
           <Select
@@ -174,7 +203,13 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
                         style={cell.style}
                         title={[cell.reference, cell.formula, cell.error].filter(Boolean).join(' · ')}
                       >
-                        {safeOfficeHyperlink(cell.href) ? <a href={safeOfficeHyperlink(cell.href)} target='_blank' rel='noopener noreferrer'>{cell.text}</a> : cell.text}
+                        {safeOfficeHyperlink(cell.href) ? (
+                          <a href={safeOfficeHyperlink(cell.href)} target='_blank' rel='noopener noreferrer'>
+                            {cell.text}
+                          </a>
+                        ) : (
+                          cell.text
+                        )}
                         {cell.error ? <span className='text-warning ml-4px'>⚠</span> : null}
                       </td>
                     ))}
@@ -203,7 +238,13 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
                 })}
               </Tag>
               {location.text ? <p className='whitespace-pre-wrap break-words'>{location.text}</p> : null}
-              {location.links?.map((link, index) => safeOfficeHyperlink(link.url) ? <a key={index} href={safeOfficeHyperlink(link.url)} target='_blank' rel='noopener noreferrer'>{link.text || link.url}</a> : null)}
+              {location.links?.map((link, index) =>
+                safeOfficeHyperlink(link.url) ? (
+                  <a key={index} href={safeOfficeHyperlink(link.url)} target='_blank' rel='noopener noreferrer'>
+                    {link.text || link.url}
+                  </a>
+                ) : null
+              )}
               {location.texts?.map((text, j) => (
                 <p key={j} className='whitespace-pre-wrap break-words'>
                   {text.text}
@@ -217,7 +258,10 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
       ) : null}
       {data ? (
         <Space>
-          <Button disabled={!start} onClick={() => setStart(Math.max(0, start - (data.format === 'xlsx' ? 100 : 5)))}>
+          <Button
+            disabled={!start}
+            onClick={() => setStart(Math.max(0, start - (data.format === 'xlsx' ? 100 : data.visualMode ? 1 : 5)))}
+          >
             {t('workspace.preview.previous')}
           </Button>
           <span>

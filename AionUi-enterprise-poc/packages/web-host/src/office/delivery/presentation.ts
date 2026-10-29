@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import type { VerifiedSourceEvidence } from "../source-evidence.js";
+import { createHash } from 'node:crypto';
+import type { VerifiedSourceEvidence } from '../source-evidence.js';
 
 export type OfficeSource = {
   id: string;
@@ -15,11 +15,11 @@ export type OfficeMetric = {
   parameter: string;
   unit: string;
   value?: number | string | null;
-  valueType?: "number" | "text" | "enum" | "date";
-  calculation?: { operation: "sum" | "difference" | "ratio"; rows: number[] };
+  valueType?: 'number' | 'text' | 'enum' | 'date';
+  calculation?: { operation: 'sum' | 'difference' | 'ratio'; rows: number[] };
 };
 export type OfficeFinding = {
-  rowType?: "requirement" | "context";
+  rowType?: 'requirement' | 'context';
   topic: string;
   source: string;
   requirement?: string;
@@ -32,26 +32,25 @@ export type OfficeFinding = {
 /** Validate scalar types without coercing missing or invalid evidence into empty cells. */
 export function metricValueError(metric: OfficeMetric): string | undefined {
   const { value, valueType, calculation } = metric;
-  if (valueType && !["number", "text", "enum", "date"].includes(valueType)) return "VALUE_TYPE";
+  if (valueType && !['number', 'text', 'enum', 'date'].includes(valueType)) return 'VALUE_TYPE';
   if (calculation) {
-    if (value != null || (valueType && valueType !== "number")) return "CALCULATION_TYPE";
+    if (value != null || (valueType && valueType !== 'number')) return 'CALCULATION_TYPE';
     return;
   }
   if (value == null) return;
-  if (typeof value === "number")
-    return !Number.isFinite(value) || (valueType && valueType !== "number") ? "NUMBER" : undefined;
-  if (typeof value !== "string" || !value.trim() || value.length > 2000 || valueType === "number")
-    return "TEXT";
+  if (typeof value === 'number')
+    return !Number.isFinite(value) || (valueType && valueType !== 'number') ? 'NUMBER' : undefined;
+  if (typeof value !== 'string' || !value.trim() || value.length > 2000 || valueType === 'number') return 'TEXT';
   if (
-    valueType === "date" &&
+    valueType === 'date' &&
     (!/^\d{4}-\d{2}-\d{2}$/.test(value) ||
       !Number.isFinite(Date.parse(value)) ||
       new Date(value).toISOString().slice(0, 10) !== value)
   )
-    return "DATE";
+    return 'DATE';
 }
 export type OfficeReport = {
-  purpose: "research" | "compliance";
+  purpose: 'research' | 'compliance';
   scope: string;
   conclusion: string;
   findings: OfficeFinding[];
@@ -62,24 +61,30 @@ export type OfficeProvenance = {
   dataSha256?: string;
   sources: VerifiedSourceEvidence[];
   revisions?: unknown[];
+  businessResult?: {
+    id: string;
+    resultHash: string;
+    kind: string;
+    origin: unknown;
+    relatedFiles: unknown[];
+    template?: unknown;
+  };
 };
 
 const object = (value: unknown): Record<string, unknown> =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+  value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
 /** Only non-credential URLs may be placed in downloadable Office relationships. */
 export function safeOfficeSourceUrl(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
+  if (typeof value !== 'string') return undefined;
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password) return undefined;
+    if (url.protocol !== 'https:' || url.username || url.password) return undefined;
     if (
       [...url.searchParams.keys()].some((key) =>
         /^(?:access_?token|refresh_?token|token|cookie|authorization|password|secret|api_?key|signature|sign)$/i.test(
-          key,
-        ),
+          key
+        )
       )
     )
       return undefined;
@@ -91,41 +96,30 @@ export function safeOfficeSourceUrl(value: unknown): string | undefined {
 
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable);
-  if (value && typeof value === "object")
+  if (value && typeof value === 'object')
     return Object.fromEntries(
       Object.entries(value)
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, item]) => [key, stable(item)]),
+        .map(([key, item]) => [key, stable(item)])
     );
   return value;
 }
 
 function locationText(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === 'string') return value;
   const location = object(value);
-  if (location.kind === "worksheet")
-    return [
-      location.name || (location.worksheet ? `工作表 ${location.worksheet}` : ""),
-      location.range,
-    ]
+  if (location.kind === 'worksheet')
+    return [location.name || (location.worksheet ? `工作表 ${location.worksheet}` : ''), location.range]
       .filter(Boolean)
-      .join(" · ");
-  if (
-    location.kind === "text_chunk" &&
-    Number.isInteger(location.lineStart) &&
-    Number.isInteger(location.lineEnd)
-  )
+      .join(' · ');
+  if (location.kind === 'text_chunk' && Number.isInteger(location.lineStart) && Number.isInteger(location.lineEnd))
     return `第 ${location.lineStart}–${location.lineEnd} 行`;
-  if (
-    location.kind === "web_excerpt" &&
-    Number.isInteger(location.start) &&
-    Number.isInteger(location.end)
-  )
+  if (location.kind === 'web_excerpt' && Number.isInteger(location.start) && Number.isInteger(location.end))
     return `网页正文字符 ${location.start}–${location.end}`;
   if (location.page) return `第 ${location.page} 页`;
   if (location.paragraph) return `段落 ${location.paragraph}`;
   if (location.table) return `表格 ${location.table}`;
-  return "未提供位置";
+  return '未提供位置';
 }
 
 /** Deduplicate readable references while retaining exact internal evidence outside body content. */
@@ -137,13 +131,11 @@ export function buildOfficeSources(sources: VerifiedSourceEvidence[]) {
     const locator = object(source.locator);
     // Secret fields are never valid provenance, including hidden Office parts.
     if (
-      /"(?:password|cookie|authorization|access_token|refresh_token|apiKey|secret)"\s*:/i.test(
-        JSON.stringify(locator),
-      )
+      /"(?:password|cookie|authorization|access_token|refresh_token|apiKey|secret)"\s*:/i.test(JSON.stringify(locator))
     )
-      throw new Error("OFFICE_SOURCE_SECRET_METADATA_REJECTED");
-    for (const key of ["sourceUrl", "url", "downloadUrl", "originalUrl"]) {
-      if (typeof locator[key] !== "string") continue;
+      throw new Error('OFFICE_SOURCE_SECRET_METADATA_REJECTED');
+    for (const key of ['sourceUrl', 'url', 'downloadUrl', 'originalUrl']) {
+      if (typeof locator[key] !== 'string') continue;
       try {
         const url = new URL(locator[key]);
         if (
@@ -151,39 +143,35 @@ export function buildOfficeSources(sources: VerifiedSourceEvidence[]) {
           url.password ||
           [...url.searchParams.keys()].some((key) =>
             /^(?:access_?token|refresh_?token|token|cookie|authorization|password|secret|api_?key|signature|sign)$/i.test(
-              key,
-            ),
+              key
+            )
           )
         )
-          throw new Error("OFFICE_SOURCE_CREDENTIAL_URL_REJECTED");
+          throw new Error('OFFICE_SOURCE_CREDENTIAL_URL_REJECTED');
       } catch (error) {
-        if ((error as Error).message === "OFFICE_SOURCE_CREDENTIAL_URL_REJECTED") throw error;
+        if ((error as Error).message === 'OFFICE_SOURCE_CREDENTIAL_URL_REJECTED') throw error;
       }
     }
     const { retrievedAt: _retrievedAt, ...stableLocator } = locator;
-    const identity = createHash("sha256")
+    const identity = createHash('sha256')
       .update(JSON.stringify(stable({ kind: source.kind, locator: stableLocator })))
-      .digest("hex");
+      .digest('hex');
     let entry = known.get(identity);
     if (!entry) {
       const rawPath =
-        typeof locator.path === "string"
-          ? locator.path.replaceAll("\\", "/").split("/").at(-1)
-          : undefined;
+        typeof locator.path === 'string' ? locator.path.replaceAll('\\', '/').split('/').at(-1) : undefined;
       entry = {
         id: `S${entries.length + 1}`,
-        title: String(
-          locator.title || rawPath || (source.kind === "web" ? "公开网页" : "来源资料"),
-        ),
+        title: String(locator.title || rawPath || (source.kind === 'web' ? '公开网页' : '来源资料')),
         version: String(
           locator.versionLabel ||
             (locator.version == null
               ? locator.sha256
-                ? "读取时版本"
-                : "未提供版本"
-              : source.kind === "knowledge"
+                ? '读取时版本'
+                : '未提供版本'
+              : source.kind === 'knowledge'
                 ? `知识文档版本 ${locator.version}`
-                : `文件版本 ${locator.version}`),
+                : `文件版本 ${locator.version}`)
         ),
         location: locationText(locator.location),
         url: safeOfficeSourceUrl(locator.sourceUrl || locator.url || locator.downloadUrl),

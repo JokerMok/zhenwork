@@ -16,7 +16,9 @@ import {
   type Definition,
 } from './engine.js';
 
-export type DataClient = Pick<Rc2GatewayClient, 'me' | 'resources' | 'authorizedResource'>;
+export type DataClient = Pick<Rc2GatewayClient, 'me' | 'resources' | 'authorizedResource'> & {
+  request?: (relative: string) => Promise<{ response: { ok: boolean }; body: unknown }>;
+};
 const canonical = (value: unknown): unknown =>
   Array.isArray(value)
     ? value.map(canonical)
@@ -543,7 +545,7 @@ export class DataAnalysis {
                 : null,
           }
         : undefined,
-      result: { ...a.result, rows: undefined, issues: a.result.issues.slice(offset, offset + 80) },
+      result: { ...a.result, rows: undefined as undefined, issues: a.result.issues.slice(offset, offset + 80) },
       reused,
       issueCount: a.result.issues.length,
       issuesTruncated: a.result.issues.length > 80,
@@ -559,6 +561,12 @@ export class DataAnalysis {
     const a = await this.read<Analysis>('analysis-' + safeId(id));
     await this.authorize(await this.dataset(a.datasetId), a.policy.id);
     return this.summary(a, false, Math.max(0, Math.min(a.result.issues.length, Math.floor(offset) || 0)));
+  }
+  async presentationSource(id: string): Promise<Analysis> {
+    const a = await this.read<Analysis>('analysis-' + safeId(id));
+    await this.authorize(await this.dataset(a.datasetId), a.policy.id);
+    if (a.result.status !== 'validated') throw new Error('DATA_VALIDATION_BLOCKED');
+    return structuredClone(a);
   }
   async guardFile(name: string) {
     const ix = await this.index();

@@ -290,7 +290,8 @@
     "busy": "Başka bir dosya işleniyor. Biraz sonra yeniden deneyin.",
     "tooLarge": "Dosya önizleme sınırını aşıyor. Özgün dosyayı indirin.",
     "timeout": "Önizleme zaman aşımına uğradı. Yeniden deneyin veya indirin.",
-    "failed": "Önizleme başarısız ({{code}}). Yeniden deneyin veya özgün dosyayı inceleyin."
+    "failed": "Önizleme başarısız ({{code}}). Yeniden deneyin veya özgün dosyayı inceleyin.",
+    "slideSelect": "Slayt"
   },
   "delivery": {
     "processing": "İşleniyor",

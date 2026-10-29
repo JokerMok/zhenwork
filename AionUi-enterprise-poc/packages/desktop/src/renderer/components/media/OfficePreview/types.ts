@@ -37,6 +37,9 @@ export type OfficePreviewData = {
   totalLocations?: number;
   truncatedColumns?: boolean;
   textTruncated?: boolean;
+  visualMode?: 'libreoffice';
+  slideTitles?: Array<{ value: number; label: string }>;
+  visualPages?: Array<{ slide: number; image: string }>;
 };
 
 export function previewErrorKey(code: string): string {
@@ -51,6 +54,10 @@ export function previewErrorKey(code: string): string {
 /** Office relationships are untrusted upload data, never executable URLs. */
 export function safeOfficeHyperlink(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  try { const url = new URL(value);return url.protocol === 'https:' && !url.username && !url.password ? url.href : undefined; }
-  catch { return undefined; }
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
 }

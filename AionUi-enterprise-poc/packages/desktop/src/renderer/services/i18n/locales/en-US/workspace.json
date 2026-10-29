@@ -306,7 +306,8 @@
     "busy": "Another file is being previewed. Please retry shortly.",
     "tooLarge": "This file exceeds the preview size limit. Download the original.",
     "timeout": "Preview timed out. Retry or download the original.",
-    "failed": "Preview failed ({{code}}). Retry, or download and inspect the original."
+    "failed": "Preview failed ({{code}}). Retry, or download and inspect the original.",
+    "slideSelect": "Slide"
   },
   "delivery": {
     "processing": "Processing",
