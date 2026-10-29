@@ -1,7 +1,7 @@
 ---
 name: zhenwork-waste-policy
 description: 按地区、业务条件和截至日期查询官方固危废规定，核对生效/废止及真实条款，区分原文、官方解释和分析。
-version: 1.0.4
+version: 1.0.5
 requiredTools: []
 dependencies: []
 ---

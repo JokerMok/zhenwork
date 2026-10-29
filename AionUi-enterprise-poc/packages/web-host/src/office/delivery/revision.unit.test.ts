@@ -217,7 +217,7 @@ integration(
         topic: parameter,
         rowType: parameter === "Version" ? "context" : "requirement",
         source: { ref: source.ref, quoteIndex: 0 },
-        metric: { object: "candidate", parameter, value, valueType, unit: "" },
+        metric: { object: "candidate", parameter, value, valueType, unit: parameter === "Certificate" ? "份" : "" },
         missing: value === null ? "No certificate supplied." : "",
       })),
     });
@@ -237,6 +237,16 @@ with tempfile.TemporaryDirectory() as root:
  try:assert validate(a,b,{'formalCount':6})['status']=='PASS'
  except ValueError:
   sys.stderr.write(json.dumps({'word':package(a)['metrics'],'excel':package(b)['metrics']},ensure_ascii=False));raise
+ original=a.read_bytes()
+ with zipfile.ZipFile(a) as z:word_parts={n:z.read(n) for n in z.namelist()}
+ import re
+ word_parts['word/document.xml']=re.sub(rb'<w:tbl>.*?</w:tbl>',b'',word_parts['word/document.xml'],flags=re.S)
+ with zipfile.ZipFile(a,'w',zipfile.ZIP_DEFLATED) as z:
+  for n,v in word_parts.items():z.writestr(n,v)
+ try:validate(a,b)
+ except ValueError as e:assert str(e)=='PAIR_PARAMETER_VALUE_MISMATCH'
+ else:raise AssertionError('missing Word parameter table was accepted')
+ a.write_bytes(original)
  with zipfile.ZipFile(b) as z:parts={n:z.read(n) for n in z.namelist()}
  for n in parts:
   if n.startswith('xl/worksheets/'):parts[n]=parts[n].replace(b'IP65',b'IP54')

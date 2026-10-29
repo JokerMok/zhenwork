@@ -1,7 +1,7 @@
 ---
 name: zhenwork-document-review
 description: 将独立需求拆成条款，逐项对照产品、协议或参考资料，列明符合/不符合/部分符合/证据不足及固定版本依据。
-version: 1.0.4
+version: 1.0.5
 requiredTools: []
 dependencies: []
 ---

@@ -74,7 +74,7 @@ def package(path):
             header=next((i for i,r in enumerate(parameters) if r.get('C')=='参数或主题'),None)
             if header is not None:
                 for r in parameters[header+1:]:
-                    if r.get('B'):metrics.append([r.get('B','')+' · '+r.get('C',''),r.get('D','')+' '+r.get('E',''),r.get('F','')])
+                    if r.get('B'):metrics.append([r.get('B','')+' · '+r.get('C',''),r.get('D','') if r.get('D')=='未提供' else r.get('D','')+' '+r.get('E',''),r.get('F','')])
         else:
             raise ValueError('EXPECTED_DOCX_OR_XLSX')
         if not provenance.get('dataSha256') and not provenance.get('resultHash'):
@@ -93,7 +93,7 @@ def validate(docx, xlsx, expected=None):
     if word['statuses'] != excel['statuses']:
         raise ValueError('PAIR_CHECKLIST_STATUS_MISMATCH')
     compact=lambda value: re.sub(r'\s+','',value)
-    if word['metrics'] and [[compact(x).strip('[]') if i==2 else compact(x) for i,x in enumerate(row)] for row in word['metrics']] != [[compact(x).strip('[]') if i==2 else compact(x) for i,x in enumerate(row)] for row in excel['metrics']]:
+    if [[compact(x).strip('[]') if i==2 else compact(x) for i,x in enumerate(row)] for row in word['metrics']] != [[compact(x).strip('[]') if i==2 else compact(x) for i,x in enumerate(row)] for row in excel['metrics']]:
         raise ValueError('PAIR_PARAMETER_VALUE_MISMATCH')
     if 'formalCount' in (expected or {}) and len(word['statuses']) != expected['formalCount']:
         raise ValueError('FORMAL_REQUIREMENT_COUNT_MISMATCH')
