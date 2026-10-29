@@ -1,7 +1,7 @@
 ---
 name: zhenwork-product-selection
 description: 依据独立客户需求及获授权产品资料，核对单位、条件和版本，完成条件性选型、证据对比及Word/Excel成果。
-version: 1.0.2
+version: 1.0.3
 requiredTools: []
 dependencies: []
 ---

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read-only validation of native Office delivery pairs; no model/network/shell dependencies."""
-import argparse, collections, hashlib, json, re, zipfile
+import argparse, collections, hashlib, json, re, zipfile, sys
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -47,14 +47,16 @@ def package(path):
 
 def validate(docx, xlsx, expected=None):
     word, excel = package(docx), package(xlsx)
-    if word['provenance'] != excel['provenance']:
+    core = lambda value: {key: item for key, item in value.items() if key != 'revisions'}
+    if core(word['provenance']) != core(excel['provenance']):
         raise ValueError('PAIR_PROVENANCE_MISMATCH')
+    revision_review = word['provenance'].get('revisions', []) != excel['provenance'].get('revisions', [])
     if word['statuses'] and any(collections.Counter(excel['statuses'])[s] < count for s, count in collections.Counter(word['statuses']).items()):
         raise ValueError('PAIR_CHECKLIST_STATUS_MISSING')
     for required in (expected or {}).get('requiredText', []):
         if required not in word['text'] or required not in excel['text']:
             raise ValueError('EXPECTED_FACT_MISSING:' + required)
-    return {'status': 'PASS', 'docxSha256': word['sha256'], 'xlsxSha256': excel['sha256'],
+    return {'status': 'REVIEW_REQUIRED' if revision_review else 'PASS', 'revisionContentReviewRequired': revision_review, 'docxSha256': word['sha256'], 'xlsxSha256': excel['sha256'],
             'dataId': word['provenance'].get('dataSha256') or word['provenance'].get('resultHash'),
             'wordStatuses': dict(collections.Counter(word['statuses'])),
             'boundary': 'Native content/provenance/pair checks, not proof of legal compliance or customer acceptance.'}
@@ -62,4 +64,6 @@ def validate(docx, xlsx, expected=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(); parser.add_argument('docx'); parser.add_argument('xlsx'); parser.add_argument('--expected')
     a = parser.parse_args(); expected = json.loads(Path(a.expected).read_text()) if a.expected else None
-    print(json.dumps(validate(a.docx, a.xlsx, expected), ensure_ascii=False))
+    result = validate(a.docx, a.xlsx, expected)
+    print(json.dumps(result, ensure_ascii=False))
+    sys.exit(2 if result['status'] == 'REVIEW_REQUIRED' else 0)

@@ -1,7 +1,7 @@
 ---
 name: zhenwork-waste-analysis
 description: 按已发布企业业务口径完整校验XLSX/CSV，用精确程序计算产废结构及趋势，交付同源Word月报和Excel汇总。
-version: 1.0.2
+version: 1.0.3
 requiredTools: []
 dependencies: []
 ---
