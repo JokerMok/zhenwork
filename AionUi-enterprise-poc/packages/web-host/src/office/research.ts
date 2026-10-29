@@ -190,7 +190,10 @@ export function selectWebText(text: string, options: WebReadOptions = {}) {
       nextStart: null, matches, query: options.query.trim(), truncated: true,
       fullTextSha256: createHash('sha256').update(text).digest('hex'),
       note: 'The fetched original page contains no exact match at/after start. No quotation or sourceRef was created. Try a shorter exact phrase or bounded start/maxChars; absence of this phrase does not prove a legal fact.' };
-    start = Math.max(0, offset - Math.min(300, Math.floor(maxChars / 4)));
+    // Start at the matching paragraph when bounded, so quote option zero is
+    // not an unrelated preceding article or navigation fragment.
+    const paragraphStart = text.lastIndexOf('\n', offset) + 1;
+    start = Math.max(paragraphStart, offset - Math.min(300, Math.floor(maxChars / 4)));
     while (offset >= 0 && matches.length < 8) {
       matches.push(offset); offset = haystack.indexOf(needle, offset + needle.length);
     }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "zhenwork-waste-analysis",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "title": "产废数据分析专家",
   "description": "按已发布企业业务口径完整校验XLSX/CSV，用精确程序计算产废结构及趋势，交付同源Word月报和Excel汇总。",
   "triggers": [

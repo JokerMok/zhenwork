@@ -132,3 +132,10 @@ test('a literal miss on a fetched page is no-match data without fabricated evide
   expect(result).toMatchObject({status: 'no_match', text: '', matches: []});
   expect(result).not.toHaveProperty('sourceRef');
 });
+
+test('exact lookup starts at its own original paragraph rather than a previous article', () => {
+  const text='前一条完全无关的内容。\n目标条文 这里是所需原文。\n后续条文。';
+  const result=selectWebText(text,{query:'目标条文',maxChars:1000});
+  expect(result.text.startsWith('目标条文')).toBe(true);
+  expect(text.slice(result.start,result.end)).toBe(result.text);
+});
