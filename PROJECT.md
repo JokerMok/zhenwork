@@ -1,16 +1,28 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-29。当前范围：首批四套行业能力包及真实办公验收；保留业务口径、全量数据分析、员工聊天、共享、后台持续回复与按需Core。
+核对日期：2026-10-29。当前范围：首批四套行业能力第三轮P1修订已收口；保留业务口径、全量数据分析、员工聊天、共享、后台持续回复与按需Core。
 
 ## 当前发布与访问
 
 本轮四包/绑定/实际验收/限制见[行业能力记录](docs/industry-capabilities.md)。仅专用普通员工授权，CONDITIONAL GO：合成资料验证通过，真实客户与法律适用须独立复核；不全企业发布。
 
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261029-industry-capabilities-v7`；实际应用 SHA：`12e01e1765041c02283dbae6d006a7c9e2c0dee6`。能力包定义 `3404aaac97e9cf4ee1fbd7d059958c8e6119fe48`、语义版本1.0.3/后台v4，后续维护HEAD不作为应用SHA。已验证回滚基线`20261028-business-analysis-v9`/`033da5d311b8175284018b950a9589307e40076b`，须遵守新包停用前置条件。
+- 激活 release：`20261029-industry-quality-v2`；实际应用 SHA：`81b58125995e8b833f7a09a06a0ac19a90b3bbb9`。能力包定义 `98d76acdbab16c5e4e04da436fd27038d8b3c99a`、语义版本1.0.5/后台v6，后续维护HEAD不作为应用SHA。previous保留已验证`20261029-industry-capabilities-v7`/`12e01e1765041c02283dbae6d006a7c9e2c0dee6`，须遵守方法停用前置条件。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
+
+## 2026-10-29 第三轮P1质量修订收口
+
+基于已发布v7，仅修共用交付链及四包维护方法。参数保留数值、文本、枚举和日期；真实缺项明确“未提供”及原因，非法转换报错。Word/Excel共用验证数据，逐项核对实际参数、正式条款状态和来源；背景与版本说明不计入符合率。知识文档存储版本与产品手册版本分开标注。
+
+普通员工原会话生成关联修订，公网文件页确认当前产品选型v3、法规时点v5、资料核查v8。六份真实下载独立核对：A=IP54、B=IP65，资料v1.0/v2.0及日期完整；旧法78条五项、法典532条六项逐项对官方全文，历史处罚区分查询日、行为时、决定时及从旧兼从轻条件；Q03保持“部分符合，现场遮蔽待确认”，Q01–Q05仅5项统计。六份预览/下载、旧基线固定版本SHA及中文Writer/Calc关键页通过，只读Core0→0。
+
+19项受影响链路用例（delivery8项复用、revision最新11项）及2项包完整性通过，没有全系统测试。原8个资源ID、模型/知识/授权及Core预算保持；离线续作、17项隔离和撤权复用v7证据。产品v3的失效引用已重读恢复，但失败步骤仍保留partial；法规v5及只读收口遭上游流/压缩连接中断，仍保留partial。文件验收通过不表示模型轮次全部完成；未清历史或改状态。
+
+仅Host重建，24迁移及其他产物/镜像复用。最终Core/Gateway0，盘余2223984640B；本项目/拼豆/Caddy active，公网标准TLS200。最终一致备份`20261029T092354888284Z.tar.gz`/770764253B及SHA通过，原2份/2GiB预算不变。只完整归档核验后释放旧build/bundle构建缓存，业务文件、有效release与备份保留。
+
+私有报告`.codex/industry-p1/acceptance-report.md`、服务器`shared/config/acceptance/20261029-industry-p1.md`及current/VERIFIED.json记录实际范围。回滚审核`shared/config/rollback-reviews/20261029-quality-v2-to-industry-v7.json`：先停用4专家/4Skill并收敛在途，只退应用/配置，保留DB/授权/文件历史；v7不具备本次typed/context链路，不能继续运行新方法，未实际回滚。本批P1定向通过，第三轮收口；真实客户及个案法律适用仍未验，无新功能安排。
 
 ## 2026-10-28 业务口径与结构化数据导入
 

@@ -2,9 +2,9 @@
 
 ## 2026-10-29 行业能力包
 
-当前应用 `20261029-industry-capabilities-v7` / `12e01e1765041c02283dbae6d006a7c9e2c0dee6`；配置定义 `3404aaac97e9cf4ee1fbd7d059958c8e6119fe48`，四包1.0.3/资源v4。员工选择专家和默认助手自然语言入口已验；只读浏览Core0。仅Host构建，其余产物/镜像及24迁移复用；真实范围及模型复核限制见[行业能力记录](../../docs/industry-capabilities.md)。
+当前应用 `20261029-industry-quality-v2` / `81b58125995e8b833f7a09a06a0ac19a90b3bbb9`；配置定义 `98d76acdbab16c5e4e04da436fd27038d8b3c99a`，四包1.0.5/资源v6。第三轮P1定向修订已收口：产品参数文本/日期、法规五/六项及历史处罚边界、Q03条件和正式统计。当前产品v3/法规v5/核查v8的六份实际文件、预览下载及旧版本SHA通过，只读Core0。仅Host构建，其余产物/镜像及24迁移复用；未变权限/离线证据复用v7，未跑全系统。真实范围及模型partial记录见[行业能力记录](../../docs/industry-capabilities.md)。
 
-配置引用/安装状态保存在root私有`shared/config/industry-capabilities/`；默认仅专用测试员工，真实企业上线须单独授权。已验证回滚基线business-analysis-v9；先停用4专家/4Skill、收敛在途，再使用`shared/config/rollback-reviews/20261029-industry-v7-to-business-v9.json`，只退应用/配置，不回退数据。最终一致备份和私有证据记录同上。
+配置引用/安装状态保存在root私有`shared/config/industry-capabilities/`；默认仅专用测试员工，真实企业上线须单独授权。previous保留已验证industry-capabilities-v7；先停用4专家/4Skill、收敛在途，再使用`shared/config/rollback-reviews/20261029-quality-v2-to-industry-v7.json`，只退应用/配置，不回退数据。v7不具备本次typed/context链路，不得带新方法继续服务；未实际回滚。最终一致备份20261029T092354888284Z.tar.gz/770764253B及SHA通过，2份/2GiB预算保持；Core/Gateway0、盘余2223984640B。私有报告`shared/config/acceptance/20261029-industry-p1.md`，历史v7报告与业务版本保留。
 
 本部署只提供员工网页、管理后台、RC2、Web Host 和按需启动的 Linux Core/Gateway。源码由 --ref 指定的已提交版本冻结（省略时为本机 HEAD）；更新前先核对 origin 默认分支和本机提交，保留工作树修改；不调用桌面打包、签名、下载页或更新服务。
 
