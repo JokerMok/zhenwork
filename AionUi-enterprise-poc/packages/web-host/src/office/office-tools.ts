@@ -1205,7 +1205,7 @@ export async function startOfficeTools(
             await store.upload(core.workspaceRoot, input.relative, revised.bytes, true, sha256);
             const saved = await store.download(core.workspaceRoot, input.relative);
             if (!saved.equals(revised.bytes)) throw new Error('FILE_CHANGED_RETRY');
-            value = {
+            const revisionReceipt = {
               ...(await savedReceipt(input.relative, saved, abort.signal)),
               validation,
               previousSha256: sha256,
@@ -1213,6 +1213,15 @@ export async function startOfficeTools(
               sourceFactsReverified: false,
               unrequestedPartsPreserved: true,
             };
+            value =
+              businessResult && presentation
+                ? {
+                    ...revisionReceipt,
+                    resultId: businessResult.id,
+                    resultHash: businessResult.resultHash,
+                    files: [...(await presentation.relatedReceipts(businessResult, abort.signal)), revisionReceipt],
+                  }
+                : revisionReceipt;
           }
         } else if (tool === 'summarize_json_data') {
           const input = await readInput(String(args.path || ''), conversation);

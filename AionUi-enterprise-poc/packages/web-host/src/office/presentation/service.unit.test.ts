@@ -31,6 +31,11 @@ test('checks current resource permission before exposing an already generated PP
     'https://example.com',
   ]) as BusinessPresentation;
   await expect(service.guardFile('report.pptx', Buffer.from('already-delivered'))).rejects.toThrow('REVOKED');
+  await expect(
+    service.relatedReceipts(
+      (await store.businessResult()) as unknown as Parameters<BusinessPresentation['relatedReceipts']>[0]
+    )
+  ).rejects.toThrow('REVOKED');
 });
 test('does not bypass source permission by replacing bytes on a known derivative path', async () => {
   const get = vi.fn();

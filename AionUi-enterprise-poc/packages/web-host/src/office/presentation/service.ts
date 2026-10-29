@@ -58,13 +58,20 @@ export class BusinessPresentation {
       const loc = object(source.locator);
       if (source.kind === 'workspace') {
         const sourceUrl = typeof loc.sourceUrl === 'string' ? new URL(loc.sourceUrl) : undefined;
-        if (!sourceUrl || sourceUrl.origin !== new URL(this.origin).origin || sourceUrl.pathname !== '/enterprise/files/download') throw new Error('PPT_FIXED_WORKSPACE_SOURCE_REQUIRED');
-        const file = sourceUrl.searchParams.get('path') || '', version = sourceUrl.searchParams.get('version');
+        if (
+          !sourceUrl ||
+          sourceUrl.origin !== new URL(this.origin).origin ||
+          sourceUrl.pathname !== '/enterprise/files/download'
+        )
+          throw new Error('PPT_FIXED_WORKSPACE_SOURCE_REQUIRED');
+        const file = sourceUrl.searchParams.get('path') || '',
+          version = sourceUrl.searchParams.get('version');
         if (!version) throw new Error('PPT_FIXED_WORKSPACE_SOURCE_REQUIRED');
         const key = `${file}:${version}:${loc.sha256}`;
         if (!checked.has(key)) {
           await this.data.guardFile(file);
-          if (digest(await this.store.download(this.workspace, file, version)) !== loc.sha256) throw new Error('PPT_FIXED_SOURCE_HASH_MISMATCH');
+          if (digest(await this.store.download(this.workspace, file, version)) !== loc.sha256)
+            throw new Error('PPT_FIXED_SOURCE_HASH_MISMATCH');
           checked.add(key);
         }
         continue;
@@ -192,7 +199,8 @@ export class BusinessPresentation {
       receiptText: `${path.basename(name)} · v${receipt.version}\n[预览](${previewUrl}) [下载](${downloadUrl})`,
     };
   }
-  private async related(result: PresentationResult, signal?: AbortSignal) {
+  async relatedReceipts(result: PresentationResult, signal?: AbortSignal) {
+    await this.authorize(result);
     const receipts = [];
     for (const file of result.relatedFiles) {
       const bytes = await this.store.download(this.workspace, file.path, file.versionId);
@@ -239,7 +247,7 @@ export class BusinessPresentation {
         path.isAbsolute(name) ||
         name.split('/').some((s) => !s || s === '.' || s === '..') ||
         name.includes('\\') ||
-        [...name].some(character => (character.codePointAt(0) ?? 0) < 32)
+        [...name].some((character) => (character.codePointAt(0) ?? 0) < 32)
       )
         throw new Error('PPT_OUTPUT_PATH_INVALID');
       const deliveryKey = digest(
@@ -254,7 +262,7 @@ export class BusinessPresentation {
           reused: true,
           resultId: result.id,
           resultHash: result.resultHash,
-          files: [...(await this.related(result, signal)), await this.receipt(name, bytes)],
+          files: [...(await this.relatedReceipts(result, signal)), await this.receipt(name, bytes)],
           template: { name: theme.name, version: theme.version, resourceVersion: theme.resourceVersion },
         };
       }
@@ -305,7 +313,7 @@ export class BusinessPresentation {
         resultId: result.id,
         resultHash: result.resultHash,
         template,
-        files: [...(await this.related(result, signal)), await this.receipt(name, saved)],
+        files: [...(await this.relatedReceipts(result, signal)), await this.receipt(name, saved)],
         quality: {
           slideCount: quality.slideCount,
           nativeCharts: quality.nativeCharts,
@@ -325,7 +333,7 @@ export class BusinessPresentation {
         error: (error as Error).message,
         resultId: result.id,
         resultHash: result.resultHash,
-        files: await this.related(result, signal),
+        files: await this.relatedReceipts(result, signal),
         instruction:
           'PPT failed. Existing verified Word/Excel remain available; retry only this PPT using the same result. Do not overwrite successful files or mark Agent history completed.',
       };
