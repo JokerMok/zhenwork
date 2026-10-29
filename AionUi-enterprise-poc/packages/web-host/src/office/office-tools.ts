@@ -932,10 +932,10 @@ export async function startOfficeTools(
       } else throw new Error('METHOD_NOT_SUPPORTED');
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ jsonrpc: '2.0', id: message.id ?? null, result }));
-    })().catch((error: Error) => {
+    })().catch(async (error: Error) => {
       if (failedCall) {
         invalidCalls.failed(failedCall.conversation, failedCall.tool, failedCall.args);
-        void recordTool(
+        await recordTool(
           profileRoot,
           actor,
           failedCall.conversation,
@@ -953,7 +953,9 @@ export async function startOfficeTools(
           JSON.stringify({
             jsonrpc: '2.0',
             id: messageId,
-            error: { code: -32000, message: error.message.slice(0, 1000) },
+            ...(failedCall && /^(?:SOURCE_EVIDENCE_(?:REF_MISSING|EXPIRED|QUOTE_|REFERENCE_)|SHEET_NOT_FOUND|OFFICE_REVISION_FAILED)/.test(error.message)
+              ? {result: {isError: true, content: [{type: 'text', text: JSON.stringify({status: 'failed', error: error.message.slice(0,1000), correctable: true, action: 'Read the current source again and retry only the failed output with actual references. Never drop citations or repeat successful writes.'})}]}}
+              : {error: { code: -32000, message: error.message.slice(0, 1000) }}),
           })
         );
     });

@@ -603,8 +603,10 @@ test('knowledge search resolves permitted bases and output context without inven
     expect(context.downloadOrigin).toBe('https://workspace.example');
     // A native Read may have happened outside MCP. A failed attempt to cite
     // its filename must still prevent silently dropping all citations.
-    const invented = await call('verify_source_quotes', { citations: [{ ref: 'uploaded-file.txt', quoteIndex: 0 }] }) as unknown as { error: { message: string } };
-    expect(invented.error.message).toContain('read_document');
+    const invented = await call('verify_source_quotes', { citations: [{ ref: 'uploaded-file.txt', quoteIndex: 0 }] });
+    expect(invented).not.toHaveProperty('error');
+    expect(invented.result).toMatchObject({isError:true});
+    expect(JSON.parse(invented.result.content[0].text)).toMatchObject({status:'failed',correctable:true,error:expect.stringContaining('read_document')});
     const noSources = await call('create_office_document', { path: 'unsourced.docx', format: 'docx', paragraphs: ['Not verified'] }) as unknown as { error: { message: string } };
     expect(noSources.error.message).toContain('SOURCE_BASED_REPORT_REQUIRES_CITATIONS');
     const found = JSON.parse((await call('search_knowledge', { query: 'requirements' })).result.content[0].text);
