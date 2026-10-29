@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "id": "zhenwork-waste-policy",
+  "version": "1.0.0",
+  "title": "固危废政策查询与解读专家",
+  "description": "按地区、业务条件和截至日期查询官方固危废规定，核对生效/废止及真实条款，区分原文、官方解释和分析。",
+  "triggers": [
+    "危废政策",
+    "法规时效",
+    "台账要求与业务清单"
+  ],
+  "inputs": [
+    "查询截至日期或业务发生日期",
+    "适用地区、单位角色及业务活动；地区或条件缺失时只给全国框架与待核事项"
+  ],
+  "steps": [
+    "确定asOf日期、地区、法规层级、单位角色；当前与历史问题分开",
+    "检索人大/政府/生态环境主管部门官方来源并打开原文，不以摘要判断效力",
+    "核对标题、发布机构、文号、公布/生效/失效日期及依据；未知字段明确未知",
+    "读取具体条款及过渡/废止条款，长页面使用read_web query或nextStart，不用首段冒充全文",
+    "按asOf比较生效与废止边界；旧条号不自动换成未经核验的新条号",
+    "分别列原文、官方解释和模型分析，指出业务适用前提、地区待核和工作清单",
+    "需要成果时purpose=research，生成有官方原文引用的Word与Excel，不作合规保证"
+  ],
+  "rules": [
+    "2026年生态环境法典变化是已核验的来源索引线索，执行时仍须重新打开官方原文",
+    "旧法可解释生效前历史，不得当生效后当前有效法；法律效力以官方生效/废止依据为准",
+    "法规、规章、标准和政策分开，地方适用性单独核查",
+    "无法读到原文就不能伪造条号或确定效力"
+  ],
+  "managedTools": [
+    "office_context",
+    "search_web",
+    "read_web",
+    "search_knowledge",
+    "create_evidence_deliverables",
+    "validate_artifact"
+  ],
+  "knowledgeRole": "policy",
+  "requiredBindingRoles": [
+    "model"
+  ],
+  "permissions": {
+    "defaultAudience": "explicit test employees only",
+    "actions": [
+      "VIEW",
+      "USE"
+    ],
+    "knowledge": "current employee and selected task scope",
+    "credentials": "server only; no embedded connections"
+  },
+  "outputs": [
+    "editable-docx",
+    "xlsx-comparison-or-summary",
+    "fixed-version-sources"
+  ],
+  "completion": [
+    "both requested files exist and validate",
+    "fact/source/status consistency",
+    "missing data explicit",
+    "no fake client acceptance"
+  ],
+  "failure": [
+    "wait for essential inputs",
+    "retain successful outputs and retry only failure",
+    "no external writes without explicit authorization"
+  ],
+  "maintenance": {
+    "upgrade": "existing resource version + activate + current ACL check",
+    "disable": "existing resource enabled=false",
+    "revoke": "existing share revoke; no personal data copy"
+  }
+}

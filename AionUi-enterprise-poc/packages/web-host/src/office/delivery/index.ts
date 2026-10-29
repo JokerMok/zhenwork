@@ -94,6 +94,17 @@ export function deliveryReferences(value: EvidenceDeliveryInput) {
     item.requirement ? [item.source, item.requirement] : [item.source],
   );
 }
+function independentRequirements(source: VerifiedSourceEvidence, requirement?: VerifiedSourceEvidence): boolean {
+  if (!requirement || source.ref === requirement.ref) return false;
+  const left = source.locator as Record<string, unknown>, right = requirement.locator as Record<string, unknown>;
+  if (!left || !right) return false;
+  if (typeof left.sha256 === 'string' && left.sha256 && left.sha256 === right.sha256) return false;
+  const identity = source.kind === 'knowledge' ? 'documentId' : source.kind === 'web' ? 'url' : 'path';
+  if (source.kind === requirement.kind && left[identity] && left[identity] === right[identity]) return false;
+  // A different ref alone may be a re-read of the same document; require an actual distinct source identity.
+  return Boolean(left[identity] && (right.documentId || right.url || right.path));
+}
+
 export function buildEvidenceDeliverables(
   value: EvidenceDeliveryInput,
   sources: VerifiedSourceEvidence[],
@@ -103,16 +114,21 @@ export function buildEvidenceDeliverables(
   const catalog = buildOfficeSources(sources);
   let cursor = 0;
   const findings = value.rows.map((item) => {
-    const source = catalog.numbers[cursor++],
-      requirement = item.requirement ? catalog.numbers[cursor++] : undefined;
+    const sourceEvidence = sources[cursor];
+    const source = catalog.numbers[cursor++];
+    const requirementEvidence = item.requirement ? sources[cursor] : undefined;
+    const requirement = item.requirement ? catalog.numbers[cursor++] : undefined;
+    const independent = independentRequirements(sourceEvidence, requirementEvidence);
     return {
       topic: item.topic,
       source,
       requirement,
       assessment:
-        value.purpose === "research" ? "原文声明" : requirement ? item.assessment : "证据不足",
+        value.purpose === "research" ? "原文声明" : independent ? item.assessment : "证据不足",
       analysis: item.analysis,
-      missing: item.missing,
+      missing: value.purpose !== "research" && item.requirement && !independent
+        ? [item.missing, "需求与佐证来自同一资料或缺少独立来源身份，不能据此确认符合性。"].filter(Boolean).join(" ")
+        : item.missing,
       metric: item.metric as OfficeMetric | undefined,
     };
   });

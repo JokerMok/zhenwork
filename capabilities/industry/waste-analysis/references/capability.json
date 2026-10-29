@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "id": "zhenwork-waste-analysis",
+  "version": "1.0.0",
+  "title": "产废数据分析专家",
+  "description": "按已发布企业业务口径完整校验XLSX/CSV，用精确程序计算产废结构及趋势，交付同源Word月报和Excel汇总。",
+  "triggers": [
+    "产废月度分析",
+    "车间废物结构",
+    "台账明细汇总"
+  ],
+  "inputs": [
+    "当前员工有权使用的XLSX/CSV或实际可用明细连接",
+    "月份、业务节点、明确的已发布口径及字段映射"
+  ],
+  "steps": [
+    "从office_context读取当前任务已保存导入与映射/口径；先复用，不重新扫描目录",
+    "确认企业/期间/节点及实际覆盖范围，歧义才打开现有数据映射请求确认",
+    "调用inspect_structured_data和analyze_waste_data完整校验；预览不代表全量",
+    "阻断结果停在待补充，列真实原始行及问题；不静默排除无效行",
+    "只解释inspect_waste_analysis的已验证Decimal结果，变化使用工具给出的精确差值",
+    "调用generate_waste_report从同一analysisId生成Word/Excel，不用通用生成器重算",
+    "重复请求复用保存结果/成功成果，映射/口径变更新分析，旧版本不变"
+  ],
+  "rules": [
+    "不同节点不混加，不用生成时间替代业务时间",
+    "所有转换、去重、对象映射沿正式发布版本，聊天不能改企业定义",
+    "仅部分企业/期间资料就明确覆盖范围，趋势不证明企业完整历史",
+    "无生产量/价格/费用/合同/清运约束不推导单位产废、节约金额或最优清运"
+  ],
+  "managedTools": [
+    "office_context",
+    "inspect_structured_data",
+    "analyze_waste_data",
+    "inspect_waste_analysis",
+    "generate_waste_report",
+    "validate_artifact",
+    "inspect_office_document",
+    "revise_office_document"
+  ],
+  "knowledgeRole": "analysis",
+  "requiredBindingRoles": [
+    "model",
+    "businessRules"
+  ],
+  "permissions": {
+    "defaultAudience": "explicit test employees only",
+    "actions": [
+      "VIEW",
+      "USE"
+    ],
+    "knowledge": "current employee and selected task scope",
+    "credentials": "server only; no embedded connections"
+  },
+  "outputs": [
+    "editable-docx",
+    "xlsx-comparison-or-summary",
+    "fixed-version-sources"
+  ],
+  "completion": [
+    "both requested files exist and validate",
+    "fact/source/status consistency",
+    "missing data explicit",
+    "no fake client acceptance"
+  ],
+  "failure": [
+    "wait for essential inputs",
+    "retain successful outputs and retry only failure",
+    "no external writes without explicit authorization"
+  ],
+  "maintenance": {
+    "upgrade": "existing resource version + activate + current ACL check",
+    "disable": "existing resource enabled=false",
+    "revoke": "existing share revoke; no personal data copy"
+  }
+}

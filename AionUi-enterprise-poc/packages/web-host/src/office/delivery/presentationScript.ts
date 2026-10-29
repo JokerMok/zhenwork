@@ -202,6 +202,11 @@ def xlsx(data):
                 if key in common:continue
                 for start in range(0,len(value),220):notes.append([index+1,item['topic'],kind,value[start:start+220]])
             if m.get('calculation'):formula_requests.append((index,m['calculation']))
+        if report['purpose']=='compliance':
+            review=[]
+            for index,item in enumerate(report['findings'],1):
+                review.append([index,item['topic'],item['assessment'],item.get('requirement') or '未提供独立需求',item['source'],item['analysis'],item['missing']])
+            sheet('核查清单',['序号','核查要求','结论','需求来源','证据来源','差异及说明','待补资料'],review,[8,42,18,14,14,64,52],[data.get('title') or '',report['scope']])
         main,start=sheet('参数对比',['序号','对象','参数或主题','数值或状态','单位','来源'],rows,[7,24,34,23,16,10],[data.get('title') or '',report['scope']])
         for index,calc in formula_requests:
             refs=['D'+str(start+main_indices.index(i-1)) for i in calc['rows']]

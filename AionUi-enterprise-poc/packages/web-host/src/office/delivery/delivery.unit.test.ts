@@ -1,3 +1,5 @@
+import { generateOfficeArtifact } from '../generate.js';
+import { inspectOfficeStructure } from './revision.js';
 import { expect, test } from 'vitest';
 import { buildEvidenceDeliverables, parseEvidenceDelivery, deliveryReferences, evidenceDeliveryTool } from './index.js';
 import { InvalidCallBudget, validateToolArguments } from './arguments.js';
@@ -76,4 +78,24 @@ test('research preserves source-location status while compliance still needs req
   expect(result.files[0].content.report).toEqual(result.files[1].content.report);
   expect(() => parseEvidenceDelivery({ ...input, rows: Array.from({ length: 17 }, () => ({ ...input.rows[0], requirement: { ref: 'r', quoteIndex: 0 } })) })).toThrow('REFERENCE_LIMIT_32');
   expect(() => validateToolArguments(evidenceDeliveryTool.inputSchema, { ...input, evidenceRows: [] })).toThrow('allowed fields here:');
+});
+
+
+test('a re-read or another version of the supplier document is not independent requirement evidence', () => {
+  const parsed = parseEvidenceDelivery({...input, rows:[{...input.rows[0], requirement:{ref:'requirements', quoteIndex:0}}]});
+  const source = {ref:'source',kind:'workspace' as const,quote:'容量10kg',locator:{path:'product.txt',sha256:'v1'}};
+  const same = {...source,ref:'requirements',locator:{path:'product.txt',sha256:'v2'}};
+  expect(buildEvidenceDeliverables(parsed,[source,same]).files[0].content.report!.findings[0].assessment).toBe('证据不足');
+  const different = {...same,locator:{path:'customer.txt',sha256:'independent'}};
+  expect(buildEvidenceDeliverables(parsed,[source,different]).files[0].content.report!.findings[0].assessment).toBe('符合');
+});
+
+
+test.skipIf(!process.env.ZHENWORK_OFFICE_PYTHON)('actual generated workbook retains all compliance statuses alongside numeric parameter rows', async () => {
+  const parsed = parseEvidenceDelivery({...input, rows:[{...input.rows[0], requirement:{ref:'requirements',quoteIndex:0},metric:{object:'candidate',parameter:'capacity',value:10,unit:'kg'}}]});
+  const delivered = buildEvidenceDeliverables(parsed,[{ref:'source',kind:'workspace',quote:'Capacity10kg',locator:{path:'product.txt',sha256:'a'}},{ref:'requirements',kind:'workspace',quote:'Required8kg',locator:{path:'customer.txt',sha256:'b'}}]);
+  const content=delivered.files.find(f=>f.path.endsWith('.xlsx'))!.content;
+  const bytes=await generateOfficeArtifact(content);
+  const inspected=await inspectOfficeStructure('review.xlsx',bytes);
+  expect(JSON.stringify(inspected)).toContain('核查清单');
 });

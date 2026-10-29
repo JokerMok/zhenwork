@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ lookup: vi.fn(), request: vi.fn(), body: '', bodies: [] as string[], options: {} as Record<string,unknown> }));
 vi.mock('node:dns/promises', () => ({ lookup: mocks.lookup }));
 vi.mock('node:https', () => ({ request: mocks.request }));
-import { readWeb, searchWeb } from './research.js';
+import { readWeb, searchWeb, selectWebText } from './research.js';
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.lookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
@@ -106,3 +106,22 @@ test('bounds malformed repeated semantic blocks and falls back without rescannin
   expect(source.truncated).toBe(true);
   expect(source.evidence).toContain('No semantic article/main body was available');
 });
+
+
+test('reads a real long-page tail by exact query or pagination without inventing whole-page coverage', async () => {
+  mocks.body = '<main><p>' + '前文'.repeat(30000) + '</p><p>第一千二百四十二条 生效与废止原文。</p></main>';
+  const initial = await readWeb('https://example.com/source');
+  expect(initial.text).not.toContain('生效与废止');
+  const tail = await readWeb('https://example.com/source', undefined, {query: '第一千二百四十二条', maxChars: 1000});
+  expect(tail.text).toContain('生效与废止原文');
+  expect(Number(tail.start)).toBeGreaterThan(45000);
+  expect(tail.fullTextSha256).toBe(initial.fullTextSha256);
+  expect(tail.sha256).not.toBe(initial.sha256);
+  const next = await readWeb('https://example.com/source', undefined, {start: Number(initial.nextStart)});
+  expect(next.text).toContain('生效与废止原文');
+  expect(() => selectWebText('原文', {query:'不存在'})).toThrow('WEB_QUERY_NOT_FOUND');
+  expect(() => selectWebText('原文', {start:-1})).toThrow('WEB_READ_WINDOW_INVALID');
+});
+
+
+test('rejects a soft-404 destination despite HTTP200 before issuing source evidence', async () => { await expect(readWeb('https://example.com/404/index.html')).rejects.toThrow('WEB_SOURCE_NOT_FOUND'); });

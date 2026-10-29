@@ -85,6 +85,7 @@ assert "git diff --name-only --no-renames -z" in restage
 assert "packages/web-host/src/*|AionUi-enterprise-poc/packages/web-cli/src/*" in restage
 assert "packages/desktop" in restage and "full reviewed stage" in restage
 assert "Host-only restage refused changed path" in restage and "*)" in restage
+assert "capabilities/industry/*|scripts/office/" in restage
 assert "packages/web-cli/src/enterprise-entry.ts" in restage and "build-web.mjs" not in restage
 assert "artifactReusedFrom" in restage and "artifactReusedFrom" in prepare
 assert "systemctl" not in restage and "sudo bash '$remote_root/deploy/activate.sh'" not in restage and "current.next" not in restage

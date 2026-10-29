@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "bundle": "zhenwork-industry-first",
+  "version": "1.0.0",
+  "packages": [
+    {
+      "directory": "product-selection",
+      "id": "zhenwork-product-selection",
+      "version": "1.0.0",
+      "title": "产品选型专家"
+    },
+    {
+      "directory": "waste-policy",
+      "id": "zhenwork-waste-policy",
+      "version": "1.0.0",
+      "title": "固危废政策查询与解读专家"
+    },
+    {
+      "directory": "waste-analysis",
+      "id": "zhenwork-waste-analysis",
+      "version": "1.0.0",
+      "title": "产废数据分析专家"
+    },
+    {
+      "directory": "document-review",
+      "id": "zhenwork-document-review",
+      "version": "1.0.0",
+      "title": "资料核查专家"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "id": "zhenwork-product-selection",
+  "version": "1.0.0",
+  "title": "产品选型专家",
+  "description": "依据独立客户需求及获授权产品资料，核对单位、条件和版本，完成条件性选型、证据对比及Word/Excel成果。",
+  "triggers": [
+    "设备选型",
+    "客户场景与产品匹配",
+    "候选型号比较"
+  ],
+  "inputs": [
+    "客户独立需求或明确场景及必须/优选条件",
+    "候选产品资料，注明型号和版本；无可靠候选不强推"
+  ],
+  "steps": [
+    "将客户需求拆成独立编号条目，标记必须/优选/待确认；无独立需求时仅产品资料研究",
+    "按设备用途/容量/尺寸/供电/安装环境查授权资料，逐候选关联同一需求",
+    "逐项核对数值、单位、范围、前提及产品版本；有冲突并列版本",
+    "给出符合/不符合/部分符合/证据不足；品牌宣传只作供应商声明",
+    "按必须条件筛选，缺证据保留条件性推荐；不虚构价格/认证/交期",
+    "用统一rows生成Word选型方案与Excel核查清单，保存可追溯原文"
+  ],
+  "rules": [
+    "不把功能关键词或型号名称命中当符合",
+    "缺少独立客户需求不得宣布客户符合性通过",
+    "未知价格、认证和交付承诺保持未知",
+    "找不到证据是证据不足，不等于不符合"
+  ],
+  "managedTools": [
+    "office_context",
+    "read_document",
+    "search_knowledge",
+    "create_evidence_deliverables",
+    "inspect_office_document",
+    "revise_office_document",
+    "validate_artifact"
+  ],
+  "knowledgeRole": "product",
+  "requiredBindingRoles": [
+    "model"
+  ],
+  "permissions": {
+    "defaultAudience": "explicit test employees only",
+    "actions": [
+      "VIEW",
+      "USE"
+    ],
+    "knowledge": "current employee and selected task scope",
+    "credentials": "server only; no embedded connections"
+  },
+  "outputs": [
+    "editable-docx",
+    "xlsx-comparison-or-summary",
+    "fixed-version-sources"
+  ],
+  "completion": [
+    "both requested files exist and validate",
+    "fact/source/status consistency",
+    "missing data explicit",
+    "no fake client acceptance"
+  ],
+  "failure": [
+    "wait for essential inputs",
+    "retain successful outputs and retry only failure",
+    "no external writes without explicit authorization"
+  ],
+  "maintenance": {
+    "upgrade": "existing resource version + activate + current ACL check",
+    "disable": "existing resource enabled=false",
+    "revoke": "existing share revoke; no personal data copy"
+  }
+}

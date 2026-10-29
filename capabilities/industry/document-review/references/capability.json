@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "zhenwork-document-review",
+  "version": "1.0.0",
+  "title": "资料核查专家",
+  "description": "将独立需求拆成条款，逐项对照产品、协议或参考资料，列明符合/不符合/部分符合/证据不足及固定版本依据。",
+  "triggers": [
+    "技术协议差异核查",
+    "客户要求对照",
+    "招标条款与技术资料核验"
+  ],
+  "inputs": [
+    "明确的独立需求或判断标准",
+    "有权限的参考资料及其版本；冲突版本应同时提供"
+  ],
+  "steps": [
+    "确认本次核查目标和判断依据，需求与佐证资料不能互相冒充",
+    "拆分独立条款，保留原编号/单位/必须条件/限制条件",
+    "逐条读取参考资料，记录真实页码/章节/表格位置和版本",
+    "符合必须同条件直接证据；不符合必须有直接冲突；部分符合列满足与未满足部分；找不到资料是证据不足",
+    "冲突资料列版本及差异，无法判断优先级时待确认，不替用户覆盖旧来源",
+    "用purpose=compliance的共享rows生成Word和Excel核查清单，条款/状态/来源/结论一致",
+    "检查每条需求是否覆盖及双成果真实有效，修改在同一会话保留版本"
+  ],
+  "rules": [
+    "关键词命中不是符合证据",
+    "未知参数不能补全；证据缺失不能强判不符合",
+    "没有独立正式客户需求不宣称真实客户核查通过",
+    "有差异但范围/前提不同，先说明不可直接比较"
+  ],
+  "managedTools": [
+    "office_context",
+    "read_document",
+    "search_knowledge",
+    "create_evidence_deliverables",
+    "inspect_office_document",
+    "revise_office_document",
+    "validate_artifact"
+  ],
+  "knowledgeRole": "review",
+  "requiredBindingRoles": [
+    "model"
+  ],
+  "permissions": {
+    "defaultAudience": "explicit test employees only",
+    "actions": [
+      "VIEW",
+      "USE"
+    ],
+    "knowledge": "current employee and selected task scope",
+    "credentials": "server only; no embedded connections"
+  },
+  "outputs": [
+    "editable-docx",
+    "xlsx-comparison-or-summary",
+    "fixed-version-sources"
+  ],
+  "completion": [
+    "both requested files exist and validate",
+    "fact/source/status consistency",
+    "missing data explicit",
+    "no fake client acceptance"
+  ],
+  "failure": [
+    "wait for essential inputs",
+    "retain successful outputs and retry only failure",
+    "no external writes without explicit authorization"
+  ],
+  "maintenance": {
+    "upgrade": "existing resource version + activate + current ACL check",
+    "disable": "existing resource enabled=false",
+    "revoke": "existing share revoke; no personal data copy"
+  }
+}

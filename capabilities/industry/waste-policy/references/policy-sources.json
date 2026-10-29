@@ -1,0 +1,34 @@
+{
+  "verifiedAt": "2026-10-29",
+  "scope": "全国法律层级的时点验证线索，不等于地区/业务适用结论",
+  "sources": [
+    {
+      "title": "中华人民共和国生态环境法典",
+      "publisher": "全国人民代表大会（生态环境部官网全文）",
+      "url": "https://www.mee.gov.cn/ywgz/fgbz/fl/202603/t20260313_1146496.shtml",
+      "promulgatedAt": "2026-03-12",
+      "effectiveFrom": "2026-08-15",
+      "promulgationOrder": "中华人民共和国主席令第七十号",
+      "authorityUrl": "https://www.spp.gov.cn/spp/tt/202603/t20260312_723838.shtml",
+      "readExactArticles": [
+        "第一千二百四十二条",
+        "第五百三十二条",
+        "第四百八十九条"
+      ],
+      "warning": "必须实际读取第一千二百四十二条核对生效与同时废止；不得用旧法条号自动映射新法。"
+    },
+    {
+      "title": "中华人民共和国固体废物污染环境防治法（2020年修订）",
+      "publisher": "全国人大常委会（农业农村部官网全文）",
+      "url": "https://fgs.moa.gov.cn/flfg/202009/t20200902_6351341.htm",
+      "effectiveFrom": "2020-09-01",
+      "effectiveUntilExclusive": "2026-08-15",
+      "historicalUseOnlyAfterRepeal": true,
+      "readExactArticles": [
+        "第七十八条",
+        "第一百二十六条"
+      ],
+      "repealAuthority": "生态环境法典第一千二百四十二条"
+    }
+  ]
+}
