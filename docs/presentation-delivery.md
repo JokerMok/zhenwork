@@ -31,3 +31,15 @@ OfficePreview 以实际文件版本选择幻灯片，按需使用受控 LibreOff
 ## 定向验收
 
 本轮只检查受影响生成、版本、权限和预览链路；未变管理网页、监控、Core/Gateway 镜像及24迁移复用。受影响 Java 仅增加模板保存校验。真实员工、公网模型、实际文件和 Office 编辑证据及部署结果在本轮验收记录中更新；构建或 ZIP 结构正常不等于业务验收。WPS/Microsoft PowerPoint 未安装时，不以 LibreOffice 的结果代替其兼容性结论。
+
+## 2026-10-29 实际发布与验收
+
+应用 `20261029-presentation-delivery-v4` / `aba95a435c1b4fa3b3e1dc80f4310f823c393e56`。真实普通员工公网模型生成8页月报、10页核查、12页选型及自定义模板PPT；独立读取三格式关键数据、来源与固定版本一致。月报2150kg/A1350/B800/3条/口径v2；核查正式5项/20%、Q03部分符合且遮蔽待确认；IP54/IP65、资料版本与缺失认证保留。
+
+当前月报v6、全部6版本保留，真实网页完成恢复初版/再恢复修订版。最终标题修改仅改变指定页及修订审计，其他图表、工作簿和来源不变。原聊天三格式回执、真实分页预览及浏览器下载SHA通过。模板资源v1→v2/主题1.1.0后新文件使用当前默认，历史模板/PPT不重写。LibreOffice26.2.6.3实际编辑、保存和重开标题/表格/图表显示通过；不替代WPS/Microsoft PowerPoint或真实品牌验收。
+
+关闭浏览器继续、取消无虚假完成、第二账号13项拒绝、口径/知识撤权及恢复、失败只补PPT通过。文件有效与模型状态分开：初次续改缺回执partial、产品上游失败partial、自定义核查interrupted保留；后续新续改轮次completed。
+
+最后回执修复适配原聊天outputs协议，保留TaskRunner files结构；完整/部分失败输出由同份真实版本回执生成。受影响链初始68通过/5跳过，最后21项重跑及Java模板3项通过；Host3项原有类型诊断保留，无新增，不宣称完整类型检查通过。未跑全系统。第三轮六份Word/Excel、8资源/模型/知识/Skill保持。
+
+最后只重建Host，Web/Java/Admin/监控/native与24迁移按manifest复用，预算Core1不变。当前previous为industry-quality-v2；旧Host不具PPT来源门禁，回退应先停用模板/隔离员工入口并收敛在途，保留数据，只在补齐门禁和复验后开放。仅完成兼容审核，未实际回滚。私有报告 `.codex/presentation-delivery/acceptance-report.md`，服务器 `shared/config/acceptance/20261029-presentation-delivery.md`。第四轮CONDITIONAL GO并收口。

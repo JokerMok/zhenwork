@@ -1,8 +1,18 @@
 # 腾讯云网页试点维护
 
-## 2026-10-29 行业能力包
+## 2026-10-29 可编辑PPT与三格式交付
 
-当前应用 `20261029-industry-quality-v2` / `81b58125995e8b833f7a09a06a0ac19a90b3bbb9`；配置定义 `98d76acdbab16c5e4e04da436fd27038d8b3c99a`，四包1.0.5/资源v6。第三轮P1定向修订已收口：产品参数文本/日期、法规五/六项及历史处罚边界、Q03条件和正式统计。当前产品v3/法规v5/核查v8的六份实际文件、预览下载及旧版本SHA通过，只读Core0。仅Host构建，其余产物/镜像及24迁移复用；未变权限/离线证据复用v7，未跑全系统。真实范围及模型partial记录见[行业能力记录](../../docs/industry-capabilities.md)。
+当前 `20261029-presentation-delivery-v4` / `aba95a435c1b4fa3b3e1dc80f4310f823c393e56`，第四轮定向验收收口。实现与限制见[三格式交付](../../docs/presentation-delivery.md)。最终Host-only修复回执协议，精确复用Web/Admin/Java/监控及native镜像、24迁移；初始第四轮只按实际修改构建Web/Host/Java。现有Office venv增加受控LibreOffice/CJK按需渲染，无常驻转换服务或新端口。
+
+真实员工月报/核查/选型三格式同源、原生图表/表格、模板v1/v2、PPT当前v6及恢复历史、可视分页/下载、LibreOffice编辑保存重开、离线/取消/失败重试与两账号/撤权定向通过。旧partial/interrupted保留，文件质量与轮次状态分开；未跑全系统，保留Host3项历史类型诊断，未验WPS/PowerPoint/真实企业品牌和客户。第三轮6文件SHA及8资源/1.0.5/v6/模型知识绑定保持。
+
+一致备份20261029T121857239735Z.tar.gz/772498650B及SHA、16个版本文件/分析/可信快照隔离读取通过，2份/1544981674B，原2GiB预算不变；最终Core/Gateway0、盘余2636427264B。磁盘仅通过复用SHA相同的root只读发布二进制底层字节，不删除发布/业务历史；备份沿原保留策略。实际报告shared/config/acceptance/20261029-presentation-delivery.md及current/VERIFIED.json。
+
+previous为已验证industry-quality-v2，审核shared/config/rollback-reviews/20261029-presentation-v4-to-quality-v2.json。先停用新模板、收敛在途、隔离员工入口；旧Host没有PPT派生来源门禁，补齐并复验后才开放。仅应用/配置回退，保留DB/文件/权限/结果快照，未实际回滚。以下保留各轮历史记录。
+
+## 2026-10-29 行业能力包（第三轮历史）
+
+第三轮应用 `20261029-industry-quality-v2` / `81b58125995e8b833f7a09a06a0ac19a90b3bbb9`；配置定义 `98d76acdbab16c5e4e04da436fd27038d8b3c99a`，四包1.0.5/资源v6。第三轮P1定向修订已收口：产品参数文本/日期、法规五/六项及历史处罚边界、Q03条件和正式统计。当前产品v3/法规v5/核查v8的六份实际文件、预览下载及旧版本SHA通过，只读Core0。仅Host构建，其余产物/镜像及24迁移复用；未变权限/离线证据复用v7，未跑全系统。真实范围及模型partial记录见[行业能力记录](../../docs/industry-capabilities.md)。
 
 配置引用/安装状态保存在root私有`shared/config/industry-capabilities/`；默认仅专用测试员工，真实企业上线须单独授权。previous保留已验证industry-capabilities-v7；先停用4专家/4Skill、收敛在途，再使用`shared/config/rollback-reviews/20261029-quality-v2-to-industry-v7.json`，只退应用/配置，不回退数据。v7不具备本次typed/context链路，不得带新方法继续服务；未实际回滚。最终一致备份20261029T092354888284Z.tar.gz/770764253B及SHA通过，2份/2GiB预算保持；Core/Gateway0、盘余2223984640B。私有报告`shared/config/acceptance/20261029-industry-p1.md`，历史v7报告与业务版本保留。
 

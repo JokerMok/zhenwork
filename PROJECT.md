@@ -1,16 +1,30 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-29。当前范围：首批四套行业能力第三轮P1修订已收口；保留业务口径、全量数据分析、员工聊天、共享、后台持续回复与按需Core。
+核对日期：2026-10-29。当前范围：第四轮可编辑PPT与三格式同源交付已收口；第三轮行业能力、业务口径、员工聊天、共享、后台持续回复与单Core底座保留。
 
 ## 当前发布与访问
 
-本轮四包/绑定/实际验收/限制见[行业能力记录](docs/industry-capabilities.md)。仅专用普通员工授权，CONDITIONAL GO：合成资料验证通过，真实客户与法律适用须独立复核；不全企业发布。
+本轮实现及验收见[可编辑PPT与三格式交付](docs/presentation-delivery.md)，第三轮见[行业能力记录](docs/industry-capabilities.md)。仅专用普通员工合成资料范围，CONDITIONAL GO；真实品牌、客户及其他Office客户端须独立复核，未全企业推广。
 
-- 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261029-industry-quality-v2`；实际应用 SHA：`81b58125995e8b833f7a09a06a0ac19a90b3bbb9`。能力包定义 `98d76acdbab16c5e4e04da436fd27038d8b3c99a`、语义版本1.0.5/后台v6，后续维护HEAD不作为应用SHA。previous保留已验证`20261029-industry-capabilities-v7`/`12e01e1765041c02283dbae6d006a7c9e2c0dee6`，须遵守方法停用前置条件。
+- 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口由Mac直连真实公网IP、正常TLS校验，按既有登录跳转最终HTTP200。
+- 激活 release：`20261029-presentation-delivery-v4`；实际应用 SHA：`aba95a435c1b4fa3b3e1dc80f4310f823c393e56`。四行业包定义`98d76acdbab16c5e4e04da436fd27038d8b3c99a`、1.0.5/后台v6保持；后续维护HEAD不作为运行SHA。previous为已验证`20261029-industry-quality-v2`/`81b58125995e8b833f7a09a06a0ac19a90b3bbb9`，回退必须遵守下述员工入口隔离条件。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
+
+## 2026-10-29 第四轮三格式交付收口
+
+应用 `20261029-presentation-delivery-v4` / `aba95a435c1b4fa3b3e1dc80f4310f823c393e56`。实现及边界见[可编辑PPT与三格式交付](docs/presentation-delivery.md)，完整私有证据 `.codex/presentation-delivery/acceptance-report.md`、服务器 `shared/config/acceptance/20261029-presentation-delivery.md`。
+
+沿原python-pptx、OfficeStore、SourceEvidence和TaskRunner扩展原生图表/表格/指标卡、模板、对象级SHA续改和真实分页视觉预览。月报复用原分析结果；核查/选型从已核验Word/Excel固定SHA导入，原数据哈希和版本保持。没有重新开发行业能力、Agent或编辑器。修复模板打印设置误拦及files/outputs回执协议断点；最终真实员工轮次completed，聊天集中显示三格式。
+
+公网实下载及独立核对：月报8页/3原生图表，2150kg、A1350/B800、有效3条、口径v2；核查10页/正式5项/20%，Q03部分符合且遮蔽待确认；产品12页，IP54/IP65、资料版本及缺失认证保留。当前月报v6，第三页标题定点修改后其他页/图表/来源保持；初版、修订和恢复共6版本保留。内置与合成模板v1通过，管理员更新v2/主题1.1.0后新文件采用当前默认，旧PPT不重写。实际LibreOffice编辑原生文字/表格/图表显示并保存重开通过；未验真实品牌或WPS/Microsoft PowerPoint。
+
+真实关闭浏览器后继续、取消、两账号13项拒绝、口径/知识撤权及恢复、失败仅补PPT通过；原Word/Excel及第三轮六文件SHA、8资源ID/1.0.5/v6/模型/知识/Skill绑定保持。初次续改回执缺项partial、产品上游MODEL_EXECUTION_FAILED/partial及自定义核查interrupted均保留，文件验收与轮次状态分开，不改历史制造成功。
+
+最初相关链68通过/5跳过，最后回执改动21项定向通过，Java模板3项通过；Host保留3项既有类型诊断，修改链无新增，不声称整项类型检查通过。未跑全系统。初始按实际修改构建Web/Host/Java；最后仅Host，复用其余产物、原生镜像和24迁移。单Core预算不变，最终Core/Gateway0，正常TLS及最终HTTP200，盘余2636427264B。一致备份 `20261029T121857239735Z.tar.gz`/772498650B及SHA、16个版本二进制/分析/可信快照隔离核对通过，原2份/2GiB预算保持；没有生产恢复。仅复用SHA相同root只读发布二进制的底层字节，所有发布路径及业务历史保留，未动其他项目。
+
+previous保留已验证industry-quality-v2，审核 `shared/config/rollback-reviews/20261029-presentation-v4-to-quality-v2.json`。须先停用新模板、收敛在途并隔离员工入口；旧Host没有PPT来源门禁，补齐并复验前不得公开。仅退应用/配置，保留DB/文件/授权/快照；未实际回滚。**CONDITIONAL GO，仅约定合成资料与LibreOffice范围；第四轮收口，不扩展其他功能。**
 
 ## 2026-10-29 第三轮P1质量修订收口
 
