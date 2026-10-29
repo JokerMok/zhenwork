@@ -549,7 +549,9 @@ export class DataAnalysis {
       issuesTruncated: a.result.issues.length > 80,
       instruction:
         a.result.status === 'validated'
-          ? 'Generate both files with generate_waste_report using this analysis id; do not recalculate in model prose.'
+          ? a.artifacts.length
+            ? 'Existing verified file receipts are included. Call generate_waste_report with ONLY this analysisId and omit baseName to verify and attach these SAME existing files to this conversation without creating copies. Do not use Exec/ls or recalculate in prose.'
+            : 'Generate both files with generate_waste_report using this analysis id; do not recalculate in model prose.'
           : 'Blocked: correct mapping or source, then recompute. No monthly report is valid yet.',
     };
   }

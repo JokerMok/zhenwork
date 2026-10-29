@@ -285,7 +285,7 @@ const tools = [
   },
   {
     name: 'office_context',
-    description: 'Get the actual output workspace and authorized knowledge/calculator/business MCP tool names before a task. For enterprise business queries use ToolSearch with ONE exact tool name from enterpriseQueries, then its actual business tool. Do not search Skills or scan environment for business connectors.',
+    description: 'Get the actual output workspace and authorized Skill/knowledge/calculator/business MCP tool names before a task. For enterprise business queries use ToolSearch with ONE exact tool name from enterpriseQueries, then its actual business tool. Do not search Skills or scan environment for business connectors.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -579,8 +579,12 @@ export async function startOfficeTools(
           const knowledge = await knowledgeContext(conversation, client);
           const taskContext=record(await taskOfficeContext(profileRoot,actor,conversation));
           const selectedInput=record(taskContext.selectedInput);
+          const rawSkills = await client.resources('SKILL').catch(()=>[]);
+          const skills = (Array.isArray(rawSkills) ? rawSkills : []) as Array<{id:string;name:string;version:number}>;
+          const managed = JSON.parse(await readFile(await enterpriseManagedResourcePath(profileRoot, actor), 'utf8').catch(()=>'{}')) as {skillResources?: Array<{id:string;name:string;version:number}>};
+          const enterpriseSkills = skills.map(item => ({resourceId:item.id,displayName:item.name,version:item.version,runtimeName:managed.skillResources?.find(s=>s.id===item.id)?.name,loadWith:'check_enterprise_skill(query=resourceId, includeInstructions=true)'}));
           const structuredData=core.workspaceRoot&&site?await (await DataAnalysis.create(profileRoot,actor,core.workspaceRoot,client,site.origin)).context(conversation,String(selectedInput.description||'')):undefined;
-          value = { task:taskContext, structuredData, workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, businessRules: core.workspaceRoot && site ? await (await DataAnalysis.create(profileRoot,actor,core.workspaceRoot,client,site.origin)).policies() : [], enterpriseCalculators: await authorizedCalculators(client), enterpriseQueries: await authorizedQueryCatalog(client, conversation), outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
+          value = { task:taskContext, structuredData, enterpriseSkills, workspaceRoot: core.workspaceRoot, uploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui'), taskUploadRoot: path.join(enterpriseProfilePath(profileRoot, actor), 'runtime-temp', 'aionui', conversation), downloadOrigin: site?.origin, businessRules: core.workspaceRoot && site ? await (await DataAnalysis.create(profileRoot,actor,core.workspaceRoot,client,site.origin)).policies() : [], enterpriseCalculators: await authorizedCalculators(client), enterpriseQueries: await authorizedQueryCatalog(client, conversation), outputPathRule: 'Use attachment paths supplied by the user message. Guid uploads may be under this actor uploadRoot/general. Write downloadable results inside workspaceRoot, not the profile/cwd parent.',
             python: '/opt/aionui/skill-python/bin/python', knowledge: knowledge.resources, knowledgeScope: knowledge.scope || 'current authorized bases; assistant may select its declared defaults',
           };
         } else if (tool === 'calculate_enterprise_tool') {
@@ -1047,6 +1051,7 @@ export async function startOfficeTools(
 
 const instructions = `Execution contract (applies before choosing tools):
 - Match the requested scope and file extension exactly. Do not add unrequested PDFs, slides, reports, font renderers or other deliverables. Plain TXT/Markdown/CSV uses write_text_file directly; it does not need Office/PDF conversion or validate_artifact. For Office/PDF use the existing generators and installed dependencies, never reimplement a font/renderer to work around an unrelated optional step.
+- For authorized industry work, select the relevant name from office_context.enterpriseSkills and read its real package; never switch or broaden data scope silently. Existing data-analysis files are attached through generate_waste_report(analysisId) with no baseName, which verifies and reuses their exact receipts; do not shell-list the workspace to find them.
 - Load enterprise Skill instructions with check_enterprise_skill(query, includeInstructions:true); it returns the current authorized full instructions, references and templates. Never invoke the helper CLI through Exec just to read a Skill. Use file for another exact companion text file; executing a script still requires its normal authorization.
 - For a requested enterprise Skill availability check, use check_enterprise_skill once with its name/ID. If unavailable, state that result and continue only with still-authorized capabilities; do not probe helper CLI syntax, scan old profile caches, or reconstruct a revoked package.
 - First call office_context. For company-template reimbursement FIRST load Skill finance-reimbursement-filler, read its SKILL.md, and execute its bundled scripts with ExecCommand. It preserves template formulas/images/sheets. A new evidence table is NEVER a filled reimbursement template. Script failure means incomplete, not permission to replace the template.
