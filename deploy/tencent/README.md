@@ -1,5 +1,11 @@
 # 腾讯云网页试点维护
 
+## 2026-10-29 行业能力包
+
+当前应用 `20261029-industry-capabilities-v7` / `12e01e1765041c02283dbae6d006a7c9e2c0dee6`；配置定义 `3404aaac97e9cf4ee1fbd7d059958c8e6119fe48`，四包1.0.3/资源v4。员工选择专家和默认助手自然语言入口已验；只读浏览Core0。仅Host构建，其余产物/镜像及24迁移复用；真实范围及模型复核限制见[行业能力记录](../../docs/industry-capabilities.md)。
+
+配置引用/安装状态保存在root私有`shared/config/industry-capabilities/`；默认仅专用测试员工，真实企业上线须单独授权。已验证回滚基线business-analysis-v9；先停用4专家/4Skill、收敛在途，再使用`shared/config/rollback-reviews/20261029-industry-v7-to-business-v9.json`，只退应用/配置，不回退数据。最终一致备份和私有证据记录同上。
+
 本部署只提供员工网页、管理后台、RC2、Web Host 和按需启动的 Linux Core/Gateway。源码由 --ref 指定的已提交版本冻结（省略时为本机 HEAD）；更新前先核对 origin 默认分支和本机提交，保留工作树修改；不调用桌面打包、签名、下载页或更新服务。
 
 本轮持久任务说明见 `docs/task-workspace.md`。发布脚本按源码差异复用未变管理网页与监控产物，重建受影响员工网页/Host/Java；manifest记录并验证实际复用摘要。

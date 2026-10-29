@@ -1,11 +1,13 @@
 # ZhenWork 腾讯云网页维护
 
-核对日期：2026-10-28。当前范围：正式业务口径、XLSX/CSV结构化导入、精确月度分析及同源Word/Excel交付；保留员工聊天、共享、后台持续回复与按需Core。
+核对日期：2026-10-29。当前范围：首批四套行业能力包及真实办公验收；保留业务口径、全量数据分析、员工聊天、共享、后台持续回复与按需Core。
 
 ## 当前发布与访问
 
+本轮四包/绑定/实际验收/限制见[行业能力记录](docs/industry-capabilities.md)。仅专用普通员工授权，CONDITIONAL GO：合成资料验证通过，真实客户与法律适用须独立复核；不全企业发布。
+
 - 员工：[ZhenWork](https://zhenwork.shizibandu.icu/)；后台：[管理端](https://zhenwork-admin.shizibandu.icu/admin/)。两入口已由 Mac 直连实际公网 IP、正常 TLS 校验并获得 HTTP200；不是仅内部可用。
-- 激活 release：`20261028-business-analysis-v9`；准确应用 SHA：`033da5d311b8175284018b950a9589307e40076b`；平台 `linux/amd64`。后续纯维护文档提交不重建应用，不把文档 HEAD 当应用 SHA。已验证回滚保留 `20261028-employee-experience-v4` / `151871d1b3e778afc5a6e4c51025f1e0adcef7ac`；未验收中间构建只保留 metadata。
+- 激活 release：`20261029-industry-capabilities-v7`；实际应用 SHA：`12e01e1765041c02283dbae6d006a7c9e2c0dee6`。能力包定义 `3404aaac97e9cf4ee1fbd7d059958c8e6119fe48`、语义版本1.0.3/后台v4，后续维护HEAD不作为应用SHA。已验证回滚基线`20261028-business-analysis-v9`/`033da5d311b8175284018b950a9589307e40076b`，须遵守新包停用前置条件。
 - 基线 `20261020-office-diagnostics` 对应 `1b601eea104668b684f1aba57a46e3fa2940a672`；其后 `3c8b36f1b82aa78d5e08663c01c25957e6030cc8` 只更新 PROJECT.md 和 deploy/tencent/README.md。两者不同不表示部署错误。
 - 上轮外部查询v3构建Admin/Java并复用未变employee/Host；v4仅重建Host，Admin/Java/control/employee按不可变哈希复用v3（源码8bb9b72bf12d0dcf6ae5e5e9906c304b547f8748）。保留精确amd64原生镜像。迁移链21条，仅新增0021验证详情，原20条校验和不变。`current/RELEASE.json`、`SHA256SUMS`、`VERIFIED.json` 保存来源、完整镜像及实际验收范围；私有配置和业务数据在 release 外。
 - Core：`sha256:3623a260d67fd8844790f05cf551ff59c39e3c0b1d40ddf0e0b88b25a1bad6d0`；Gateway：`sha256:81dfa364e6bda9b8383dcb17fda523ccb95a9c583ec3371333a40a83ff937217`。Core binary：`a43e0efe7406762813ccb12c766ff77c720b9c7993df3441efd7485cb7ac5f07`；其余镜像与锁以 manifest 为准。本轮没有上传 Mac 原生二进制或重建 Rust。
@@ -22,7 +24,7 @@
 
 发布前一致备份 `20261028T125203417196Z.tar.gz` / 766566481B，归档SHA及原件/映射/分析/Word/Excel隔离提取哈希通过，原生PG dump目录861项/24迁移；未生产还原，既有DB隔离恢复证据复用。保留2份共1533324185B、原2GiB预算。只归档清理本轮无VERIFIED且非current/previous的失败中间产物，不动业务数据/有效备份/镜像。
 
-previous保留已验证employee-experience-v4；审核 `shared/config/rollback-reviews/20261028-business-v9-to-experience-v4.json`，仅在维护窗口先隔离员工入口、停用新口径并收敛在途，再按审核manage.sh rollback，仅应用/配置，保留数据库、授权、原件、结果及文件版本；旧程序不识别新口径且不具备本轮派生权限门禁，旧版期间员工公网入口须保持隔离，补齐门禁并复验前不能恢复公开服务；不能把回滚当成数据回退。未实际回滚。私有证据 `.codex/waste-analysis/acceptance-report.md` 与服务器 `shared/config/acceptance/20261028-business-analysis.md`、当前VERIFIED。
+previous保留已验证employee-experience-v4；审核 `shared/config/rollback-reviews/20261028-business-v9-to-experience-v4.json`，仅在维护窗口先隔离员工入口、停用新口径并收敛在途，再按审核manage.sh rollback，仅应用/配置，保留数据库、授权、原件、结果及文件版本；旧程序不识别新口径且不具备本轮派生权限门禁，旧版期间员工公网入口须保持隔离，补齐门禁并复验前不能恢复公开服务；不能把回滚当成数据回退。未实际回滚。私有证据 `.codex/waste-analysis/acceptance-report.md` 与服务器 `shared/config/acceptance/20261028-business-analysis.md`、该轮VERIFIED。
 
 结论CONDITIONAL GO：通用功能及合成业务主流程通过；真实客户生产明细、最终企业正式口径与共享目录未提供，需独立验收。不做跨工作簿/任意公式、全历史/后台巡检/压测或生产故障破坏性验证。
 
