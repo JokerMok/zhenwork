@@ -1,6 +1,7 @@
 /** Bounded native Office layout and provenance helpers; no network or file-system inputs. */
 export const OFFICE_PRESENTATION_PYTHON = String.raw`
 import math,zipfile,hashlib
+from datetime import date
 from decimal import Decimal,localcontext
 from lxml import etree as PX
 
@@ -45,6 +46,7 @@ def report_values(report):
         if calc:
             refs=calc['rows'];numbers=[value(i-1) for i in refs]
             if any(v is None for v in numbers):raise ValueError('CALCULATION_MISSING_VALUE')
+            if any(not isinstance(v,Decimal) for v in numbers):raise ValueError('CALCULATION_NON_NUMERIC_VALUE')
             units=[(findings[i-1].get('metric') or {}).get('unit','') for i in refs]
             if len(set(units))!=1:raise ValueError('CALCULATION_UNIT_MISMATCH')
             with localcontext() as ctx:
@@ -54,10 +56,17 @@ def report_values(report):
                 else:
                     if numbers[1]==0:raise ValueError('CALCULATION_ZERO_DIVISOR')
                     result=numbers[0]/numbers[1]
-        else:result=Decimal(str(metric['value'])) if metric.get('value') is not None else None
+        else:
+            raw=metric.get('value')
+            result=(Decimal(str(raw)) if isinstance(raw,(int,float)) and not isinstance(raw,bool) else date.fromisoformat(raw) if raw is not None and metric.get('valueType')=='date' else raw)
         values[index]=result;active.remove(index);return result
     for index in range(len(findings)):value(index)
     return values
+
+def conformity_summary(report):
+    findings=[item for item in report['findings'] if item.get('rowType')!='context']
+    counts={status:sum(item['assessment']==status for item in findings) for status in ['符合','不符合','部分符合','证据不足']}
+    return '正式核查 '+str(len(findings))+' 项：'+'；'.join(status+' '+str(count)+' 项' for status,count in counts.items())+'。背景与版本说明不计入。'
 
 def common_report_notes(report):
     findings=report['findings'];common={}
@@ -112,21 +121,25 @@ def docx(data):
     if report:
         values=report_values(report)
         heading('结论与范围');paragraph(report['conclusion']);paragraph(report['scope'])
+        if report['purpose']=='compliance':paragraph(conformity_summary(report))
         paragraph('资料中的数值和能力为原文声明。原文可追溯不等于效果经过独立验证；没有独立需求时不作客户符合性承诺。')
         metrics=[]
         for index,item in enumerate(report['findings']):
             metric=item.get('metric')
             if metric:metrics.append([metric['object']+' · '+metric['parameter'],readable_number(values[index])+' '+metric['unit'] if values[index] is not None else '未提供', '['+item['source']+']'])
-        if metrics:heading('参数对比');table(['对象与参数','数值与单位','来源'],metrics)
+        if metrics:heading('参数对比');table(['对象与参数','值与单位','来源'],metrics)
         common=common_report_notes(report)
         if common:
             heading('共同说明')
             for key,label in [('analysis','分析'),('missing','待补资料')]:
                 if key in common:paragraph(label+'：'+common[key])
         heading('资料核查');seen=set()
-        for index,item in enumerate(report['findings'],1):
+        ordered=[item for item in report['findings'] if item.get('rowType')!='context']
+        context=[item for item in report['findings'] if item.get('rowType')=='context']
+        for index,item in enumerate(ordered+context,1):
+            if index==len(ordered)+1 and context:heading('背景与版本说明')
             heading(str(index)+' '+item['topic']+' ['+item['source']+']',2)
-            if report['purpose']=='compliance':paragraph('核查结论：'+item['assessment'])
+            if report['purpose']=='compliance' and item.get('rowType')!='context':paragraph('核查结论：'+item['assessment'])
             for sid in [item['source'],item.get('requirement')]:
                 if sid and sid not in seen:
                     for quote in sources[sid]['quotes']:paragraph('资料原文 ['+sid+']：'+quote)
@@ -153,9 +166,10 @@ def xlsx(data):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment,Font,PatternFill
     from openpyxl.utils import get_column_letter
-    wb=Workbook();wb.remove(wb.active);wb.properties.title=data.get('title') or ''
+    wb=Workbook();wb.remove(wb.active);wb.properties.title=data.get('title') or '';numeric_literals={}
     def scalar(cell,value):
-        cell.value=value
+        if isinstance(value,Decimal):numeric_literals[(cell.parent.title,cell.coordinate)]=format(value,'f');cell.value=float(value)
+        else:cell.value=value
         if isinstance(value,str):cell.data_type='s'
     def sheet(name,headers,rows,widths,intro=None):
         ws=wb.create_sheet(name[:31]);row=1;columns=max(1,len(headers),max((len(r) for r in rows),default=0))
@@ -171,9 +185,10 @@ def xlsx(data):
         for values in rows:
             max_lines=1
             for col,value in enumerate(values,1):
-                c=ws.cell(row,col);scalar(c,float(value) if isinstance(value,Decimal) else value)
+                c=ws.cell(row,col);scalar(c,value)
                 max_lines=max(max_lines,sum(max(1,math.ceil(len(s)*1.6/max(8,widths[min(col-1,len(widths)-1)]))) for s in text(value).splitlines()) if value is not None else 1)
                 if isinstance(value,(int,float,Decimal)):c.number_format='0.########'
+                if isinstance(value,date):c.number_format='yyyy-mm-dd'
             ws.row_dimensions[row].height=min(300,max(25,max_lines*15+5));row+=1
         for line in ws:
             for c in line:
@@ -196,7 +211,7 @@ def xlsx(data):
             m=item.get('metric') or {};analysis=item['analysis'];missing=item['missing']
             if m or not has_metrics:
                 main_indices.append(index)
-                rows.append([index+1,m.get('object',''),m.get('parameter') or item['topic'],resolved[index] if m else item['assessment'],m.get('unit',''),item['source']])
+                rows.append([index+1,m.get('object',''),m.get('parameter') or item['topic'],(resolved[index] if resolved[index] is not None else '未提供') if m else item['assessment'],m.get('unit',''),item['source']])
             elif not analysis and not missing:notes.append([index+1,item['topic'],'核查状态',item['assessment']])
             for kind,key,value in [('分析','analysis',analysis),('待补资料','missing',missing)]:
                 if key in common:continue
@@ -205,9 +220,12 @@ def xlsx(data):
         if report['purpose']=='compliance':
             review=[]
             for index,item in enumerate(report['findings'],1):
+                if item.get('rowType')=='context':continue
                 review.append([index,item['topic'],item['assessment'],item.get('requirement') or '未提供独立需求',item['source'],item['analysis'],item['missing']])
-            sheet('核查清单',['序号','核查要求','结论','需求来源','证据来源','差异及说明','待补资料'],review,[8,42,18,14,14,64,52],[data.get('title') or '',report['scope']])
-        main,start=sheet('参数对比',['序号','对象','参数或主题','数值或状态','单位','来源'],rows,[7,24,34,23,16,10],[data.get('title') or '',report['scope']])
+            sheet('核查清单',['序号','核查要求','结论','需求来源','证据来源','差异及说明','待补资料'],review,[8,42,18,14,14,64,52],[data.get('title') or '',report['scope'],conformity_summary(report)])
+            context=[[item['topic'],item['source'],item['analysis'],item['missing']] for item in report['findings'] if item.get('rowType')=='context']
+            if context:sheet('背景与版本说明',['主题','来源','说明','待补资料'],context,[36,12,72,48])
+        main,start=sheet('参数对比',['序号','对象','参数或主题','值或状态','单位','来源'],rows,[7,24,34,23,16,10],[data.get('title') or '',report['scope']])
         for index,calc in formula_requests:
             refs=['D'+str(start+main_indices.index(i-1)) for i in calc['rows']]
             formula='SUM('+','.join(refs)+')' if calc['operation']=='sum' else refs[0]+('-' if calc['operation']=='difference' else '/')+refs[1]
@@ -236,6 +254,22 @@ def xlsx(data):
             if sources[q[0]].get('url'):qs.cell(row,4).hyperlink=sources[q[0]]['url'];qs.cell(row,4).style='Hyperlink'
     if not wb.worksheets:sheet('内容',[],[],[20])
     output=io.BytesIO();wb.save(output);content=output.getvalue()
+    if numeric_literals:
+        # Preserve the verified decimal spelling rather than a binary-float serialization artefact.
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:parts={name:archive.read(name) for name in archive.namelist()}
+        ns={'x':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+        for index,ws in enumerate(wb.worksheets,1):
+            name='xl/worksheets/sheet'+str(index)+'.xml';root=PX.fromstring(parts[name])
+            for cell in root.findall('.//x:c',ns):
+                literal=numeric_literals.get((ws.title,cell.get('r')))
+                if literal is not None and cell.find('x:f',ns) is None:
+                    node=cell.find('x:v',ns)
+                    if node is not None:node.text=literal
+            parts[name]=PX.tostring(root,encoding='utf-8')
+        out=io.BytesIO()
+        with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as archive:
+            for name,value in parts.items():archive.writestr(name,value)
+        content=out.getvalue()
     if formula_requests:content=recalculate_office_formulas(content)
     return put_provenance(content,data.get('provenance'))
 

@@ -63,7 +63,7 @@ beforeAll(async () => {
   xlsx = await generateOfficeArtifact(built.files[1].content);
 });
 async function inspectZip(bytes: Buffer, format: string) {
-  const script = `import io,json,sys,zipfile,xml.etree.ElementTree as E,base64\nb=base64.b64decode(sys.argv[1]);z=zipfile.ZipFile(io.BytesIO(b));fmt=sys.argv[2]\nparts=['word/document.xml'] if fmt=='docx' else [n for n in z.namelist() if n.startswith('xl/worksheets/') and n.endswith('.xml')]\ntext=''.join(''.join(t.text or '' for t in E.fromstring(z.read(n)).iter() if t.tag.endswith('}t')) for n in parts)\nrels=[E.fromstring(z.read(n)) for n in z.namelist() if n.endswith('.rels')]\nlinks=[r.get('Target') for root in rels for r in root if r.get('Type','').endswith('/hyperlink')]\nout={'text':text,'links':links,'provenance':z.read('customXml/zhenwork-provenance.xml').decode(),'crc':z.testzip()}\nif fmt=='xlsx':\n import openpyxl\n w=openpyxl.load_workbook(io.BytesIO(b),data_only=False);v=openpyxl.load_workbook(io.BytesIO(b),data_only=True);s=w['参数对比'];out['cells']=[{'cell':c.coordinate,'type':c.data_type,'value':c.value,'cache':v['参数对比'][c.coordinate].value} for row in s for c in row if c.column==4];out['frozen']=s.freeze_panes;out['printArea']=str(s.print_area)\nprint(json.dumps(out,ensure_ascii=False))`;
+  const script = `import io,json,sys,zipfile,xml.etree.ElementTree as E,base64\nb=base64.b64decode(sys.argv[1]);z=zipfile.ZipFile(io.BytesIO(b));fmt=sys.argv[2]\nparts=['word/document.xml'] if fmt=='docx' else [n for n in z.namelist() if n.startswith('xl/worksheets/') and n.endswith('.xml')]\ntext=''.join(''.join(t.text or '' for t in E.fromstring(z.read(n)).iter() if t.tag.endswith('}t')) for n in parts)\nrels=[E.fromstring(z.read(n)) for n in z.namelist() if n.endswith('.rels')]\nlinks=[r.get('Target') for root in rels for r in root if r.get('Type','').endswith('/hyperlink')]\nout={'text':text,'links':links,'provenance':z.read('customXml/zhenwork-provenance.xml').decode(),'crc':z.testzip()}\nif fmt=='xlsx':\n import openpyxl\n w=openpyxl.load_workbook(io.BytesIO(b),data_only=False);v=openpyxl.load_workbook(io.BytesIO(b),data_only=True);s=w['参数对比'];out['cells']=[{'cell':c.coordinate,'type':c.data_type,'value':c.value,'cache':v['参数对比'][c.coordinate].value} for row in s for c in row if c.column==4];out['frozen']=s.freeze_panes;out['printArea']=str(s.print_area)\nprint(json.dumps(out,ensure_ascii=False,default=str))`;
   return JSON.parse((await run(python!, ["-c", script, bytes.toString("base64"), format])).stdout);
 }
 
@@ -172,7 +172,7 @@ integration(
 
 integration('keeps narrative findings in notes and remaps native formula references after compacting numeric rows', async () => {
   const mixed = structuredClone(args);
-  mixed.rows.unshift({ topic: '资料性质说明', source: { ref: 'trusted-ref', quoteIndex: 0 }, assessment: '证据不足', analysis: '合成资料说明不属于数值参数', missing: '' });
+  mixed.rows.unshift({ rowType: 'context', topic: '资料性质说明', source: { ref: 'trusted-ref', quoteIndex: 0 }, assessment: '证据不足', analysis: '合成资料说明不属于数值参数', missing: '' });
   mixed.rows.at(-1)!.metric!.calculation!.rows = [2, 3];
   const built = buildEvidenceDeliverables(mixed, [source, source, source, source]);
   const bytes = await generateOfficeArtifact(built.files[1].content);
@@ -196,3 +196,75 @@ test("text lines and web excerpt offsets retain real readable source positions",
   ]);
   expect(actual.entries.map(s => s.location)).toEqual(['第 1–9 行', '网页正文字符 190000–194000']);
 });
+
+integration(
+  "typed parameter values survive real Word/Excel rendering and context is excluded from checklist",
+  async () => {
+    const metrics = [
+      ["IP code", "IP65", "enum"],
+      ["Version", "v2.0", "text"],
+      ["Release", "2026-10-29", "date"],
+      ["Identifier", "0012", "text"],
+      ["Formula-like identifier", "=1+1", "text"],
+      ["Power", 8.2, "number"],
+      ["Certificate", null, "text"],
+    ] as const;
+    const parsed = parseEvidenceDelivery({
+      basePath: "typed",
+      title: "Typed evidence",
+      scope: "Synthetic regression",
+      rows: metrics.map(([parameter, value, valueType]) => ({
+        topic: parameter,
+        rowType: parameter === "Version" ? "context" : "requirement",
+        source: { ref: source.ref, quoteIndex: 0 },
+        metric: { object: "candidate", parameter, value, valueType, unit: "" },
+        missing: value === null ? "No certificate supplied." : "",
+      })),
+    });
+    const built = buildEvidenceDeliverables(
+      parsed,
+      metrics.map(() => source),
+    );
+    const wordBytes = await generateOfficeArtifact(built.files[0].content);
+    const excelBytes = await generateOfficeArtifact(built.files[1].content);
+    const w = await inspectZip(wordBytes, "docx");
+    const x = await inspectZip(excelBytes, "xlsx");
+    const pairScript = `import sys,base64,tempfile,pathlib,zipfile,io,json
+sys.path.insert(0,'../capabilities/industry/common')
+from validate_result import validate,package
+with tempfile.TemporaryDirectory() as root:
+ p=pathlib.Path(root);a=p/'a.docx';b=p/'b.xlsx';a.write_bytes(base64.b64decode(sys.argv[1]));b.write_bytes(base64.b64decode(sys.argv[2]))
+ try:assert validate(a,b,{'formalCount':6})['status']=='PASS'
+ except ValueError:
+  sys.stderr.write(json.dumps({'word':package(a)['metrics'],'excel':package(b)['metrics']},ensure_ascii=False));raise
+ with zipfile.ZipFile(b) as z:parts={n:z.read(n) for n in z.namelist()}
+ for n in parts:
+  if n.startswith('xl/worksheets/'):parts[n]=parts[n].replace(b'IP65',b'IP54')
+ out=io.BytesIO()
+ with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+  for n,v in parts.items():z.writestr(n,v)
+ b.write_bytes(out.getvalue())
+ try:validate(a,b)
+ except ValueError as e:assert str(e)=='PAIR_PARAMETER_VALUE_MISMATCH';print('PASS')
+ else:raise AssertionError('mismatch was accepted')`;
+    expect((await run(python!, ['-c', pairScript, wordBytes.toString('base64'), excelBytes.toString('base64')]).catch((error: {stderr: string}) => { throw new Error(error.stderr); })).stdout.trim()).toBe('PASS');
+    expect(w.text).toContain("IP65");
+    expect(w.text).toContain("v2.0");
+    expect(w.text).toContain("2026-10-29");
+    expect(w.text).toContain("正式核查 6 项");
+    expect(x.cells.find((c: { value: unknown }) => c.value === "IP65").type).toBe("s");
+    expect(x.cells.find((c: { value: unknown }) => c.value === "0012").type).toBe("s");
+    expect(x.cells.find((c: { value: unknown }) => c.value === "=1+1").type).toBe("s");
+    expect(x.cells.find((c: { value: unknown }) => c.value === 8.2).type).toBe("n");
+    expect(x.cells.find((c: { type: string }) => c.type === "d").value).toContain("2026-10-29");
+    expect(x.cells.some((c: { value: unknown }) => c.value === "未提供")).toBe(true);
+    const invalid = structuredClone(built.files[1].content);
+    invalid.report!.findings[0].metric = {
+      object: "candidate",
+      parameter: "invalid sum",
+      unit: "",
+      calculation: { operation: "sum", rows: [2] },
+    };
+    await expect(generateOfficeArtifact(invalid)).rejects.toThrow("CALCULATION_NON_NUMERIC_VALUE");
+  },
+);

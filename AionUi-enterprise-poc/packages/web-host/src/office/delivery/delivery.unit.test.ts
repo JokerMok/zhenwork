@@ -99,3 +99,72 @@ test.skipIf(!process.env.ZHENWORK_OFFICE_PYTHON)('actual generated workbook reta
   const inspected=await inspectOfficeStructure('review.xlsx',bytes);
   expect(JSON.stringify(inspected)).toContain('核查清单');
 });
+
+test("preserves typed text, enum and dates, rejecting silent coercion and unexplained missing values", () => {
+  const metric = (value: unknown, valueType?: string) => ({
+    object: "candidate",
+    parameter: "rating",
+    unit: "",
+    value,
+    ...(valueType ? { valueType } : {}),
+  });
+  for (const [value, type] of [
+    ["IP54", "enum"],
+    ["v2.0", "text"],
+    ["2026-10-29", "date"],
+    [0, "number"],
+    ["0012", "text"],
+  ]) {
+    const parsed = parseEvidenceDelivery({
+      ...input,
+      rows: [{ ...input.rows[0], metric: metric(value, String(type)) }],
+    });
+    expect(parsed.rows[0].metric?.value).toBe(value);
+    expect(() =>
+      validateToolArguments(evidenceDeliveryTool.inputSchema, {
+        ...input,
+        rows: [{ ...input.rows[0], metric: metric(value, String(type)) }],
+      }),
+    ).not.toThrow();
+  }
+  for (const [value, type] of [
+    ["IP54", "number"],
+    ["2026-02-30", "date"],
+    ["2026-2-1", "date"],
+    ["", "text"],
+    [12, "text"],
+  ])
+    expect(() =>
+      parseEvidenceDelivery({
+        ...input,
+        rows: [{ ...input.rows[0], metric: metric(value, String(type)) }],
+      }),
+    ).toThrow();
+  expect(() =>
+    parseEvidenceDelivery({ ...input, rows: [{ ...input.rows[0], metric: metric(null) }] }),
+  ).toThrow("MISSING_REASON_REQUIRED");
+  expect(() =>
+    parseEvidenceDelivery({
+      ...input,
+      rows: [{ ...input.rows[0], metric: metric(null), missing: "No certificate was supplied." }],
+    }),
+  ).not.toThrow();
+});
+
+test("background/version rows never become formal conformity findings", () => {
+  const parsed = parseEvidenceDelivery({
+    ...input,
+    rows: [{ ...input.rows[0], rowType: "context", assessment: "符合" }],
+  });
+  const result = buildEvidenceDeliverables(parsed, [
+    {
+      ref: "source",
+      kind: "workspace",
+      quote: "Old version differs.",
+      locator: { path: "v1.txt" },
+    },
+  ]);
+  const report = result.files[0].content.report!;
+  expect(report.findings[0]).toMatchObject({ rowType: "context", assessment: "背景说明" });
+  expect(report.conclusion).toContain("正式核查 0 项");
+});

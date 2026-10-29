@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { WORKBOOK_SUPPORT_PYTHON } from './workbook/script.js';
 import { OFFICE_PRESENTATION_PYTHON } from './delivery/presentationScript.js';
-import { safeOfficeSourceUrl, type OfficeSource, type OfficeReport, type OfficeSection, type OfficeProvenance } from './delivery/presentation.js';
+import { safeOfficeSourceUrl, metricValueError, type OfficeMetric, type OfficeSource, type OfficeReport, type OfficeSection, type OfficeProvenance } from './delivery/presentation.js';
 
 export type OfficeCell = string | number | null;
 export type OfficeTable = { headers: string[]; rows: OfficeCell[][] };
@@ -114,7 +114,7 @@ try:
     if not result or len(result)>MAX_OUTPUT: raise ValueError('OUTPUT_LIMIT_10MB')
     sys.stdout.buffer.write(result)
 except Exception as error:
-    allowed={'CALCULATION_CYCLE','CALCULATION_MISSING_VALUE','CALCULATION_UNIT_MISMATCH','CALCULATION_ZERO_DIVISOR'}
+    allowed={'CALCULATION_CYCLE','CALCULATION_MISSING_VALUE','CALCULATION_UNIT_MISMATCH','CALCULATION_ZERO_DIVISOR','CALCULATION_NON_NUMERIC_VALUE'}
     category=str(error) if isinstance(error,ValueError) and str(error) in allowed else error.code if isinstance(error,WorkbookError) else type(error).__name__
     sys.stderr.write('OFFICE_GENERATION_FAILED:'+category)
     sys.exit(2)
@@ -200,10 +200,13 @@ function validate(input: unknown): asserts input is GenerateOfficeArtifactInput 
     for (const finding of input.report.findings) {
       if (!record(finding) || !sourceIds.has(String(finding.source)) || (finding.requirement && !sourceIds.has(String(finding.requirement)))) fail('OFFICE_REPORT_SOURCE_INVALID');
       for (const key of ['topic', 'assessment', 'analysis', 'missing']) string(finding[key], 'OFFICE_REPORT_INVALID', 2000);
+      if (finding.rowType !== undefined && !['requirement', 'context'].includes(String(finding.rowType))) fail('OFFICE_REPORT_ROW_TYPE_INVALID');
       if (finding.metric !== undefined) {
         const metric = finding.metric;if (!record(metric)) fail('OFFICE_REPORT_METRIC_INVALID');
         for (const key of ['object', 'parameter', 'unit']) string(metric[key], 'OFFICE_REPORT_METRIC_INVALID', 300);
-        if (metric.value != null && (typeof metric.value !== 'number' || !Number.isFinite(metric.value))) fail('OFFICE_REPORT_METRIC_INVALID');
+        if (metricValueError(metric as OfficeMetric)) fail('OFFICE_REPORT_METRIC_INVALID');
+        if (typeof metric.value === 'string') string(metric.value, 'OFFICE_REPORT_METRIC_INVALID', 2000);
+        if (metric.value == null && !metric.calculation && !String(finding.missing).trim()) fail('OFFICE_REPORT_METRIC_MISSING_REASON_REQUIRED');
         if (metric.calculation !== undefined) {
           const calc = metric.calculation;if (!record(calc) || !['sum', 'difference', 'ratio'].includes(String(calc.operation)) || !Array.isArray(calc.rows) || calc.rows.length < 1 || calc.rows.length > 32 || !calc.rows.every(index => Number.isInteger(index) && index > 0 && index <= findingCount) || (calc.operation !== 'sum' && calc.rows.length !== 2)) fail('OFFICE_REPORT_CALCULATION_INVALID');
         }

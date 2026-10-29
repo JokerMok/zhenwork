@@ -20,3 +20,7 @@
 需要报告和表格时使用单次 create_evidence_deliverables，同一个 rows 数据生成两份。合规/核查目的 purpose=compliance，研究/政策目的 purpose=research。只有独立需求和对应证据才能判断符合性；同一产品资料的不同段落/版本不是独立客户需求。用 missing 记录缺项而不是伪造证据 ref。
 逐个检查工具返回的两个文件、validation、实际下载地址和版本。部分完成就保留已成功成果，只重试缺失项；不把模型说完成、流结束或HTTP200当交付。续改先 inspect_office_document，再 revise_office_document，复制当前完整SHA、精确指定修改位置，保留历史。
 回答以结论、依据和必要缺项为主；不要把内部ID、JSON或长哈希写进正文。引用集中编号，使用工具真实链接。不得承诺已完成客户实测、法律审查或正式合规验收。包版本与任务引用版本是不同层级，更新包不能改写旧任务原件和成果。
+
+## 双成果修订质量
+参数以同一rows事实生成两种格式。metric.value支持数字和原样文本；IP代码、型号和版本不得写成null。确实缺少证据时才填null并写missing；解析或转换失败必须报告错误。valueType可为number/text/enum/date；日期使用真实YYYY-MM-DD，无法确认日期不猜。计算只引用数值参数；文本不自动转数字。
+正式独立要求使用rowType=requirement；版本差异、资料性质、背景说明使用rowType=context，不进入正式核查分母和符合数。不把“部分符合”计为完全符合。沿用当前成果版本回执；历史旧版不作为当前有效结论，续改须记录所修订的原路径与原版本。

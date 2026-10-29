@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { GenerateOfficeArtifactInput } from "../generate.js";
 import type { VerifiedSourceEvidence } from "../source-evidence.js";
-import { buildOfficeSources, type OfficeReport, type OfficeMetric } from "./presentation.js";
+import {
+  buildOfficeSources,
+  metricValueError,
+  type OfficeReport,
+  type OfficeMetric,
+} from "./presentation.js";
 
 const reference = z
   .object({
@@ -18,6 +23,7 @@ const reference = z
 const row = z
   .object({
     topic: z.string().min(1).max(300),
+    rowType: z.enum(["requirement", "context"]).default("requirement"),
     source: reference,
     requirement: reference.optional(),
     assessment: z.enum(["符合", "不符合", "部分符合", "证据不足"]).default("证据不足"),
@@ -28,7 +34,11 @@ const row = z
         object: z.string().min(1).max(200),
         parameter: z.string().min(1).max(200),
         unit: z.string().max(100),
-        value: z.number().finite().nullable().optional(),
+        value: z
+          .union([z.number().finite(), z.string().trim().min(1).max(2000)])
+          .nullable()
+          .optional(),
+        valueType: z.enum(["number", "text", "enum", "date"]).optional(),
         calculation: z
           .object({
             operation: z.enum(["sum", "difference", "ratio"]),
@@ -79,6 +89,19 @@ export function parseEvidenceDelivery(value: unknown): EvidenceDeliveryInput {
       throw new Error("OFFICE_DELIVERY_PATH_FORMAT_MISMATCH");
   }
   result.data.rows.forEach((item) => {
+    if (item.metric) {
+      const error = metricValueError(item.metric as OfficeMetric);
+      if (error)
+        throw new Error(
+          "OFFICE_DELIVERY_METRIC_INVALID: " +
+            error +
+            "; preserve text values; dates require YYYY-MM-DD; calculations require numbers.",
+        );
+      if (item.metric.value == null && !item.metric.calculation && !item.missing.trim())
+        throw new Error(
+          "OFFICE_DELIVERY_METRIC_MISSING_REASON_REQUIRED: use missing to explain an unknown value; conversion failures are errors, not missing evidence.",
+        );
+    }
     if (
       item.metric?.calculation &&
       (item.metric.value != null ||
@@ -94,13 +117,19 @@ export function deliveryReferences(value: EvidenceDeliveryInput) {
     item.requirement ? [item.source, item.requirement] : [item.source],
   );
 }
-function independentRequirements(source: VerifiedSourceEvidence, requirement?: VerifiedSourceEvidence): boolean {
+function independentRequirements(
+  source: VerifiedSourceEvidence,
+  requirement?: VerifiedSourceEvidence,
+): boolean {
   if (!requirement || source.ref === requirement.ref) return false;
-  const left = source.locator as Record<string, unknown>, right = requirement.locator as Record<string, unknown>;
+  const left = source.locator as Record<string, unknown>,
+    right = requirement.locator as Record<string, unknown>;
   if (!left || !right) return false;
-  if (typeof left.sha256 === 'string' && left.sha256 && left.sha256 === right.sha256) return false;
-  const identity = source.kind === 'knowledge' ? 'documentId' : source.kind === 'web' ? 'url' : 'path';
-  if (source.kind === requirement.kind && left[identity] && left[identity] === right[identity]) return false;
+  if (typeof left.sha256 === "string" && left.sha256 && left.sha256 === right.sha256) return false;
+  const identity =
+    source.kind === "knowledge" ? "documentId" : source.kind === "web" ? "url" : "path";
+  if (source.kind === requirement.kind && left[identity] && left[identity] === right[identity])
+    return false;
   // A different ref alone may be a re-read of the same document; require an actual distinct source identity.
   return Boolean(left[identity] && (right.documentId || right.url || right.path));
 }
@@ -121,14 +150,24 @@ export function buildEvidenceDeliverables(
     const independent = independentRequirements(sourceEvidence, requirementEvidence);
     return {
       topic: item.topic,
+      rowType: item.rowType,
       source,
       requirement,
       assessment:
-        value.purpose === "research" ? "原文声明" : independent ? item.assessment : "证据不足",
+        item.rowType === "context"
+          ? "背景说明"
+          : value.purpose === "research"
+            ? "原文声明"
+            : independent
+              ? item.assessment
+              : "证据不足",
       analysis: item.analysis,
-      missing: value.purpose !== "research" && item.requirement && !independent
-        ? [item.missing, "需求与佐证来自同一资料或缺少独立来源身份，不能据此确认符合性。"].filter(Boolean).join(" ")
-        : item.missing,
+      missing:
+        value.purpose !== "research" && item.requirement && !independent
+          ? [item.missing, "需求与佐证来自同一资料或缺少独立来源身份，不能据此确认符合性。"]
+              .filter(Boolean)
+              .join(" ")
+          : item.missing,
       metric: item.metric as OfficeMetric | undefined,
     };
   });
@@ -137,7 +176,7 @@ export function buildEvidenceDeliverables(
     scope: value.scope,
     conclusion:
       value.conclusion ||
-      `已整理 ${findings.length} 项资料记录。${value.purpose === "research" ? "以下对比以引用原文及其适用条件为限。" : `其中 ${findings.filter((item) => item.assessment === "证据不足").length} 项证据不足，需补充依据后判断。`}`,
+      `已整理 ${findings.length} 项资料记录。${value.purpose === "research" ? "以下对比以引用原文及其适用条件为限。" : `正式核查 ${findings.filter((item) => item.rowType !== "context").length} 项，其中 ${findings.filter((item) => item.rowType !== "context" && item.assessment === "证据不足").length} 项证据不足，需补充依据后判断；背景与版本说明不计入。`}`,
     findings,
   };
   const dataSha256 = createHash("sha256")
@@ -180,7 +219,7 @@ const referenceSchema = {
 export const evidenceDeliveryTool = {
   name: "create_evidence_deliverables",
   description:
-    'Create BOTH a real Word report and Excel comparison from ONE shared evidence dataset. Preferred for research/compliance multi-deliverable tasks. Each row accepts ONLY topic, source, requirement, assessment, analysis, missing, metric. References MUST be nested source:{ref,quoteIndex} and optional requirement:{ref,quoteIndex}; flat ref/quoteIndex/claim/status are a different tool contract and are rejected. Each row needs a valid source reference. The server inserts actual quotes and a deduplicated readable reference catalog with native hyperlinks. Word uses conclusion and prose; Excel uses typed metric values and separate notes. Internal provenance is hidden, never put locator JSON/hash/URL in analysis. Provide metric {object,parameter,value:number,unit} for numeric facts; leave value null for unknowns. Optional metric.calculation {operation:sum|difference|ratio,rows:[1-based row numbers]} computes Decimal results and native formulas, never model arithmetic. Optional docxPath/xlsxPath are exact requested filenames. Use revise_office_document for narrow continuation, not full regeneration. analysis is explicitly labelled inference; never put unsourced facts in it. Requirement references are optional; without independent requirements the status is forced to insufficient evidence. Read files with read_document (not native Read) or read_web/search_knowledge first, then copy returned sourceRef and quoteIndex. File paths are not sourceRefs. This creates a NEW evidence report/table, never fills or edits a company template. Returns per-file validation and downloads; partial means an output failed, never claim completion. Use basePath WITHOUT extension. All rows require source; put data gaps in missing, not an empty ref. Set purpose:"research" for factual research (source-location status, not customer conformity); default compliance enforces independent requirements. Max 32 total references: 32 source-only rows or 16 source/requirement pairs. Minimal shape: {basePath:"report",title:"title",scope:"scope",purpose:"research",rows:[{topic:"finding",source:{ref:"returned sourceRef",quoteIndex:0},analysis:"inference",missing:"gaps"}]}. Check units/conditions/date/version before choosing assessment.',
+    'Create BOTH a real Word report and Excel comparison from ONE shared evidence dataset. Preferred for research/compliance multi-deliverable tasks. Each row accepts ONLY topic, rowType, source, requirement, assessment, analysis, missing, metric. Use rowType:"context" for background/version differences; exclude them from formal conformity statistics. References MUST be nested source:{ref,quoteIndex} and optional requirement:{ref,quoteIndex}; flat ref/quoteIndex/claim/status are a different tool contract and are rejected. Each row needs a valid source reference. The server inserts actual quotes and a deduplicated readable reference catalog with native hyperlinks. Word uses conclusion and prose; Excel uses typed metric values and separate notes. Internal provenance is hidden, never put locator JSON/hash/URL in analysis. Provide metric {object,parameter,value:number|string,unit,valueType?:number|text|enum|date} for numeric AND textual facts. Preserve IP ratings, versions and identifiers as actual text. date requires valid YYYY-MM-DD. Unknown is null and requires a concrete missing reason. Never treat a parsing/conversion failure as verified missing data. Optional metric.calculation {operation:sum|difference|ratio,rows:[1-based row numbers]} computes Decimal results and native formulas, never model arithmetic. Optional docxPath/xlsxPath are exact requested filenames. Use revise_office_document for narrow continuation, not full regeneration. analysis is explicitly labelled inference; never put unsourced facts in it. Requirement references are optional; without independent requirements the status is forced to insufficient evidence. Read files with read_document (not native Read) or read_web/search_knowledge first, then copy returned sourceRef and quoteIndex. File paths are not sourceRefs. This creates a NEW evidence report/table, never fills or edits a company template. Returns per-file validation and downloads; partial means an output failed, never claim completion. Use basePath WITHOUT extension. All rows require source; put data gaps in missing, not an empty ref. Set purpose:"research" for factual research (source-location status, not customer conformity); default compliance enforces independent requirements. Max 32 total references: 32 source-only rows or 16 source/requirement pairs. Minimal shape: {basePath:"report",title:"title",scope:"scope",purpose:"research",rows:[{topic:"finding",source:{ref:"returned sourceRef",quoteIndex:0},analysis:"inference",missing:"gaps"}]}. Check units/conditions/date/version before choosing assessment.',
   inputSchema: {
     type: "object",
     additionalProperties: false,
@@ -211,6 +250,12 @@ export const evidenceDeliveryTool = {
           additionalProperties: false,
           properties: {
             topic: { type: "string" },
+            rowType: {
+              type: "string",
+              enum: ["requirement", "context"],
+              description:
+                "requirement (default) is a formal checklist item. Use context for version differences/background; these are excluded from conformity counts.",
+            },
             source: referenceSchema,
             requirement: referenceSchema,
             assessment: { type: "string", enum: ["符合", "不符合", "部分符合", "证据不足"] },
@@ -223,7 +268,17 @@ export const evidenceDeliveryTool = {
                 object: { type: "string" },
                 parameter: { type: "string" },
                 unit: { type: "string" },
-                value: { type: ["number", "null"] },
+                value: {
+                  type: ["number", "string", "null"],
+                  description:
+                    "Actual sourced number or text (e.g. IP54, v2). Unknown is null and requires missing. Never discard text because it is not numeric.",
+                },
+                valueType: {
+                  type: "string",
+                  enum: ["number", "text", "enum", "date"],
+                  description:
+                    "Optional explicit scalar type. date requires a valid YYYY-MM-DD. Do not coerce numeric-looking identifiers or text into numbers.",
+                },
                 calculation: {
                   type: "object",
                   additionalProperties: false,

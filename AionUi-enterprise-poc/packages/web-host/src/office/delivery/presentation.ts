@@ -14,10 +14,12 @@ export type OfficeMetric = {
   object: string;
   parameter: string;
   unit: string;
-  value?: number | null;
+  value?: number | string | null;
+  valueType?: "number" | "text" | "enum" | "date";
   calculation?: { operation: "sum" | "difference" | "ratio"; rows: number[] };
 };
 export type OfficeFinding = {
+  rowType?: "requirement" | "context";
   topic: string;
   source: string;
   requirement?: string;
@@ -26,6 +28,28 @@ export type OfficeFinding = {
   missing: string;
   metric?: OfficeMetric;
 };
+
+/** Validate scalar types without coercing missing or invalid evidence into empty cells. */
+export function metricValueError(metric: OfficeMetric): string | undefined {
+  const { value, valueType, calculation } = metric;
+  if (valueType && !["number", "text", "enum", "date"].includes(valueType)) return "VALUE_TYPE";
+  if (calculation) {
+    if (value != null || (valueType && valueType !== "number")) return "CALCULATION_TYPE";
+    return;
+  }
+  if (value == null) return;
+  if (typeof value === "number")
+    return !Number.isFinite(value) || (valueType && valueType !== "number") ? "NUMBER" : undefined;
+  if (typeof value !== "string" || !value.trim() || value.length > 2000 || valueType === "number")
+    return "TEXT";
+  if (
+    valueType === "date" &&
+    (!/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+      !Number.isFinite(Date.parse(value)) ||
+      new Date(value).toISOString().slice(0, 10) !== value)
+  )
+    return "DATE";
+}
 export type OfficeReport = {
   purpose: "research" | "compliance";
   scope: string;
@@ -86,9 +110,17 @@ function locationText(value: unknown): string {
     ]
       .filter(Boolean)
       .join(" · ");
-  if (location.kind === "text_chunk" && Number.isInteger(location.lineStart) && Number.isInteger(location.lineEnd))
+  if (
+    location.kind === "text_chunk" &&
+    Number.isInteger(location.lineStart) &&
+    Number.isInteger(location.lineEnd)
+  )
     return `第 ${location.lineStart}–${location.lineEnd} 行`;
-  if (location.kind === "web_excerpt" && Number.isInteger(location.start) && Number.isInteger(location.end))
+  if (
+    location.kind === "web_excerpt" &&
+    Number.isInteger(location.start) &&
+    Number.isInteger(location.end)
+  )
     return `网页正文字符 ${location.start}–${location.end}`;
   if (location.page) return `第 ${location.page} 页`;
   if (location.paragraph) return `段落 ${location.paragraph}`;

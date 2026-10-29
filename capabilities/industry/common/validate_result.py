@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Read-only validation of native Office delivery pairs; no model/network/shell dependencies."""
-import argparse, collections, hashlib, json, re, zipfile, sys
+import argparse, collections, hashlib, json, re, zipfile, sys, posixpath
+from decimal import Decimal
+from datetime import datetime, timedelta
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -21,7 +23,13 @@ def package(path):
             lines = [''.join(x.itertext()) for x in []]
             lines = [''.join(t.text or '' for t in para.findall('.//w:t', ns)) for para in doc.findall('.//w:p', ns)]
             statuses = [x.removeprefix('核查结论：') for x in lines if x.startswith('核查结论：')]
+            topics=[re.sub(r'\s*\[S\d+\]$','',re.sub(r'^\d+\s+','',lines[i-1])) for i,x in enumerate(lines) if x.startswith('核查结论：') and i>0]
             text = '\n'.join(lines)
+            metrics=[]
+            for table in doc.findall('.//w:tbl', ns):
+                rows=[[''.join(t.text or '' for t in c.findall('.//w:t',ns)) for c in row.findall('w:tc',ns)] for row in table.findall('w:tr',ns)]
+                if rows and rows[0][:1]==['对象与参数']:metrics.extend(rows[1:])
+
         elif p.suffix.lower() == '.xlsx':
             ns = {'x': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
             strings = []
@@ -36,14 +44,43 @@ def package(path):
                     elif c.get('t') == 'inlineStr': cells.append(''.join(t.text or '' for t in c.findall('.//x:t', ns)))
                     elif value is not None: cells.append(value.text or '')
             text = '\n'.join(cells)
-            # A compliance checklist contains every finding even when the separate parameter sheet uses numbers.
-            statuses = [x for x in cells if x in STATUS]
+            rels={r.get('Id'):r.get('Target') for r in ET.fromstring(z.read('xl/_rels/workbook.xml.rels'))}
+            book=ET.fromstring(z.read('xl/workbook.xml'));sheets={}
+            styles=ET.fromstring(z.read('xl/styles.xml'))
+            formats={x.get('numFmtId'):x.get('formatCode','') for x in styles.findall('x:numFmts/x:numFmt',ns)}
+            xfs=styles.findall('x:cellXfs/x:xf',ns)
+            for sheet in book.findall('x:sheets/x:sheet',ns):
+                rid=sheet.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id');target=rels[rid]
+                part=target.lstrip('/') if target.startswith('/') else posixpath.normpath('xl/'+target)
+                matrix=[]
+                for row in ET.fromstring(z.read(part)).findall('x:sheetData/x:row',ns):
+                    values={}
+                    for c in row.findall('x:c',ns):
+                        v=c.find('x:v',ns);raw=v.text if v is not None else ''
+                        if c.get('t')=='s':raw=strings[int(raw)]
+                        elif c.get('t')=='inlineStr':raw=''.join(t.text or '' for t in c.findall('.//x:t',ns))
+                        elif raw and c.get('t','n')=='n':
+                            fmt=formats.get(xfs[int(c.get('s','0'))].get('numFmtId'),'') if xfs else ''
+                            if 'yyyy' in fmt.lower() and 'mm' in fmt.lower():raw=(datetime(1899,12,30)+timedelta(days=float(raw))).strftime('%Y-%m-%d')
+                            else:raw=format(Decimal(raw).normalize(),'f')
+                        values[re.sub('[0-9]','',c.get('r'))]=raw
+                    matrix.append(values)
+                sheets[sheet.get('name')]=matrix
+            review=sheets.get('核查清单',[])
+            header=next((i for i,r in enumerate(review) if r.get('B')=='核查要求'),None)
+            statuses=[r.get('C') for r in review[header+1:] if r.get('C') in STATUS] if header is not None else []
+            topics=[r.get('B','') for r in review[header+1:] if r.get('C') in STATUS] if header is not None else []
+            parameters=sheets.get('参数对比',[]);metrics=[]
+            header=next((i for i,r in enumerate(parameters) if r.get('C')=='参数或主题'),None)
+            if header is not None:
+                for r in parameters[header+1:]:
+                    if r.get('B'):metrics.append([r.get('B','')+' · '+r.get('C',''),r.get('D','')+' '+r.get('E',''),r.get('F','')])
         else:
             raise ValueError('EXPECTED_DOCX_OR_XLSX')
         if not provenance.get('dataSha256') and not provenance.get('resultHash'):
             raise ValueError('NO_SHARED_VERIFIED_DATA_ID')
         return {'sha256': hashlib.sha256(p.read_bytes()).hexdigest(), 'provenance': provenance,
-                'text': text, 'statuses': statuses}
+                'text': text, 'statuses': statuses, 'metrics': metrics, 'findingTopics': topics}
 
 def validate(docx, xlsx, expected=None):
     word, excel = package(docx), package(xlsx)
@@ -51,8 +88,15 @@ def validate(docx, xlsx, expected=None):
     if core(word['provenance']) != core(excel['provenance']):
         raise ValueError('PAIR_PROVENANCE_MISMATCH')
     revision_review = word['provenance'].get('revisions', []) != excel['provenance'].get('revisions', [])
-    if word['statuses'] and any(collections.Counter(excel['statuses'])[s] < count for s, count in collections.Counter(word['statuses']).items()):
-        raise ValueError('PAIR_CHECKLIST_STATUS_MISSING')
+    if word['findingTopics'] != excel['findingTopics']:
+        raise ValueError('PAIR_CHECKLIST_TOPIC_MISMATCH')
+    if word['statuses'] != excel['statuses']:
+        raise ValueError('PAIR_CHECKLIST_STATUS_MISMATCH')
+    compact=lambda value: re.sub(r'\s+','',value)
+    if word['metrics'] and [[compact(x).strip('[]') if i==2 else compact(x) for i,x in enumerate(row)] for row in word['metrics']] != [[compact(x).strip('[]') if i==2 else compact(x) for i,x in enumerate(row)] for row in excel['metrics']]:
+        raise ValueError('PAIR_PARAMETER_VALUE_MISMATCH')
+    if 'formalCount' in (expected or {}) and len(word['statuses']) != expected['formalCount']:
+        raise ValueError('FORMAL_REQUIREMENT_COUNT_MISMATCH')
     for required in (expected or {}).get('requiredText', []):
         if required not in word['text'] or required not in excel['text']:
             raise ValueError('EXPECTED_FACT_MISSING:' + required)
