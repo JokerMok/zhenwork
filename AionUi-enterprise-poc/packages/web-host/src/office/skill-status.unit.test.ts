@@ -18,3 +18,13 @@ test('a grant withdrawn between listing and checking returns unavailable', async
   const client = { resources: async () => [{ id, name: '共享能力', version: 2 }], authorizedResource: async () => { throw Error('revoked'); } };
   await expect(checkEnterpriseSkill(client, id, loaded, ['shared-tool'])).resolves.toMatchObject({ available: false, reason: 'UNAVAILABLE_OR_REVOKED' });
 });
+test('controlled package reading returns current companion text and never a revoked cache', async () => {
+  let allowed = true;
+  const client = { resources: async () => allowed ? [{ id, name: '共享能力', version: 2 }] : [], authorizedResource: async () => ({ version: 2, config: { source: '# Workflow', files: [{ path: 'templates/report.md', content: 'Template', encoding: 'utf8' }, { path: 'scripts/check.py', content: 'print(1)', encoding: 'utf8', executable: true }] } }) };
+  const result = await checkEnterpriseSkill(client, id, loaded, ['shared-tool'], { includeInstructions: true });
+  expect(result).toMatchObject({ available: true, instructions: [{ path: 'SKILL.md', content: '# Workflow' }, { path: 'templates/report.md', content: 'Template' }] });
+  expect(await checkEnterpriseSkill(client, id, loaded, ['shared-tool'], { file: '../private' })).toMatchObject({ available: false, reason: 'PACKAGE_FILE_NOT_FOUND' });
+  expect(await checkEnterpriseSkill(client, id, loaded, ['shared-tool'], { file: 'scripts/check.py' })).toMatchObject({ available: true, instructions: [{ content: 'print(1)' }] });
+  allowed = false;
+  expect(await checkEnterpriseSkill(client, id, loaded, ['shared-tool'], { includeInstructions: true })).toMatchObject({ available: false, reason: 'UNAVAILABLE_OR_REVOKED' });
+});

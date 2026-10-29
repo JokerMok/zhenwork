@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "zhenwork-waste-policy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "title": "固危废政策查询与解读专家",
   "description": "按地区、业务条件和截至日期查询官方固危废规定，核对生效/废止及真实条款，区分原文、官方解释和分析。",
   "triggers": [

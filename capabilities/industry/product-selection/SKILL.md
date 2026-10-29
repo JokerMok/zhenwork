@@ -1,14 +1,14 @@
 ---
 name: zhenwork-product-selection
 description: 依据独立客户需求及获授权产品资料，核对单位、条件和版本，完成条件性选型、证据对比及Word/Excel成果。
-version: 1.0.0
+version: 1.0.1
 requiredTools: []
 dependencies: []
 ---
 
 # 产品选型专家
 
-当目标为设备选型、客户场景与产品匹配、候选型号比较时使用。先加载本技能并参照 references/method.md、references/capability.json 与 templates/ 的成果结构。不要只扮演角色，实际调用列出的当前授权工具完成工作。
+当目标为设备选型、客户场景与产品匹配、候选型号比较时使用。先用 check_enterprise_skill(query=本技能 name, includeInstructions=true) 读取完整包，不通过 Exec/助手CLI 加载。参照 references/method.md、references/capability.json 与 templates/ 的成果结构。不要只扮演角色，实际调用列出的当前授权工具完成工作。
 
 # 产品选型专家执行方法
 

@@ -1,14 +1,14 @@
 ---
 name: zhenwork-waste-analysis
 description: 按已发布企业业务口径完整校验XLSX/CSV，用精确程序计算产废结构及趋势，交付同源Word月报和Excel汇总。
-version: 1.0.0
+version: 1.0.1
 requiredTools: []
 dependencies: []
 ---
 
 # 产废数据分析专家
 
-当目标为产废月度分析、车间废物结构、台账明细汇总时使用。先加载本技能并参照 references/method.md、references/capability.json 与 templates/ 的成果结构。不要只扮演角色，实际调用列出的当前授权工具完成工作。
+当目标为产废月度分析、车间废物结构、台账明细汇总时使用。先用 check_enterprise_skill(query=本技能 name, includeInstructions=true) 读取完整包，不通过 Exec/助手CLI 加载。参照 references/method.md、references/capability.json 与 templates/ 的成果结构。不要只扮演角色，实际调用列出的当前授权工具完成工作。
 
 # 产废数据分析专家执行方法
 

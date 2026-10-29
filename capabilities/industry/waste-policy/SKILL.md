@@ -1,14 +1,14 @@
 ---
 name: zhenwork-waste-policy
 description: 按地区、业务条件和截至日期查询官方固危废规定，核对生效/废止及真实条款，区分原文、官方解释和分析。
-version: 1.0.0
+version: 1.0.1
 requiredTools: []
 dependencies: []
 ---
 
 # 固危废政策查询与解读专家
 
-当目标为危废政策、法规时效、台账要求与业务清单时使用。先加载本技能并参照 references/method.md、references/capability.json 与 templates/ 的成果结构。不要只扮演角色，实际调用列出的当前授权工具完成工作。
+当目标为危废政策、法规时效、台账要求与业务清单时使用。先用 check_enterprise_skill(query=本技能 name, includeInstructions=true) 读取完整包，不通过 Exec/助手CLI 加载。参照 references/method.md、references/capability.json 与 templates/ 的成果结构。不要只扮演角色，实际调用列出的当前授权工具完成工作。
 
 # 固危废政策查询与解读专家执行方法
 

@@ -1,14 +1,14 @@
 ---
 name: zhenwork-document-review
 description: 将独立需求拆成条款，逐项对照产品、协议或参考资料，列明符合/不符合/部分符合/证据不足及固定版本依据。
-version: 1.0.0
+version: 1.0.1
 requiredTools: []
 dependencies: []
 ---
 
 # 资料核查专家
 
-当目标为技术协议差异核查、客户要求对照、招标条款与技术资料核验时使用。先加载本技能并参照 references/method.md、references/capability.json 与 templates/ 的成果结构。不要只扮演角色，实际调用列出的当前授权工具完成工作。
+当目标为技术协议差异核查、客户要求对照、招标条款与技术资料核验时使用。先用 check_enterprise_skill(query=本技能 name, includeInstructions=true) 读取完整包，不通过 Exec/助手CLI 加载。参照 references/method.md、references/capability.json 与 templates/ 的成果结构。不要只扮演角色，实际调用列出的当前授权工具完成工作。
 
 # 资料核查专家执行方法
 

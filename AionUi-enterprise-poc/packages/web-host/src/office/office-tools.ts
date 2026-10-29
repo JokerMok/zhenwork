@@ -272,8 +272,8 @@ const tools = [
   },
   {
     name: 'check_enterprise_skill',
-    description: 'Check CURRENT enterprise Skill USE authorization and actual loaded runtime version by resource ID, display name or runtime Skill name. Read-only. Use this instead of guessing a CLI or scanning old cache paths. available:false means stop trying that package; do not run old paths, reconstruct its scripts, or claim success. Builtin/personal Core Skills are outside this catalog.',
-    inputSchema: { type: 'object', additionalProperties: false, properties: { query: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['query'],
+    description: 'Load an authorized enterprise Skill with includeInstructions=true: returns its actual SKILL.md, reference instructions, templates and file catalog without Exec/CLI approval. Optional file reads one exact package text path (including scripts); it never executes code. Also check CURRENT enterprise Skill USE authorization and actual loaded runtime version by resource ID, display name or runtime Skill name. Read-only. Use this instead of guessing a CLI or scanning old cache paths. available:false means stop trying that package; do not run old paths, reconstruct its scripts, or claim success. Builtin/personal Core Skills are outside this catalog.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: { query: { type: 'string', minLength: 1, maxLength: 100 }, includeInstructions: {type: 'boolean'}, file: {type: 'string', maxLength: 240} }, required: ['query'],
     },
   },
   {
@@ -598,7 +598,7 @@ export async function startOfficeTools(
           });
           const registry = (await response.json()) as { success?: boolean; data?: Array<{ name: string }> };
           if (!response.ok || !registry.success || !Array.isArray(registry.data)) throw new Error('SKILL_RUNTIME_CATALOG_UNAVAILABLE');
-          value = await checkEnterpriseSkill(client, String(args.query), Array.isArray(metadata.skillResources) ? metadata.skillResources : [], registry.data.map((item) => item.name));
+          value = await checkEnterpriseSkill(client, String(args.query), Array.isArray(metadata.skillResources) ? metadata.skillResources : [], registry.data.map((item) => item.name), {includeInstructions: args.includeInstructions === true, file: typeof args.file === 'string' ? args.file : undefined});
         } else if (tool === 'write_text_file') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
           const file = String(args.path || '');
@@ -1044,6 +1044,7 @@ export async function startOfficeTools(
 
 const instructions = `Execution contract (applies before choosing tools):
 - Match the requested scope and file extension exactly. Do not add unrequested PDFs, slides, reports, font renderers or other deliverables. Plain TXT/Markdown/CSV uses write_text_file directly; it does not need Office/PDF conversion or validate_artifact. For Office/PDF use the existing generators and installed dependencies, never reimplement a font/renderer to work around an unrelated optional step.
+- Load enterprise Skill instructions with check_enterprise_skill(query, includeInstructions:true); it returns the current authorized full instructions, references and templates. Never invoke the helper CLI through Exec just to read a Skill. Use file for another exact companion text file; executing a script still requires its normal authorization.
 - For a requested enterprise Skill availability check, use check_enterprise_skill once with its name/ID. If unavailable, state that result and continue only with still-authorized capabilities; do not probe helper CLI syntax, scan old profile caches, or reconstruct a revoked package.
 - First call office_context. For company-template reimbursement FIRST load Skill finance-reimbursement-filler, read its SKILL.md, and execute its bundled scripts with ExecCommand. It preserves template formulas/images/sheets. A new evidence table is NEVER a filled reimbursement template. Script failure means incomplete, not permission to replace the template.
 - For a short research comparison, read 3–6 substantive original sources, then deliver scoped findings. Mark inaccessible sources and missing facts; do not keep chasing navigation or optional details instead of creating the requested files. Use create_evidence_deliverables with purpose="research" and one shared dataset; compliance uses purpose="compliance".

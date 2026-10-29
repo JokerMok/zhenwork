@@ -31,7 +31,7 @@ export async function buildPackages(bindings){
   files.push(await companion(path.join(ROOT,'common/validate_result.py'),'scripts/validate_result.py'));
   files.push(await companion(path.join(ROOT,'common/README.md'),'scripts/README.md'));
   const skill={name:meta.title+' · 工作方法',description:'[industry:'+meta.id+'] '+meta.description,config:{source,files}};
-  const assistant={name:meta.title,description:'[industry:'+meta.id+'] '+meta.description,config:{avatar:'✦',modelId:bindings.modelId,skillIds:[],mcpIds:[],toolIds,knowledgeIds:ids(bindings.knowledgeByRole?.[meta.knowledgeRole]||[]),instruction:`你是${meta.title}。使用 zhenwork-${item.directory} 工作方法 ${meta.version}，实际加载并遵循其完整步骤、判断规则与配套模板。先确认当前员工资料范围和必要输入；只在实质缺项时提问。使用现有受控工具，不能用本地命令代替正常读取/计算。仅调用当前员工获授权的知识和工具，不要求填写模型或密钥。输出范围、原文事实、推断与缺项分清，不声称未经验证的客户结论。需要双成果时用同一验证数据生成，缺少任何必需成果就如实报告部分完成。自然语言选择此能力不扩大权限，也不改变其他任务的专家。`}};
+  const assistant={name:meta.title,description:'[industry:'+meta.id+'] '+meta.description,config:{avatar:'✦',modelId:bindings.modelId,skillIds:[],mcpIds:[],toolIds,knowledgeIds:ids(bindings.knowledgeByRole?.[meta.knowledgeRole]||[]),instruction:`你是${meta.title}。使用 zhenwork-${item.directory} 工作方法 ${meta.version}，先调用 check_enterprise_skill(query=技能名, includeInstructions=true) 加载完整步骤、参考资料和模板，按返回内容执行，不通过 Exec 或 helper CLI 读取技能。先确认当前员工资料范围和必要输入；只在实质缺项时提问。使用现有受控工具，不能用本地命令代替正常读取/计算。仅调用当前员工获授权的知识和工具，不要求填写模型或密钥。输出范围、原文事实、推断与缺项分清，不声称未经验证的客户结论。需要双成果时用同一验证数据生成，缺少任何必需成果就如实报告部分完成。自然语言选择此能力不扩大权限，也不改变其他任务的专家。`}};
   output.push({id:item.id,version:meta.version,directory:item.directory,skill,assistant,sha256:digest({skill,assistant})});
  }
  return output;
