@@ -26,17 +26,21 @@ export async function checkEnterpriseSkill(client: Client, query: string, loaded
     const content: Array<{ path: string; content: string; sha256: string }> = [];
     const catalog: Array<{ path: string; sha256: string; executable: boolean }> = [];
     let bytes = 0;
+    const omittedFiles: string[] = [];
     for (const file of [{ path: 'SKILL.md', content: source, encoding: 'utf8' }, ...(Array.isArray(files) ? files : [])]) {
-      if (!file || typeof file.path !== 'string' || !/^[a-zA-Z0-9_.\/-]+$/.test(file.path) || file.path.split('/').some((part: string) => !part || part === '.' || part === '..') || file.path.startsWith('/')) return { ...result, available: false, reason: 'PACKAGE_INVALID' };
+      if (!file || typeof file.path !== 'string' || file.path.length > 240 || /[\\\0-\x1f]/.test(file.path) || file.path.split('/').some((part: string) => !part || part === '.' || part === '..') || file.path.startsWith('/')) return { ...result, available: false, reason: 'PACKAGE_INVALID' };
       const sha = typeof file.content === 'string' && file.encoding !== 'base64' ? createHash('sha256').update(file.content).digest('hex') : file.sha256;
       catalog.push({ path: file.path, sha256: sha, executable: !!file.executable });
       if (options.file ? file.path !== options.file : file.path !== 'SKILL.md' && !/^(references|templates)\//.test(file.path)) continue;
-      if (typeof file.content !== 'string' || file.encoding === 'base64' || Buffer.byteLength(file.content) > 32_000 || file.sha256 && file.sha256 !== sha) return { ...result, available: false, reason: 'PACKAGE_TEXT_INVALID_OR_TOO_LARGE', file: file.path };
+      if (typeof file.content !== 'string' || file.encoding === 'base64' || Buffer.byteLength(file.content) > 32_000 || bytes + Buffer.byteLength(file.content) > 64_000) {
+        if (options.file) return { ...result, available: false, reason: 'PACKAGE_TEXT_INVALID_OR_TOO_LARGE', file: file.path };
+        omittedFiles.push(file.path); continue;
+      }
+      if (file.sha256 && file.sha256 !== sha) return { ...result, available: false, reason: 'PACKAGE_INVALID', file: file.path };
       bytes += Buffer.byteLength(file.content);
-      if (bytes > 64_000) return { ...result, available: false, reason: 'PACKAGE_TEXT_LIMIT_USE_FILE' };
       content.push({ path: file.path, content: file.content, sha256: sha });
     }
     if (options.file && !content.length) return { ...result, available: false, reason: 'PACKAGE_FILE_NOT_FOUND' };
-    return { ...result, instructions: content, files: catalog, note: 'Published package text only; scripts remain subject to normal execution authorization.' };
+    return { ...result, instructions: content, files: catalog, omittedFiles, note: 'Published package text only; scripts remain subject to normal execution authorization.' };
   } catch { return { ...base, available: false, reason: 'UNAVAILABLE_OR_REVOKED' }; }
 }

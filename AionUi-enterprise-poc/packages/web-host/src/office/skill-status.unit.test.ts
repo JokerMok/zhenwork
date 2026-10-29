@@ -28,3 +28,10 @@ test('controlled package reading returns current companion text and never a revo
   allowed = false;
   expect(await checkEnterpriseSkill(client, id, loaded, ['shared-tool'], { includeInstructions: true })).toMatchObject({ available: false, reason: 'UNAVAILABLE_OR_REVOKED' });
 });
+
+test('existing Unicode and binary companions remain installed without making text instructions unavailable', async () => {
+  const client = { resources: async () => [{ id, name: '共享能力', version: 2 }], authorizedResource: async () => ({ version: 2, config: { source: '# Workflow', files: [{ path: 'references/说明.md', content: '真实说明', encoding: 'utf8' }, { path: 'templates/报销.xlsx', content: 'UEs=', encoding: 'base64', sha256: 'binary-verified-by-import' }] } }) };
+  const result = await checkEnterpriseSkill(client, id, loaded, ['shared-tool'], { includeInstructions: true });
+  expect(result).toMatchObject({ available: true, omittedFiles: ['templates/报销.xlsx'], instructions: [{ path: 'SKILL.md' }, { path: 'references/说明.md', content: '真实说明' }] });
+  expect(await checkEnterpriseSkill(client, id, loaded, ['shared-tool'], {file:'templates/报销.xlsx'})).toMatchObject({ available:false, reason:'PACKAGE_TEXT_INVALID_OR_TOO_LARGE' });
+});
