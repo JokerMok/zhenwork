@@ -181,11 +181,15 @@ export function selectWebText(text: string, options: WebReadOptions = {}) {
       (options.query !== undefined && (typeof options.query !== 'string' || !options.query.trim() || options.query.length > 160)))
     throw new Error('WEB_READ_WINDOW_INVALID');
   let start = options.start ?? 0;
+  if (start > text.length) throw new Error('WEB_READ_START_OUTSIDE_TEXT');
   const matches: number[] = [];
   if (options.query) {
     const haystack = text.toLowerCase(), needle = options.query.trim().toLowerCase();
     let offset = haystack.indexOf(needle, start);
-    if (offset < 0) throw new Error('WEB_QUERY_NOT_FOUND_IN_FULL_TEXT');
+    if (offset < 0) return { status: 'no_match', text: '', start, end: start, totalChars: text.length,
+      nextStart: null, matches, query: options.query.trim(), truncated: true,
+      fullTextSha256: createHash('sha256').update(text).digest('hex'),
+      note: 'The fetched original page contains no exact match at/after start. No quotation or sourceRef was created. Try a shorter exact phrase or bounded start/maxChars; absence of this phrase does not prove a legal fact.' };
     start = Math.max(0, offset - Math.min(300, Math.floor(maxChars / 4)));
     while (offset >= 0 && matches.length < 8) {
       matches.push(offset); offset = haystack.indexOf(needle, offset + needle.length);

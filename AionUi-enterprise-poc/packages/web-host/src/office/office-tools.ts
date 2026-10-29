@@ -860,11 +860,14 @@ export async function startOfficeTools(
         else if (tool === 'search_web') value = await searchWeb(String(args.query || ''), abort.signal);
         else if (tool === 'read_web') {
           const page = await readWeb(String(args.url || ''), abort.signal, { start: args.start as number | undefined, maxChars: args.maxChars as number | undefined, query: args.query as string | undefined });
+          if (page.status === 'no_match') value = page;
+          else {
           const pinned = await store.pinSource('网页摘录.txt', Buffer.from(String(page.text), 'utf8'));
-          value = { ...page, ...bindEvidence(conversation, { kind: 'web', text: String(page.text), locator: { url: page.url, originalUrl: page.url, sourceUrl: downloadUrl(pinned.path, pinned.versionId), title: page.title, sha256: page.sha256, versionLabel: '读取快照 ' + pinned.createdAt.slice(0,16).replace('T',' '), publishedAt: page.publishedAt, retrievedAt: page.retrievedAt, start: page.start, end: page.end, totalChars: page.totalChars, fullTextSha256: page.fullTextSha256, query: page.query,
+          value = { ...page, ...bindEvidence(conversation, { kind: 'web', text: String(page.text), locator: { url: page.url, originalUrl: page.url, sourceUrl: downloadUrl(pinned.path, pinned.versionId), title: page.title, sha256: page.sha256, versionLabel: '读取快照 ' + pinned.createdAt.slice(0,16).replace('T',' '), publishedAt: page.publishedAt, retrievedAt: page.retrievedAt, start: page.start, end: page.end, totalChars: page.totalChars, fullTextSha256: page.fullTextSha256, query: page.query, location: {kind: 'web_excerpt', start: page.start, end: page.end},
               },
             }),
           };
+          }
         }
         else if (tool === 'read_preferences')
           value = (await store.memories()).filter(

@@ -86,6 +86,10 @@ function locationText(value: unknown): string {
     ]
       .filter(Boolean)
       .join(" · ");
+  if (location.kind === "text_chunk" && Number.isInteger(location.lineStart) && Number.isInteger(location.lineEnd))
+    return `第 ${location.lineStart}–${location.lineEnd} 行`;
+  if (location.kind === "web_excerpt" && Number.isInteger(location.start) && Number.isInteger(location.end))
+    return `网页正文字符 ${location.start}–${location.end}`;
   if (location.page) return `第 ${location.page} 页`;
   if (location.paragraph) return `段落 ${location.paragraph}`;
   if (location.table) return `表格 ${location.table}`;

@@ -119,9 +119,16 @@ test('reads a real long-page tail by exact query or pagination without inventing
   expect(tail.sha256).not.toBe(initial.sha256);
   const next = await readWeb('https://example.com/source', undefined, {start: Number(initial.nextStart)});
   expect(next.text).toContain('生效与废止原文');
-  expect(() => selectWebText('原文', {query:'不存在'})).toThrow('WEB_QUERY_NOT_FOUND');
+  expect(selectWebText('原文', {query:'不存在'})).toMatchObject({status:'no_match',text:'',matches:[],totalChars:2});
   expect(() => selectWebText('原文', {start:-1})).toThrow('WEB_READ_WINDOW_INVALID');
 });
 
 
 test('rejects a soft-404 destination despite HTTP200 before issuing source evidence', async () => { await expect(readWeb('https://example.com/404/index.html')).rejects.toThrow('WEB_SOURCE_NOT_FOUND'); });
+
+test('a literal miss on a fetched page is no-match data without fabricated evidence', async () => {
+  mocks.body = '<main><p>Actual original statement.</p></main>';
+  const result = await readWeb('https://example.com/source', undefined, {query: 'invented phrase'});
+  expect(result).toMatchObject({status: 'no_match', text: '', matches: []});
+  expect(result).not.toHaveProperty('sourceRef');
+});

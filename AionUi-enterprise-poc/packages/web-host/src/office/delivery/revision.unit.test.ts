@@ -188,3 +188,11 @@ integration('ambiguous continuation cannot replace two paragraphs when only one 
   const info = await inspectOfficeStructure('narrow.docx', revised.bytes!);
   expect((info.paragraphs as Array<{text:string}>).map(p => p.text)).toEqual(['定位续改', '单处修改', '保留中间段', '重复说明']);
 });
+
+test("text lines and web excerpt offsets retain real readable source positions", () => {
+  const actual = buildOfficeSources([
+    { ...source, locator: { path: 'requirements.md', location: {kind: 'text_chunk', lineStart: 1, lineEnd: 9} } },
+    { ...source, locator: { url: 'https://example.com/law', location: {kind: 'web_excerpt', start: 190000, end: 194000} } },
+  ]);
+  expect(actual.entries.map(s => s.location)).toEqual(['第 1–9 行', '网页正文字符 190000–194000']);
+});
