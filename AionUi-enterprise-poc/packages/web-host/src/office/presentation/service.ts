@@ -17,6 +17,11 @@ const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 let generating = false;
 
+/** Existing chat UI consumes outputs, while TaskRunner also accepts files. */
+export function presentationReceipts<T extends { path: string; sha256: string }>(files: T[]) {
+  return { files, outputs: files.map((file) => ({ ...file, status: 'complete' as const })) };
+}
+
 /** Reuses the existing actor-private OfficeStore and fixed source permissions for derivative PPT files. */
 export class BusinessPresentation {
   private constructor(
@@ -262,7 +267,7 @@ export class BusinessPresentation {
           reused: true,
           resultId: result.id,
           resultHash: result.resultHash,
-          files: [...(await this.relatedReceipts(result, signal)), await this.receipt(name, bytes)],
+          ...presentationReceipts([...(await this.relatedReceipts(result, signal)), await this.receipt(name, bytes)]),
           template: { name: theme.name, version: theme.version, resourceVersion: theme.resourceVersion },
         };
       }
@@ -313,7 +318,7 @@ export class BusinessPresentation {
         resultId: result.id,
         resultHash: result.resultHash,
         template,
-        files: [...(await this.relatedReceipts(result, signal)), await this.receipt(name, saved)],
+        ...presentationReceipts([...(await this.relatedReceipts(result, signal)), await this.receipt(name, saved)]),
         quality: {
           slideCount: quality.slideCount,
           nativeCharts: quality.nativeCharts,
@@ -328,12 +333,20 @@ export class BusinessPresentation {
     } catch (error) {
       if (!result || signal?.aborted) throw error;
       await this.authorize(result, scope);
+      const files = await this.relatedReceipts(result, signal);
+      const failedPath =
+        input.path ||
+        (result.relatedFiles[0]?.path.replace(/\.(docx|xlsx)$/i, '') || '演示/' + result.id.slice(0, 12)) + '.pptx';
       return {
         status: 'partial',
         error: (error as Error).message,
         resultId: result.id,
         resultHash: result.resultHash,
-        files: await this.relatedReceipts(result, signal),
+        ...presentationReceipts(files),
+        outputs: [
+          ...presentationReceipts(files).outputs,
+          { path: failedPath, status: 'failed', error: (error as Error).message },
+        ],
         instruction:
           'PPT failed. Existing verified Word/Excel remain available; retry only this PPT using the same result. Do not overwrite successful files or mark Agent history completed.',
       };

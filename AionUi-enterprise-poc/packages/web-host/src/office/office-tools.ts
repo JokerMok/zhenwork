@@ -1,7 +1,7 @@
 import { DataAnalysis } from './workbook/analysis/service.js';
 import { dataTools } from './workbook/analysis/tools.js';
 import { presentationTool } from './presentation/index.js';
-import { BusinessPresentation } from './presentation/service.js';
+import { BusinessPresentation, presentationReceipts } from './presentation/service.js';
 import { presentationTheme } from './presentation/template.js';
 import { sourceSlides } from './presentation/build.js';
 import { taskProtocol } from '../tasks/instructions.js';
@@ -1219,7 +1219,10 @@ export async function startOfficeTools(
                     ...revisionReceipt,
                     resultId: businessResult.id,
                     resultHash: businessResult.resultHash,
-                    files: [...(await presentation.relatedReceipts(businessResult, abort.signal)), revisionReceipt],
+                    ...presentationReceipts([
+                      ...(await presentation.relatedReceipts(businessResult, abort.signal)),
+                      revisionReceipt,
+                    ]),
                   }
                 : revisionReceipt;
           }

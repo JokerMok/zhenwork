@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { BusinessPresentation } from './service.js';
+import { BusinessPresentation, presentationReceipts } from './service.js';
 import { presentationTheme } from './template.js';
 import { requiredFormats } from '../../tasks/types.js';
 import type { DataClient } from '../workbook/analysis/service.js';
@@ -58,4 +58,31 @@ test('requires a real PPT deliverable for ordinary natural-language presentation
   expect(requiredFormats('把刚才的月报再做成一份汇报 PPT。')).toEqual(['pptx']);
   expect(requiredFormats('请生成 Word、Excel 和 PPTX。')).toEqual(['docx', 'xlsx', 'pptx']);
   expect(requiredFormats('不要生成PPT，但请修改Word。')).toEqual(['docx']);
+});
+
+test('same verified three-format receipts are recognized by the existing chat parser', async () => {
+  const { toolDeliveryReceipts } = await import('../../../../desktop/src/common/chat/normalizeToolCall.js');
+  const files = ['report.docx', 'report.xlsx', 'report.pptx'].map((path, i) => ({
+    path,
+    sha256: String(i + 1).repeat(64),
+    version: 1,
+    versionId: '11111111-1111-4111-8111-111111111111',
+  }));
+  const value = presentationReceipts(files);
+  const receipts = toolDeliveryReceipts([
+    { key: 'real-format', name: 'create_business_presentation', status: 'completed', output: JSON.stringify(value) },
+  ]);
+  expect(receipts.map((file) => file.path)).toEqual(files.map((file) => file.path));
+  const partial = {
+    ...value,
+    status: 'partial',
+    outputs: [
+      ...value.outputs.slice(0, 2),
+      { path: 'report.pptx', status: 'failed', error: 'PPT_TEMPLATE_NOT_AUTHORIZED' },
+    ],
+  };
+  const retry = toolDeliveryReceipts([
+    { key: 'failed', name: 'create_business_presentation', status: 'error', output: JSON.stringify(partial) },
+  ]);
+  expect(retry.map((file) => file.status)).toEqual(['complete', 'complete', 'failed']);
 });
