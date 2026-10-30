@@ -1,0 +1,47 @@
+{
+  "notice": "人工独立参考式，非从处理器输出回填",
+  "produce": {
+    "2026-08": {
+      "totalKg": "3700",
+      "A": "1650",
+      "B": "1200",
+      "C": "850"
+    },
+    "2026-09": {
+      "totalKg": "4500",
+      "A": "2030",
+      "B": "1430",
+      "C": "1040"
+    },
+    "deltaKg": "800"
+  },
+  "inventory": {
+    "bookKg": "1320",
+    "physicalKg": "1270",
+    "differenceKg": "-50",
+    "generalBookKg": "820",
+    "generalPhysicalKg": "760",
+    "oilBookKg": "400",
+    "oilPhysicalKg": "410",
+    "ragBookKg": "100",
+    "ragPhysicalKg": "100",
+    "GW_MAIN": "520",
+    "GW_AUX": "300",
+    "HW": "500",
+    "internalAgeO0Days": 133
+  },
+  "settlement": {
+    "G08": "1095",
+    "G09": "1345",
+    "O08": "1838",
+    "O08BillDifference": "40",
+    "O09": null,
+    "O09KnownWeightFee": "2124",
+    "R08": "1068",
+    "R09": "1420"
+  },
+  "crossPeriod": "G09接收2026-10-02，9月末未闭合；现已收到",
+  "missingUnit": "R-O09-extra的30不能自动当kg，已知1180kg不等于最终接收总量",
+  "personal80Percent": "GW_MAIN 520/600=86.666...%，标准90%不提醒，个人80%提醒；只输出库存差异表",
+  "inventoryFormula": "期初700 + 入库8200 - 出库7590 + 调整10 =1320；内部移库净零；盘点1270，差异-50"
+}

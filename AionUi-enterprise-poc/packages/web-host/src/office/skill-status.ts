@@ -32,7 +32,7 @@ export async function checkEnterpriseSkill(client: Client, query: string, loaded
       const sha = typeof file.content === 'string' && file.encoding !== 'base64' ? createHash('sha256').update(file.content).digest('hex') : file.sha256;
       catalog.push({ path: file.path, sha256: sha, executable: !!file.executable });
       if (options.file ? file.path !== options.file : file.path !== 'SKILL.md' && !/^(references|templates)\//.test(file.path)) continue;
-      if (typeof file.content !== 'string' || file.encoding === 'base64' || Buffer.byteLength(file.content) > 32_000 || bytes + Buffer.byteLength(file.content) > 64_000) {
+      if (typeof file.content !== 'string' || file.encoding === 'base64' || Buffer.byteLength(file.content) > (options.file ? 128_000 : 32_000) || bytes + Buffer.byteLength(file.content) > (options.file ? 128_000 : 64_000)) {
         if (options.file) return { ...result, available: false, reason: 'PACKAGE_TEXT_INVALID_OR_TOO_LARGE', file: file.path };
         omittedFiles.push(file.path); continue;
       }

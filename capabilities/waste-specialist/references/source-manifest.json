@@ -1,0 +1,207 @@
+{
+  "upstream": "https://github.com/feng-liu-1994/workbuddy-finance-workbench",
+  "version": "2.7.0",
+  "commit": "5689d65599357e50a814622640ace1656b45799e",
+  "license": "MIT",
+  "copyright": "2026 WorkBuddy Finance Workbench contributors",
+  "selectedScope": "complete agents/finance-workbench subtree; repository LICENSE retained",
+  "upstreamFiles": [
+    {
+      "upstreamPath": "SKILL.md",
+      "packagePath": "references/upstream-skill.md",
+      "sha256": "e4b2c2d9829377833138bd19259753a274ae224cf35deb003b693b6a92017b19",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/01-excel-cleaning.md",
+      "packagePath": "references/prompts/01-excel-cleaning.md",
+      "sha256": "bd43580682aa6c0b1441615f4b4d1c714dd16234a95ec0dc4548f544532e8299",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/02-excel-merge.md",
+      "packagePath": "references/prompts/02-excel-merge.md",
+      "sha256": "9f6757a0e003093e7121127492238042937a58b1ea26d1b54f15f84ed0873794",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/03-expense-summary.md",
+      "packagePath": "references/prompts/03-expense-summary.md",
+      "sha256": "f8cd91c5df67393245b2937f24c435a75d5587f157ac968dca93bbf1e9f2a682",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/04-expense-duplicate-check.md",
+      "packagePath": "references/prompts/04-expense-duplicate-check.md",
+      "sha256": "41f942e1482105e67ffe349d345736d91fd4d7e6fb46cc07e967e48d6df6bebd",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/05-bank-reconcile.md",
+      "packagePath": "references/prompts/05-bank-reconcile.md",
+      "sha256": "80d1b9428129c9941964f275077d16f7707f3b51071a1d57e7bc9857c39478c2",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/06-order-cash-invoice.md",
+      "packagePath": "references/prompts/06-order-cash-invoice.md",
+      "sha256": "f3af034894d5054538807e1496b92bb7b321763a320edf9e97b4fa69b9697909",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/07-ar-aging.md",
+      "packagePath": "references/prompts/07-ar-aging.md",
+      "sha256": "3ddef1b02763796657429bc9df858c518a256cc674e358aaa559d64b1ee8ec30",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/08-ap-schedule.md",
+      "packagePath": "references/prompts/08-ap-schedule.md",
+      "sha256": "06a13e863cdbbc957f9c9bdce3877dd85b36feb6f3936b182869a04a0473c7ba",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/09-invoice-ledger.md",
+      "packagePath": "references/prompts/09-invoice-ledger.md",
+      "sha256": "6c9f4abae311d003382bb8d9c1835630a10acd9030a9964374e1072976924d7b",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/10-invoice-payment-match.md",
+      "packagePath": "references/prompts/10-invoice-payment-match.md",
+      "sha256": "2fc4cbf2d24766e4bbe119868c669699acf9160a5565d5ff50498014d1411a87",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/11-vat-monthly-check.md",
+      "packagePath": "references/prompts/11-vat-monthly-check.md",
+      "sha256": "5816b77c195694d4e78e9118043272da9e21d7569e70e59435c0c9a00fc8d603",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/12-fixed-assets.md",
+      "packagePath": "references/prompts/12-fixed-assets.md",
+      "sha256": "ae03129c9c84c0d1f2d6fe50d0784cbc12ff3b81806402135de19b364d1d87e6",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/13-inventory-check.md",
+      "packagePath": "references/prompts/13-inventory-check.md",
+      "sha256": "3f9bee2407c3af7dca0ab81efd969ee468da3a51b8c4f6ae9635a9bb989b3b2f",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/14-payroll-check.md",
+      "packagePath": "references/prompts/14-payroll-check.md",
+      "sha256": "16ac85b101fee1fd5e96adba74ac87db9b96e9d800d2b55bf80f6d0dd792801a",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/15-month-close-completeness.md",
+      "packagePath": "references/prompts/15-month-close-completeness.md",
+      "sha256": "44d7619487a126f7c068b79164a16c95ee8da87fe1b951b8ec29119628bada68",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/16-monthly-management-report.md",
+      "packagePath": "references/prompts/16-monthly-management-report.md",
+      "sha256": "dd6406437e7193ba9ac70fb0cd65f9e55d4306a30708f9a8d1160be489f2ce13",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/17-budget-variance.md",
+      "packagePath": "references/prompts/17-budget-variance.md",
+      "sha256": "08ed26f0e7aac961f15e005f87361c4a5a455760f2e45d7e4e2e476df0c637a8",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/18-cost-reduction.md",
+      "packagePath": "references/prompts/18-cost-reduction.md",
+      "sha256": "004b78eaacff5e6d7a4f1ccdd93c955109863423a2754dc307d3e1d01a9be635",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/19-cashflow-forecast.md",
+      "packagePath": "references/prompts/19-cashflow-forecast.md",
+      "sha256": "ba46640ad0792078ab7e7d34c41840538b4df651ce73cde16dad8ff25c36def0",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/20-management-summary.md",
+      "packagePath": "references/prompts/20-management-summary.md",
+      "sha256": "b179f893edbf1cc4bb51c2b8ab2b0aee729e08fbb04648ef52ebb5a5145ee09b",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/21-full-table-anomaly.md",
+      "packagePath": "references/prompts/21-full-table-anomaly.md",
+      "sha256": "b8923504c51eea11cc19ba20f8f5c6d0c1585abbaa8a685ec9ef5ff18476a64a",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/22-voucher-archive.md",
+      "packagePath": "references/prompts/22-voucher-archive.md",
+      "sha256": "50add161ea4b33c443011da433a54201273e7ba102c77f9bc85b301a6d8c875e",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/23-contract-terms.md",
+      "packagePath": "references/prompts/23-contract-terms.md",
+      "sha256": "f829096cd428a02866d2130dda4b52933d551c23e016a37912c14282685bb1ac",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/24-local-automation.md",
+      "packagePath": "references/prompts/24-local-automation.md",
+      "sha256": "b08cd79ffc5455cd9070b7381582ba38e5824d0327fd3c9a7fd522f1e35cc87b",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/25-policy-knowledge.md",
+      "packagePath": "references/prompts/25-policy-knowledge.md",
+      "sha256": "1f3e433c62fee60d2c6fea60ffa6bb388c25d1ba2814a91cf48032f62bcaba02",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/prompts/README.md",
+      "packagePath": "references/prompts/README.md",
+      "sha256": "f9476333f837ec0a58cede2f63abbda334101e4e682aea401f95761623408bba",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/safety.md",
+      "packagePath": "references/safety.md",
+      "sha256": "886d24068e648bfd71837291eca580127408d766f3718e0d1fc694f6d1067cc3",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/workflows.json",
+      "packagePath": "references/workflows.json",
+      "sha256": "672ad92d0f49539e843744c2b3d7b9029a8ec415265f22ead46d279e5f22e831",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "references/workflows.md",
+      "packagePath": "references/workflows.md",
+      "sha256": "199907e0cd43d12217c7c3c1c15189c46e6ccfbd17210cc249b78ea46f12b14c",
+      "unchanged": true
+    },
+    {
+      "upstreamPath": "templates/task-brief.md",
+      "packagePath": "templates/task-brief.md",
+      "sha256": "984b73d47ea2272c18ee9d0c44998e64e969f568d0665fcc818206a520bb1e0a",
+      "unchanged": true
+    }
+  ],
+  "changes": [
+    "Root metadata converted to existing SKILL_PACKAGE_V1; original root retained unchanged as reference",
+    "Industry method/config/preferences/templates added",
+    "Portable deterministic industry processor added; existing DataAnalysis and Office parsers/renderers reused",
+    "DSH UI/MCP display-only application and unrelated dependencies excluded"
+  ],
+  "dependencies": {
+    "processor": "Python >=3.10 standard library",
+    "xlsxAdapter": "existing ZhenWork openpyxl bounded parser",
+    "externalMcp": "none required; business and declaration connections UNCONFIGURED"
+  }
+}

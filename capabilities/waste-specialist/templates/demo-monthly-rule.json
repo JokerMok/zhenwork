@@ -1,0 +1,48 @@
+{
+  "toolType": "CALCULATOR",
+  "precision": 4,
+  "businessRule": {
+    "kind": "WASTE_MONTHLY",
+    "grain": "business_record_id",
+    "scope": "仅完全虚构示范制造厂的2026-08/09授权文件；非真实企业，不代表国家分类。",
+    "period": "calendar_month_Asia_Shanghai",
+    "meaning": "按明确模拟主数据、业务日期和产生节点全量汇总，保留原产废引擎全部校验。",
+    "negative": "block",
+    "reversal": "block",
+    "precision": 3,
+    "timeField": "business_date",
+    "nodeAliases": {
+      "产生": "产生",
+      "入库": "入库",
+      "出库": "出库",
+      "转移": "转移"
+    },
+    "summaryRows": "exclude_with_warning",
+    "unitFactors": {
+      "kg": "1",
+      "吨": "1000",
+      "t": "1000"
+    },
+    "includeNodes": [
+      "产生"
+    ],
+    "duplicateRule": "identical_first",
+    "sourceAliases": {
+      "A": "A车间",
+      "B": "B车间",
+      "C": "C车间"
+    },
+    "statusAliases": {
+      "冲销": "reversal",
+      "撤销": "cancelled",
+      "有效": "active"
+    },
+    "categoryAliases": {
+      "D-GW": "演示一般固废",
+      "D-OIL": "演示危废油",
+      "D-RAG": "演示危废擦拭物"
+    },
+    "organizationAliases": {},
+    "allowedOrganizations": []
+  }
+}

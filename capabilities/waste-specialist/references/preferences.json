@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "cutoff": "2026-09-30",
+  "methods": [
+    "ledger",
+    "inventory",
+    "transfer",
+    "settlement",
+    "checklist"
+  ],
+  "capacityPercent": "90",
+  "internalAgeDays": 90,
+  "groupBy": [
+    "warehouse",
+    "batch"
+  ],
+  "differencesOnly": false,
+  "outputTitle": "固危废关联业务核对",
+  "outputSheets": {}
+}

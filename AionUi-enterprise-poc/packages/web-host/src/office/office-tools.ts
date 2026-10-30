@@ -1,3 +1,4 @@
+import { methodTool, executeMethod, methodPackage } from './methods/index.js';
 import { DataAnalysis } from './workbook/analysis/service.js';
 import { dataTools } from './workbook/analysis/tools.js';
 import { presentationTool } from './presentation/index.js';
@@ -62,17 +63,27 @@ type ControlClient = Rc2GatewayClient & {
 async function authorizedCalculators(
   client: Rc2GatewayClient
 ): Promise<Array<{ id: string; name: string; version: number }>> {
-  const catalog = (await client.resources('TOOL')) as Array<{ id: string; name: string; version: number }>;
+  const catalog = (await client.resources('TOOL')) as Array<{
+    id: string;
+    name: string;
+    version: number;
+  }>;
   const checked = await Promise.allSettled(
     catalog.slice(0, 20).map(async (item) => {
-      const resource = (await client.authorizedResource(item.id, 'TOOL')) as { config?: { toolType?: string } };
+      const resource = (await client.authorizedResource(item.id, 'TOOL')) as {
+        config?: { toolType?: string };
+      };
       return resource.config?.toolType === 'CALCULATOR' ? item : null;
     })
   );
   return checked.flatMap((item) => (item.status === 'fulfilled' && item.value ? [item.value] : []));
 }
 async function authorizedQueryCatalog(client: Rc2GatewayClient, conversation: string): Promise<unknown> {
-  const catalog = (await client.resources('MCP')) as Array<{ id: string; name: string; version: number }>;
+  const catalog = (await client.resources('MCP')) as Array<{
+    id: string;
+    name: string;
+    version: number;
+  }>;
   const sources = await Promise.all(
     catalog.slice(0, 8).map(async (item) => {
       try {
@@ -250,6 +261,7 @@ export function buildEvidenceTable(rows: EvidenceRowInput[], sources: VerifiedSo
 
 const tools = [
   ...dataTools,
+  methodTool,
   presentationTool,
   taskCheckpointTool,
   evidenceDeliveryTool,
@@ -342,7 +354,11 @@ const tools = [
       'Save a structured JSON object or array as a real .json workspace file, for a skill manifest or ordinary data processing. Pass data as JSON, not a serialized string. This does not execute code. Existing files require overwrite=true and retain history.',
     inputSchema: {
       type: 'object',
-      properties: { path: { type: 'string' }, data: { type: ['object', 'array'] }, overwrite: { type: 'boolean' } },
+      properties: {
+        path: { type: 'string' },
+        data: { type: ['object', 'array'] },
+        overwrite: { type: 'boolean' },
+      },
       required: ['path', 'data'],
     },
   },
@@ -419,7 +435,10 @@ const tools = [
           type: 'object',
           properties: {
             headers: { type: 'array', items: { type: 'string' } },
-            rows: { type: 'array', items: { type: 'array', items: { type: ['string', 'number', 'null'] } } },
+            rows: {
+              type: 'array',
+              items: { type: 'array', items: { type: ['string', 'number', 'null'] } },
+            },
           },
           required: ['headers', 'rows'],
         },
@@ -431,7 +450,10 @@ const tools = [
               title: { type: 'string' },
               bullets: { type: 'array', items: { type: 'string' } },
               paragraphs: { type: 'array', items: { type: 'string' } },
-              layout: { type: 'string', enum: ['cover', 'section', 'content', 'conclusion', 'sources'] },
+              layout: {
+                type: 'string',
+                enum: ['cover', 'section', 'content', 'conclusion', 'sources'],
+              },
               subtitle: { type: 'string' },
               notes: { type: 'string' },
               metrics: {
@@ -440,7 +462,11 @@ const tools = [
                 items: {
                   type: 'object',
                   additionalProperties: false,
-                  properties: { label: { type: 'string' }, value: { type: 'string' }, unit: { type: 'string' } },
+                  properties: {
+                    label: { type: 'string' },
+                    value: { type: 'string' },
+                    unit: { type: 'string' },
+                  },
                   required: ['label', 'value'],
                 },
               },
@@ -452,7 +478,11 @@ const tools = [
                   rows: {
                     type: 'array',
                     maxItems: 8,
-                    items: { type: 'array', items: { type: ['string', 'number', 'null'] }, maxItems: 6 },
+                    items: {
+                      type: 'array',
+                      items: { type: ['string', 'number', 'null'] },
+                      maxItems: 6,
+                    },
                   },
                 },
                 required: ['headers', 'rows'],
@@ -557,7 +587,9 @@ const tools = [
       'Check exact contiguous source quotes against actual retrieved source text and current authorization before creating a report. This verifies quote existence, not whether your conclusions follow from it. Expired references require re-reading/searching.',
     inputSchema: {
       type: 'object',
-      properties: { citations: { type: 'array', minItems: 1, maxItems: 32, items: evidenceReferenceSchema } },
+      properties: {
+        citations: { type: 'array', minItems: 1, maxItems: 32, items: evidenceReferenceSchema },
+      },
       required: ['citations'],
     },
   },
@@ -568,7 +600,10 @@ const tools = [
     inputSchema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Relative workspace path, or an absolute path within this workspace.' },
+        path: {
+          type: 'string',
+          description: 'Relative workspace path, or an absolute path within this workspace.',
+        },
       },
       required: ['path'],
     },
@@ -577,7 +612,11 @@ const tools = [
     name: 'search_web',
     description:
       'Search the real public web. Returns original URLs and provider snippets; read sources before using facts.',
-    inputSchema: { type: 'object', properties: { query: { type: 'string', maxLength: 500 } }, required: ['query'] },
+    inputSchema: {
+      type: 'object',
+      properties: { query: { type: 'string', maxLength: 500 } },
+      required: ['query'],
+    },
   },
   {
     name: 'read_web',
@@ -673,7 +712,11 @@ export async function startOfficeTools(
         : structure;
     const previewPath =
       '/#/workspace?' +
-      new URLSearchParams({ section: 'files', previewPath: relative, fileVersion: version.versionId });
+      new URLSearchParams({
+        section: 'files',
+        previewPath: relative,
+        fileVersion: version.versionId,
+      });
     const previewUrl = site ? new URL(previewPath, site).href : previewPath;
     const actualDownload = downloadUrl(relative, version.versionId);
     const summary =
@@ -1016,7 +1059,10 @@ export async function startOfficeTools(
             headers: { 'x-aion-enterprise-local-token': core.localToken },
             signal: abort.signal,
           });
-          const registry = (await response.json()) as { success?: boolean; data?: Array<{ name: string }> };
+          const registry = (await response.json()) as {
+            success?: boolean;
+            data?: Array<{ name: string }>;
+          };
           if (!response.ok || !registry.success || !Array.isArray(registry.data))
             throw new Error('SKILL_RUNTIME_CATALOG_UNAVAILABLE');
           value = await checkEnterpriseSkill(
@@ -1226,6 +1272,82 @@ export async function startOfficeTools(
                   }
                 : revisionReceipt;
           }
+        } else if (tool === 'run_enterprise_method') {
+          if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
+          const input = await readInput(String(args.path || ''), conversation);
+          const result = await executeMethod({
+            client,
+            resourceId: String(args.resourceId),
+            input: input.bytes,
+            name: input.relative,
+            methods: Array.isArray(args.methods) ? (args.methods as string[]) : undefined,
+            read: (file) => readInput(file, conversation),
+            signal: abort.signal,
+          });
+          const label = String(args.outputBase || '成果/固危废业务核对').replace(/\.(xlsx|json)$/i, '');
+          if (
+            path.isAbsolute(label) ||
+            label.split('/').some((p) => !p || p === '.' || p === '..') ||
+            label.includes('\\') ||
+            label.includes('\0')
+          )
+            throw new Error('METHOD_OUTPUT_PATH_INVALID');
+          // New immutable names preserve earlier employee artifacts; all outputs pin the same input and method version.
+          const base = label + '-' + Date.now() + '-' + randomBytes(3).toString('hex');
+          const privateInventory =
+            result.preferences.differencesOnly === true &&
+            result.summary.methods instanceof Array &&
+            result.summary.methods.length === 1 &&
+            result.summary.methods[0] === 'inventory';
+          const sheets = privateInventory
+            ? result.sheets
+            : [
+                ...result.sheets,
+                result.analysisSheet,
+                {
+                  name: '来源版本',
+                  headers: ['项目', '值'],
+                  rows: [
+                    ['输入文件', input.inputPath],
+                    ['输入SHA256', result.provenance.inputSha256],
+                    ['方法资源', result.provenance.resourceId],
+                    ['方法版本', String(result.provenance.version)],
+                    ['配置SHA256', result.provenance.configSha256],
+                    ['处理器SHA256', result.provenance.processorSha256],
+                    ['覆盖行数', String(result.coverage.inputRows)],
+                    ['说明', '完整输入；缺项保留；外部连接未配置；不对外申报'],
+                    ...result.provenance.sourceFiles.map((f) => [f.path, f.sha256]),
+                  ],
+                },
+              ];
+          const bytes = await generateOfficeArtifact(
+            { format: 'xlsx', title: String(result.preferences.outputTitle || '业务核对'), sheets },
+            abort.signal
+          );
+          const current = await methodPackage(client, String(args.resourceId));
+          if (current.configSha256 !== result.provenance.configSha256) throw new Error('METHOD_VERSION_CHANGED_RETRY');
+          const live = await readInput(String(args.path), conversation);
+          if (createHash('sha256').update(live.bytes).digest('hex') !== result.provenance.inputSha256)
+            throw new Error('METHOD_INPUT_CHANGED_RETRY');
+          await client.me();
+          abort.signal.throwIfAborted();
+          const relative = base + '.xlsx';
+          await store.upload(core.workspaceRoot, relative, bytes, false);
+          const receipt = await savedReceipt(relative, bytes, abort.signal);
+          value = {
+            summary: result.summary,
+            issues: result.issues,
+            coverage: result.coverage,
+            provenance: result.provenance,
+            analysisInput:
+              privateInventory || !(result.summary.analysisInput as { complete?: boolean })?.complete
+                ? undefined
+                : { path: relative, sheet: result.analysisSheet.name },
+            ...receipt,
+            validation: { valid: true, format: 'xlsx', allRowsProcessed: true },
+            instruction:
+              'Use these verified summaries and real file links. Missing/unknown values are not zero or legal verdicts. Formal monthly analysis uses analysisInput with existing DataAnalysis; no mandatory Word/PPT.',
+          };
         } else if (tool === 'summarize_json_data') {
           const input = await readInput(String(args.path || ''), conversation);
           value = {
@@ -1444,7 +1566,11 @@ export async function startOfficeTools(
           const validation = await inspectArtifact(relative, saved, abort.signal);
           // Snapshot external tool writes before issuing an immutable receipt.
           await store.files(core.workspaceRoot);
-          value = { ...(await savedReceipt(relative, saved, abort.signal)), validation, ...validation };
+          value = {
+            ...(await savedReceipt(relative, saved, abort.signal)),
+            validation,
+            ...validation,
+          };
         } else if (tool === 'verify_source_quotes')
           value = {
             sources: await verified(conversation, args.citations, client),
@@ -1641,7 +1767,10 @@ export async function startOfficeTools(
   try {
     await core.registerProxyPort?.(port);
     const base = enterpriseCoreBase(core),
-      headers = { 'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken };
+      headers = {
+        'content-type': 'application/json',
+        'x-aion-enterprise-local-token': core.localToken,
+      };
     // Core upserts by name, preserving IDs referenced by saved conversations and jobs.
     const r = await fetch(base + '/api/mcp/servers', {
       method: 'POST',
@@ -1656,7 +1785,10 @@ export async function startOfficeTools(
         },
       }),
     });
-    const body = (await r.json()) as { success?: boolean; data?: { id?: string; enabled?: boolean } };
+    const body = (await r.json()) as {
+      success?: boolean;
+      data?: { id?: string; enabled?: boolean };
+    };
     if (!r.ok || !body.success || !body.data?.id) throw new Error('OFFICE_TOOLS_REGISTRATION_FAILED');
     if (!body.data.enabled) {
       const toggled = await fetch(base + '/api/mcp/servers/' + body.data.id + '/toggle', {
@@ -1688,6 +1820,7 @@ export async function startOfficeTools(
         'create_business_presentation',
         'validate_artifact',
         'summarize_json_data',
+        'run_enterprise_method',
         'verify_source_quotes',
         'search_knowledge',
         'search_web',
@@ -1737,7 +1870,7 @@ const instructions = `Execution contract (applies before choosing tools):
 You are the enterprise general office assistant. Use the user's language automatically. Employees need no API or engine configuration.
 For monthly waste XLSX/CSV analysis, use inspect_structured_data -> analyze_waste_data -> generate_waste_report. These tools scan ALL bounded rows using authorized published business rules. Never derive whole-file totals from read_document/inspect_workbook previews or model arithmetic. If needs_input, ask the employee to open Data mapping in the current conversation, save fields/rule/period and reply; checkpoint waiting_input and stop. A blocked calculation is NOT partial statistics: name issues and request correction. Generated reports share a single saved result, and receipts are authoritative. Never paste raw ledger rows into an external model.
 Before working, call office_context for the ACTUAL output directory and authorized knowledge IDs; never guess a default ID or use the profile root as the output directory. Read user-confirmed preferences and relevant project context with read_preferences. Personal chat is never an enterprise rule. Ask before saving or sharing knowledge.
-Read Word, Excel, PPT, PDF, image and text inputs first with read_document (follow nextStart for more pages), or available OfficeCLI/Python tools and installed skills. Scan-based inputs need OCR; state uncertainty. Save structured skill manifests with write_workspace_json; data is an object/array, not a string. Respect original templates, formulas, styles and company constraints; preserve originals, write outputs as real workspace files. Use audit_workbook on the CURRENT actual XLSX for every final amount or reconciliation answer: inspect_workbook first to find the real sheet and detail/total ranges, then pass explicit ranges and totalCell. It recalculates supported formulas with exact Decimal and reports unsupported formulas instead of using stale caches. Keep currency, rounding, detail count, total and difference identical to the tool result; any mismatch or unsupported formula means verification has NOT passed. Use summarize_json_data for source manifests: inspect the actual fields first; nested daily_amounts arrays require flatten, never treat a list as an amount. Source manifest summaries never replace rereading the current delivered workbook. Never mental-arithmetic final evidence. For complex WPS embedded pictures use the reimbursement skill's OOXML-safe engine instead of ordinary openpyxl save.
+Read Word, Excel, PPT, PDF, image and text inputs first with read_document (follow nextStart for more pages), or available OfficeCLI/Python tools and installed skills. Scan-based inputs need OCR; state uncertainty. Save structured skill manifests with write_workspace_json; data is an object/array, not a string. Respect original templates, formulas, styles and company constraints; preserve originals, write outputs as real workspace files. run_enterprise_method already performs full-row exact Decimal calculation and reopens its versioned XLSX; use its verified summary and provenance for that result, without recomputing it from a preview. For other final amount or reconciliation work use audit_workbook on the CURRENT actual XLSX: inspect_workbook first to find the real sheet and detail/total ranges, then pass explicit ranges and totalCell. It recalculates supported formulas with exact Decimal and reports unsupported formulas instead of using stale caches. Keep currency, rounding, detail count, total and difference identical to the tool result; any mismatch or unsupported formula means verification has NOT passed. Use summarize_json_data for source manifests: inspect the actual fields first; nested daily_amounts arrays require flatten, never treat a list as an amount. Source manifest summaries never replace rereading the current delivered workbook. Never mental-arithmetic final evidence. For complex WPS embedded pictures use the reimbursement skill's OOXML-safe engine instead of ordinary openpyxl save.
 Prefer already authorized independent Skills and MCPs when appropriate; do not require a user to build an assistant. A missing optional resource must produce a specific error and a next step, not fabricated success.
 Show concise progress and missing information. Handle amended instructions and extra attachments in the same task. Respect cancellation. Before retrying writes, check previous results/idempotency; never submit duplicates. Request explicit confirmation before external write, send or approval actions. Never invent unknown business API endpoints or outcomes.
 For knowledge-backed answers cite Markdown links using each returned sourceUrl, label document title, version and actual location; never invent page numbers. The employee task selection overrides broader assistant defaults. If sources conflict, quote both and explain conditions/version; do not silently choose. For follow-ups after a document update, search again; a pinned document retains its selected version until the employee changes the scope.
@@ -1751,7 +1884,10 @@ export async function ensureOfficeAssistant(
   model: { code: string; name: string }
 ): Promise<void> {
   const base = enterpriseCoreBase(core),
-    headers = { 'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken };
+    headers = {
+      'content-type': 'application/json',
+      'x-aion-enterprise-local-token': core.localToken,
+    };
   const request = async (route: string, method = 'GET', input?: unknown): Promise<unknown> => {
     const r = await fetch(base + route, {
       method,

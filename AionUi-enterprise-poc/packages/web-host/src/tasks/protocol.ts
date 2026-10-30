@@ -112,6 +112,7 @@ export async function recordTool(
   };
   const artifactTools = new Set([
     'create_business_presentation',
+    'run_enterprise_method',
     'generate_waste_report',
     'create_office_document',
     'create_evidence_deliverables',

@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "company": "臻作示范制造厂（完全虚构/功能演示）",
+  "fictional": true,
+  "workshops": [
+    "A",
+    "B",
+    "C"
+  ],
+  "unitFactors": {
+    "kg": "1",
+    "吨": "1000",
+    "t": "1000"
+  },
+  "requirementsBasis": "模拟企业内部资料清单v1；地区/法定期限/申报接口未配置，不用于法律结论",
+  "externalConnections": {
+    "businessApi": "UNCONFIGURED",
+    "declarationApi": "UNCONFIGURED"
+  },
+  "requiredTables": [
+    "wastes",
+    "warehouses",
+    "batches",
+    "events",
+    "balances",
+    "shipments",
+    "tickets",
+    "contracts",
+    "bills",
+    "attachments",
+    "requirements",
+    "production"
+  ],
+  "tables": {
+    "wastes": {
+      "sheet": "主数据",
+      "fields": {},
+      "recordType": "wastes"
+    },
+    "warehouses": {
+      "sheet": "主数据",
+      "fields": {},
+      "recordType": "warehouses"
+    },
+    "batches": {
+      "sheet": "主数据",
+      "fields": {},
+      "recordType": "batches"
+    },
+    "production": {
+      "sheet": "主数据",
+      "fields": {},
+      "recordType": "production"
+    },
+    "events": {
+      "sheet": "事件台账",
+      "fields": {},
+      "recordType": "events"
+    },
+    "balances": {
+      "sheet": "期初与盘点",
+      "fields": {},
+      "recordType": "balances"
+    },
+    "shipments": {
+      "sheet": "清运记录",
+      "fields": {},
+      "recordType": "shipments"
+    },
+    "tickets": {
+      "sheet": "凭据记录",
+      "fields": {},
+      "recordType": "tickets"
+    },
+    "contracts": {
+      "sheet": "合同条款",
+      "fields": {},
+      "recordType": "contracts"
+    },
+    "bills": {
+      "sheet": "结算单",
+      "fields": {},
+      "recordType": "bills"
+    },
+    "attachments": {
+      "sheet": "附件目录",
+      "fields": {},
+      "recordType": "attachments"
+    },
+    "requirements": {
+      "sheet": "资料要求",
+      "fields": {},
+      "recordType": "requirements"
+    }
+  },
+  "contractVerification": {
+    "ratePattern": "按磅单重量([0-9]+(?:\\.[0-9]+)?)元/吨",
+    "transportPerTripPattern": "运输费([0-9]+(?:\\.[0-9]+)?)元/车次",
+    "weightBasisTokens": {
+      "WEIGH": "磅单"
+    },
+    "includedTaxPattern": "(?<!不)含税"
+  }
+}

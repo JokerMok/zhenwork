@@ -247,7 +247,16 @@
     "configuredEnabled": "Enabled in catalog",
     "configuredDisabled": "Disabled in catalog",
     "packageBudgetWarning": "Some skill packages exceeded the 48 MiB per-user runtime import budget and were skipped ({{issues}}). Other abilities and normal sign-in continue to work.",
-    "runtimeIssuesWarning": "Some catalog abilities are unavailable in the current runtime ({{issues}}). Enabled here means authorized and configured; review these runtime issues before use."
+    "runtimeIssuesWarning": "Some catalog abilities are unavailable in the current runtime ({{issues}}). Enabled here means authorized and configured; review these runtime issues before use.",
+    "copyMethod": "Copy as personal method",
+    "saveMethod": "Save and activate",
+    "methodSaved": "Personal method saved and activated",
+    "methodSaveFailed": "Could not save method ({{code}})",
+    "personalMethodName": "My {{name}}",
+    "methodName": "Method name",
+    "methodContent": "Method content",
+    "methodProtectedFile": "Processor and provenance files are protected. Edit steps, mappings, preferences and templates.",
+    "methodBinaryFile": "This binary or oversized file is preserved unchanged."
   },
   "memory": {
     "title": "Memory and schedules",

@@ -2,7 +2,6 @@ import {
   Alert,
   Button,
   Descriptions,
-  Drawer,
   Empty,
   Form,
   Input,
@@ -30,6 +29,7 @@ import {
 import { availableModelId, catalogOrigin, preferredAvailableModel, type AvailableModel } from './workspaceCatalog';
 import type { ResourceScope, WorkspaceResource } from './workspaceTypes';
 import McpConnections from './capabilities/McpConnections';
+import SkillEditor from './capabilities/SkillEditor';
 
 type CapabilityType = 'MODEL' | 'ASSISTANT' | 'SKILL' | 'MCP' | 'TOOL';
 type AssistantConfig = {
@@ -41,7 +41,7 @@ type AssistantConfig = {
   toolIds?: string[];
   knowledgeIds?: string[];
 };
-type SkillFile = { path: string; content: string; encoding: 'base64'; executable: boolean; sha256?: string };
+type SkillFile = { path: string; content: string; encoding: 'utf8' | 'base64'; executable: boolean; sha256?: string };
 type SkillConfig = { source: string; files: SkillFile[]; manifest?: { name?: string } };
 type AssistantResource = WorkspaceResource & { config: AssistantConfig };
 type SkillResource = WorkspaceResource & { config: SkillConfig };
@@ -201,7 +201,10 @@ const WorkspaceCapabilities: React.FC = () => {
       setOpeningResourceId(item.id);
       try {
         const result = await refreshRuntimeResources();
-        if (result.state === 'pending') { message.info(t('workspace.status.resourceUpdatePending'));return; }
+        if (result.state === 'pending') {
+          message.info(t('workspace.status.resourceUpdatePending'));
+          return;
+        }
         let selectedSkillName: string | undefined;
         if (item.resourceType === 'SKILL') {
           const detail = await enterpriseControl<SkillResource>(`/ai/resources/${item.id}`);
@@ -692,33 +695,15 @@ const WorkspaceCapabilities: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
-      <Drawer
-        width={680}
-        visible={Boolean(skillDetail)}
-        title={skillDetail?.name || t('workspace.abilities.packageDetail')}
-        footer={null}
-        onCancel={() => setSkillDetail(null)}
-      >
-        {skillDetail ? (
-          <div className='flex flex-col gap-12px'>
-            <Descriptions
-              column={1}
-              border
-              data={[
-                { label: t('workspace.abilities.versionLabel'), value: `v${skillDetail.version}` },
-                { label: t('workspace.abilities.permissionLabel'), value: skillDetail.actions.join(', ') || '-' },
-                {
-                  label: t('workspace.abilities.packageFiles'),
-                  value: skillDetail.config.files.map((file) => file.path).join(', ') || t('workspace.none'),
-                },
-              ]}
-            />
-            <pre className='m-0 max-h-520px overflow-auto whitespace-pre-wrap break-words rd-6px bg-fill-1 p-12px text-13px leading-21px text-t-primary'>
-              {skillDetail.config.source}
-            </pre>
-          </div>
-        ) : null}
-      </Drawer>
+      <SkillEditor
+        resource={skillDetail}
+        onClose={() => setSkillDetail(null)}
+        onSaved={(value) => {
+          setSkillDetail(value);
+          void load();
+        }}
+        onUse={useCapability}
+      />
       <McpConnections resource={mcpResource} onClose={() => setMcpResource(null)} />
     </div>
   );

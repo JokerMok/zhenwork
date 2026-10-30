@@ -41,7 +41,7 @@ while IFS= read -r -d '' path; do
     AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/modelProxy.mjs|AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/modelProxy.d.mts|AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.mjs|AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.d.mts|AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/rc2Client.mjs)
       # This shared Node adapter is bundled into Host; it is never imported by renderer code.
       host_change=1 ;;
-    scripts/office/parse_toll_summaries.py|scripts/office/test_parse_toll_summaries.py)
+    capabilities/waste-specialist/*|capabilities/industry/*|scripts/office/parse_toll_summaries.py|scripts/office/test_parse_toll_summaries.py)
       # Managed Skill source, distributed separately through RC2; not imported
       # by the renderer, native Core, or reused Java/Admin artifacts.
       ;;

@@ -263,7 +263,16 @@
     "configuredEnabled": "目录中已启用",
     "configuredDisabled": "目录中已停用",
     "packageBudgetWarning": "部分 Skill 包超过当前账号 48 MiB 的运行时导入预算，已跳过（{{issues}}）。其他能力和正常登录不受影响。",
-    "runtimeIssuesWarning": "部分目录能力在当前运行时不可用（{{issues}}）。这里的“已启用”仅表示已授权并完成配置，使用前请处理这些运行时问题。"
+    "runtimeIssuesWarning": "部分目录能力在当前运行时不可用（{{issues}}）。这里的“已启用”仅表示已授权并完成配置，使用前请处理这些运行时问题。",
+    "copyMethod": "复制为个人方法",
+    "saveMethod": "保存并发布",
+    "methodSaved": "个人方法已保存并生效",
+    "methodSaveFailed": "方法保存失败（{{code}}）",
+    "personalMethodName": "我的{{name}}",
+    "methodName": "方法名称",
+    "methodContent": "方法内容",
+    "methodProtectedFile": "处理器和来源文件受保护；可修改步骤、字段映射、提醒和模板。",
+    "methodBinaryFile": "此文件为二进制或超过查看限制，保存时保留原件。"
   },
   "memory": {
     "title": "记忆与定时任务",

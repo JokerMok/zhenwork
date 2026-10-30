@@ -247,7 +247,16 @@
     "configuredEnabled": "目錄中已啟用",
     "configuredDisabled": "目錄中已停用",
     "packageBudgetWarning": "部分 Skill 套件超過目前帳號 48 MiB 的執行階段匯入預算，已略過（{{issues}}）。其他能力與正常登入不受影響。",
-    "runtimeIssuesWarning": "部分目錄能力在目前執行階段不可用（{{issues}}）。這裡的「已啟用」只表示已授權並完成設定，使用前請處理這些執行階段問題。"
+    "runtimeIssuesWarning": "部分目錄能力在目前執行階段不可用（{{issues}}）。這裡的「已啟用」只表示已授權並完成設定，使用前請處理這些執行階段問題。",
+    "copyMethod": "複製為個人方法",
+    "saveMethod": "儲存並發佈",
+    "methodSaved": "個人方法已儲存並生效",
+    "methodSaveFailed": "方法儲存失敗（{{code}}）",
+    "personalMethodName": "我的{{name}}",
+    "methodName": "方法名稱",
+    "methodContent": "方法內容",
+    "methodProtectedFile": "處理器及來源檔案受保護；可修改步驟、欄位對應、提醒和範本。",
+    "methodBinaryFile": "此檔案為二進位或超過檢視限制，儲存時保留原件。"
   },
   "memory": {
     "title": "記憶與排程任務",
