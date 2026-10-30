@@ -87,7 +87,7 @@ def run(payload):
   sheet('整理台账',['业务单号','业务节点','业务日期','所属车间','废物类别','废物名称','重量','单位','分类来源','原始位置'],[[r['id'],r['node'],r['date'],r.get('workshop',''),r['waste'],waste[r['waste']]['name'],r['kg'],'kg',r['classification'],r['_source']] for r in clean])
   summary['ledger']={'inputRows':len(tables['events']),'uniqueRows':len(events),'validRows':len(clean),'produceRows':len(produce),'sourcePositions':'完整输入，不是预览抽样'}
  # Always prepare the entire valid produce table for the existing formal DataAnalysis engine.
- analysis={'name':'产废分析输入','headers':['业务单号','业务节点','业务日期','所属车间','废物类别','废物名称','重量','单位','记录状态'],'rows':[[r['id'],'产生',r['date'],r['workshop'],r['waste'],waste[r['waste']]['name'],quant(r['kg']),'kg','有效'] for r in produce]}
+ analysis={'name':'产废分析输入','headers':['业务单号','业务节点','业务日期','所属车间','废物类别','废物名称','重量','单位','记录状态'],'rows':[[r['id'],'产生',r['date'],r['workshop'],r['waste'],waste[r['waste']]['name'],excel_number(r['kg']),'kg','有效'] for r in produce]}
  summary['analysisInput']={'complete':len(produce)==len(set((r.get('node'),r.get('id')) for r in tables['events'] if r.get('node')=='产生')) and not any(x['kind']=='conflict' for x in issues),'rows':len(produce),'periods':sorted(set(r['date'][:7] for r in produce)),'note':'交给现有 inspect_structured_data / analyze_waste_data；本处理器不另算正式月报'}
  if 'inventory' in methods:
   stock=collections.defaultdict(D);refs=collections.defaultdict(list);inventoryIncomplete=False
