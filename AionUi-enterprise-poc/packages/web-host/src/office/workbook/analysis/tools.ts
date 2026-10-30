@@ -34,13 +34,20 @@ export const dataTools = [
   {
     name: 'generate_waste_report',
     description:
-      'Produce BOTH editable DOCX monthly report and XLSX details/summaries/issues directly from ONE validated analysisId, not model numbers. Reopens outputs to check totals/counts. Returns actual versioned receipts, preview/download URLs. Failed partial delivery must retry the SAME id/baseName without replacing successful artifacts. After BOTH files completed, an explicitly requested DIFFERENT baseName creates a version-traced copy from the same verified facts, preserving old files. Use a new analysis after changing mapping or source; old reports remain pinned to their original rule version. Never claim production coverage, savings or transport optimization without inputs.',
+      'Produce requested monthly report files directly from ONE validated analysisId, not model numbers. Normal tasks default to XLSX only; set formats:["docx","xlsx"] only when Word is requested, or formats:["docx"] for Word only. Legacy report UI can still request both. Reopens outputs to check totals/counts. Returns actual versioned receipts, preview/download URLs. Failed partial delivery must retry the SAME id/baseName without replacing successful artifacts. After BOTH files completed, an explicitly requested DIFFERENT baseName creates a version-traced copy from the same verified facts, preserving old files. Use a new analysis after changing mapping or source; old reports remain pinned to their original rule version. Never claim production coverage, savings or transport optimization without inputs.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
       properties: {
         analysisId: { type: 'string', pattern: '^[a-f0-9]{64}$' },
         baseName: { type: 'string', maxLength: 180 },
+        formats: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 2,
+          uniqueItems: true,
+          items: { type: 'string', enum: ['docx', 'xlsx'] },
+        },
       },
       required: ['analysisId'],
     },

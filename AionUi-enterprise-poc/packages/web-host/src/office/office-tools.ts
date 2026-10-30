@@ -985,9 +985,23 @@ export async function startOfficeTools(
               abort.signal,
               conversation
             );
-          else if (tool === 'generate_waste_report')
-            value = await data.generate(String(args.analysisId), args.baseName as string | undefined, abort.signal);
-          else value = await data.analysis(String(args.analysisId));
+          else if (tool === 'generate_waste_report') {
+            const context = record(await taskOfficeContext(profileRoot, actor, conversation));
+            const required = Array.isArray(context.requiredFormats)
+              ? context.requiredFormats.filter((f): f is 'docx' | 'xlsx' => f === 'docx' || f === 'xlsx')
+              : [];
+            const formats = Array.isArray(args.formats)
+              ? (args.formats as Array<'docx' | 'xlsx'>)
+              : required.length
+                ? required
+                : ['xlsx' as const];
+            value = await data.generate(
+              String(args.analysisId),
+              args.baseName as string | undefined,
+              abort.signal,
+              formats
+            );
+          } else value = await data.analysis(String(args.analysisId));
         } else if (tool === 'office_context') {
           const knowledge = await knowledgeContext(conversation, client);
           const taskContext = record(await taskOfficeContext(profileRoot, actor, conversation));
@@ -1006,7 +1020,8 @@ export async function startOfficeTools(
             displayName: item.name,
             version: item.version,
             runtimeName: managed.skillResources?.find((s) => s.id === item.id)?.name,
-            loadWith: 'check_enterprise_skill(query=resourceId, file="SKILL.md"); then request exact companion files as needed',
+            loadWith:
+              'check_enterprise_skill(query=resourceId, file="SKILL.md"); then request exact companion files as needed',
           }));
           const structuredData =
             core.workspaceRoot && site
@@ -1874,7 +1889,7 @@ const instructions = `Execution contract (applies before choosing tools):
 - For business dates, audit the actual primary summary and use its grouping.groupCount, date keys and per-group totals. Event rows can cover multiple dates; never replace the summary date count with event-row count or declare the summary dates wrong without independently reading the source evidence. detailCount means numeric cells, not business dates or invoices.
 - For amounts only report audit_workbook results for the CURRENT delivered file; never turn source-file count into business detail count, infer an empty value as zero, or claim a failure was successful.
 You are the enterprise general office assistant. Use the user's language automatically. Employees need no API or engine configuration.
-For monthly waste XLSX/CSV analysis, use inspect_structured_data -> analyze_waste_data -> generate_waste_report. These tools scan ALL bounded rows using authorized published business rules. Never derive whole-file totals from read_document/inspect_workbook previews or model arithmetic. If needs_input, ask the employee to open Data mapping in the current conversation, save fields/rule/period and reply; checkpoint waiting_input and stop. A blocked calculation is NOT partial statistics: name issues and request correction. Generated reports share a single saved result, and receipts are authoritative. Never paste raw ledger rows into an external model.
+For monthly waste XLSX/CSV analysis, use inspect_structured_data -> analyze_waste_data. Return its verified summary; if a monthly Excel is needed use generate_waste_report(formats:["xlsx"]). Word is optional and must be requested; use formats:["docx","xlsx"] for a requested pair. These tools scan ALL bounded rows using authorized published business rules. Never derive whole-file totals from read_document/inspect_workbook previews or model arithmetic. If needs_input, ask the employee to open Data mapping in the current conversation, save fields/rule/period and reply; checkpoint waiting_input and stop. A blocked calculation is NOT partial statistics: name issues and request correction. Generated reports share a single saved result, and receipts are authoritative. Never paste raw ledger rows into an external model.
 Before working, call office_context for the ACTUAL output directory and authorized knowledge IDs; never guess a default ID or use the profile root as the output directory. Read user-confirmed preferences and relevant project context with read_preferences. Personal chat is never an enterprise rule. Ask before saving or sharing knowledge.
 Read Word, Excel, PPT, PDF, image and text inputs first with read_document (follow nextStart for more pages), or available OfficeCLI/Python tools and installed skills. Scan-based inputs need OCR; state uncertainty. Save structured skill manifests with write_workspace_json; data is an object/array, not a string. Respect original templates, formulas, styles and company constraints; preserve originals, write outputs as real workspace files. run_enterprise_method already performs full-row exact Decimal calculation and reopens its versioned XLSX; use its verified summary and provenance for that result, without recomputing it from a preview. For other final amount or reconciliation work use audit_workbook on the CURRENT actual XLSX: inspect_workbook first to find the real sheet and detail/total ranges, then pass explicit ranges and totalCell. It recalculates supported formulas with exact Decimal and reports unsupported formulas instead of using stale caches. Keep currency, rounding, detail count, total and difference identical to the tool result; any mismatch or unsupported formula means verification has NOT passed. Use summarize_json_data for source manifests: inspect the actual fields first; nested daily_amounts arrays require flatten, never treat a list as an amount. Source manifest summaries never replace rereading the current delivered workbook. Never mental-arithmetic final evidence. For complex WPS embedded pictures use the reimbursement skill's OOXML-safe engine instead of ordinary openpyxl save.
 Prefer already authorized independent Skills and MCPs when appropriate; do not require a user to build an assistant. A missing optional resource must produce a specific error and a next step, not fabricated success.

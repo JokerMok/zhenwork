@@ -88,6 +88,7 @@ export interface Analysis {
     deltaWeightKg?: string | null;
   };
   outputBase?: string;
+  outputFormats?: Array<'docx' | 'xlsx'>;
   deliveries?: Record<string, Receipt[]>;
   pending?: Record<string, string>;
 }
@@ -591,7 +592,20 @@ export class DataAnalysis {
     }
     if (sourceMatch && !allowed) throw new Error('DATA_SOURCE_ACCESS_REVOKED');
   }
-  async generate(id: string, baseName?: string, signal?: AbortSignal) {
+  async generate(
+    id: string,
+    baseName?: string,
+    signal?: AbortSignal,
+    formats: Array<'docx' | 'xlsx'> = ['docx', 'xlsx']
+  ) {
+    if (
+      !Array.isArray(formats) ||
+      !formats.length ||
+      formats.length > 2 ||
+      formats.some((f) => !['docx', 'xlsx'].includes(f)) ||
+      new Set(formats).size !== formats.length
+    )
+      throw new Error('DATA_OUTPUT_FORMATS_INVALID');
     return this.serial(async () => {
       const a = await this.read<Analysis>('analysis-' + safeId(id));
       const dataset = await this.dataset(a.datasetId);
@@ -610,7 +624,12 @@ export class DataAnalysis {
       )
         throw new Error('DATA_OUTPUT_PATH_INVALID');
       if (a.outputBase && a.outputBase !== base) {
-        if (a.artifacts.length === 1 || (!a.artifacts.length && Object.keys(a.pending || {}).length))
+        if (
+          !(a.outputFormats || ['docx', 'xlsx']).every((ext) =>
+            a.artifacts.some((f) => f.path === a.outputBase + '.' + ext)
+          ) &&
+          (a.artifacts.length || Object.keys(a.pending || {}).length)
+        )
           throw new Error('DATA_RETRY_USE_ORIGINAL_OUTPUT');
         if (Object.keys(a.deliveries || {}).length >= 10 && !Object.hasOwn(a.deliveries || {}, base))
           throw new Error('DATA_DELIVERY_COPY_LIMIT_10');
@@ -619,6 +638,7 @@ export class DataAnalysis {
         a.pending = {};
       }
       a.outputBase = base;
+      a.outputFormats = formats;
       const built = await dataPython<{
         docx: string;
         xlsx: string;
@@ -628,7 +648,7 @@ export class DataAnalysis {
       await this.write('analysis-' + id, a);
       let outputError: string | undefined;
       try {
-        for (const ext of ['docx', 'xlsx'] as const) {
+        for (const ext of formats) {
           signal?.throwIfAborted();
           await this.authorize(dataset, a.policy.id);
           const name = base + '.' + ext;
@@ -670,10 +690,11 @@ export class DataAnalysis {
         if (signal?.aborted || !a.artifacts.length) throw error;
         outputError = /^[A-Z0-9_:]+$/.test((error as Error).message) ? (error as Error).message : 'DATA_OUTPUT_FAILED';
       }
+      const selected = a.artifacts.filter((f) => formats.some((ext) => f.path === base + '.' + ext));
       return {
         error: outputError,
         nextStep: !outputError
-          ? 'Both files were reopened and their exact mass totals/counts verified. Do not audit mass with the financial two-decimal audit_workbook. Use inspect_waste_analysis for exact kg/ton totals; only binary-format validate_artifact is additionally useful. Use returned versioned receipts verbatim.'
+          ? 'Requested files were reopened and their exact mass totals/counts verified. Do not audit mass with the financial two-decimal audit_workbook. Use inspect_waste_analysis for exact kg/ton totals; only binary-format validate_artifact is additionally useful. Use returned versioned receipts verbatim.'
           : undefined,
         instruction: outputError
           ? 'Partial output retained. Do not use shell commands or overwrite successful files. Explain the failed deliverable and stop; after the user resolves it, retry this same analysisId/baseName only.'
@@ -681,9 +702,9 @@ export class DataAnalysis {
         analysisId: id,
         resultHash: a.resultHash,
         validation: built.validation,
-        files: a.artifacts,
-        artifacts: a.artifacts,
-        status: !outputError && a.artifacts.length === 2 ? 'complete' : 'partial',
+        files: selected,
+        artifacts: selected,
+        status: !outputError && selected.length === formats.length ? 'complete' : 'partial',
         source: { name: a.source.name, sha256: a.source.sha256, versionId: a.source.versionId },
         policy: { id: a.policy.id, name: a.policy.name, version: a.policy.version },
       };

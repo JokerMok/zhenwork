@@ -121,3 +121,100 @@ it('delivers native numeric Excel cells whose differences can be independently s
   const audit = await auditWorkbook(bytes, { sheet: '库存差异', amountRange: 'F3:F5', expectedTotal: '-50' });
   expect(audit.exactTotal).toBe('-50');
 });
+
+it('exports only requested monthly formats, preserves old files, and can explicitly add Word later', async () => {
+  const os = await import('node:os');
+  const { createHash } = await import('node:crypto');
+  const { DataAnalysis } = await import('../../packages/web-host/src/office/workbook/analysis/service');
+  const { dataPython } = await import('../../packages/web-host/src/office/workbook/analysis/engine');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'method-format-'));
+  try {
+    const policy = JSON.parse(
+      await fs.readFile(path.join(root, 'templates/demo-monthly-rule.json'), 'utf8')
+    ).businessRule;
+    const raw = Buffer.from(
+      '业务单号,业务日期,业务节点,所属车间,废物类别,重量,单位\nA01,2026-09-01,产生,A,D-GW,250,kg\nB01,2026-09-02,产生,B,D-OIL,0.5,吨'
+    );
+    const mapping = {
+      sheet: 'CSV',
+      headerRow: 1,
+      fields: { id: 0, date: 1, node: 2, source: 3, category: 4, weight: 5, unit: 6 },
+      version: 1,
+      confirmed: true,
+    };
+    const result = await dataPython('compute', {
+      file: raw.toString('base64'),
+      name: 'source.csv',
+      mapping,
+      options: {},
+      rule: policy,
+      period: '2026-09',
+    });
+    const analysisId = 'a'.repeat(64),
+      datasetId = 'b'.repeat(64);
+    const sourceRef = {
+      name: 'source.csv',
+      path: 'snapshot.csv',
+      versionId: 'source-v1',
+      sha256: createHash('sha256').update(raw).digest('hex'),
+    };
+    await fs.writeFile(
+      path.join(directory, 'dataset-' + datasetId + '.json'),
+      JSON.stringify({ id: datasetId, sourcePath: 'source.csv', source: sourceRef })
+    );
+    await fs.writeFile(
+      path.join(directory, 'analysis-' + analysisId + '.json'),
+      JSON.stringify({
+        id: analysisId,
+        datasetId,
+        resultHash: 'c'.repeat(64),
+        result,
+        mapping,
+        source: sourceRef,
+        sourceUrl: 'https://example.com/source.csv',
+        policy: { id, name: 'Demo', version: 1, definition: policy },
+        artifacts: [],
+      })
+    );
+    const outputs = new Map<string, Buffer>();
+    const receipts = new Map();
+    const store = {
+      downloadOriginal: async () => raw,
+      download: async (_root: string, file: string) => outputs.get(file),
+      fileReceipt: async (file: string) => receipts.get(file),
+      upload: async (_root: string, file: string, bytes: Buffer) => {
+        expect(outputs.has(file)).toBe(false);
+        outputs.set(file, bytes);
+        receipts.set(file, { versionId: file, version: 1, sha256: createHash('sha256').update(bytes).digest('hex') });
+      },
+    };
+    const client = { me: async () => ({}), authorizedResource: async () => ({}) };
+    const service = Reflect.construct(DataAnalysis, [
+      directory,
+      directory,
+      { serverId: 'test', userId: '1' },
+      directory,
+      store,
+      client,
+      'https://example.com',
+    ]) as InstanceType<typeof DataAnalysis>;
+    const first = await service.generate(analysisId, 'monthly', undefined, ['xlsx']);
+    expect(first.status).toBe('complete');
+    expect(first.files.map((f) => f.path)).toEqual(['monthly.xlsx']);
+    expect(outputs.has('monthly.docx')).toBe(false);
+    const pinned = outputs.get('monthly.xlsx');
+    const copy = await service.generate(analysisId, 'monthly-revision', undefined, ['xlsx']);
+    expect(copy.status).toBe('complete');
+    expect(outputs.has('monthly-revision.docx')).toBe(false);
+    const both = await service.generate(analysisId, 'monthly');
+    expect(both.status).toBe('complete');
+    expect(both.files).toHaveLength(2);
+    expect(outputs.get('monthly.xlsx')).toEqual(pinned);
+    const selected = await service.generate(analysisId, undefined, undefined, ['xlsx']);
+    expect(selected.files).toHaveLength(1);
+    expect(selected.files[0].path).toBe('monthly.xlsx');
+    expect(outputs.has('monthly.docx')).toBe(true);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
