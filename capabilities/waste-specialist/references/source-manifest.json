@@ -205,5 +205,5 @@
     "xlsxAdapter": "existing ZhenWork openpyxl bounded parser",
     "externalMcp": "none required; business and declaration connections UNCONFIGURED"
   },
-  "industryAdaptationVersion": "1.1.0"
+  "industryAdaptationVersion": "1.1.1"
 }
