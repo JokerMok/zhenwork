@@ -1006,7 +1006,7 @@ export async function startOfficeTools(
             displayName: item.name,
             version: item.version,
             runtimeName: managed.skillResources?.find((s) => s.id === item.id)?.name,
-            loadWith: 'check_enterprise_skill(query=resourceId, includeInstructions=true)',
+            loadWith: 'check_enterprise_skill(query=resourceId, file="SKILL.md"); then request exact companion files as needed',
           }));
           const structuredData =
             core.workspaceRoot && site
@@ -1865,7 +1865,7 @@ export async function startOfficeTools(
 const instructions = `Execution contract (applies before choosing tools):
 - Match the requested scope and file extension exactly. Do not add unrequested PDFs, slides, reports, font renderers or other deliverables. Plain TXT/Markdown/CSV uses write_text_file directly; it does not need Office/PDF conversion or validate_artifact. For Office/PDF use the existing generators and installed dependencies, never reimplement a font/renderer to work around an unrelated optional step.
 - For authorized industry work, select the relevant name from office_context.enterpriseSkills and read its real package; never switch or broaden data scope silently. Existing data-analysis files are attached through generate_waste_report(analysisId) with no baseName, which verifies and reuses their exact receipts; do not shell-list the workspace to find them.
-- Load enterprise Skill instructions with check_enterprise_skill(query, includeInstructions:true); it returns the current authorized full instructions, references and templates. Never invoke the helper CLI through Exec just to read a Skill. Use file for another exact companion text file; executing a script still requires its normal authorization.
+- Load the enterprise Skill entry with check_enterprise_skill(query, file:"SKILL.md"), then exact reference/template files needed for this task. The complete authorized package remains available; includeInstructions:true expands a bounded bundle only when needed, not every unrelated workflow. Never invoke the helper CLI through Exec just to read a Skill. Use file for another exact companion text file; executing a script still requires its normal authorization.
 - For a requested enterprise Skill availability check, use check_enterprise_skill once with its name/ID. If unavailable, state that result and continue only with still-authorized capabilities; do not probe helper CLI syntax, scan old profile caches, or reconstruct a revoked package.
 - First call office_context. For company-template reimbursement FIRST load Skill finance-reimbursement-filler, read its SKILL.md, and execute its bundled scripts with ExecCommand. It preserves template formulas/images/sheets. A new evidence table is NEVER a filled reimbursement template. Script failure means incomplete, not permission to replace the template.
 - For a short research comparison, read 3–6 substantive original sources, then deliver scoped findings. Mark inaccessible sources and missing facts; do not keep chasing navigation or optional details instead of creating the requested files. Use create_evidence_deliverables with purpose="research" and one shared dataset; compliance uses purpose="compliance".
