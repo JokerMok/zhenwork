@@ -197,11 +197,13 @@
     "Root metadata converted to existing SKILL_PACKAGE_V1; original root retained unchanged as reference",
     "Industry method/config/preferences/templates added",
     "Portable deterministic industry processor added; existing DataAnalysis and Office parsers/renderers reused",
-    "DSH UI/MCP display-only application and unrelated dependencies excluded"
+    "DSH UI/MCP display-only application and unrelated dependencies excluded",
+    "Reuse workflows 18/16/20 for configurable intensity/cost decomposition; one bounded step reads existing normalized results. Original upstream bytes unchanged."
   ],
   "dependencies": {
     "processor": "Python >=3.10 standard library",
     "xlsxAdapter": "existing ZhenWork openpyxl bounded parser",
     "externalMcp": "none required; business and declaration connections UNCONFIGURED"
-  }
+  },
+  "industryAdaptationVersion": "1.1.0"
 }

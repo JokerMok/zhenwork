@@ -16,5 +16,42 @@
   ],
   "differencesOnly": false,
   "outputTitle": "固危废关联业务核对",
-  "outputSheets": {}
+  "outputSheets": {},
+  "analysis": {
+    "periods": [
+      "2026-08",
+      "2026-09"
+    ],
+    "groupBy": [
+      "workshop",
+      "productGroup"
+    ],
+    "aggregateScope": "DEMO_FULL",
+    "costDateField": "settlementDate",
+    "intensityAlertPercent": "2",
+    "costAlertPercent": "5",
+    "precision": {
+      "weight": 6,
+      "production": 6,
+      "intensity": 8,
+      "percent": 4,
+      "money": 2,
+      "price": 6
+    },
+    "differencesOnly": false,
+    "sheetNames": {},
+    "outputs": {
+      "summary": true,
+      "excel": true,
+      "wordWhenExplicit": true,
+      "pptWhenExplicit": true,
+      "detail": true
+    },
+    "weightDisplayUnit": "kg",
+    "costGroupBy": [
+      "project",
+      "supplier"
+    ],
+    "outputTitle": "产废强度与费用变化"
+  }
 }

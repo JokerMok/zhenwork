@@ -1299,76 +1299,106 @@ export async function startOfficeTools(
             read: (file) => readInput(file, conversation),
             signal: abort.signal,
           });
-          const label = String(args.outputBase || '成果/固危废业务核对').replace(/\.(xlsx|json)$/i, '');
-          if (
-            path.isAbsolute(label) ||
-            label.split('/').some((p) => !p || p === '.' || p === '..') ||
-            label.includes('\\') ||
-            label.includes('\0')
-          )
-            throw new Error('METHOD_OUTPUT_PATH_INVALID');
-          // New immutable names preserve earlier employee artifacts; all outputs pin the same input and method version.
-          const base = label + '-' + Date.now() + '-' + randomBytes(3).toString('hex');
-          const privateInventory =
-            result.preferences.differencesOnly === true &&
-            result.summary.methods instanceof Array &&
-            result.summary.methods.length === 1 &&
-            result.summary.methods[0] === 'inventory';
-          const sheets = privateInventory
-            ? result.sheets
-            : [
-                ...result.sheets,
-                result.analysisSheet,
-                {
-                  name: '来源版本',
-                  headers: ['项目', '值'],
-                  rows: [
-                    ['输入文件', input.inputPath],
-                    ['输入SHA256', result.provenance.inputSha256],
-                    ['方法资源', result.provenance.resourceId],
-                    ['方法版本', String(result.provenance.version)],
-                    ['配置SHA256', result.provenance.configSha256],
-                    ['处理器SHA256', result.provenance.processorSha256],
-                    ['覆盖行数', String(result.coverage.inputRows)],
-                    ['说明', '完整输入；缺项保留；外部连接未配置；不对外申报'],
-                    ...result.provenance.sourceFiles.map((f) => [f.path, f.sha256]),
-                  ],
-                },
-              ];
-          const bytes = await generateOfficeArtifact(
-            { format: 'xlsx', title: String(result.preferences.outputTitle || '业务核对'), sheets },
-            abort.signal
+          const outputPreference = (result.preferences.analysis as { outputs?: { excel?: boolean } } | undefined)
+            ?.outputs;
+          const comparisonOnly = (result.summary.methods as string[]).every(
+            (m) => m === 'intensity' || m === 'cost_change'
           );
-          const current = await methodPackage(client, String(args.resourceId));
-          if (current.configSha256 !== result.provenance.configSha256) throw new Error('METHOD_VERSION_CHANGED_RETRY');
-          const live = await readInput(String(args.path), conversation);
-          if (createHash('sha256').update(live.bytes).digest('hex') !== result.provenance.inputSha256)
-            throw new Error('METHOD_INPUT_CHANGED_RETRY');
-          await client.me();
-          abort.signal.throwIfAborted();
-          const relative = base + '.xlsx';
-          await store.upload(core.workspaceRoot, relative, bytes, false);
-          const receipt = await savedReceipt(relative, bytes, abort.signal);
-          value = {
-            summary: result.summary,
-            issues: result.issues,
-            coverage: result.coverage,
-            provenance: {
-              ...result.provenance,
-              sourceFiles: result.provenance.sourceFiles.map((source) => ({
-                sourcePath: source.path,
-                sourceSha256: source.sha256,
-              })),
-            },
-            analysisInput:
-              privateInventory || !(result.summary.analysisInput as { complete?: boolean })?.complete
-                ? undefined
-                : { path: relative, sheet: result.analysisSheet.name },
-            ...receipt,
-            validation: { valid: true, format: 'xlsx', allRowsProcessed: true },
-            instruction:
-              'Use these verified summaries and real file links. Missing/unknown values are not zero or legal verdicts. Formal monthly analysis uses analysisInput with existing DataAnalysis; no mandatory Word/PPT.',
-          };
+          if (comparisonOnly && outputPreference?.excel === false) {
+            value = {
+              summary: result.summary,
+              issues: result.issues,
+              coverage: result.coverage,
+              provenance: {
+                ...result.provenance,
+                sourceFiles: result.provenance.sourceFiles.map((f) => ({ sourcePath: f.path, sourceSha256: f.sha256 })),
+              },
+              instruction:
+                'Saved preference requests a chat summary only. No file was generated. Quote exact verified numbers; no causal conclusions or final unknown amounts.',
+            };
+          } else {
+            const label = String(args.outputBase || '成果/固危废业务核对').replace(/\.(xlsx|json)$/i, '');
+            if (
+              path.isAbsolute(label) ||
+              label.split('/').some((p) => !p || p === '.' || p === '..') ||
+              label.includes('\\') ||
+              label.includes('\0')
+            )
+              throw new Error('METHOD_OUTPUT_PATH_INVALID');
+            // New immutable names preserve earlier employee artifacts; all outputs pin the same input and method version.
+            const base = label + '-' + Date.now() + '-' + randomBytes(3).toString('hex');
+            const privateInventory =
+              result.preferences.differencesOnly === true &&
+              result.summary.methods instanceof Array &&
+              result.summary.methods.length === 1 &&
+              result.summary.methods[0] === 'inventory';
+            const sheets = privateInventory
+              ? result.sheets
+              : [
+                  ...result.sheets,
+                  ...(result.analysisSheet.rows.length ? [result.analysisSheet] : []),
+                  {
+                    name: '来源版本',
+                    headers: ['项目', '值'],
+                    rows: [
+                      ['输入文件', input.inputPath],
+                      ['输入SHA256', result.provenance.inputSha256],
+                      ['方法资源', result.provenance.resourceId],
+                      ['方法版本', String(result.provenance.version)],
+                      ['配置SHA256', result.provenance.configSha256],
+                      ['处理器SHA256', result.provenance.processorSha256],
+                      ['覆盖行数', String(result.coverage.inputRows)],
+                      ['说明', '完整输入；缺项保留；外部连接未配置；不对外申报'],
+                      ...result.provenance.sourceFiles.map((f) => [f.path, f.sha256]),
+                    ],
+                  },
+                ];
+            const bytes = await generateOfficeArtifact(
+              {
+                format: 'xlsx',
+                title: String(
+                  (comparisonOnly
+                    ? (result.preferences.analysis as { outputTitle?: string } | undefined)?.outputTitle
+                    : undefined) ||
+                    result.preferences.outputTitle ||
+                    '业务核对'
+                ),
+                sheets,
+              },
+              abort.signal
+            );
+            const current = await methodPackage(client, String(args.resourceId));
+            if (current.configSha256 !== result.provenance.configSha256)
+              throw new Error('METHOD_VERSION_CHANGED_RETRY');
+            const live = await readInput(String(args.path), conversation);
+            if (createHash('sha256').update(live.bytes).digest('hex') !== result.provenance.inputSha256)
+              throw new Error('METHOD_INPUT_CHANGED_RETRY');
+            await client.me();
+            abort.signal.throwIfAborted();
+            const relative = base + '.xlsx';
+            await store.upload(core.workspaceRoot, relative, bytes, false);
+            const receipt = await savedReceipt(relative, bytes, abort.signal);
+            value = {
+              summary: result.summary,
+              issues: result.issues,
+              coverage: result.coverage,
+              provenance: {
+                ...result.provenance,
+                sourceFiles: result.provenance.sourceFiles.map((source) => ({
+                  sourcePath: source.path,
+                  sourceSha256: source.sha256,
+                })),
+              },
+              analysisInput:
+                privateInventory || !(result.summary.analysisInput as { complete?: boolean })?.complete
+                  ? undefined
+                  : { path: relative, sheet: result.analysisSheet.name },
+              ...receipt,
+              validation: { valid: true, format: 'xlsx', allRowsProcessed: true },
+              instruction:
+                'Use these verified summaries and real file links. Missing/unknown values are not zero or legal verdicts. Formal monthly analysis uses analysisInput with existing DataAnalysis; no mandatory Word/PPT.',
+            };
+          }
         } else if (tool === 'summarize_json_data') {
           const input = await readInput(String(args.path || ''), conversation);
           value = {

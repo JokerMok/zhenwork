@@ -13,5 +13,5 @@ export async function buildBundle(requiredTools=[]){
  for(const name of ['methods.md','company.json','preferences.json']){const content=await fs.readFile(path.join(root,'references',name),'utf8');files.push({path:'references/'+name,content,encoding:'utf8',executable:false,sha256:digest(content)});}
  for(const dir of ['references','scripts','templates','examples'])await walk(dir);
  for(const name of ['LICENSE','README.md']){const content=await fs.readFile(path.join(root,name),'utf8');files.push({path:name,content,encoding:'utf8',executable:false,sha256:digest(content)});}
- return{name:'企业固危废数据专员 · 标准工作方法',description:'[waste-specialist:v1] 台账、库存、清运、结算、全量月报及检查资料；虚构示例/可复制个人配置。',config:{source,files:files.filter((x,i,a)=>a.findIndex(y=>y.path===x.path)===i)}};
+ return{name:'企业固危废数据专员 · 标准工作方法',description:'[waste-specialist:v1] 原六类方法及产废强度、费用变化分析；复用已核对结果/可复制个人配置。',config:{source,files:files.filter((x,i,a)=>a.findIndex(y=>y.path===x.path)===i)}};
 }

@@ -13,10 +13,18 @@ type Detail = {
 type Client = { authorizedResource(id: string, type: string): Promise<unknown> };
 export type MethodResult = {
   summary: Record<string, unknown>;
+  needsDataSources?: boolean;
+  dataSourcePaths?: string[];
   sheets: OfficeSheet[];
   analysisSheet: OfficeSheet;
   issues: Array<{ kind: string; code: string; source: string; detail: string }>;
-  coverage: { inputRows: number; allRowsProcessed: boolean; truncated: boolean };
+  coverage: {
+    inputRows: number;
+    allRowsProcessed: boolean;
+    truncated: boolean;
+    sourceCoverageComplete?: boolean;
+    reusedNormalizedRows?: number;
+  };
   attachmentPaths: string[];
   contractSources: Array<{ path: string; quote: string; source: string }>;
 };
@@ -38,11 +46,11 @@ export const methodTool = {
       methods: {
         type: 'array',
         minItems: 1,
-        maxItems: 5,
+        maxItems: 7,
         uniqueItems: true,
         items: {
           type: 'string',
-          enum: ['ledger', 'inventory', 'transfer', 'settlement', 'checklist'],
+          enum: ['ledger', 'inventory', 'transfer', 'settlement', 'checklist', 'intensity', 'cost_change'],
         },
       },
       outputBase: { type: 'string', maxLength: 140 },
@@ -123,11 +131,15 @@ export async function runMethodProcessor(
           return;
         }
         if (
-          !body.coverage?.allRowsProcessed ||
+          (!body.coverage?.allRowsProcessed && body.needsDataSources !== true) ||
           body.coverage.truncated ||
           !Array.isArray(body.sheets) ||
           !Array.isArray(body.attachmentPaths) ||
-          body.attachmentPaths.length > 200
+          body.attachmentPaths.length > 200 ||
+          (body.dataSourcePaths !== undefined &&
+            (!Array.isArray(body.dataSourcePaths) ||
+              body.dataSourcePaths.length > 20 ||
+              body.dataSourcePaths.some((p) => !body.attachmentPaths.includes(p))))
         ) {
           reject(Error('METHOD_RESULT_INCOMPLETE'));
           return;
@@ -192,10 +204,22 @@ export async function executeMethod(options: {
         throw e;
       }
     };
+    const contentSources = new Set(first.dataSourcePaths || []);
+    let contentBytes = 0;
     for (const file of first.attachmentPaths) {
       // eslint-disable-next-line no-await-in-loop -- Bounded source reads stop on the first authorization denial and limit resident file bytes.
       const value = await read(file);
-      payload.attachments[file] = value ? { available: true, sha256: sha(value.bytes) } : { available: false };
+      if (value && contentSources.has(file)) {
+        contentBytes += value.bytes.length;
+        if (contentBytes > 20 * 1024 * 1024) throw Error('METHOD_SOURCE_CONTENT_LIMIT_20MB');
+      }
+      payload.attachments[file] = value
+        ? {
+            available: true,
+            sha256: sha(value.bytes),
+            ...(contentSources.has(file) ? { contentBase64: value.bytes.toString('base64') } : {}),
+          }
+        : { available: false };
     }
     if (first.contractSources.length > 100) throw Error('METHOD_SOURCE_COUNT_LIMIT');
     const contractIssues: MethodResult['issues'] = [];
@@ -219,6 +243,7 @@ export async function executeMethod(options: {
       }
     }
     const result = await runMethodProcessor(p.script, payload, options.signal);
+    if (result.needsDataSources || !result.coverage.allRowsProcessed) throw Error('METHOD_RESULT_INCOMPLETE');
     result.issues.push(...contractIssues);
     // Recheck the same immutable method config before any output writes.
     const current = await methodPackage(options.client, options.resourceId);

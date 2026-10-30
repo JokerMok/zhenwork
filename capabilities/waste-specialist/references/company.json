@@ -100,5 +100,229 @@
       "WEIGH": "磅单"
     },
     "includedTaxPattern": "(?<!不)含税"
+  },
+  "analysis": {
+    "schemaVersion": 1,
+    "dimensions": [
+      "workshop",
+      "productGroup",
+      "line"
+    ],
+    "tables": {
+      "production": {
+        "sheet": "生产量",
+        "headerRow": 1,
+        "fields": {
+          "期间": "period",
+          "车间": "workshop",
+          "产品组": "productGroup",
+          "覆盖范围": "scope",
+          "生产数量": "quantity",
+          "生产单位": "unit",
+          "可比组声明": "comparability"
+        }
+      },
+      "costs": {
+        "sheet": "新增结算",
+        "headerRow": 1,
+        "fields": {
+          "项目": "project",
+          "供应商": "supplier",
+          "废物": "waste",
+          "费用类别": "category",
+          "收支": "direction",
+          "计价类型": "pricingType",
+          "结算金额": "amount",
+          "计价数量": "quantity",
+          "数量单位": "quantityUnit",
+          "有效单价": "price",
+          "单价单位": "priceUnit",
+          "税口径": "taxBasis",
+          "频次": "recurrence",
+          "金额口径": "basis",
+          "币种": "currency",
+          "业务日期": "businessDate",
+          "结算日期": "settlementDate",
+          "付款日期": "paymentDate",
+          "已付金额": "paidAmount",
+          "核对状态": "conditionState",
+          "合同编号": "contractRef",
+          "合同条件": "conditionQuote",
+          "费用归属车间": "workshop"
+        }
+      },
+      "legacyMap": {
+        "sheet": "原核对归属",
+        "headerRow": 1,
+        "fields": {
+          "业务号": "shipment",
+          "业务日期": "businessDate",
+          "结算日期": "settlementDate",
+          "付款日期": "paymentDate"
+        }
+      },
+      "sources": {
+        "sheet": "来源绑定",
+        "headerRow": 1,
+        "fields": {
+          "用途": "role",
+          "既有成果路径": "path",
+          "指定SHA256": "sha256"
+        }
+      }
+    },
+    "sources": {
+      "verifiedWaste": {
+        "sheet": "产废分析输入",
+        "headerRow": 1,
+        "fields": {
+          "业务单号": "id",
+          "业务日期": "date",
+          "所属车间": "workshop",
+          "废物类别": "waste",
+          "重量": "weightKg"
+        },
+        "defaults": {
+          "productGroup": "标准件组",
+          "scope": "DEMO_FULL"
+        }
+      },
+      "verifiedSettlement": {
+        "sheet": "结算对账",
+        "headerRow": 1,
+        "fields": {
+          "账单": "bill",
+          "清运号": "shipment",
+          "收支方向": "direction",
+          "条件核算金额元": "amount",
+          "已知重量费元": "knownComponent",
+          "状态": "status",
+          "来源": "originalLocation",
+          "合同条款摘录": "conditionQuote"
+        }
+      }
+    },
+    "objectAliases": {
+      "workshop": {
+        "A": "A",
+        "A车间": "A",
+        "B": "B",
+        "B车间": "B",
+        "C": "C",
+        "C车间": "C"
+      }
+    },
+    "productionUnits": {
+      "件": {
+        "canonical": "件",
+        "factor": "1"
+      },
+      "吨": {
+        "canonical": "吨",
+        "factor": "1"
+      },
+      "t": {
+        "canonical": "吨",
+        "factor": "1"
+      },
+      "kg": {
+        "canonical": "吨",
+        "factor": "0.001"
+      },
+      "平方米": {
+        "canonical": "平方米",
+        "factor": "1"
+      }
+    },
+    "cost": {
+      "categories": {
+        "处置": "处置",
+        "运输": "运输",
+        "包装": "包装",
+        "检测": "检测",
+        "回收": "回收"
+      },
+      "directions": {
+        "支出": "expense",
+        "收入": "income"
+      },
+      "taxBases": {
+        "含税": "included",
+        "未税": "excluded"
+      },
+      "recurrences": {
+        "持续": "recurring",
+        "一次性": "one_off"
+      },
+      "completeStates": [
+        "模拟已核对完整",
+        "已核对完整"
+      ],
+      "bases": [
+        "settled_payable"
+      ],
+      "currencies": [
+        "CNY"
+      ],
+      "actualOnlyPricingTypes": [
+        "fixed",
+        "tiered",
+        "minimum",
+        "actual"
+      ],
+      "quantityUnits": {
+        "吨": {
+          "canonical": "吨",
+          "factor": "1"
+        },
+        "t": {
+          "canonical": "吨",
+          "factor": "1"
+        },
+        "kg": {
+          "canonical": "吨",
+          "factor": "0.001"
+        },
+        "车次": {
+          "canonical": "车次",
+          "factor": "1"
+        }
+      },
+      "priceUnits": {
+        "元/吨": {
+          "denominator": "吨",
+          "factor": "1"
+        },
+        "元/kg": {
+          "denominator": "吨",
+          "factor": "1000"
+        },
+        "元/车次": {
+          "denominator": "车次",
+          "factor": "1"
+        }
+      },
+      "groupDimensions": [
+        "project",
+        "supplier",
+        "waste",
+        "category",
+        "workshop",
+        "line",
+        "productGroup"
+      ]
+    },
+    "legacyKnownStatuses": [
+      "金额一致"
+    ],
+    "possibleFactors": [
+      "产品结构或单件规格是否变化，需要产品结构资料验证",
+      "生产、产生与结算期间是否错位，需要归属资料验证",
+      "计量或补录口径是否改变，需要原始业务材料验证"
+    ],
+    "weightDisplayFactors": {
+      "kg": "1",
+      "吨": "0.001"
+    }
   }
 }

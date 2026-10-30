@@ -1,0 +1,242 @@
+{
+  "notice": "完全虚构/模拟追加资料；不修改旧台账、O08/O09或旧成果。生产件数为新增可比口径，原100/110吨资料保留但不混加。新费用项目独立，不将历史库存处置量当当期产生量。结算应付不等于现金支付。",
+  "tables": {
+    "production": [
+      {
+        "period": "2026-08",
+        "workshop": "A",
+        "productGroup": "标准件组",
+        "scope": "DEMO_FULL",
+        "quantity": 400,
+        "unit": "件",
+        "comparability": "模拟同类标准件统计口径-v1"
+      },
+      {
+        "period": "2026-08",
+        "workshop": "B",
+        "productGroup": "标准件组",
+        "scope": "DEMO_FULL",
+        "quantity": 350,
+        "unit": "件",
+        "comparability": "模拟同类标准件统计口径-v1"
+      },
+      {
+        "period": "2026-08",
+        "workshop": "C",
+        "productGroup": "标准件组",
+        "scope": "DEMO_FULL",
+        "quantity": 250,
+        "unit": "件",
+        "comparability": "模拟同类标准件统计口径-v1"
+      },
+      {
+        "period": "2026-09",
+        "workshop": "A",
+        "productGroup": "标准件组",
+        "scope": "DEMO_FULL",
+        "quantity": 500,
+        "unit": "件",
+        "comparability": "模拟同类标准件统计口径-v1"
+      },
+      {
+        "period": "2026-09",
+        "workshop": "B",
+        "productGroup": "标准件组",
+        "scope": "DEMO_FULL",
+        "quantity": 450,
+        "unit": "件",
+        "comparability": "模拟同类标准件统计口径-v1"
+      },
+      {
+        "period": "2026-09",
+        "workshop": "C",
+        "productGroup": "标准件组",
+        "scope": "DEMO_FULL",
+        "quantity": 300,
+        "unit": "件",
+        "comparability": "模拟同类标准件统计口径-v1"
+      },
+      {
+        "period": "2026-09",
+        "workshop": "C",
+        "productGroup": "缺分母边界案例",
+        "scope": "DEMO_PARTIAL_ONLY",
+        "quantity": null,
+        "unit": "件",
+        "comparability": "局部资料，不纳入全范围"
+      }
+    ],
+    "costs": [
+      {
+        "project": "NEW-DISPOSAL",
+        "supplier": "模拟新增处置商",
+        "waste": "D-OIL",
+        "category": "处置",
+        "direction": "支出",
+        "pricingType": "linear",
+        "amount": 10000,
+        "quantity": 10,
+        "quantityUnit": "吨",
+        "price": 1000,
+        "priceUnit": "元/吨",
+        "taxBasis": "含税",
+        "recurrence": "持续",
+        "basis": "settled_payable",
+        "currency": "CNY",
+        "businessDate": "2026-08-31",
+        "settlementDate": "2026-08-31",
+        "paymentDate": "",
+        "paidAmount": null,
+        "conditionState": "模拟已核对完整",
+        "contractRef": "DEMO-COMPARISON-NEW-DISPOSAL-v1",
+        "conditionQuote": "2026-08新增模拟项目NEW-DISPOSAL：10吨×1000元/吨，结算金额10000元，含税。"
+      },
+      {
+        "project": "NEW-DISPOSAL",
+        "supplier": "模拟新增处置商",
+        "waste": "D-OIL",
+        "category": "处置",
+        "direction": "支出",
+        "pricingType": "linear",
+        "amount": 13200,
+        "quantity": 12,
+        "quantityUnit": "吨",
+        "price": 1100,
+        "priceUnit": "元/吨",
+        "taxBasis": "含税",
+        "recurrence": "持续",
+        "basis": "settled_payable",
+        "currency": "CNY",
+        "businessDate": "2026-09-30",
+        "settlementDate": "2026-09-30",
+        "paymentDate": "",
+        "paidAmount": null,
+        "conditionState": "模拟已核对完整",
+        "contractRef": "DEMO-COMPARISON-NEW-DISPOSAL-v1",
+        "conditionQuote": "2026-09新增模拟项目NEW-DISPOSAL：12吨×1100元/吨，结算金额13200元，含税。"
+      },
+      {
+        "project": "NEW-TRANSPORT",
+        "supplier": "模拟新增处置商",
+        "waste": "D-OIL",
+        "category": "运输",
+        "direction": "支出",
+        "pricingType": "fixed",
+        "amount": 500,
+        "quantity": null,
+        "quantityUnit": "",
+        "price": null,
+        "priceUnit": "",
+        "taxBasis": "含税",
+        "recurrence": "持续",
+        "basis": "settled_payable",
+        "currency": "CNY",
+        "businessDate": "2026-08-31",
+        "settlementDate": "2026-08-31",
+        "paymentDate": "",
+        "paidAmount": null,
+        "conditionState": "模拟已核对完整",
+        "contractRef": "DEMO-COMPARISON-NEW-TRANSPORT-v1",
+        "conditionQuote": "2026-08新增模拟项目NEW-TRANSPORT：运输费用结算金额500元，含税，持续性。"
+      },
+      {
+        "project": "NEW-TRANSPORT",
+        "supplier": "模拟新增处置商",
+        "waste": "D-OIL",
+        "category": "运输",
+        "direction": "支出",
+        "pricingType": "fixed",
+        "amount": 800,
+        "quantity": null,
+        "quantityUnit": "",
+        "price": null,
+        "priceUnit": "",
+        "taxBasis": "含税",
+        "recurrence": "持续",
+        "basis": "settled_payable",
+        "currency": "CNY",
+        "businessDate": "2026-09-30",
+        "settlementDate": "2026-09-30",
+        "paymentDate": "",
+        "paidAmount": null,
+        "conditionState": "模拟已核对完整",
+        "contractRef": "DEMO-COMPARISON-NEW-TRANSPORT-v1",
+        "conditionQuote": "2026-09新增模拟项目NEW-TRANSPORT：运输费用结算金额800元，含税，持续性。"
+      },
+      {
+        "project": "NEW-TEST-ONCE",
+        "supplier": "模拟检测商",
+        "waste": "D-OIL",
+        "category": "检测",
+        "direction": "支出",
+        "pricingType": "fixed",
+        "amount": 200,
+        "quantity": null,
+        "quantityUnit": "",
+        "price": null,
+        "priceUnit": "",
+        "taxBasis": "含税",
+        "recurrence": "一次性",
+        "basis": "settled_payable",
+        "currency": "CNY",
+        "businessDate": "2026-08-29",
+        "settlementDate": "2026-09-20",
+        "paymentDate": "",
+        "paidAmount": null,
+        "conditionState": "模拟已核对完整",
+        "contractRef": "DEMO-COMPARISON-NEW-TEST-ONCE-v1",
+        "conditionQuote": "2026-09新增模拟项目NEW-TEST-ONCE：检测费用结算金额200元，含税，一次性。"
+      }
+    ],
+    "legacyMap": [
+      {
+        "shipment": "G08",
+        "businessDate": "2026-08-25",
+        "settlementDate": "2026-08-30",
+        "paymentDate": ""
+      },
+      {
+        "shipment": "G09",
+        "businessDate": "2026-09-25",
+        "settlementDate": "2026-09-30",
+        "paymentDate": ""
+      },
+      {
+        "shipment": "O08",
+        "businessDate": "2026-08-25",
+        "settlementDate": "2026-08-30",
+        "paymentDate": ""
+      },
+      {
+        "shipment": "O09",
+        "businessDate": "2026-09-25",
+        "settlementDate": "2026-09-30",
+        "paymentDate": ""
+      },
+      {
+        "shipment": "R08",
+        "businessDate": "2026-08-25",
+        "settlementDate": "2026-08-30",
+        "paymentDate": ""
+      },
+      {
+        "shipment": "R09",
+        "businessDate": "2026-09-25",
+        "settlementDate": "2026-09-30",
+        "paymentDate": ""
+      }
+    ],
+    "sources": [
+      {
+        "role": "verifiedWaste",
+        "path": "资料/产废强度费用变化/既有核对结果-脱敏模拟.json",
+        "sha256": "d4eabdd6ed1d5b4ebbbca777d0e5cf90319f1784a215fa1769f80479135d6a2b"
+      },
+      {
+        "role": "verifiedSettlement",
+        "path": "资料/产废强度费用变化/既有核对结果-脱敏模拟.json",
+        "sha256": "d4eabdd6ed1d5b4ebbbca777d0e5cf90319f1784a215fa1769f80479135d6a2b"
+      }
+    ]
+  }
+}

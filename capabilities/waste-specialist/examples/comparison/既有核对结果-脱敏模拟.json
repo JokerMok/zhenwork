@@ -1,0 +1,195 @@
+{
+  "notice": "从上一轮完全虚构的已验证业务成果提取24条规范行，不重算；已剔除真实平台资源ID及运行元数据，原业务编号与核对金额保持。",
+  "tables": {
+    "verifiedWaste": [
+      {
+        "id": "P-08-D-GW-A",
+        "date": "2026-08-10",
+        "workshop": "A",
+        "waste": "D-GW",
+        "weightKg": 1000
+      },
+      {
+        "id": "P-08-D-GW-B",
+        "date": "2026-08-10",
+        "workshop": "B",
+        "waste": "D-GW",
+        "weightKg": 800
+      },
+      {
+        "id": "P-08-D-GW-C",
+        "date": "2026-08-10",
+        "workshop": "C",
+        "waste": "D-GW",
+        "weightKg": 600
+      },
+      {
+        "id": "P-08-D-OIL-A",
+        "date": "2026-08-10",
+        "workshop": "A",
+        "waste": "D-OIL",
+        "weightKg": 500
+      },
+      {
+        "id": "P-08-D-OIL-B",
+        "date": "2026-08-10",
+        "workshop": "B",
+        "waste": "D-OIL",
+        "weightKg": 300
+      },
+      {
+        "id": "P-08-D-OIL-C",
+        "date": "2026-08-10",
+        "workshop": "C",
+        "waste": "D-OIL",
+        "weightKg": 200
+      },
+      {
+        "id": "P-08-D-RAG-A",
+        "date": "2026-08-10",
+        "workshop": "A",
+        "waste": "D-RAG",
+        "weightKg": 150
+      },
+      {
+        "id": "P-08-D-RAG-B",
+        "date": "2026-08-10",
+        "workshop": "B",
+        "waste": "D-RAG",
+        "weightKg": 100
+      },
+      {
+        "id": "P-08-D-RAG-C",
+        "date": "2026-08-10",
+        "workshop": "C",
+        "waste": "D-RAG",
+        "weightKg": 50
+      },
+      {
+        "id": "P-09-D-GW-A",
+        "date": "2026-09-10",
+        "workshop": "A",
+        "waste": "D-GW",
+        "weightKg": 1200
+      },
+      {
+        "id": "P-09-D-GW-B",
+        "date": "2026-09-10",
+        "workshop": "B",
+        "waste": "D-GW",
+        "weightKg": 900
+      },
+      {
+        "id": "P-09-D-GW-C",
+        "date": "2026-09-10",
+        "workshop": "C",
+        "waste": "D-GW",
+        "weightKg": 700
+      },
+      {
+        "id": "P-09-D-OIL-A",
+        "date": "2026-09-10",
+        "workshop": "A",
+        "waste": "D-OIL",
+        "weightKg": 650
+      },
+      {
+        "id": "P-09-D-OIL-B",
+        "date": "2026-09-10",
+        "workshop": "B",
+        "waste": "D-OIL",
+        "weightKg": 400
+      },
+      {
+        "id": "P-09-D-OIL-C",
+        "date": "2026-09-10",
+        "workshop": "C",
+        "waste": "D-OIL",
+        "weightKg": 250
+      },
+      {
+        "id": "P-09-D-RAG-A",
+        "date": "2026-09-10",
+        "workshop": "A",
+        "waste": "D-RAG",
+        "weightKg": 180
+      },
+      {
+        "id": "P-09-D-RAG-B",
+        "date": "2026-09-10",
+        "workshop": "B",
+        "waste": "D-RAG",
+        "weightKg": 130
+      },
+      {
+        "id": "P-09-D-RAG-C",
+        "date": "2026-09-10",
+        "workshop": "C",
+        "waste": "D-RAG",
+        "weightKg": 90
+      }
+    ],
+    "verifiedSettlement": [
+      {
+        "bill": "B-G08",
+        "shipment": "G08",
+        "direction": "回收收入",
+        "knownComponent": 1095,
+        "amount": 1095,
+        "status": "金额一致（凭据仍按资料清单核查）",
+        "conditionQuote": "D-GW：回收收入，按磅单重量500元/吨，运输费0元/车次，含税。",
+        "originalLocation": "合同条款!2；结算单!2"
+      },
+      {
+        "bill": "B-G09",
+        "shipment": "G09",
+        "direction": "回收收入",
+        "knownComponent": 1345,
+        "amount": 1345,
+        "status": "金额一致（凭据仍按资料清单核查）",
+        "conditionQuote": "D-GW：回收收入，按磅单重量500元/吨，运输费0元/车次，含税。",
+        "originalLocation": "合同条款!2；结算单!3"
+      },
+      {
+        "bill": "B-O08",
+        "shipment": "O08",
+        "direction": "处置支出",
+        "knownComponent": 1638,
+        "amount": 1838,
+        "status": "金额差异待核",
+        "conditionQuote": "D-OIL：处置支出，按磅单重量1800元/吨，运输费200元/车次，含税。",
+        "originalLocation": "合同条款!3；结算单!4"
+      },
+      {
+        "bill": "B-O09",
+        "shipment": "O09",
+        "direction": "处置支出",
+        "knownComponent": 2124,
+        "amount": "未提供/待核",
+        "status": "条件待核，不能生成最终应付/应收",
+        "conditionQuote": "D-OIL：处置支出，按磅单重量1800元/吨，运输费200元/车次，含税。",
+        "originalLocation": "合同条款!3；结算单!5"
+      },
+      {
+        "bill": "B-R08",
+        "shipment": "R08",
+        "direction": "处置支出",
+        "knownComponent": 768,
+        "amount": 1068,
+        "status": "金额一致（凭据仍按资料清单核查）",
+        "conditionQuote": "D-RAG：处置支出，按磅单重量3200元/吨，运输费300元/车次，含税。",
+        "originalLocation": "合同条款!4；结算单!6"
+      },
+      {
+        "bill": "B-R09",
+        "shipment": "R09",
+        "direction": "处置支出",
+        "knownComponent": 1120,
+        "amount": 1420,
+        "status": "金额一致（凭据仍按资料清单核查）",
+        "conditionQuote": "D-RAG：处置支出，按磅单重量3200元/吨，运输费300元/车次，含税。",
+        "originalLocation": "合同条款!4；结算单!7"
+      }
+    ]
+  }
+}

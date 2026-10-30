@@ -1,14 +1,24 @@
 ---
 name: zhenwork-waste-specialist
-version: 1.0.0
-description: 企业固危废数据专员：全量台账、库存批次、清运资料、合同费用、产废分析和检查底稿；完整复用MIT财务工作方法并适配行业事件边界。
+version: 1.1.0
+description: 企业固危废数据专员：全量台账、库存批次、清运资料、合同费用、产废分析、检查底稿、产废强度及费用变化；完整复用MIT财务工作方法并适配行业事件边界。
 requiredTools: []
 dependencies: []
 ---
 
 # 企业固危废数据专员
 
-六类方法可单独调用或自然语言组合，沿用员工身份、授权文件和已发布业务口径。先 office_context，再 check_enterprise_skill(query=本技能名称或当前个人技能名, file="SKILL.md")。用返回的实际资源 id 调用 run_enterprise_method，不能猜ID、用Exec读取/执行脚本或以预览估算全量。
+原六类方法和新增的产废强度、费用变化方法可按自然语言组合，沿用员工身份、授权文件和已发布业务口径。先 office_context，再 check_enterprise_skill(query=本技能名称或当前个人技能名, file="SKILL.md")。用返回的实际资源 id 调用 run_enterprise_method，不能猜ID、用Exec读取/执行脚本或以预览估算全量。
+
+## 产废强度与费用变化（增量方法）
+
+员工比较产量、产废和费用时，优先读取已配置的追加资料（示例为“资料/产废强度费用变化-追加模拟-v1.xlsx”）。先office_context，再用check_enterprise_skill(file="SKILL.md")加载本入口；需要时精确读取references/analysis-methods.md。不要展开所有上游财务提示，不扫描目录或运行本地命令。
+
+直接调用run_enterprise_method(resourceId=本次已加载资源ID,path=追加资料路径,methods=["intensity","cost_change"])。单项只选相应方法；两项共用一次有界比较步骤。来源绑定表指向已有核对成果，工具按员工权限回读完整规范行；不重新清洗原台账、不重跑已完成结算、不重新导入月报。追加资料可以是JSON或按已保存映射的XLSX。若需要先核对全新原件，先沿旧方法完成核对，再把实际结果绑定到追加资料；两步可由同一任务组合，但不能把待核数据当已验证结果。
+
+关键值只引用本次summary.intensity / costChange和实际Excel。强度分别报告总量、分母、单位指标及车间/同类产品差异，范围或单位不一致、缺分母/分母为零不强算，前期为零不写无限增长。产品结构变化先分组，原因材料未提供时只列“待核实的可能因素”，不能宣布工艺改善。费用按披露的先数量后价格分解；固定/复杂费、新增退出、一次性费用单列。既有O08/O09待核项沿用，不纳入已确认完整费用；应付结算不等于现金支出，不把历史库存处置费除以当月产废量。
+
+配置自动从本版本company.json.analysis、preferences.json.analysis读取：期间/分组、字段/对象映射、生产单位、业务/结算/付款日期、费用类别/税口径、精度、提醒阈值、明细或差异及输出偏好。默认只需一次工具返回的一份Excel和简短结论，不再重算/反复生成相同成果，不调用原月报生成器为这两个新方法额外做Word。Word/PPT只有员工明确要求时使用既有Office成果链路，偏好设置不等于已生成文件。完成后检查实际回执，task_checkpoint completed，简短答复。
 
 ## 执行
 
