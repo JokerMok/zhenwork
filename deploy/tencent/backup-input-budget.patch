@@ -1,0 +1,22 @@
+--- /usr/local/sbin/server-config-backup.before
++++ /usr/local/sbin/server-config-backup.after
+@@ -6,7 +6,7 @@
+ lock=open('/run/lock/server-config-backup.lock','w')
+ fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+ root=P('/srv/backups/config'); root.mkdir(parents=True,exist_ok=True,mode=0o700)
+-CAP=2*1024**3; SINGLE=768*1024**2; INPUT=768*1024**2
++CAP=2*1024**3; SINGLE=768*1024**2; INPUT=896*1024**2
+ if shutil.disk_usage(root).free < 2*1024**3: raise RuntimeError('Need 2 GiB free; existing backups preserved')
+ paths=[P(s) for s in ['/etc/caddy','/etc/docker','/etc/ufw','/etc/default/ufw','/etc/ssh/sshd_config','/etc/ssh/sshd_config.d','/etc/apt/sources.list.d','/etc/apt/keyrings','/usr/share/keyrings/caddy-stable-archive-keyring.gpg','/etc/systemd/system/docker.service.d','/etc/systemd/system/caddy.service.d','/etc/systemd/system/server-config-backup.service','/etc/systemd/system/server-config-backup.timer','/etc/systemd/journald.conf.d/server-ops.conf','/etc/server-ops','/srv/ops','/usr/local/sbin/server-config-backup','/usr/local/sbin/docker-ingress-guard','/usr/local/sbin/caddy-site-install']]
+ for app in P('/srv/apps').iterdir():
+@@ -33,7 +33,9 @@
+         for hook in sorted(hooks.glob('*.sh')):
+             if hook.is_file() and os.access(hook,os.X_OK):
+                 subprocess.run([str(hook),str(business)],check=True,timeout=600,preexec_fn=limits)
+-                if source_bytes+size(stage)>INPUT: raise RuntimeError('Business backup exceeds input budget; increase reviewed capacity before onboarding')
++                stage_bytes=size(stage)
++                print('BACKUP_INPUT_BYTES',source_bytes+stage_bytes,'config',source_bytes,'stage',stage_bytes,flush=True)
++                if source_bytes+stage_bytes>INPUT: raise RuntimeError('Business backup exceeds input budget; increase reviewed capacity before onboarding')
+         (stage/'manifest.json').write_text(json.dumps({'utc':stamp,'scope':'deployment config; business only via explicit hooks','sources':[str(p) for p in paths]},indent=2))
+         with tarfile.open(partial,'w:gz',dereference=False) as archive:
+             for p in paths: archive.add(p,arcname=str(p).lstrip('/'))
