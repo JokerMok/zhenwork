@@ -16,7 +16,7 @@ class Industry(unittest.TestCase):
   self.assertEqual(r['summary']['ledger']['inputRows'],38);self.assertEqual(r['summary']['ledger']['uniqueRows'],37)
   self.assertEqual(r['summary']['analysisInput']['rows'],18);self.assertTrue(r['summary']['analysisInput']['complete'])
   rows={r[0]:r for r in next(x for x in r['sheets'] if x['name']=='结算对账')['rows']}
-  self.assertEqual(rows['B-O08'][9],'1838');self.assertEqual(rows['B-O08'][11],'40');self.assertEqual(rows['B-O09'][9],'未提供/待核');self.assertEqual(rows['B-O09'][8],'2124')
+  self.assertIsInstance(rows['B-O08'][9],int);self.assertEqual(rows['B-O08'][9],1838);self.assertEqual(rows['B-O08'][11],40);self.assertEqual(rows['B-O09'][9],'未提供/待核');self.assertEqual(rows['B-O09'][8],2124)
   g=next(x for x in r['summary']['transfer']['pending'] if x['shipment']=='G09');self.assertIn('跨期',g['status'])
   self.assertEqual(r['summary']['checklist']['missing'],1);self.assertEqual(r['summary']['checklist']['incomplete'],1)
  def test_personal_method(self):

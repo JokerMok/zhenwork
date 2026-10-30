@@ -75,9 +75,13 @@ def run(payload):
    produce.append(item)
  cutoff=prefs['cutoff'];period=cutoff[:7];date=dt.date.fromisoformat(cutoff)
  sheets=[]
+ def excel_number(v):
+  rounded=v.quantize(D('.001'),rounding=ROUND_HALF_UP)
+  if abs(rounded)>D('99999999999.999'):raise ValueError('XLSX_NUMERIC_PRECISION_LIMIT')
+  return int(rounded) if rounded==rounded.to_integral_value() else float(rounded)
  def sheet(title,headers,rows):
   if len(rows)>1000:raise ValueError('OUTPUT_ROW_LIMIT_NO_TRUNCATION')
-  sheets.append({'name':title,'headers':headers,'rows':[[quant(x) if isinstance(x,D) else '未提供/待核' if x is None else str(x) for x in row] for row in rows]})
+  sheets.append({'name':title,'headers':headers,'rows':[[excel_number(x) if isinstance(x,D) else '未提供/待核' if x is None else x if isinstance(x,int) else str(x) for x in row] for row in rows]})
  summary={'fictional':cfg.get('fictional',False),'company':cfg['company'],'cutoff':cutoff,'methods':methods,'externalConnections':cfg['externalConnections']}
  if 'ledger' in methods:
   sheet('整理台账',['业务单号','业务节点','业务日期','所属车间','废物类别','废物名称','重量','单位','分类来源','原始位置'],[[r['id'],r['node'],r['date'],r.get('workshop',''),r['waste'],waste[r['waste']]['name'],r['kg'],'kg',r['classification'],r['_source']] for r in clean])

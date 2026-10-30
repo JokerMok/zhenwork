@@ -106,3 +106,18 @@ it('reads a complete large upstream catalog on explicit request while bounding a
   });
   expect(automatic.omittedFiles).toContain('references/workflows.json');
 });
+
+it('delivers native numeric Excel cells whose differences can be independently summed', async () => {
+  const { generateOfficeArtifact } = await import('../../packages/web-host/src/office/generate');
+  const { auditWorkbook } = await import('../../packages/web-host/src/office/workbook/index');
+  const result = await runMethodProcessor(script, {
+    company,
+    preferences: { ...preferences, methods: ['inventory'], differencesOnly: true, capacityPercent: '80' },
+    name: 'input.json',
+    input: (await fs.readFile(path.join(root, 'examples/模拟制造企业-202608-09.json'))).toString('base64'),
+    attachments: {},
+  });
+  const bytes = await generateOfficeArtifact({ format: 'xlsx', title: 'Personal inventory', sheets: result.sheets });
+  const audit = await auditWorkbook(bytes, { sheet: '库存差异', amountRange: 'F3:F5', expectedTotal: '-50' });
+  expect(audit.exactTotal).toBe('-50');
+});
