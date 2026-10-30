@@ -784,7 +784,7 @@
         "transportPerTrip": 0,
         "weightBasis": "WEIGH",
         "taxMode": "included",
-        "sourcePath": "模拟资料/合同/C-G.txt",
+        "sourcePath": "资料/模拟资料/合同/C-G.txt",
         "quote": "D-GW：回收收入，按磅单重量500元/吨，运输费0元/车次，含税。"
       },
       {
@@ -796,7 +796,7 @@
         "transportPerTrip": 200,
         "weightBasis": "WEIGH",
         "taxMode": "included",
-        "sourcePath": "模拟资料/合同/C-O.txt",
+        "sourcePath": "资料/模拟资料/合同/C-O.txt",
         "quote": "D-OIL：处置支出，按磅单重量1800元/吨，运输费200元/车次，含税。"
       },
       {
@@ -808,7 +808,7 @@
         "transportPerTrip": 300,
         "weightBasis": "WEIGH",
         "taxMode": "included",
-        "sourcePath": "模拟资料/合同/C-R.txt",
+        "sourcePath": "资料/模拟资料/合同/C-R.txt",
         "quote": "D-RAG：处置支出，按磅单重量3200元/吨，运输费300元/车次，含税。"
       }
     ],
@@ -860,103 +860,103 @@
       {
         "shipment": "G08",
         "kind": "WEIGH",
-        "path": "模拟资料/附件/G08-WEIGH.txt",
+        "path": "资料/模拟资料/附件/G08-WEIGH.txt",
         "sha256": "a288b474b87498fddb38f992eb5cbcabc028301c87821849cd12ab6a75eef194"
       },
       {
         "shipment": "G08",
         "kind": "RECEIVE",
-        "path": "模拟资料/附件/G08-RECEIVE.txt",
+        "path": "资料/模拟资料/附件/G08-RECEIVE.txt",
         "sha256": "d024561b5226cf967c5570fc99d11dd1cf30eb990907c053c9d998437284c1fa"
       },
       {
         "shipment": "G08",
         "kind": "HANDOVER",
-        "path": "模拟资料/附件/G08-HANDOVER.txt",
+        "path": "资料/模拟资料/附件/G08-HANDOVER.txt",
         "sha256": "1d0ddfb9b6885b4c57cfd9f70a87bca7d542821cbe1282898b9a7f86eb14efe9"
       },
       {
         "shipment": "G09",
         "kind": "WEIGH",
-        "path": "模拟资料/附件/G09-WEIGH.txt",
+        "path": "资料/模拟资料/附件/G09-WEIGH.txt",
         "sha256": "c6bd4ff967eeb9c8f5c7e26c7be7e28f8fee845a410af8889754cc0c7df71df7"
       },
       {
         "shipment": "G09",
         "kind": "RECEIVE",
-        "path": "模拟资料/附件/G09-RECEIVE.txt",
+        "path": "资料/模拟资料/附件/G09-RECEIVE.txt",
         "sha256": "20a8dfe94c9e69ffdfa02055871fc266e6f6ddeafae1c3633361487927d75ec6"
       },
       {
         "shipment": "O08",
         "kind": "WEIGH",
-        "path": "模拟资料/附件/O08-WEIGH.txt",
+        "path": "资料/模拟资料/附件/O08-WEIGH.txt",
         "sha256": "73403aa869b1444df9417a0b132e986db0d0cc6622892c9a213635bb6285ade5"
       },
       {
         "shipment": "O08",
         "kind": "RECEIVE",
-        "path": "模拟资料/附件/O08-RECEIVE.txt",
+        "path": "资料/模拟资料/附件/O08-RECEIVE.txt",
         "sha256": "ed7885c06d3e57d1d6b1e121e2894f46ee5ff403d504945fd98d6d5834941f74"
       },
       {
         "shipment": "O08",
         "kind": "MANIFEST",
-        "path": "模拟资料/附件/O08-MANIFEST.txt",
+        "path": "资料/模拟资料/附件/O08-MANIFEST.txt",
         "sha256": "7a2a93c3708493210172a79c38d638cb5c6faff7f94cb372a702315db5a689e7"
       },
       {
         "shipment": "O09",
         "kind": "WEIGH",
-        "path": "模拟资料/附件/O09-WEIGH.txt",
+        "path": "资料/模拟资料/附件/O09-WEIGH.txt",
         "sha256": "10589dd5d3d34edf8e58ac61e34965832c34c71f4f4d5e38c6f157266c466f23"
       },
       {
         "shipment": "O09",
         "kind": "RECEIVE",
-        "path": "模拟资料/附件/O09-RECEIVE.txt",
+        "path": "资料/模拟资料/附件/O09-RECEIVE.txt",
         "sha256": "f545ce4af82eda041513fb0aa1c787155842d24a645bd01bc10c961b5ac0b489"
       },
       {
         "shipment": "O09",
         "kind": "MANIFEST",
-        "path": "模拟资料/附件/O09-MANIFEST.txt",
+        "path": "资料/模拟资料/附件/O09-MANIFEST.txt",
         "sha256": "24fa7d5ebd783f8ec5ddf5e8d1f8ef49ab858af22c7ff811e96056f6d8db552e"
       },
       {
         "shipment": "R08",
         "kind": "WEIGH",
-        "path": "模拟资料/附件/R08-WEIGH.txt",
+        "path": "资料/模拟资料/附件/R08-WEIGH.txt",
         "sha256": "2720cf8ba1eaad7af272861a3526852ed32abbd1d6354808b610b521cfa349ca"
       },
       {
         "shipment": "R08",
         "kind": "RECEIVE",
-        "path": "模拟资料/附件/R08-RECEIVE.txt",
+        "path": "资料/模拟资料/附件/R08-RECEIVE.txt",
         "sha256": "1677b753029347b2191dba6b1974a7548ea6fafa4fd541f6dc112730d364f9cf"
       },
       {
         "shipment": "R08",
         "kind": "MANIFEST",
-        "path": "模拟资料/附件/R08-MANIFEST.txt",
+        "path": "资料/模拟资料/附件/R08-MANIFEST.txt",
         "sha256": "a339388e61395d6f0a30f52716b9e86306f0914c4015030e066d83c52e6d64a1"
       },
       {
         "shipment": "R09",
         "kind": "WEIGH",
-        "path": "模拟资料/附件/R09-WEIGH.txt",
+        "path": "资料/模拟资料/附件/R09-WEIGH.txt",
         "sha256": "d255a2c212f0e9ca20815084507695d112ef79a2b19948bc6573f0768489cbf7"
       },
       {
         "shipment": "R09",
         "kind": "RECEIVE",
-        "path": "模拟资料/附件/R09-RECEIVE.txt",
+        "path": "资料/模拟资料/附件/R09-RECEIVE.txt",
         "sha256": "aed2fed4a252bab887a5ead973bf4f14c937bd476d968796f8fe8a2da53f7734"
       },
       {
         "shipment": "R09",
         "kind": "MANIFEST",
-        "path": "模拟资料/附件/R09-MANIFEST.txt",
+        "path": "资料/模拟资料/附件/R09-MANIFEST.txt",
         "sha256": "7306f12981d71ca3a777149644490a6b784cc86c7bbf8d17de206c06d0d498c5"
       }
     ],

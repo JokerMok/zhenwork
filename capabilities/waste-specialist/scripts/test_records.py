@@ -6,7 +6,7 @@ class Industry(unittest.TestCase):
  def payload(self):
   attachments={}
   for f in (ROOT/'examples/模拟资料').rglob('*.txt'):
-   p=str(f.relative_to(ROOT/'examples'));attachments[p]={'available':True,'sha256':hashlib.sha256(f.read_bytes()).hexdigest()}
+   p='资料/'+str(f.relative_to(ROOT/'examples'));attachments[p]={'available':True,'sha256':hashlib.sha256(f.read_bytes()).hexdigest()}
   return {'company':json.loads((ROOT/'references/company.json').read_text()),'preferences':json.loads((ROOT/'references/preferences.json').read_text()),'name':'input.json','input':base64.b64encode((ROOT/'examples/模拟制造企业-202608-09.json').read_bytes()).decode(),'attachments':attachments}
  def test_reference(self):
   r=m.run(self.payload());ref=json.loads((ROOT/'examples/expected-reference.json').read_text())
@@ -27,7 +27,7 @@ class Industry(unittest.TestCase):
   p['input']=base64.b64encode(json.dumps(data).encode()).decode();r=m.run(p)
   self.assertFalse(r['summary']['analysisInput']['complete']);self.assertTrue(any(i['code']=='WEIGHT_OR_UNIT_MISSING' for i in r['issues']))
  def test_contract_quote_unverified_holds_amount(self):
-  p=self.payload();p['unverifiedContracts']=['模拟资料/合同/C-G.txt'];r=m.run(p)
+  p=self.payload();p['unverifiedContracts']=['资料/模拟资料/合同/C-G.txt'];r=m.run(p)
   rows=next(x for x in r['sheets'] if x['name']=='结算对账')['rows'];self.assertEqual(rows[0][9],'未提供/待核');self.assertIn('原文未核实',rows[0][13])
  def test_conflicting_duplicate_not_first_wins(self):
   p=self.payload();data=json.loads(base64.b64decode(p['input']));data['tables']['events'][18]['weight']=999
