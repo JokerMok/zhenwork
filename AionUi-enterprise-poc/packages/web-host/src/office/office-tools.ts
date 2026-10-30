@@ -1338,7 +1338,13 @@ export async function startOfficeTools(
             summary: result.summary,
             issues: result.issues,
             coverage: result.coverage,
-            provenance: result.provenance,
+            provenance: {
+              ...result.provenance,
+              sourceFiles: result.provenance.sourceFiles.map((source) => ({
+                sourcePath: source.path,
+                sourceSha256: source.sha256,
+              })),
+            },
             analysisInput:
               privateInventory || !(result.summary.analysisInput as { complete?: boolean })?.complete
                 ? undefined

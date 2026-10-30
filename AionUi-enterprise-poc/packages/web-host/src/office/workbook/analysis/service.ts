@@ -247,7 +247,7 @@ export class DataAnalysis {
         imports: selected,
         tools: ['inspect_structured_data', 'analyze_waste_data', 'generate_waste_report', 'inspect_waste_analysis'],
         nextStep: selected.length
-          ? 'The employee already imported these selected files and saved mappings. Use ToolSearch with ONE EXACT name analyze_waste_data, then call it with the matching datasetId, saved period and ruleId. Do not list directories or run Exec/Read/Python to rediscover files. If mappingConfirmed=false, request the employee Data mapping UI once. Then generate_waste_report from its validated analysisId.'
+          ? 'The employee already imported these selected files and saved mappings. Use ToolSearch with ONE EXACT name analyze_waste_data, then call it with the matching datasetId, saved period and ruleId. Do not list directories or run Exec/Read/Python to rediscover files. If mappingConfirmed=false, request the employee Data mapping UI once. Use the validated summary for the employee answer. Only call generate_waste_report when the employee requests a Word/report file; never force both files for an answer/Excel-only task.'
           : 'For XLSX/CSV monthly waste tasks, use ToolSearch with ONE EXACT name inspect_structured_data and the employee attachment/path to import. Never use shell directory scans or preview samples as monthly statistics.',
       };
     });
@@ -552,8 +552,8 @@ export class DataAnalysis {
       instruction:
         a.result.status === 'validated'
           ? a.artifacts.length
-            ? 'Existing verified file receipts are included. Call generate_waste_report with ONLY this analysisId and omit baseName to verify and attach these SAME existing files to this conversation without creating copies. Do not use Exec/ls or recalculate in prose.'
-            : 'Generate both files with generate_waste_report using this analysis id; do not recalculate in model prose.'
+            ? 'Existing verified file receipts are included. Answer from this verified summary. Only if the employee requests those report files, call generate_waste_report with ONLY this analysisId and omit baseName to attach the same existing files. Respect answer/Excel-only requests. Do not use Exec/ls or recalculate in prose.'
+            : 'Use this validated summary for the answer. Report generation is optional: call generate_waste_report only when the employee requests a Word/monthly report file. For answer/Excel-only tasks keep the existing needed Excel and do not create Word/PPT. Do not recalculate in model prose.'
           : 'Blocked: correct mapping or source, then recompute. No monthly report is valid yet.',
     };
   }
