@@ -88,7 +88,7 @@ def restore(c,bundle,source):
    if not p.is_file() or p.is_symlink() or digest(p)!=h:raise RuntimeError('Restored file digest mismatch: '+rel)
   # Prepare directories/config/images with restored keys; never create enterprise records from the old pilot.
   (root/'shared').mkdir();shutil.copytree(content/'shared/config',root/'shared/config',symlinks=True)
-  rt.prepare(c,bundle);rt.dc(c,'up','-d','--wait')
+  rt.prepare(c,bundle);rt.run(['chown','-R',c['runtimeUser']+':'+c['runtimeUser'],str(root/'shared/config/caddy')]);rt.dc(c,'up','-d','--wait')
   if rt.sql(c,"SELECT to_regclass('public.sys_user');"):raise RuntimeError('Target database is not empty')
   identity=json.loads((root/'shared/config/identity.json').read_text())
   rt.sql(c,"CREATE ROLE workspace_rc2_app LOGIN PASSWORD '"+identity['appDatabase']+"' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;")
@@ -130,14 +130,17 @@ def switch(c,bundle,rollback):
   rt.configure(c,root,identity,images,__import__('pwd').getpwnam(c['runtimeUser']));rt.start(c)
  except Exception:
   if (root/'current.next').exists():(root/'current.next').unlink()
-  (root/'current').unlink();(root/'current').symlink_to(old);rt.start(c);raise
+  rt.stop(c);(root/'current').unlink();(root/'current').symlink_to(old)
+  identity=json.loads((root/'shared/config/identity.json').read_text());images=json.loads((root/'shared/config/images.json').read_text())['images']
+  rt.configure(c,root,identity,images,__import__('pwd').getpwnam(c['runtimeUser']));rt.start(c);raise
  rt.write(root/'shared/config/last-switch.json',json.dumps({'from':before['version'],'to':new['version'],'action':'application-rollback' if rollback else 'upgrade','schemaChanged':False,'at':time.time()},indent=2))
  print(json.dumps({'version':new['version'],'applicationRollback':rollback,'databaseDowngraded':False}))
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('action',choices=['backup','restore','upgrade','rollback']);p.add_argument('config');p.add_argument('path');p.add_argument('--bundle');a=p.parse_args();c=rt.load(a.config)
  if os.geteuid()!=0:raise RuntimeError('Run as root')
- if a.action=='backup':backup(c,a.path)
- elif a.action=='restore':restore(c,pathlib.Path(a.bundle).resolve(),a.path)
- else:switch(c,pathlib.Path(a.path).resolve(),a.action=='rollback')
+ with rt.operation(c):
+  if a.action=='backup':backup(c,a.path)
+  elif a.action=='restore':restore(c,pathlib.Path(a.bundle).resolve(),a.path)
+  else:switch(c,pathlib.Path(a.path).resolve(),a.action=='rollback')
 if __name__=='__main__':main()

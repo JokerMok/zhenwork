@@ -16,7 +16,7 @@
 {"root":"/opt/zhenwork","origin":"https://work.example.com","controlPort":18883,"environment":"customer-private","companyName":"企业名称","employees":[{"username":"employee-a","name":"员工甲"}],"provider":"/root/private-provider.json","businessRuleId":"后台新建并发布的资源ID","knowledgeByRole":{},"methodConfiguration":{"company":"/root/company.json","preferences":"/root/preferences.json"}}
 ```
 
-将上述配置和 Provider 输入均设为 0600；执行 `sudo /opt/zhenwork/current/runtime/node/bin/node deploy/enterprise/bootstrap-enterprise.mjs /root/setup.json`。Provider 文件包含 providerType、baseUrl、code、secret，可附 protocol/contextWindow/maxOutputTokens。若已在后台配置，使用 modelId 替代 provider。company/preference 配置使用本企业口径和字段；演示企业可显式选择 examples/demo-enterprise 下的对应文件。脚本通过现有 API 初始化，不复制其他企业安装状态，也不覆盖个人方法。
+将上述配置和 Provider 输入均设为 0600；执行 `sudo /opt/zhenwork/current/runtime/node/bin/node deploy/enterprise/bootstrap-enterprise.mjs /root/setup.json`。管理员已改密时，可在 setup JSON 增加 administratorCredentialFile，指向本机 0600 的当前管理员凭据 JSON（username/password），不修改数据库。Provider 文件包含 providerType、baseUrl、code、secret，可附 protocol/contextWindow/maxOutputTokens。若已在后台配置，使用 modelId 替代 provider。company/preference 配置使用本企业口径和字段；演示企业可显式选择 examples/demo-enterprise 下的对应文件。脚本通过现有 API 初始化，不复制其他企业安装状态，也不覆盖个人方法。
 
 ## 日常与授权
 

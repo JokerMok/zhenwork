@@ -5,3 +5,5 @@ This distribution is an aggregation. Each third-party component retains its own 
 No blanket open-source license is granted to previously unlicensed original ZhenWork integration code. Rights for those parts require the applicable agreement with the rights holder. Public repository visibility alone grants no additional rights. This index does not replace any upstream license or customer agreement.
 
 Do not redistribute a candidate bundle whose licensing or acceptance review is incomplete. See docs/enterprise/ACCEPTANCE.md.
+
+Third-party rights remain intact. No part of this index prohibits replacement, relinking, modification, or reverse engineering needed to debug modifications to a library where its own license grants those rights. Unmodified corresponding source archives and source locations are included where applicable; see licenses/ and sources/ in the binary bundle.

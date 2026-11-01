@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Instance-scoped Linux installer. No pilot configuration or application database is imported."""
-import argparse,ipaddress,base64,hashlib,hmac,json,os,pathlib,pwd,re,secrets,shutil,socket,stat,string,subprocess,sys,time,urllib.request
+import argparse,ipaddress,base64,contextlib,fcntl,hashlib,hmac,json,os,pathlib,pwd,re,secrets,shutil,socket,stat,string,subprocess,sys,time,urllib.request,ssl
 
 def run(args,**kw):
  return subprocess.run(args,check=True,**kw)
@@ -18,7 +18,7 @@ def load(file):
   out[key]=value.strip().strip('"').strip("'")
  for k in ['ZW_ROOT','ZW_INSTANCE','ZW_ADMIN_USERNAME','ZW_EMPLOYEE_ORIGIN','ZW_ADMIN_ORIGIN','ZW_BACKUP_KEY_FILE']:
   if not out.get(k):raise RuntimeError('Missing '+k)
- if not re.fullmatch(r'[a-z][a-z0-9-]{2,32}',out['ZW_INSTANCE']):raise RuntimeError('Invalid instance identifier')
+ if not re.fullmatch(r'[a-z][a-z0-9-]{2,26}',out['ZW_INSTANCE']):raise RuntimeError('Invalid instance identifier')
  if not re.fullmatch(r'/[A-Za-z0-9/_-]+',out['ZW_ROOT']) or '..' in out['ZW_ROOT'] or out['ZW_ROOT'] in ['/','/srv','/opt']:raise RuntimeError('Use a dedicated absolute installation root')
  from urllib.parse import urlparse
  for key in ['ZW_EMPLOYEE_ORIGIN','ZW_ADMIN_ORIGIN']:
@@ -35,15 +35,30 @@ def write(p,value,mode=0o600):
  p=pathlib.Path(p);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(value);p.chmod(mode)
 def service(c,kind):return 'zhenwork-'+c['ZW_INSTANCE']+'-'+kind
 
+@contextlib.contextmanager
+def operation(c):
+ if os.geteuid()!=0:raise RuntimeError('Run enterprise maintenance as root')
+ key=hashlib.sha256(c['ZW_ROOT'].encode()).hexdigest()[:20]
+ p=pathlib.Path('/run/lock/zhenwork-enterprise-'+key+'.lock')
+ if p.is_symlink():raise RuntimeError('Unsafe maintenance lock')
+ with p.open('a') as lock:
+  p.chmod(0o600)
+  try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+  except BlockingIOError:raise RuntimeError('Another operation owns this installation; retry after it finishes')
+  try:yield
+  finally:fcntl.flock(lock,fcntl.LOCK_UN)
+
+
 def dc(c,*args,**kw):
  root=pathlib.Path(c['ZW_ROOT']);return run(['docker','compose','--project-name','zw-'+c['ZW_INSTANCE'],'--env-file',str(root/'shared/config/compose.env'),'-f',str(root/'compose.yaml'),*args],**kw)
 def sql(c,text):
  p=dc(c,'exec','-T','db','psql','-X','-v','ON_ERROR_STOP=1','-U','enterprise','-d','enterprise','-At',input=text,text=True,capture_output=True)
  return p.stdout.strip()
-def wait(url,seconds=120):
+def wait(url,seconds=120,ca=None):
+ context=ssl.create_default_context(cafile=str(ca)) if ca else None
  for _ in range(seconds):
   try:
-   with urllib.request.urlopen(url,timeout=2) as r:
+   with urllib.request.urlopen(url,timeout=2,context=context) as r:
     if r.status==200:return
   except Exception:pass
   time.sleep(1)
@@ -51,7 +66,16 @@ def wait(url,seconds=120):
 
 def verify_bundle(bundle):
  records=(bundle/'SHA256SUMS').read_text().splitlines()
+ links=json.loads((bundle/'SYMLINKS.json').read_text()) if (bundle/'SYMLINKS.json').exists() else {}
+ actual={str(p.relative_to(bundle)):os.readlink(p) for p in bundle.rglob('*') if p.is_symlink()}
+ if actual!=links:raise RuntimeError('Distribution symbolic link manifest changed')
+ for name,target in actual.items():
+  resolved=(bundle/name).resolve(strict=True)
+  if pathlib.Path(target).is_absolute() or bundle.resolve() not in resolved.parents or not resolved.is_file():raise RuntimeError('Unsafe distribution symbolic link')
  if not records:raise RuntimeError('Missing distribution checksums')
+ expectedNames={record.partition('  ')[2] for record in records}
+ actualNames={str(p.relative_to(bundle)) for p in bundle.rglob('*') if p.is_file() and not p.is_symlink()}-{'SHA256SUMS','NATIVE_IMAGES.local.json'}
+ if actualNames!=expectedNames:raise RuntimeError('Unexpected or missing distribution files')
  for record in records:
   expected,sep,name=record.partition('  ');rel=pathlib.PurePosixPath(name)
   if not sep or not re.fullmatch(r'[a-f0-9]{64}',expected) or rel.is_absolute() or '..' in rel.parts:raise RuntimeError('Invalid distribution checksum entry')
@@ -109,10 +133,10 @@ def prepare(c,bundle):
  for name in ['app','runtime','licenses','docs','capabilities','examples']:
   src=bundle/name
   if src.exists() and not (target/name).exists():
-   try:shutil.copytree(src,target/name,copy_function=os.link)
+   try:shutil.copytree(src,target/name,copy_function=os.link,symlinks=True)
    except OSError:
     if (target/name).exists():shutil.rmtree(target/name)
-    shutil.copytree(src,target/name)
+    shutil.copytree(src,target/name,symlinks=True)
  for f in ['APP_MANIFEST.json','THIRD_PARTY_NOTICES.md','LICENSE','VERSION']:
   if (bundle/f).exists():shutil.copyfile(bundle/f,target/f)
  link=root/'current'
@@ -251,11 +275,23 @@ def migrate(c,source):
   else:sql(c,"BEGIN; SELECT pg_advisory_xact_lock(hashtext('enterprise-schema'));\n"+p.read_text()+"\nINSERT INTO ai_schema_migrations(version,sha256) VALUES('"+p.name+"','"+h+"'); COMMIT;")
 
 def start(c):
- root=pathlib.Path(c['ZW_ROOT']);dc(c,'up','-d','--wait');run(['systemctl','start',service(c,'control')]);wait(f"http://127.0.0.1:{c['ports']['rc2']}/ai/bootstrap");run(['systemctl','start',service(c,'edge')]);time.sleep(2);run(['systemctl','start',service(c,'web')]);wait(f"http://127.0.0.1:{c['ports']['web']}/",30)
+ root=pathlib.Path(c['ZW_ROOT']);dc(c,'up','-d','--wait');run(['systemctl','start',service(c,'control')]);wait(f"http://127.0.0.1:{c['ports']['rc2']}/ai/bootstrap");run(['systemctl','start',service(c,'edge')]);time.sleep(2);run(['systemctl','start',service(c,'web')]);wait(c['ZW_EMPLOYEE_ORIGIN']+'/',30,root/'shared/tls/caddy/pki/authorities/local/root.crt' if c['ZW_TLS_MODE']=='internal' else None)
 def stop(c):
  for kind in ['web','edge','control']:run(['systemctl','stop',service(c,kind)])
 def main():
  ap=argparse.ArgumentParser();ap.add_argument('action');ap.add_argument('--config',required=True);ap.add_argument('--bundle',required=True);ap.add_argument('--prepare-restore',action='store_true');a=ap.parse_args();c=load(a.config);bundle=pathlib.Path(a.bundle).resolve()
+ if a.action in ['install','start','stop','restart']:
+  with operation(c):mutate(a,c,bundle)
+  return
+ if a.action=='logs':run(['journalctl','-u',service(c,'web'),'-u',service(c,'control'),'-u',service(c,'edge'),'--no-pager','-n','100'])
+ elif a.action=='status':
+  for kind in ['web','control','edge']:run(['systemctl','status',service(c,kind),'--no-pager'],stdout=sys.stdout)
+ elif a.action=='health':
+  wait(f"http://127.0.0.1:{c['ports']['rc2']}/ai/bootstrap",10)
+  for kind in ['web','control','edge']:run(['systemctl','is-active',service(c,kind)])
+ else:raise RuntimeError('Unknown action')
+
+def mutate(a,c,bundle):
  if a.action=='install':
   root,s,release=prepare(c,bundle);dc(c,'up','-d','--wait')
   if a.prepare_restore:print('Empty restore target prepared; application not started');return
@@ -263,13 +299,6 @@ def main():
  if a.action=='start':start(c)
  elif a.action=='stop':stop(c)
  elif a.action=='restart':stop(c);start(c)
- elif a.action=='logs':run(['journalctl','-u',service(c,'web'),'-u',service(c,'control'),'-u',service(c,'edge'),'--no-pager','-n','100'])
- elif a.action=='status':
-  for kind in ['web','control','edge']:run(['systemctl','status',service(c,kind),'--no-pager'],stdout=sys.stdout)
- elif a.action=='health':
-  wait(f"http://127.0.0.1:{c['ports']['rc2']}/ai/bootstrap",10)
-  for kind in ['web','control','edge']:run(['systemctl','is-active',service(c,kind)])
- else:raise RuntimeError('Unknown action')
 if __name__=='__main__':
  try:main()
  except Exception as e:print('Enterprise operation stopped: '+str(e),file=sys.stderr);sys.exit(1)

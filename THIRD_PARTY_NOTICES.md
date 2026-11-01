@@ -10,7 +10,7 @@
 | Legacy Harness / WorkBuddy 集成来源部分 | deepseek-ai/deepseek-harness；原 third-party/licenses/deepseek-harness-MIT.txt | 原 MIT 声明保留；不声称与腾讯 WorkBuddy 存在关联 |
 | WorkBuddy Finance Workbench | feng-liu-1994/workbuddy-finance-workbench，2.7.0，提交 5689d65599357e50a814622640ace1656b45799e | MIT；完整复用 finance-workbench 子树，31 项原文件指纹见标准包 references/source-manifest.json |
 | openpyxl / python-docx / python-pptx / XlsxWriter | 运行镜像 Python 元数据中的实际版本 | MIT；许可证文本须随包保留 |
-| OfficeCLI | OfficeCLI.AI / goworm；已验收 Linux x64 二进制及构建指纹 | Apache-2.0，保留 LICENSE 和 NOTICE |
+| OfficeCLI | OfficeCLI.AI / goworm；固定 1.0.152 Linux x64 二进制及构建指纹 | Apache-2.0，保留 LICENSE 和 NOTICE |
 | Node.js / uv | nodejs.org / astral-sh/uv；运行包实际版本 | Node.js MIT 与附带第三方声明；uv MIT/Apache-2.0，按原包保留 |
 | PostgreSQL | 官方 postgres:17-alpine；镜像固定指纹 | PostgreSQL License，基础系统依赖另列 |
 | Redis | Ubuntu 26.04 软件包实际版本及源码包 | 8.x 可能含 AGPLv3/RSAL/SSPL 多许可，必须按所选许可履行义务；在线安装配方不等于可无条件转售预制镜像 |
@@ -25,3 +25,13 @@
 ## 商业交付状态
 
 本项目原有未统一许可的集成代码没有被本轮擅自改授 MIT/Apache。交付前须由权利人和客户的适用协议覆盖该部分。最终许可与安全状态见 docs/enterprise/ACCEPTANCE.md；未完成实际依赖核查的候选包不得用于正式再分发。
+
+## 随候选包保留的实际依赖资料
+
+- 原生 Linux normal/build 依赖清单及许可文本；MPL-2.0 option-ext 对应原始 crate，按 Cargo.lock 指纹核对。
+- Java 387 个实际内嵌 Jar 的元数据、原有许可/NOTICE 与 Maven 父 POM 许可证据；涉及相应源码义务的 9 个原始 source Jar 单独保留，不修改其字节。
+- OfficeCLI 1.0.152 固定标签的 THIRD-PARTY-NOTICES.txt，覆盖 OpenXML SDK、System.CommandLine 和自包含 .NET Runtime。
+- 实际 Python 环境的 27 个发行元数据与可用许可文本；Node 两个随附发行目录保留各自原始 LICENSE；uv 0.12.22 的 MIT/Apache 原文。
+- npm 安装依赖的版本/许可资料为构建依赖超集，含未进入运行包的开发依赖；不将它当作所有依赖均已运行的证明。
+
+程序包未对第三方组件增加替换、重新链接或库调试限制。镜像在线构建配方不附带客户数据库或凭据，不将原试点镜像作为客户镜像转发。完整离线镜像输出属于后续单独交付范围。

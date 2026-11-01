@@ -15,7 +15,9 @@ const api=async(route,method='GET',input)=>{
  for(const c of r.headers.getSetCookie())if(c.startsWith('__Host-workspace-rc2='))cookie=c.split(';')[0];
  const body=await r.json();if(!r.ok||body.code!==200)throw Error('Setup API stopped: '+route+' '+body.code+' '+body.msg);return body.data??body;
 };
-await api('/auth/login','POST',{...secret.admin,clientId:secret.clientId,grantType:'password'});
+let administrator=secret.admin;
+if(cfg.administratorCredentialFile){const f=path.resolve(cfg.administratorCredentialFile);const st=await fs.lstat(f);if(!st.isFile()||st.isSymbolicLink()||(st.mode&0o077))throw Error('Administrator credential file must be 0600');administrator=JSON.parse(await fs.readFile(f,'utf8'));}
+await api('/auth/login','POST',{...administrator,clientId:secret.clientId,grantType:'password'});
 try{
  const info=(await api('/system/user/getInfo')).user;
  const rows=v=>v.rows||v;
