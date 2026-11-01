@@ -86,6 +86,20 @@ def verify_bundle(bundle):
    for data in iter(lambda:f.read(1024*1024),b''):h.update(data)
   if h.hexdigest()!=expected:raise RuntimeError('Distribution checksum mismatch: '+name)
 
+def artifact_identity(release):
+ result={}
+ for name in ['app','runtime']:
+  h=hashlib.sha256()
+  for p in sorted((release/name).rglob('*')):
+   if p.is_symlink():h.update(str(p.relative_to(release/name)).encode()+b'\0link\0'+os.readlink(p).encode()+b'\0')
+   elif p.is_file():
+    h.update(str(p.relative_to(release/name)).encode()+b'\0')
+    with p.open('rb') as f:
+     for data in iter(lambda:f.read(1024*1024),b''):h.update(data)
+    h.update(b'\0')
+  result[name]=h.hexdigest()
+ return result
+
 def manifest(bundle):
  value=json.loads((bundle/'APP_MANIFEST.json').read_text())
  if not re.fullmatch(r'[0-9][A-Za-z0-9.+_-]{1,80}',value.get('version','')) or '..' in value['version']:raise RuntimeError('Unsafe release version')
@@ -136,7 +150,9 @@ def prepare(c,bundle):
  if not backupKey.is_absolute() or str(backupKey).startswith(str(root)+'/'):raise RuntimeError('Backup encryption key must be stored outside the installation root')
  if not backupKey.exists():write(backupKey,secrets.token_hex(32)+'\n')
  if backupKey.is_symlink() or backupKey.stat().st_mode&0o077:raise RuntimeError('Backup key must be owner-only')
- target=root/'releases'/release['version'];target.mkdir(exist_ok=True);target.chmod(0o755);(root/'releases').chmod(0o755)
+ target=root/'releases'/release['version']
+ if (target/'APP_MANIFEST.json').exists() and json.loads((target/'APP_MANIFEST.json').read_text())!=release:raise RuntimeError('Immutable release identity differs; use an explicit new version and reviewed upgrade')
+ target.mkdir(exist_ok=True);target.chmod(0o755);(root/'releases').chmod(0o755)
  for name in ['app','runtime','licenses','docs','capabilities','examples']:
   src=bundle/name
   if src.exists() and not (target/name).exists():

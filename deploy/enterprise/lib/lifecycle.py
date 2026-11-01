@@ -45,7 +45,7 @@ def backup(c,output):
   with tempfile.TemporaryDirectory(prefix='zw-backup-',dir=root/'shared/config') as temp:
    staging=pathlib.Path(temp);dump=staging/'database.dump'
    with dump.open('wb') as f:rt.dc(c,'exec','-T','db','pg_dump','-U','enterprise','-d','enterprise','--format=custom','--no-owner','--no-acl',stdout=f)
-   meta={'format':1,'canonicalRoot':str(root),'instance':c['ZW_INSTANCE'],'version':json.loads((root/'current/APP_MANIFEST.json').read_text()),'migrations':rt.sql(c,'SELECT version||\':\'||sha256 FROM ai_schema_migrations ORDER BY version;'),'files':fingerprint(root),'dumpSha256':digest(dump),'createdAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+   meta={'format':1,'artifacts':rt.artifact_identity(root/'current'),'canonicalRoot':str(root),'instance':c['ZW_INSTANCE'],'version':json.loads((root/'current/APP_MANIFEST.json').read_text()),'migrations':rt.sql(c,'SELECT version||\':\'||sha256 FROM ai_schema_migrations ORDER BY version;'),'files':fingerprint(root),'dumpSha256':digest(dump),'createdAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
    # Exclude our temporary dump from the shared tree; it is included once at the archive root.
    meta['files']={k:v for k,v in meta['files'].items() if not k.startswith('config/'+staging.name+'/')}
    (staging/'metadata.json').write_text(json.dumps(meta,indent=2)+'\n')
@@ -80,7 +80,8 @@ def restore(c,bundle,source):
   with tarfile.open(plain) as archive:
    members=validate_archive(archive);meta=json.load(archive.extractfile('metadata.json'))
    if meta['canonicalRoot']!=str(root):raise RuntimeError('RC1 restore requires the same canonical installation path on the fresh host/environment')
-   if meta['version']!=json.loads((bundle/'APP_MANIFEST.json').read_text()):raise RuntimeError('Use the exact application bundle matching the backup')
+   matching=rt.manifest(bundle)
+   if any(meta['version'][key]!=matching[key] for key in ['version','coreBinarySha256','schemaCompatibility']) or meta['artifacts']!=rt.artifact_identity(bundle):raise RuntimeError('Use the version and exact application/runtime bytes matching the backup')
    archive.extractall(temp/'content',members=members,filter='fully_trusted')
   content=temp/'content'
   if digest(content/'database.dump')!=meta['dumpSha256']:raise RuntimeError('Database dump digest mismatch')
@@ -112,7 +113,7 @@ def switch(c,bundle,rollback):
  applied=rt.sql(c,"SELECT version||':'||sha256 FROM ai_schema_migrations ORDER BY version;")
  desired='\n'.join(p.name+':'+digest(p) for p in sorted((bundle/'app/schema/migrations').glob('[0-9][0-9][0-9][0-9]_*.sql')))
  if applied!=desired:raise RuntimeError('This RC1 switch only supports unchanged, checksum-identical database migrations')
- if any(before[k]!=new[k] for k in ['coreBinarySha256','applicationSourceSha']):raise RuntimeError('Component changes require the reviewed component release path')
+ if before['coreBinarySha256']!=new['coreBinarySha256'] or rt.artifact_identity(old)!=rt.artifact_identity(bundle):raise RuntimeError('Component changes require the reviewed component release path')
  target=root/'releases'/new['version']
  if not target.exists():
   target.mkdir()
@@ -124,9 +125,6 @@ def switch(c,bundle,rollback):
  quiesce(c)
  try:
   link=root/'current.next';link.symlink_to('releases/'+new['version'],target_is_directory=True);link.replace(root/'current')
-  # Image changes require full component preflight, not this metadata-only maintenance path.
-  for field in ['coreBinarySha256','applicationSourceSha']:
-   if before[field]!=new[field]:raise RuntimeError('Component change needs a reviewed component upgrade, not metadata-only switch')
   identity=json.loads((root/'shared/config/identity.json').read_text());images=json.loads((root/'shared/config/images.json').read_text())['images']
   rt.configure(c,root,identity,images,__import__('pwd').getpwnam(c['runtimeUser']));rt.start(c)
  except Exception:
