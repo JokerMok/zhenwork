@@ -1,4 +1,11 @@
-import { methodTool, executeMethod, methodPackage } from './methods/index.js';
+import { methodTool, executeMethod, methodPackage, methodTime } from './methods/index.js';
+import {
+  pinMethodTime,
+  prepareRevision,
+  saveMethodSnapshot,
+  type FileRef,
+  type MethodSnapshot,
+} from './methods/continuation.js';
 import { DataAnalysis } from './workbook/analysis/service.js';
 import { dataTools } from './workbook/analysis/tools.js';
 import { presentationTool } from './presentation/index.js';
@@ -754,8 +761,15 @@ export async function startOfficeTools(
     value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   const readInput = async (
     file: string,
-    conversation?: string
-  ): Promise<{ root: string; relative: string; bytes: Buffer; inputPath: string }> => {
+    conversation?: string,
+    versionId?: string
+  ): Promise<{
+    root: string;
+    relative: string;
+    bytes: Buffer;
+    inputPath: string;
+    versionId?: string;
+  }> => {
     if (!core.workspaceRoot || !file) throw new Error('WORKSPACE_PATH_REQUIRED');
     // Guid uploads exist before a conversation ID is allocated, under general/.
     // The entire upload root belongs to this actor; another actor's tree never
@@ -768,7 +782,7 @@ export async function startOfficeTools(
       await (
         await DataAnalysis.create(profileRoot, actor, core.workspaceRoot, await clientFor(conversation), site.origin)
       ).guardFile(relative);
-    const bytes = await store.download(root, relative);
+    const bytes = await store.download(root, relative, versionId);
     if (conversation && site)
       await (
         await BusinessPresentation.create(
@@ -779,7 +793,16 @@ export async function startOfficeTools(
           site.origin
         )
       ).guardFile(relative, bytes);
-    return { root, relative, bytes, inputPath: taskInput ? file : relative };
+    const version =
+      (await store.fileReceipt(relative, versionId)) ??
+      (await store.captureCurrent(root, relative, createHash('sha256').update(bytes).digest('hex')));
+    return {
+      root,
+      relative,
+      bytes,
+      inputPath: taskInput ? file : relative,
+      versionId: version.versionId,
+    };
   };
   const knowledgeContext = async (conversation: string, client: Rc2GatewayClient) => {
     const task = await currentTaskScope(profileRoot, actor, conversation);
@@ -1190,6 +1213,7 @@ export async function startOfficeTools(
             value = {
               path: input.inputPath,
               sha256,
+              versionId: input.versionId,
               ...(await inspectWorkbook(input.bytes, args, abort.signal)),
             };
           else if (tool === 'audit_workbook')
@@ -1289,115 +1313,248 @@ export async function startOfficeTools(
           }
         } else if (tool === 'run_enterprise_method') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
-          const input = await readInput(String(args.path || ''), conversation);
-          const result = await executeMethod({
-            client,
-            resourceId: String(args.resourceId),
-            input: input.bytes,
-            name: input.relative,
-            methods: Array.isArray(args.methods) ? (args.methods as string[]) : undefined,
-            read: (file) => readInput(file, conversation),
-            signal: abort.signal,
-          });
-          const outputPreference = (result.preferences.analysis as { outputs?: { excel?: boolean } } | undefined)
-            ?.outputs;
-          const comparisonOnly = (result.summary.methods as string[]).every(
-            (m) => m === 'intensity' || m === 'cost_change'
-          );
-          if (comparisonOnly && outputPreference?.excel === false) {
+          const p = await methodPackage(client, String(args.resourceId));
+          const selectedMethods = Array.isArray(args.methods)
+            ? (args.methods as string[])
+            : (p.preferences.methods as string[]);
+          const comparison = selectedMethods.some((m) => m === 'intensity' || m === 'cost_change');
+          if (args.revision && (args.periods !== undefined || args.cutoff !== undefined))
+            throw Error('METHOD_REVISION_USES_ORIGINAL_TIME');
+          const revision = args.revision
+            ? await prepareRevision({
+                store,
+                client,
+                resourceId: String(args.resourceId),
+                path: String(args.path),
+                revision: args.revision as Parameters<typeof prepareRevision>[0]['revision'],
+                read: (file, version) => readInput(file, conversation, version),
+                signal: abort.signal,
+              })
+            : undefined;
+          if (revision?.reused) {
             value = {
-              summary: result.summary,
-              issues: result.issues,
-              coverage: result.coverage,
-              provenance: {
-                ...result.provenance,
-                sourceFiles: result.provenance.sourceFiles.map((f) => ({ sourcePath: f.path, sourceSha256: f.sha256 })),
-              },
+              ...(await savedReceipt(revision.path, revision.bytes, abort.signal)),
+              reused: true,
+              summary: revision.snapshot.summary,
+              parameters: revision.snapshot.parameters,
               instruction:
-                'Saved preference requests a chat summary only. No file was generated. Quote exact verified numbers; no causal conclusions or final unknown amounts.',
+                'Same evidence already applied. Return the existing revision; no recalculation, fee addition or new file.',
             };
           } else {
-            const label = String(args.outputBase || '成果/固危废业务核对').replace(/\.(xlsx|json)$/i, '');
-            if (
-              path.isAbsolute(label) ||
-              label.split('/').some((p) => !p || p === '.' || p === '..') ||
-              label.includes('\\') ||
-              label.includes('\0')
-            )
-              throw new Error('METHOD_OUTPUT_PATH_INVALID');
-            // New immutable names preserve earlier employee artifacts; all outputs pin the same input and method version.
-            const base = label + '-' + Date.now() + '-' + randomBytes(3).toString('hex');
-            const privateInventory =
-              result.preferences.differencesOnly === true &&
-              result.summary.methods instanceof Array &&
-              result.summary.methods.length === 1 &&
-              result.summary.methods[0] === 'inventory';
-            const sheets = privateInventory
-              ? result.sheets
-              : [
-                  ...result.sheets,
-                  ...(result.analysisSheet.rows.length ? [result.analysisSheet] : []),
-                  {
-                    name: '来源版本',
-                    headers: ['项目', '值'],
-                    rows: [
-                      ['输入文件', input.inputPath],
-                      ['输入SHA256', result.provenance.inputSha256],
-                      ['方法资源', result.provenance.resourceId],
-                      ['方法版本', String(result.provenance.version)],
-                      ['配置SHA256', result.provenance.configSha256],
-                      ['处理器SHA256', result.provenance.processorSha256],
-                      ['覆盖行数', String(result.coverage.inputRows)],
-                      ['说明', '完整输入；缺项保留；外部连接未配置；不对外申报'],
-                      ...result.provenance.sourceFiles.map((f) => [f.path, f.sha256]),
-                    ],
-                  },
-                ];
-            const bytes = await generateOfficeArtifact(
-              {
-                format: 'xlsx',
-                title: String(
-                  (comparisonOnly
-                    ? (result.preferences.analysis as { outputTitle?: string } | undefined)?.outputTitle
-                    : undefined) ||
-                    result.preferences.outputTitle ||
-                    '业务核对'
-                ),
-                sheets,
-              },
-              abort.signal
+            const input = await readInput(String(args.path || ''), conversation);
+            let parameters = revision?.snapshot.parameters;
+            if (!revision && (comparison || args.periods !== undefined || args.cutoff !== undefined)) {
+              const requested = methodTime(p.preferences, args.periods, args.cutoff);
+              const scope = await currentTaskScope(profileRoot, actor, conversation);
+              parameters = await pinMethodTime(
+                store,
+                conversation + ':' + String(scope.round ?? executionId) + ':' + String(args.resourceId),
+                requested
+              );
+            }
+            const result = revision
+              ? revision.result
+              : await executeMethod({
+                  client,
+                  resourceId: String(args.resourceId),
+                  input: input.bytes,
+                  name: input.relative,
+                  methods: Array.isArray(args.methods) ? (args.methods as string[]) : undefined,
+                  parameters,
+                  read: (file) => readInput(file, conversation),
+                  signal: abort.signal,
+                });
+            const outputPreference = (result.preferences.analysis as { outputs?: { excel?: boolean } } | undefined)
+              ?.outputs;
+            const comparisonOnly = (result.summary.methods as string[]).every(
+              (m) => m === 'intensity' || m === 'cost_change'
             );
-            const current = await methodPackage(client, String(args.resourceId));
-            if (current.configSha256 !== result.provenance.configSha256)
-              throw new Error('METHOD_VERSION_CHANGED_RETRY');
-            const live = await readInput(String(args.path), conversation);
-            if (createHash('sha256').update(live.bytes).digest('hex') !== result.provenance.inputSha256)
-              throw new Error('METHOD_INPUT_CHANGED_RETRY');
-            await client.me();
-            abort.signal.throwIfAborted();
-            const relative = base + '.xlsx';
-            await store.upload(core.workspaceRoot, relative, bytes, false);
-            const receipt = await savedReceipt(relative, bytes, abort.signal);
-            value = {
-              summary: result.summary,
-              issues: result.issues,
-              coverage: result.coverage,
-              provenance: {
-                ...result.provenance,
-                sourceFiles: result.provenance.sourceFiles.map((source) => ({
-                  sourcePath: source.path,
-                  sourceSha256: source.sha256,
-                })),
-              },
-              analysisInput:
-                privateInventory || !(result.summary.analysisInput as { complete?: boolean })?.complete
-                  ? undefined
-                  : { path: relative, sheet: result.analysisSheet.name },
-              ...receipt,
-              validation: { valid: true, format: 'xlsx', allRowsProcessed: true },
-              instruction:
-                'Use these verified summaries and real file links. Missing/unknown values are not zero or legal verdicts. Formal monthly analysis uses analysisInput with existing DataAnalysis; no mandatory Word/PPT.',
+            const scopeIdentity = {
+              periods: parameters?.periods ?? [],
+              cutoff: parameters?.cutoff ?? result.preferences.cutoff,
+              inputVersion: revision?.snapshot.input.versionId ?? input.versionId,
+              inputSha256: revision?.snapshot.input.sha256 ?? result.provenance.inputSha256,
+              methodVersion: result.provenance.version,
+              configSha256: result.provenance.configSha256,
+              ...(revision
+                ? {
+                    revisionBaseVersion: (args.revision as { baseVersionId: string }).baseVersionId,
+                    evidence: revision.evidence.map((e) => ({
+                      path: e.path,
+                      versionId: e.versionId,
+                      sha256: e.sha256,
+                    })),
+                  }
+                : {}),
             };
+            const resultId = createHash('sha256').update(JSON.stringify(scopeIdentity)).digest('hex');
+            if (!revision && comparisonOnly && outputPreference?.excel === false) {
+              value = {
+                summary: result.summary,
+                issues: result.issues,
+                coverage: result.coverage,
+                provenance: result.provenance,
+                parameters: scopeIdentity,
+                resultId,
+                instruction:
+                  'Saved preference requests a summary only. Cite the actual periods and cutoff. Unknown values remain pending.',
+              };
+            } else {
+              const label = String(args.outputBase || '成果/固危废业务核对').replace(/\.(xlsx|json)$/i, '');
+              if (
+                path.isAbsolute(label) ||
+                label.split('/').some((p) => !p || p === '.' || p === '..') ||
+                label.includes('\\') ||
+                label.includes('\0')
+              )
+                throw Error('METHOD_OUTPUT_PATH_INVALID');
+              const base =
+                label +
+                '-' +
+                (parameters?.periods.join('_') || String(result.preferences.cutoff)) +
+                '-截至' +
+                String(scopeIdentity.cutoff) +
+                '-' +
+                resultId.slice(0, 8) +
+                '-' +
+                Date.now();
+              const privateInventory =
+                result.preferences.differencesOnly === true &&
+                result.summary.methods instanceof Array &&
+                result.summary.methods.length === 1 &&
+                result.summary.methods[0] === 'inventory';
+              const sourceFiles = result.provenance.sourceFiles;
+              const sheets = privateInventory
+                ? result.sheets
+                : [
+                    ...result.sheets,
+                    ...(result.analysisSheet.rows.length ? [result.analysisSheet] : []),
+                    {
+                      name: '来源版本',
+                      headers: ['项目', '值'],
+                      rows: [
+                        ['比较期间', parameters?.periods.join(' vs ') || '按原方法'],
+                        ['截止日', String(scopeIdentity.cutoff)],
+                        ['输入文件', revision?.snapshot.input.path ?? input.inputPath],
+                        ['输入版本', scopeIdentity.inputVersion || '未提供'],
+                        ['输入SHA256', String(scopeIdentity.inputSha256)],
+                        ['方法资源', result.provenance.resourceId],
+                        ['方法版本', String(result.provenance.version)],
+                        ['配置SHA256', result.provenance.configSha256],
+                        ['处理器SHA256', result.provenance.processorSha256],
+                        ['结果标识', resultId],
+                        ['覆盖行数', String(result.coverage.inputRows)],
+                        ...(revision
+                          ? [
+                              ['原成果版本', String((args.revision as { baseVersionId: string }).baseVersionId)],
+                              ['原成果SHA256', String((args.revision as { baseSha256: string }).baseSha256)],
+                            ]
+                          : []),
+                        ...sourceFiles.map((f) => [f.path, f.sha256 + ' @' + String(f.versionId || '未提供')]),
+                        ...(revision
+                          ? revision.evidence.map((f) => ['新增证据 ' + f.path, f.sha256 + ' @' + f.versionId])
+                          : []),
+                        ['说明', '缺项保留；只读授权来源；不对外申报/付款/回写'],
+                      ],
+                    },
+                  ];
+              const bytes = await generateOfficeArtifact(
+                {
+                  format: 'xlsx',
+                  title:
+                    String(
+                      (comparisonOnly
+                        ? (result.preferences.analysis as { outputTitle?: string } | undefined)?.outputTitle
+                        : undefined) ||
+                        result.preferences.outputTitle ||
+                        '业务核对'
+                    ) +
+                    '｜' +
+                    (parameters?.periods.join(' vs ') || '') +
+                    '｜截至' +
+                    String(scopeIdentity.cutoff),
+                  sheets,
+                },
+                abort.signal
+              );
+              const current = await methodPackage(client, String(args.resourceId));
+              if (current.configSha256 !== result.provenance.configSha256) throw Error('METHOD_VERSION_CHANGED_RETRY');
+              const live = await readInput(String(args.path), conversation);
+              if (
+                createHash('sha256').update(live.bytes).digest('hex') !==
+                (revision ? (args.revision as { baseSha256: string }).baseSha256 : result.provenance.inputSha256)
+              )
+                throw Error('METHOD_INPUT_CHANGED_RETRY');
+              for (const f of [...sourceFiles, ...(revision?.evidence || [])]) {
+                const checked = await readInput(f.path, conversation, f.versionId);
+                if (createHash('sha256').update(checked.bytes).digest('hex') !== f.sha256)
+                  throw Error('METHOD_SOURCE_CHANGED_RETRY');
+              }
+              await client.me();
+              abort.signal.throwIfAborted();
+              const relative = revision ? revision.path : base + '.xlsx';
+              if (result.continuation && parameters && input.versionId) {
+                const originalRefs = revision?.snapshot.sources || [];
+                const refs = [...originalRefs, ...sourceFiles.filter((f): f is FileRef => !!f.versionId)].filter(
+                  (f, i, a) => a.findIndex((x) => x.path === f.path && x.versionId === f.versionId) === i
+                );
+                const snapshot: MethodSnapshot = {
+                  kind: 'ENTERPRISE_METHOD_CONTINUATION_V1',
+                  resourceId: String(args.resourceId),
+                  configSha256: result.provenance.configSha256,
+                  processorSha256: result.provenance.processorSha256,
+                  parameters,
+                  input: revision?.snapshot.input ?? {
+                    path: input.inputPath,
+                    versionId: input.versionId,
+                    sha256: result.provenance.inputSha256,
+                  },
+                  sources: refs,
+                  continuation: result.continuation,
+                  sheets: result.sheets,
+                  summary: result.summary,
+                };
+                await saveMethodSnapshot(store, createHash('sha256').update(bytes).digest('hex'), snapshot);
+              }
+              await store.upload(
+                core.workspaceRoot,
+                relative,
+                bytes,
+                !!revision,
+                revision ? (args.revision as { baseSha256: string }).baseSha256 : undefined
+              );
+              const receipt = await savedReceipt(relative, bytes, abort.signal);
+              if (revision) await store.rememberDelivery(revision.key, relative, receipt.sha256);
+              value = {
+                summary: result.summary,
+                issues: result.issues,
+                coverage: result.coverage,
+                parameters: scopeIdentity,
+                resultId,
+                provenance: {
+                  ...result.provenance,
+                  sourceFiles: sourceFiles.map((f) => ({
+                    sourcePath: f.path,
+                    sourceSha256: f.sha256,
+                    versionId: f.versionId,
+                  })),
+                },
+                analysisInput:
+                  privateInventory || !(result.summary.analysisInput as { complete?: boolean })?.complete
+                    ? undefined
+                    : { path: relative, sheet: result.analysisSheet.name },
+                ...receipt,
+                validation: { valid: true, format: 'xlsx', allRowsProcessed: true },
+                ...(revision
+                  ? {
+                      previousSha256: (args.revision as { baseSha256: string }).baseSha256,
+                      revisionOf: (args.revision as { baseVersionId: string }).baseVersionId,
+                    }
+                  : {}),
+                instruction:
+                  'Cite actual separate months, cutoff, source and method versions. Revisions apply only to selected business IDs in this original result, not the latest month report. Missing conditions remain pending. Return this one existing file receipt, then task_checkpoint completed.',
+              };
+            }
           }
         } else if (tool === 'summarize_json_data') {
           const input = await readInput(String(args.path || ''), conversation);

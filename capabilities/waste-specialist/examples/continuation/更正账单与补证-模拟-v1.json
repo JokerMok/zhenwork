@@ -1,0 +1,31 @@
+{
+  "notice": "完全虚构/模拟更正账单与补证。O09仅补30kg附加接收记录的单位，不补车次。",
+  "records": [
+    {
+      "type": "bill_correction",
+      "businessId": "O08",
+      "recordId": "B-O08",
+      "contract": "C-O",
+      "waste": "D-OIL",
+      "date": "2026-08-31",
+      "weight": 910,
+      "unit": "kg",
+      "rate": 1800,
+      "rateUnit": "CNY/t",
+      "trips": 1,
+      "amount": 1838,
+      "currency": "CNY",
+      "taxMode": "included"
+    },
+    {
+      "type": "receive_unit",
+      "businessId": "O09",
+      "recordId": "R-O09-extra",
+      "contract": "C-O",
+      "waste": "D-OIL",
+      "date": "2026-09-29",
+      "weight": 30,
+      "unit": "kg"
+    }
+  ]
+}

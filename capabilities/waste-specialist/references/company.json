@@ -200,6 +200,12 @@
           "来源": "originalLocation",
           "合同条款摘录": "conditionQuote"
         }
+      },
+      "verifiedBusiness": {
+        "schema": "businessTables"
+      },
+      "verifiedReport": {
+        "schema": "verifiedReport"
       }
     },
     "objectAliases": {
@@ -324,5 +330,27 @@
       "kg": "1",
       "吨": "0.001"
     }
+  },
+  "continuation": {
+    "evidence": {
+      "sheet": "补充凭证",
+      "fields": {
+        "凭证类型": "type",
+        "业务号": "businessId",
+        "原记录号": "recordId",
+        "合同号": "contract",
+        "废物": "waste",
+        "日期": "date",
+        "重量": "weight",
+        "计量单位": "unit",
+        "单价": "rate",
+        "单价单位": "rateUnit",
+        "车次": "trips",
+        "金额": "amount",
+        "币种": "currency",
+        "税口径": "taxMode"
+      }
+    },
+    "basis": "原成果固定版本+业务号+当前授权附件固定版本；不以文件名或金额自动销项"
   }
 }

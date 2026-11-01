@@ -5,6 +5,153 @@ import sys,json,base64,datetime as dt,collections,re
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 D=Decimal
 
+# Task time and targeted evidence continuation share the original settlement/checklist functions.
+def actual_date(value):
+ if not isinstance(value,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',value):return None
+ try:return dt.date.fromisoformat(value)
+ except ValueError:return None
+
+def business_tables(raw,name,cfg):
+ if name.lower().endswith('.json'):
+  data=json.loads(raw);data=data.get('tables',data)
+  return {k:[dict(r,_source=r.get('_source',name+'#'+k+':'+str(i+1))) for i,r in enumerate(v)] for k,v in data.items() if isinstance(v,list)}
+ sheets,meta=ds_load(raw,name,{})
+ if meta.get('formulaErrors'):raise ValueError('UNVERIFIED_WORKBOOK_FORMULA')
+ out={}
+ for key,m in cfg['tables'].items():
+  rows=sheets.get(m['sheet'],[]);heads=next((v for row,v in rows if row==1),[])
+  if len(set(heads))!=len(heads):raise ValueError('DUPLICATE_HEADERS')
+  out[key]=[{**{m.get('fields',{}).get(h,h):v[i] if i<len(v) else '' for i,h in enumerate(heads) if h},'_source':name+'!'+m['sheet']+':'+str(row)} for row,v in rows if row>1 and any(v) and (not m.get('recordType') or dict(zip(heads,v)).get('recordType')==m['recordType'])]
+ return out
+
+def selected_business(tables,ids):
+ import copy
+ t=copy.deepcopy(tables);ids=set(ids)
+ for key in ['events','shipments','tickets','bills','attachments','requirements']:t[key]=[r for r in t.get(key,[]) if r.get('shipment') in ids]
+ contracts={r.get('contract') for r in t['bills']};t['contracts']=[r for r in t.get('contracts',[]) if r.get('contract') in contracts]
+ return t
+
+def receipt_rows(tables,cfg,cutoff,ids=None):
+ rows=[]
+ for s in tables.get('shipments',[]):
+  sid=s.get('shipment')
+  if ids is not None and sid not in ids:continue
+  if not actual_date(s.get('date')) or s['date']>cutoff:continue
+  tickets=[r for r in tables.get('tickets',[]) if r.get('shipment')==sid and r.get('kind')=='RECEIVE'];within=[r for r in tickets if actual_date(r.get('date')) and r['date']<=cutoff];values=[]
+  for r in within:
+   try:
+    value=D(str(r['weight']));factor=D(cfg['unitFactors'].get(r.get('unit'),'NaN'));q=value*factor
+    if not q.is_finite() or q<0:values.append(None)
+    else:values.append(q)
+   except (InvalidOperation,KeyError,TypeError):values.append(None)
+  known=sum((v for v in values if v is not None),D(0));complete=bool(within) and all(v is not None for v in values)
+  late=any(actual_date(r.get('date')) and r['date']>cutoff for r in tickets);invalid=any(not actual_date(r.get('date')) for r in tickets)
+  status='截至截止日接收资料未闭合' if not complete or invalid else '截至截止日已提供接收计量；其他条件独立核查'
+  if late:status+='；截止日后接收凭据不计入'
+  rows.append([sid,s.get('waste'),float(known) if complete and not invalid else '待核',float(known) if within else '未提供',cutoff,status,'；'.join(r['_source']+' 日期原值='+str(r.get('date')) for r in tickets)])
+ return rows
+
+def settlement_subtotals(rows,periodmap):
+ totals=collections.defaultdict(lambda:[D(0),0,0])
+ for row in rows:
+  period=periodmap.get(str(row[1]),'');key=(period,str(row[2]));totals[key][2]+=1
+  if str(row[12]).startswith('金额一致'):
+   try:totals[key][0]+=D(str(row[9]));totals[key][1]+=1
+   except InvalidOperation:pass
+ return [[k[0],k[1],float(v[0]) if v[1] else '待核',v[1],v[2]-v[1],'仅已确认合同金额小计；待核未计入，非完整费用或现金支付'] for k,v in sorted(totals.items())]
+
+def refresh_settlement_summary(summary,rows,periodmap):
+ pending=[{'shipment':str(r[1]),'knownComponent':str(r[8]),'finalAmount':None,'status':str(r[12]),'reasons':[str(r[13])],'source':str(r[15])} for r in rows if not str(r[12]).startswith('金额一致')]
+ summary['settlement']={'bills':len(rows),'pending':pending,'note':'只沿用或重核有依据的合同金额；不是付款或合规裁决'}
+ if 'costChange' not in summary:return
+ cost=summary['costChange'];cost['pending']=[r for r in cost['pending'] if not isinstance(r,dict) or not r.get('shipment')]+pending
+ known=[{'period':periodmap.get(str(r[1]),''),'shipment':str(r[1]),'direction':str(r[2]),'contractCheckedAmount':str(r[9]),'source':str(r[15])} for r in rows if str(r[12]).startswith('金额一致')];cost['legacyKnown']=known;cost['legacyChanges']=[]
+ for direction in sorted(set(str(r[2]) for r in rows)):
+  values=[]
+  for period in summary['periods']:
+   selected=[D(r['contractCheckedAmount']) for r in known if r['period']==period and r['direction']==direction];values.append(sum(selected,D(0)) if selected else None)
+  cost['legacyChanges'].append({'direction':direction,'before':str(values[0]) if values[0] is not None else None,'after':str(values[1]) if values[1] is not None else None,'difference':str(values[1]-values[0]) if all(v is not None for v in values) else None,'basis':'只含已确认合同金额小计；缺资料或有待核时不是完整期间费用/现金支出'})
+
+def continue_business(payload):
+ import copy,hashlib
+ state=payload['continuationState'];ids=payload['businessIds'];cfg=payload['company'];pref=payload['preferences'];alltables=copy.deepcopy(state['businessTables']);tables=selected_business(alltables,ids);errors=[];newrecords=[];applied=list(state.get('appliedEvidence',[]));seen={};conflictIds=set();originalTables=copy.deepcopy(tables);attachments=payload.get('attachments',{})
+ bybill={r['bill']:r for r in tables['bills']};byt={r['id']:r for r in tables['tickets']};byship={r['shipment']:r for r in tables['shipments']};contracts={r['contract']:r for r in tables['contracts']}
+ for evidence in payload['evidence']:
+  key=evidence['sha256']
+  if key in applied:continue
+  content=base64.b64decode(evidence['contentBase64'],validate=True)
+  if hashlib.sha256(content).hexdigest()!=key:raise ValueError('EVIDENCE_SHA_MISMATCH')
+  if evidence['path'].lower().endswith('.json'):
+   records=json.loads(content).get('records',[])
+  else:
+   loaded,meta=ds_load(content,evidence['path'],{})
+   if meta.get('formulaErrors'):raise ValueError('EVIDENCE_FORMULA_UNVERIFIED')
+   mapping=cfg['continuation']['evidence'];values=loaded.get(mapping['sheet'],[]);headers=next((v for r,v in values if r==1),[])
+   if len(set(headers))!=len(headers):raise ValueError('EVIDENCE_DUPLICATE_HEADERS')
+   records=[{mapping['fields'].get(h,h):v[i] if i<len(v) else '' for i,h in enumerate(headers) if h} for r,v in values if r>1 and any(v)]
+  if not isinstance(records,list) or not records or len(records)>100:raise ValueError('EVIDENCE_RECORDS_REQUIRED_100')
+  for i,r in enumerate(records):
+   source=evidence['path']+'#'+str(i+1)+' @'+evidence['versionId']+' SHA='+key;sid=str(r.get('businessId',''));reason=[];record=(sid,r.get('type'),r.get('recordId'))
+   if record in seen:
+    if seen[record]==r:continue
+    reason.append('同一业务证据记录冲突，全部相关更改撤回待核');conflictIds.add(sid)
+   else:seen[record]=dict(r)
+   ship=byship.get(sid);bill=next((b for b in tables['bills'] if b.get('shipment')==sid and b.get('contract')==r.get('contract')),None);contract=contracts.get(r.get('contract'))
+   if sid not in ids or not ship or not bill or not contract:reason.append('业务号/合同关联不匹配')
+   elif r.get('waste')!=ship.get('waste') or contract.get('waste')!=ship.get('waste'):reason.append('证据废物与业务/合同对象不匹配')
+   if not r.get('recordId') or not actual_date(r.get('date')):reason.append('凭证记录号或真实日历日期无效')
+   if actual_date(r.get('date')) and r['date']>pref['cutoff']:reason.append('凭证日期超出原成果截止日；不反改原时点事实')
+   if not reason and r.get('type')=='bill_correction':
+    original=bybill.get(r['recordId'])
+    if not original or original.get('shipment')!=sid or original.get('contract')!=r.get('contract'):reason.append('原账单号与业务/合同不匹配')
+    else:
+     weigh=[x for x in tables['tickets'] if x.get('shipment')==sid and x.get('kind')==contract.get('weightBasis')]
+     try:
+      qty=sum((D(str(x['weight']))*D(cfg['unitFactors'][x['unit']]) for x in weigh),D(0));evqty=D(str(r['weight']))*D(cfg['unitFactors'][r['unit']]);amount=D(str(r['amount']))
+      if not weigh or qty!=evqty or D(str(r.get('rate')))!=D(str(contract['rate'])) or r.get('rateUnit')!=contract['rateUnit'] or str(r.get('taxMode'))!=contract['taxMode'] or r.get('currency')!=original.get('currency'):reason.append('重量/单位/单价/税或币种未独立对应合同')
+      if D(str(contract['transportPerTrip'])) and D(str(r.get('trips')))!=D(str(ship.get('trips'))):reason.append('车次与原有效清运记录不一致')
+      if not amount.is_finite() or amount<0:reason.append('更正金额无效')
+     except (KeyError,InvalidOperation,TypeError):reason.append('更正账单缺少可核重量/单价/车次条件')
+     if not reason:original.update(amount=r['amount'],_source=original['_source']+'；更正依据 '+source)
+   elif not reason and r.get('type')=='receive_unit':
+    original=byt.get(r['recordId']);factor=cfg['unitFactors'].get(r.get('unit'))
+    if not original or original.get('shipment')!=sid or original.get('kind')!='RECEIVE':reason.append('接收凭据号与业务不匹配')
+    elif original.get('unit') and original.get('unit')!=r.get('unit'):reason.append('已有有效单位冲突，不能自动覆盖')
+    elif not factor or str(original.get('weight'))!=str(r.get('weight')) or original.get('date')!=r.get('date'):reason.append('接收重量/日期与原记录不一致，非单纯补单位')
+    if not reason:original.update(unit=r['unit'],_source=original['_source']+'；单位补证 '+source)
+   elif not reason:reason.append('未支持的证据类型，不凭上传状态销项')
+   if reason:errors.append({'kind':'pending','code':'EVIDENCE_LINK_OR_CONDITION_CONFLICT','source':source,'detail':sid+'：'+'；'.join(reason)})
+   else:
+    newrecords.append({'shipment':sid,'kind':r['type'],'path':evidence['path'],'sha256':key,'_source':source});tables['attachments'].append(newrecords[-1])
+  applied.append(key)
+ for key in ['events','shipments','tickets','bills','attachments','requirements']:
+  tables[key]=[r for r in tables[key] if r.get('shipment') not in conflictIds]+[r for r in originalTables[key] if r.get('shipment') in conflictIds]
+ newrecords=[r for r in newrecords if r['shipment'] not in conflictIds]
+ # Only selected businesses enter the original settlement/checklist computation.
+ inner={**payload,'continuationState':None,'methods':['settlement','checklist'],'input':base64.b64encode(json.dumps({'tables':tables},ensure_ascii=False).encode()).decode(),'name':state['businessPath'],'businessIds':None}
+ result=run(inner);result['issues'].extend(errors);selected={s['name']:s for s in result['sheets']};sheets=copy.deepcopy(state['sheets']);before={str(r[0]):r for s in sheets if s['name']=='结算对账' for r in s['rows']};after={str(r[0]):r for r in selected['结算对账']['rows']};changes=[]
+ for sid in ids:
+  original=[r for r in before.values() if str(r[1])==sid];updated=[r for r in after.values() if str(r[1])==sid]
+  if not original or not updated or {r[0] for r in original}!={r[0] for r in updated}:raise ValueError('CONTINUATION_BASE_BUSINESS_ROW_MISSING')
+  a=original[0];b=updated[0]
+  linked=[r['_source'] for r in newrecords if r['shipment']==sid];conflicts=[i['detail'] for i in errors if i['detail'].startswith(sid+'：')]
+  changes.append([sid,'；'.join(str(a[0])+' 原差额='+str(a[11])+'；'+str(a[12]) for a in original),'；'.join(linked) or '未采用新增证据', '；'.join(str(b[0])+' 差额='+str(b[11])+'；已知重量费='+str(b[8])+'；最终金额='+str(b[9])+'；'+str(b[12]) for b in updated),'；'.join(conflicts+[str(b[13])]) or '结算金额已核清；资料完整性独立核查'])
+ for sheet in sheets:
+  if sheet['name']=='结算对账':sheet['rows']=[after.get(str(r[0]),r) for r in sheet['rows']]
+  elif sheet['name']=='资料准备':sheet['rows']=[r for r in sheet['rows'] if str(r[0]) not in ids]+selected['资料准备']['rows']
+  elif sheet['name']=='清运时点':
+   updated={r[0]:r for r in receipt_rows(tables,cfg,pref['cutoff'],ids)};sheet['rows']=[updated.get(r[0],r) for r in sheet['rows']]
+  elif sheet['name']=='核对小计':sheet['rows']=settlement_subtotals([r for s in sheets if s['name']=='结算对账' for r in s['rows']],state['periodMap'])
+  elif sheet['name']=='待核与范围':sheet['rows'] += [[r['kind'],r['code'],r['source'],r['detail']] for r in errors]
+ if any(s['name']=='补证变化' for s in sheets):
+  next(s for s in sheets if s['name']=='补证变化')['rows'].extend(changes)
+ else:sheets.append({'name':'补证变化','headers':['业务号','原差异','新增证据','新结果','仍缺什么'],'rows':changes})
+ for name in ['events','shipments','tickets','bills','attachments','requirements']:
+  alltables[name]=[r for r in alltables.get(name,[]) if r.get('shipment') not in ids]+tables[name]
+ summary=copy.deepcopy(state['summary']);summary['revision']={'businessIds':ids,'changes':changes,'recomputedBusinessIds':ids,'otherBusinessRowsPreserved':True,'externalWrites':False};summary['settlement']=result['summary']['settlement'];summary['checklist']=result['summary']['checklist']
+ refresh_settlement_summary(summary,[r for s in sheets if s['name']=='结算对账' for r in s['rows']],state['periodMap'])
+ return {**result,'sheets':sheets,'summary':summary,'analysisSheet':{'name':'产废分析输入','headers':[],'rows':[]},'continuation':{**{k:v for k,v in state.items() if k not in ['sheets','summary']},'businessTables':alltables,'sheets':sheets,'summary':summary,'appliedEvidence':applied},'coverage':{'inputRows':sum(map(len,tables.values())),'allRowsProcessed':True,'truncated':False,'recomputedBusinessIds':ids},'attachmentPaths':result['attachmentPaths']}
+
 # Industry adaptation of upstream workflows 18/16/20. Reuses normalized results, never re-cleans their raw inputs.
 def comparison_method(payload):
  from decimal import localcontext
@@ -13,7 +160,7 @@ def comparison_method(payload):
   return comparison_compute(payload)
 
 def comparison_compute(payload):
- cfg=payload['company']['analysis'];pref=payload['preferences']['analysis'];methods=payload.get('methods') or payload['preferences']['methods']
+ cfg=payload['company']['analysis'];pref=payload['preferences']['analysis'];cutoff=payload['preferences']['cutoff'];methods=payload.get('methods') or payload['preferences']['methods']
  periods=pref['periods'];dims=pref['groupBy'];issues=[];sheets=[]
  displayUnit=pref.get('weightDisplayUnit','kg');displayFactor=D(cfg['weightDisplayFactors'].get(displayUnit,'0'))
  if not displayFactor.is_finite() or displayFactor<=0:raise ValueError('COMPARISON_WEIGHT_DISPLAY_UNIT_INVALID')
@@ -50,7 +197,7 @@ def comparison_compute(payload):
    for key,m in spec.items():
     records=data.get(key,[])
     if not isinstance(records,list):raise ValueError('COMPARISON_TABLE_ARRAY_REQUIRED')
-    out[key]=[{**m.get('defaults',{}),**{m.get('fields',{}).get(k,k):v for k,v in row.items()},'_source':name+'#'+key+':'+str(i+1)} for i,row in enumerate(records)]
+    out[key]=[{**{k:v for k,v in m.get('defaults',{}).items() if v!='DEMO_FULL' or payload['company'].get('fictional') is True},**{m.get('fields',{}).get(k,k):v for k,v in row.items()},'_source':name+'#'+key+':'+str(i+1)} for i,row in enumerate(records)]
   else:
    data,meta=ds_load(raw,name,{})
    if meta.get('formulaErrors'):raise ValueError('COMPARISON_SOURCE_FORMULA_UNVERIFIED')
@@ -58,7 +205,7 @@ def comparison_compute(payload):
    for key,m in spec.items():
     rows=data.get(m['sheet'],[]);header=int(m.get('headerRow',1));heads=next((v for row,v in rows if row==header),[])
     if len(set(heads))!=len(heads):raise ValueError('COMPARISON_DUPLICATE_HEADERS')
-    out[key]=[{**m.get('defaults',{}),**{m.get('fields',{}).get(h,h):values[i] if i<len(values) else '' for i,h in enumerate(heads) if h},'_source':name+'!'+m['sheet']+':'+str(row)} for row,values in rows if row>header and any(values)]
+    out[key]=[{**{k:v for k,v in m.get('defaults',{}).items() if v!='DEMO_FULL' or payload['company'].get('fictional') is True},**{m.get('fields',{}).get(h,h):values[i] if i<len(values) else '' for i,h in enumerate(heads) if h},'_source':name+'!'+m['sheet']+':'+str(row)} for row,values in rows if row>header and any(values)]
   if sum(len(x) for x in out.values())>50000:raise ValueError('COMPARISON_ROW_LIMIT')
   return out
  raw=base64.b64decode(payload['input'],validate=True);data=tables(raw,payload['name'],cfg['tables']);bindings=data.get('sources',[])
@@ -73,9 +220,13 @@ def comparison_compute(payload):
   if not entry.get('available') or not entry.get('contentBase64'):issue('VERIFIED_SOURCE_MISSING',b['_source'],'既有核对底稿未提供；不补造其数值');sourceComplete=False;continue
   if b.get('sha256') and b['sha256']!=entry.get('sha256'):issue('SOURCE_VERSION_CONFLICT',b['_source'],'实际SHA与指定版本不一致，该来源不参与计算');sourceComplete=False;continue
   if role in verified:raise ValueError('COMPARISON_SOURCE_ROLE_DUPLICATED')
+  if cfg['sources'][role].get('schema')=='businessTables':
+   verified[role]=business_tables(base64.b64decode(entry['contentBase64'],validate=True),b['path'],payload['company']);continue
+  if cfg['sources'][role].get('schema')=='verifiedReport':
+   verified[role]=ds_load(base64.b64decode(entry['contentBase64'],validate=True),b['path'],{})[0];continue
   out=tables(base64.b64decode(entry['contentBase64'],validate=True),b['path'],{role:cfg['sources'][role]})[role];sourceRows+=len(out);verified[role]=out
  if not bindings:issue('SOURCE_BINDING_MISSING',payload['name'],'未绑定既有核对结果；仅分析已提供资料');sourceComplete=False
- summary={'fictional':payload['company'].get('fictional',False),'methods':methods,'periods':periods,'configApplied':{'groupBy':dims,'periods':periods,'costDateField':pref['costDateField'],'precision':scales,'differencesOnly':pref.get('differencesOnly',False),'outputs':pref['outputs']},'scope':'复用既有核对结果；新增资料为模拟资料，不证明工艺因果、付款或合规','externalConnections':payload['company']['externalConnections']}
+ summary={'fictional':payload['company'].get('fictional',False),'methods':methods,'periods':periods,'cutoff':cutoff,'configApplied':{'groupBy':dims,'periods':periods,'costDateField':pref['costDateField'],'precision':scales,'differencesOnly':pref.get('differencesOnly',False),'outputs':pref['outputs']},'scope':'复用既有核对结果；新增资料为模拟资料，不证明工艺因果、付款或合规','externalConnections':payload['company']['externalConnections']}
  def canonical(row):
   row=dict(row)
   for key,aliases in cfg.get('objectAliases',{}).items():
@@ -87,7 +238,11 @@ def comparison_compute(payload):
   waste={};production={};allkeys=set();seen=set()
   for rawrow in verified.get('verifiedWaste',[]):
    row=canonical(rawrow);period=str(row.get('date',''))[:7]
-   if period not in periods:continue
+   if not actual_date(row.get('date')):
+    issue('DATE_INVALID',row['_source'],'产生日期原值='+str(row.get('date'))+'；真实日历日期无效')
+    if period in periods:waste[(period,gkey(row))]=None;allkeys.add(gkey(row))
+    continue
+   if period not in periods or row['date']>cutoff:continue
    key=gkey(row);allkeys.add(key);v=n(row.get('weightKg'));record=(period,str(row.get('id','')))
    if record in seen:raise ValueError('COMPARISON_NORMALIZED_SOURCE_DUPLICATE')
    seen.add(record)
@@ -97,6 +252,7 @@ def comparison_compute(payload):
   for rawrow in data.get('production',[]):
    row=canonical(rawrow);period=str(row.get('period',''))[:7]
    if period not in periods:continue
+   if cutoff[:7]==period and cutoff!=str((dt.date.fromisoformat(period+'-01').replace(day=28)+dt.timedelta(days=4)).replace(day=1)-dt.timedelta(days=1)) and not row.get('asOfDate'):row['quantity']=None
    key=gkey(row);allkeys.add(key);entry=production.setdefault((period,key),{'value':D(0),'units':set(),'mix':set(),'sources':[],'valid':True,'composition':collections.defaultdict(D)});v=n(row.get('quantity'));unit=cfg['productionUnits'].get(row.get('unit'));entry['sources'].append(row['_source']);entry['mix'].add(str(row.get('comparability','')))
    if v is None or v<0 or not unit:entry['valid']=False;issue('PRODUCTION_MISSING_OR_UNIT_UNKNOWN',row['_source'],'缺生产量或单位；不推定分母')
    else:entry['value']+=v*D(unit['factor']);entry['units'].add(unit['canonical']);entry['composition'][str(row.get('productGroup',''))]+=v*D(unit['factor'])
@@ -145,11 +301,12 @@ def comparison_compute(payload):
   allowed=cfg['cost'];dateField=pref['costDateField'];costGroups=pref.get('costGroupBy',['project','supplier']);groupCoverage=True
   if not costGroups or len(costGroups)>4 or any(k not in allowed['groupDimensions'] for k in costGroups):raise ValueError('COMPARISON_COST_GROUPS_INVALID')
   if dateField not in ['businessDate','settlementDate','paymentDate']:raise ValueError('COMPARISON_COST_DATE_FIELD_INVALID')
-  entries={};pending=[];pendingProjects=set();unidentifiedPending=False;cat=collections.defaultdict(lambda:[D(0),D(0)]);cash=collections.defaultdict(D)
+  entries={};pending=[];pendingProjects=set();unidentifiedPending=False;observedPeriods=set();cat=collections.defaultdict(lambda:[D(0),D(0)]);cash=collections.defaultdict(D)
   for row in data.get('costs',[]):
    date=str(row.get(dateField,''));period=date[:7]
-   if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',date):issue('COST_DATE_MISSING',row['_source'],'选定的费用归属日期未提供');pending.append(row['_source']);pendingProjects.add(str(row.get('project','')));unidentifiedPending=unidentifiedPending or not row.get('project');continue
-   if period not in periods:continue
+   if not actual_date(date):issue('COST_DATE_INVALID',row['_source'],dateField+' 原值='+repr(date)+'；选定费用日期格式或真实日历日期无效');pending.append(row['_source']);pendingProjects.add(str(row.get('project','')));unidentifiedPending=unidentifiedPending or not row.get('project');continue
+   if period not in periods or date>cutoff:continue
+   observedPeriods.add(period)
    category=allowed['categories'].get(row.get('category'));direction=allowed['directions'].get(row.get('direction'));tax=allowed['taxBases'].get(row.get('taxBasis'));recurrence=allowed['recurrences'].get(row.get('recurrence'));amount=n(row.get('amount'));reasons=[]
    if not category or not direction or not tax or not recurrence:reasons.append('费用分类/收支/税费/一次性口径缺失')
    if amount is None or amount<0:reasons.append('实际结算金额缺失或无效')
@@ -174,8 +331,11 @@ def comparison_compute(payload):
    if (period,key) in entries:raise ValueError('COMPARISON_COST_ITEM_PERIOD_DUPLICATED_SPLIT_PRICE_BANDS')
    entries[(period,key)]={'amount':amount,'q':quantity,'p':price,'source':row['_source'],'contract':row['contractRef'],'quote':row['conditionQuote'],'row':row}
    cat[(category,direction,tax,recurrence,basis,currency)][periods.index(period)]+=amount
-   paid=n(row.get('paidAmount'));paidDate=str(row.get('paymentDate',''))[:7]
-   if paid is not None and paidDate in periods:cash[(paidDate,direction,currency)]+=paid
+   paid=n(row.get('paidAmount'));paidRaw=row.get('paymentDate','');paidDate=str(paidRaw)[:7]
+   if paidRaw and not actual_date(paidRaw):issue('PAYMENT_DATE_INVALID',row['_source'],'paymentDate 原值='+repr(paidRaw)+'；付款日期无效，保留独立有效结算')
+   if paid is not None and actual_date(paidRaw) and paidDate in periods and paidRaw<=cutoff:cash[(paidDate,direction,currency)]+=paid
+  missingPeriods=[p for p in periods if p not in observedPeriods]
+  if missingPeriods:pending.append({'missingPeriods':missingPeriods,'reason':'缺少该月费用覆盖资料，不当作零或退出'});unidentifiedPending=True;issue('COST_PERIOD_COVERAGE_MISSING',payload['name'],'费用月份覆盖不足：'+','.join(missingPeriods))
   completeNewProjects=not pending
   decomposition=[];breakdown=[];totalByBucket=collections.defaultdict(lambda:[D(0),D(0),D(0),D(0),D(0)])
   for key in sorted(set(k for _,k in entries)):
@@ -207,8 +367,9 @@ def comparison_compute(payload):
   legacy=[];legacyKnown=[];mapping={str(r.get('shipment')):r for r in data.get('legacyMap',[])}
   for row in verified.get('verifiedSettlement',[]):
    m=mapping.get(str(row.get('shipment')));amount=n(row.get('amount'));component=n(row.get('knownComponent'));status=str(row.get('status',''))
-   period=str(m.get(dateField,''))[:7] if m else ''
-   if period not in periods:
+   rawDate=m.get(dateField,'') if m else '';period=str(rawDate)[:7]
+   if m and not actual_date(rawDate):issue('LEGACY_DATE_INVALID',row['_source'],dateField+' 原值='+repr(rawDate)+'；旧核对归属日期无效');continue
+   if period not in periods or rawDate>cutoff:
     if not m:issue('LEGACY_PERIOD_UNMAPPED',row['_source'],'旧核对结果缺期间归属映射，不猜月份')
     continue
    checked=any(t in status for t in cfg['legacyKnownStatuses']) and amount is not None
@@ -218,13 +379,35 @@ def comparison_compute(payload):
   sheet('费用变化分解',['项目','供应商','废物','分类','收支','税口径','一次性/持续','上期数量','本期数量','数量单位','上期单价','本期单价','上期结算额','本期结算额','差额','数量影响','价格影响','其他/新增退出/舍入','分解约定','明细/合同来源','对象分组'],[r for r in decomposition if not pref.get('differencesOnly') or r[14]!=0],{7:'production',8:'production',10:'price',11:'price',12:'money',13:'money',14:'money',15:'money',16:'money',17:'money'})
   sheet('费用分项',['分类','收支','税口径','一次性/持续','口径','币种','已核对上期小计','已核对本期小计','已核对差额','完整性边界'],[[*k,*v,v[1]-v[0],'新增给定范围完整；非全企业总额' if completeNewProjects else '仅已知小计，不能代替最终完整费用'] for k,v in cat.items()],{6:'money',7:'money',8:'money'})
   sheet('既有结算复用',['期间','业务号','收支','原核对金额','已知分量','本轮边界','原状态','原结果位置'],legacy,{3:'money',4:'money'})
-  summary['costChange']={'dateField':dateField,'groupBy':costGroups,'groupCoverageComplete':groupCoverage,'totals':totals,'items':breakdown,'legacyKnown':legacyKnown,'pending':pending,'completeProvidedNewProjects':completeNewProjects,'completeEnterpriseExpense':False,'cashOut':[{ 'period':k[0],'direction':k[1],'currency':k[2],'amount':f(v,'money')} for k,v in cash.items()] or None,'cashBoundary':'未提供付款流水时不能把应付结算费用称现金支出','productionCostAttribution':'未提供可靠批次到当期产生的归属；不把历史库存处置费用除以当期产废量','thresholdPercent':pref['costAlertPercent'],'attention':[i['project'] for i in breakdown if i['alert']], 'legacyChanges':[{'direction':direction,'before':f(sum((D(i['contractCheckedAmount']) for i in legacyKnown if i['direction']==direction and i['period']==periods[0]),D(0)),'money'),'after':f(sum((D(i['contractCheckedAmount']) for i in legacyKnown if i['direction']==direction and i['period']==periods[1]),D(0)),'money'),'difference':f(sum((D(i['contractCheckedAmount'])*(1 if i['period']==periods[1] else -1) for i in legacyKnown if i['direction']==direction),D(0)),'money'),'basis':'只沿用已有合同核对金额；非完整费用或现金证明'} for direction in sorted(set(i['direction'] for i in legacyKnown))]}
+  summary['costChange']={'dateField':dateField,'observedPeriods':sorted(observedPeriods),'missingPeriods':missingPeriods,'groupBy':costGroups,'groupCoverageComplete':groupCoverage,'totals':totals,'items':breakdown,'legacyKnown':legacyKnown,'pending':pending,'completeProvidedNewProjects':completeNewProjects,'completeEnterpriseExpense':False,'cashOut':[{ 'period':k[0],'direction':k[1],'currency':k[2],'amount':f(v,'money')} for k,v in cash.items()] or None,'cashBoundary':'未提供付款流水时不能把应付结算费用称现金支出','productionCostAttribution':'未提供可靠批次到当期产生的归属；不把历史库存处置费用除以当期产废量','thresholdPercent':pref['costAlertPercent'],'attention':[i['project'] for i in breakdown if i['alert']], 'legacyChanges':[{'direction':direction,'before':f(sum((D(i['contractCheckedAmount']) for i in legacyKnown if i['direction']==direction and i['period']==periods[0]),D(0)),'money'),'after':f(sum((D(i['contractCheckedAmount']) for i in legacyKnown if i['direction']==direction and i['period']==periods[1]),D(0)),'money'),'difference':f(sum((D(i['contractCheckedAmount'])*(1 if i['period']==periods[1] else -1) for i in legacyKnown if i['direction']==direction),D(0)),'money'),'basis':'只沿用已有合同核对金额；非完整费用或现金证明'} for direction in sorted(set(i['direction'] for i in legacyKnown))]}
+ continuation=None
+ if verified.get('verifiedBusiness') and verified.get('verifiedReport'):
+  original=verified['verifiedReport'];bt=verified['verifiedBusiness'];periodmap={str(r.get('shipment')):str(r.get(pref['costDateField'],''))[:7] for r in data.get('legacyMap',[]) if actual_date(r.get(pref['costDateField']))}
+  selectedids={r['shipment'] for r in bt.get('shipments',[]) if str(r.get('date',''))[:7] in periods and actual_date(r.get('date')) and r['date']<=cutoff};bt=selected_business(bt,selectedids)
+  # Reuse the existing checked rows exactly, rather than rerunning old bills.
+  for name,keycol in [('结算对账',1),('资料准备',0)]:
+   rows=original.get(name,[]);heads=next((v for i,v in rows if i==1),[]);values=[v for i,v in rows if i>1 and len(v)>keycol and str(v[keycol]) in selectedids];sheets.append({'name':name,'headers':heads,'rows':values})
+  sheets[:]=[s for s in sheets if s['name']!='既有结算复用']
+  sheets.append({'name':'清运时点','headers':['业务号','废物','截至日接收kg','已知截至日接收kg','截止日','状态','原始来源与日期'],'rows':receipt_rows(bt,payload['company'],cutoff)})
+  checked=next(s['rows'] for s in sheets if s['name']=='结算对账')
+  receiptStatus={r[0]:r for r in receipt_rows(bt,payload['company'],cutoff)}
+  for row in checked:
+   received=receiptStatus.get(str(row[1]))
+   if received and not isinstance(received[2],(int,float)):
+    row[9]='未提供/待核';row[11]='未提供/待核';row[12]='条件待核，不能生成最终应付/应收';row[13]=str(row[13])+'；截至截止日接收记录待核'
+  for row in next(s['rows'] for s in sheets if s['name']=='资料准备'):
+   if str(row[0]) in receiptStatus and row[1]=='RECEIVE' and not isinstance(receiptStatus[str(row[0])][2],(int,float)):row[3]='已提供凭据；截至截止日接收信息仍待核'
+  refresh_settlement_summary(summary,checked,periodmap)
+  sheets.append({'name':'核对小计','headers':['期间','收支方向','已确认合同金额元','已确认单数','待核单数','边界'],'rows':settlement_subtotals(checked,periodmap)})
+  summary['receiptsAsOf']={'cutoff':cutoff,'rows':receipt_rows(bt,payload['company'],cutoff)}
+  continuation={'businessTables':bt,'businessPath':next(b['path'] for b in bindings if b['role']=='verifiedBusiness'),'periodMap':periodmap,'appliedEvidence':[]}
  if issues:sheet('待核与范围',['类型','代码','来源','待核事项'],[[r['kind'],r['code'],r['source'],r['detail']] for r in issues])
  summary['possibleFactors']=[{'status':'待核实的可能因素','text':s} for s in cfg['possibleFactors']]
- return {**base,'summary':summary,'sheets':sheets,'issues':issues,'needsDataSources':False,'coverage':{'inputRows':sum(map(len,data.values()))+sourceRows,'allRowsProcessed':True,'truncated':False,'sourceCoverageComplete':sourceComplete,'reusedNormalizedRows':sourceRows},'analysisSheet':{'name':'产废分析输入','headers':[],'rows':[]}}
+ return {**base,'continuation':continuation,'summary':summary,'sheets':sheets,'issues':issues,'needsDataSources':False,'coverage':{'inputRows':sum(map(len,data.values()))+sourceRows,'allRowsProcessed':True,'truncated':False,'sourceCoverageComplete':sourceComplete,'reusedNormalizedRows':sourceRows},'analysisSheet':{'name':'产废分析输入','headers':[],'rows':[]}}
 
 
 def run(payload):
+ if payload.get('continuationState'):return continue_business(payload)
  cfg=payload['company']; prefs=payload['preferences']; methods=payload.get('methods') or prefs['methods']
  if not methods or any(x not in ['ledger','inventory','transfer','settlement','checklist','intensity','cost_change'] for x in methods):raise ValueError('METHOD_UNKNOWN')
  if any(x in ['intensity','cost_change'] for x in methods):
@@ -355,6 +538,13 @@ def run(payload):
   if not prefs.get('differencesOnly'):sheet('贮存关注',['库区','批次/容量','内部关注','依据'],[[a['warehouse'],a.get('batch','容量'),json.dumps(a,ensure_ascii=False),'内部规则，法规期限未配置'] for a in age+attention])
  # Explicit links only. Distinct weigh points and cross-period receipts remain separate.
  tickets=unique(tables['tickets'],['kind','id']) if any(x in methods for x in ['transfer','settlement']) else []; shipRows=unique(tables['shipments'],['shipment']) if any(x in methods for x in ['transfer','settlement']) else []; ships=index(shipRows,'shipment')
+ rawTickets=tickets;invalidTicketShips=set();futureTicketShips=set();validTickets=[]
+ for r in rawTickets:
+  if not actual_date(r.get('date')):
+   invalidTicketShips.add(r.get('shipment'));issue('incomplete','TICKET_DATE_INVALID',r['_source'],'凭据日期原值='+repr(r.get('date'))+'；真实日历日期无效');continue
+  if r['date']>cutoff:futureTicketShips.add(r.get('shipment'));continue
+  validTickets.append(r)
+ tickets=validTickets
  for r in tickets:
   if r.get('shipment') not in ships:issue('incomplete','UNLINKED_DOCUMENT',r['_source'],'未提供清运业务号；不得按重量/金额匹配')
  def total(rows):
@@ -363,11 +553,12 @@ def run(payload):
  for sid,s in ships.items():
   out=[r for r in clean if r['node']=='出库' and r.get('shipment')==sid]; linked=[r for r in tickets if r.get('shipment')==sid]
   if any(r.get('waste')!=s.get('waste') for r in out+linked):issue('conflict','SHIPMENT_OBJECT_CONFLICT',s['_source'],'业务号关联对象冲突');objectOkay=False
-  else:objectOkay=True
+  else:objectOkay=sid not in invalidTicketShips and sid not in futureTicketShips
   by={k:[r for r in linked if r['kind']==k] for k in ['WEIGH','MANIFEST','RECEIVE']};qout=sum((r['kg'] for r in out),D(0)) if out else None
   weights={k:total(v) for k,v in by.items()};known=sum((kg(r) or D(0) for r in by['RECEIVE']),D(0))
-  atCutoff=total([r for r in by['RECEIVE'] if r.get('date','')<=cutoff]);late=any(r.get('date','')>cutoff for r in by['RECEIVE'])
-  status='待核' if weights['RECEIVE'] is None or not objectOkay else '跨期接收已到，期末未闭合' if late else '资料关联已闭合'
+  atCutoff=total([r for r in by['RECEIVE'] if r.get('date','')<=cutoff]);late=sid in futureTicketShips
+  status='待核' if weights['RECEIVE'] is None or not objectOkay else '跨期接收：截至期末未接收，截止日后凭据不计入' if late else '资料关联已闭合'
+  if late:status='跨期接收：截至期末未闭合，截止日后凭据不计入'
   if qout is None:status='出库记录未提供或无效'
   if not by['MANIFEST'] and waste[s['waste']]['classification']=='hazardous':status='联单资料未提供'
   delta=weights['WEIGH']-qout if qout is not None and weights['WEIGH'] is not None else None

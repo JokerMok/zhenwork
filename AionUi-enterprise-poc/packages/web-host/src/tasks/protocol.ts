@@ -262,6 +262,7 @@ export async function currentTaskScope(
   conversation: string
 ): Promise<{
   active: boolean;
+  round?: number;
   attemptId?: string;
   jobId?: string;
   scope?: import('../office/office-store.js').KnowledgeScope;
@@ -273,6 +274,7 @@ export async function currentTaskScope(
     const a = currentAttempt(await store.get(conversation));
     return {
       active: a.state === 'running',
+      round: a.round,
       attemptId: a.id,
       jobId: a.jobId,
       scope: a.scope as import('../office/office-store.js').KnowledgeScope | undefined,

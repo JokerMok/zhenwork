@@ -198,12 +198,13 @@
     "Industry method/config/preferences/templates added",
     "Portable deterministic industry processor added; existing DataAnalysis and Office parsers/renderers reused",
     "DSH UI/MCP display-only application and unrelated dependencies excluded",
-    "Reuse workflows 18/16/20 for configurable intensity/cost decomposition; one bounded step reads existing normalized results. Original upstream bytes unchanged."
+    "Reuse workflows 18/16/20 for configurable intensity/cost decomposition; one bounded step reads existing normalized results. Original upstream bytes unchanged.",
+    "复用06/15/22/23：本轮periods/cutoff、真实日历费用日期、固定原成果与凭证版本的按单续核；上游原字节不变"
   ],
   "dependencies": {
     "processor": "Python >=3.10 standard library",
     "xlsxAdapter": "existing ZhenWork openpyxl bounded parser",
     "externalMcp": "none required; business and declaration connections UNCONFIGURED"
   },
-  "industryAdaptationVersion": "1.1.1"
+  "industryAdaptationVersion": "1.2.0"
 }

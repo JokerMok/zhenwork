@@ -13,6 +13,7 @@ type Detail = {
 type Client = { authorizedResource(id: string, type: string): Promise<unknown> };
 export type MethodResult = {
   summary: Record<string, unknown>;
+  continuation?: Record<string, unknown> | null;
   needsDataSources?: boolean;
   dataSourcePaths?: string[];
   sheets: OfficeSheet[];
@@ -33,6 +34,31 @@ const obj = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw Error('METHOD_CONFIG_INVALID');
   return v as Record<string, unknown>;
 };
+export type TaskTime = { periods: string[]; cutoff: string };
+export function methodTime(preferences: Record<string, unknown>, periods?: unknown, cutoff?: unknown): TaskTime {
+  const analysis = preferences.analysis as { periods?: string[] } | undefined;
+  const selected = periods ?? analysis?.periods ?? [];
+  if (
+    !Array.isArray(selected) ||
+    selected.length !== 2 ||
+    selected.some((v) => typeof v !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) ||
+    selected[0] >= selected[1]
+  )
+    throw Error('METHOD_TWO_ORDERED_PERIODS_REQUIRED');
+  const [year, month] = selected[1].split('-').map(Number);
+  const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  const value = cutoff ?? (periods !== undefined ? end : (preferences.cutoff ?? end));
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw Error('METHOD_CUTOFF_DATE_INVALID');
+  const parsed = new Date(value + 'T00:00:00.000Z');
+  if (
+    !Number.isFinite(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value ||
+    value < selected[0] + '-01' ||
+    value > end
+  )
+    throw Error('METHOD_CUTOFF_DATE_INVALID');
+  return { periods: [...selected], cutoff: value };
+}
 export const methodTool = {
   name: 'run_enterprise_method',
   description:
@@ -52,6 +78,51 @@ export const methodTool = {
           type: 'string',
           enum: ['ledger', 'inventory', 'transfer', 'settlement', 'checklist', 'intensity', 'cost_change'],
         },
+      },
+      periods: {
+        type: 'array',
+        minItems: 2,
+        maxItems: 2,
+        items: { type: 'string', pattern: '^\\d{4}-(0[1-9]|1[0-2])$' },
+        description: 'Two separate comparison months, ordered YYYY-MM. Task-only override; never edits saved Skill.',
+      },
+      cutoff: {
+        type: 'string',
+        pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+        description: 'Inclusive real calendar date YYYY-MM-DD. Applies only to this task.',
+      },
+      revision: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          baseVersionId: { type: 'string', format: 'uuid' },
+          baseSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+          businessIds: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 20,
+            uniqueItems: true,
+            items: { type: 'string', maxLength: 100 },
+          },
+          evidence: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 20,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                path: { type: 'string', maxLength: 500 },
+                versionId: { type: 'string', format: 'uuid' },
+                sha256: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+              },
+              required: ['path', 'versionId', 'sha256'],
+            },
+          },
+        },
+        required: ['baseVersionId', 'baseSha256', 'businessIds', 'evidence'],
+        description:
+          'Continue only named businesses in the explicitly selected original result path/version/SHA; path is the old result, never assume latest month. Reread pinned employee evidence; new immutable file revision with concurrency checks.',
       },
       outputBase: { type: 'string', maxLength: 140 },
     },
@@ -157,7 +228,10 @@ export async function executeMethod(options: {
   input: Buffer;
   name: string;
   methods?: string[];
-  read: (file: string) => Promise<{ bytes: Buffer; relative: string }>;
+  parameters?: TaskTime;
+  authorizedSourcePaths?: string[];
+  revisionPayload?: Record<string, unknown>;
+  read: (file: string) => Promise<{ bytes: Buffer; relative: string; versionId?: string }>;
   signal?: AbortSignal;
 }) {
   if (busy) throw Error('METHOD_BUSY_RETRY_AFTER_CURRENT');
@@ -166,9 +240,18 @@ export async function executeMethod(options: {
     if (options.input.length > 20 * 1024 * 1024 || !/\.(json|xlsx)$/i.test(options.name))
       throw Error('METHOD_INPUT_JSON_XLSX_20MB');
     const p = await methodPackage(options.client, options.resourceId);
+    const preferences = structuredClone(p.preferences);
+    if (options.parameters) {
+      preferences.cutoff = options.parameters.cutoff;
+      preferences.analysis = {
+        ...obj(preferences.analysis),
+        periods: [...options.parameters.periods],
+      };
+    }
     const payload = {
+      ...options.revisionPayload,
       company: p.company,
-      preferences: p.preferences,
+      preferences,
       methods: options.methods,
       name: options.name,
       input: options.input.toString('base64'),
@@ -176,7 +259,7 @@ export async function executeMethod(options: {
       unverifiedContracts: [] as string[],
     };
     const first = await runMethodProcessor(p.script, payload, options.signal);
-    const sourceFiles: Array<{ path: string; sha256: string }> = [];
+    const sourceFiles: Array<{ path: string; sha256: string; versionId?: string }> = [];
     const reads = new Map<string, { bytes: Buffer; relative: string } | null>();
     const read = async (file: string) => {
       // Package paths must be employee workspace-relative; no absolute host paths or traversal.
@@ -184,7 +267,7 @@ export async function executeMethod(options: {
         typeof file !== 'string' ||
         !file ||
         file.length > 500 ||
-        path.isAbsolute(file) ||
+        (path.isAbsolute(file) && !options.authorizedSourcePaths?.includes(file)) ||
         file.includes('\\') ||
         file.includes('\0') ||
         file.split('/').some((s) => !s || s === '.' || s === '..')
@@ -194,7 +277,11 @@ export async function executeMethod(options: {
       try {
         const value = await options.read(file);
         reads.set(file, value);
-        sourceFiles.push({ path: file, sha256: sha(value.bytes) });
+        sourceFiles.push({
+          path: file,
+          sha256: sha(value.bytes),
+          ...(value.versionId ? { versionId: value.versionId } : {}),
+        });
         return value;
       } catch (e) {
         if (e instanceof Error && /ENOENT|FILE_NOT_FOUND/.test(e.message)) {
@@ -258,8 +345,9 @@ export async function executeMethod(options: {
         processorSha256: p.processorSha256,
         inputSha256: sha(options.input),
         sourceFiles,
+        parameters: options.parameters,
       },
-      preferences: p.preferences,
+      preferences,
     };
   } finally {
     busy = false;

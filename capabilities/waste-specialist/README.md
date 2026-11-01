@@ -1,4 +1,4 @@
-# 企业固危废数据专员标准能力包 v1.1.1
+# 企业固危废数据专员标准能力包 v1.2.0
 
 完整复用 MIT 上游 finance-workbench Skill 子树；固定2.7.0 / 5689d65599357e50a814622640ace1656b45799e。未迁入财务UI、DSH侧栏、MCP打开界面、数据库、账号或备份系统。
 
@@ -17,3 +17,5 @@
 本次增量：在原六类方法上追加产废强度与变化、处置费用变化分解；直接读取已授权的已有规范结果，不重算旧账。工作方法见 references/analysis-methods.md，追加的模拟资料见 examples/comparison/；上游18/16/20三个方法及31个原文件保持原字节。
 
 个人副本的 references/company.json.analysis 调整表名、字段、单位和对象对应；references/preferences.json.analysis 调整 periods、groupBy、costGroupBy、costDateField、展示重量单位、阈值、精度和输出偏好。可选费用分组缺归属时保留未归属组，不能按产量自动分摊。默认一份必要Excel和聊天结论，Word/PPT仅在明确要求时生成。
+
+1.2.0追加本轮任务periods/cutoff覆盖、真实日历日期和按单补证。来源/输入/原成果/附件均固定版本与SHA，旧成果沿原路径修订，重提凭证幂等。详见SKILL.md与examples/continuation/；旧个人副本不自动升级。
