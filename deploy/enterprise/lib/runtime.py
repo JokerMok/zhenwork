@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Instance-scoped Linux installer. No pilot configuration or application database is imported."""
-import argparse,base64,hashlib,hmac,json,os,pathlib,pwd,re,secrets,shutil,socket,stat,string,subprocess,sys,time,urllib.request
+import argparse,ipaddress,base64,hashlib,hmac,json,os,pathlib,pwd,re,secrets,shutil,socket,stat,string,subprocess,sys,time,urllib.request
 
 def run(args,**kw):
  return subprocess.run(args,check=True,**kw)
@@ -23,10 +23,10 @@ def load(file):
  from urllib.parse import urlparse
  for key in ['ZW_EMPLOYEE_ORIGIN','ZW_ADMIN_ORIGIN']:
   u=urlparse(out[key])
-  if u.scheme!='https' or not u.hostname or u.path not in ['','/'] or u.username or u.password:raise RuntimeError('Two explicit HTTPS origins are required')
+  if u.scheme!='https' or not u.hostname or u.path not in ['','/'] or u.username or u.password or u.query or u.fragment or not re.fullmatch(r'(?:[A-Za-z0-9][A-Za-z0-9.-]*|\[[0-9a-fA-F:]+\])(?::[0-9]{1,5})?',u.netloc):raise RuntimeError('Two explicit HTTPS origins are required')
  if out['ZW_EMPLOYEE_ORIGIN']==out['ZW_ADMIN_ORIGIN']:raise RuntimeError('Employee and administrator origins must differ')
  defaults={'ZW_PRODUCT_NAME':'ZhenWork','ZW_COMPANY_NAME':'企业','ZW_TLS_MODE':'acme','ZW_BIND_ADDRESS':'0.0.0.0','ZW_PORT_BASE':'18880','ZW_MAX_CORES':'2','ZW_MAX_STARTING_CORES':'1','ZW_MAX_QUEUED_CORE_STARTS':'8','ZW_CORE_IDLE_MS':'30000','ZW_CORE_START_WAIT_MS':'300000','ZW_MAX_SESSIONS':'50','ZW_IMAGE_LOCK':''}
- out={**defaults,**out};base=int(out['ZW_PORT_BASE'])
+ out={**defaults,**out};ipaddress.ip_address(out['ZW_BIND_ADDRESS']);base=int(out['ZW_PORT_BASE'])
  if not 1024<=base<=65000:raise RuntimeError('Invalid private port base')
  out['ports']={'db':base+1,'redis':base+2,'rc2':base+3,'web':base+4,'execution':base+5}
  out['runtimeUser']='zw-'+out['ZW_INSTANCE'];out['configFile']=str(p);return out
@@ -88,6 +88,7 @@ def prepare(c,bundle):
  run(['usermod','-a','-G','docker',c['runtimeUser']]);(root/'shared').mkdir(exist_ok=True);os.chown(root/'shared',0,account.pw_gid);(root/'shared').chmod(0o750)
  for name in ['shared/profiles','shared/uploads','shared/logs','shared/tls','shared/data/postgres','shared/data/redis','shared/config','shared/config/caddy','releases']:
   p=root/name;p.mkdir(parents=True,exist_ok=True)
+  if name=='shared/data/redis':os.chown(p,10002,10002);p.chmod(0o700)
   if name.startswith(('shared/profiles','shared/uploads','shared/logs','shared/tls','shared/config/caddy')):os.chown(p,account.pw_uid,account.pw_gid);p.chmod(0o700)
  secret=root/'shared/config/identity.json'
  if not secret.exists():
@@ -103,7 +104,7 @@ def prepare(c,bundle):
  backupKey=pathlib.Path(c['ZW_BACKUP_KEY_FILE'])
  if not backupKey.is_absolute() or str(backupKey).startswith(str(root)+'/'):raise RuntimeError('Backup encryption key must be stored outside the installation root')
  if not backupKey.exists():write(backupKey,secrets.token_hex(32)+'\n')
- if backupKey.stat().st_mode&0o077:raise RuntimeError('Backup key must be owner-only')
+ if backupKey.is_symlink() or backupKey.stat().st_mode&0o077:raise RuntimeError('Backup key must be owner-only')
  target=root/'releases'/release['version'];target.mkdir(exist_ok=True);target.chmod(0o755);(root/'releases').chmod(0o755)
  for name in ['app','runtime','licenses','docs','capabilities','examples']:
   src=bundle/name
@@ -123,6 +124,10 @@ def prepare(c,bundle):
  if not imageFile.exists() and not c['ZW_IMAGE_LOCK']:
   run(['bash',str(bundle/'deploy/enterprise/lib/build-images.sh')]);imageFile=bundle/'NATIVE_IMAGES.local.json'
  images=json.loads(imageFile.read_text())['images']
+ if not c['ZW_IMAGE_LOCK']:
+  missing=any(subprocess.run(['docker','image','inspect',value],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode for value in images.values())
+  if missing:
+   run(['bash',str(bundle/'deploy/enterprise/lib/build-images.sh')]);images=json.loads((bundle/'NATIVE_IMAGES.local.json').read_text())['images']
  for name,value in images.items():
   if not re.fullmatch(r'(?:sha256:|[^\s]+@sha256:)[a-f0-9]{64}',value):raise RuntimeError('Only fixed image digests are allowed')
   probe=subprocess.run(['docker','image','inspect',value],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -246,7 +251,7 @@ def migrate(c,source):
   else:sql(c,"BEGIN; SELECT pg_advisory_xact_lock(hashtext('enterprise-schema'));\n"+p.read_text()+"\nINSERT INTO ai_schema_migrations(version,sha256) VALUES('"+p.name+"','"+h+"'); COMMIT;")
 
 def start(c):
- root=pathlib.Path(c['ZW_ROOT']);dc(c,'up','-d','--wait');run(['systemctl','start',service(c,'control')]);wait(f"http://127.0.0.1:{c['ports']['rc2']}/ai/bootstrap");run(['systemctl','start',service(c,'edge')]);time.sleep(2);run(['systemctl','start',service(c,'web')])
+ root=pathlib.Path(c['ZW_ROOT']);dc(c,'up','-d','--wait');run(['systemctl','start',service(c,'control')]);wait(f"http://127.0.0.1:{c['ports']['rc2']}/ai/bootstrap");run(['systemctl','start',service(c,'edge')]);time.sleep(2);run(['systemctl','start',service(c,'web')]);wait(f"http://127.0.0.1:{c['ports']['web']}/",30)
 def stop(c):
  for kind in ['web','edge','control']:run(['systemctl','stop',service(c,kind)])
 def main():

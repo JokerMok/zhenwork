@@ -75,13 +75,14 @@ def main():
  copy_tree(repo/'deploy/enterprise',out/'deploy/enterprise',lambda r:'__pycache__' in r.parts or r.suffix=='.pyc')
  copy_tree(repo/'capabilities',out/'capabilities',lambda r:'tests' in r.parts or '__pycache__' in r.parts or r.name.startswith('test_'))
  copy_tree(repo/'examples/demo-enterprise',out/'examples/demo-enterprise')
- copy_tree(repo/'docs/enterprise',out/'docs')
+ copy_tree(repo/'docs/enterprise',out/'docs/enterprise')
  for name in ['LICENSE','THIRD_PARTY_NOTICES.md','VERSION','RELEASE_NOTES.md']:
   shutil.copyfile(repo/name,out/name)
- for name in ['native','runtime','licenses']:
+ for name in ['native','runtime','licenses','sources']:
   if (app/name).exists():copy_tree(app/name,out/name)
  manifest=json.loads((app/'APP_MANIFEST.json').read_text());(out/'APP_MANIFEST.json').write_text(json.dumps(manifest,indent=2)+'\n')
  if (app/'NATIVE_IMAGES.json').exists():shutil.copyfile(app/'NATIVE_IMAGES.json',out/'NATIVE_IMAGES.json')
+ (out/'.dockerignore').write_text('app\ncapabilities\ndocs\nexamples\nlicenses\nsources\n.git\n.codex\n')
  result=scan(out);(out/'DISTRIBUTION_CHECK.json').write_text(json.dumps(result,indent=2)+'\n')
  files=sorted(p for p in out.rglob('*') if p.is_file());(out/'SHA256SUMS').write_text(''.join(digest(p)+'  '+str(p.relative_to(out))+'\n' for p in files))
  for p in out.rglob('*'):
