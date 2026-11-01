@@ -119,9 +119,10 @@ def switch(c,bundle,rollback):
   target.mkdir()
   for name in ['app','runtime','licenses','docs','capabilities','examples','APP_MANIFEST.json','VERSION','LICENSE','THIRD_PARTY_NOTICES.md']:
    source=bundle/name
-   if source.is_dir():shutil.copytree(source,target/name)
+   if source.is_dir():shutil.copytree(source,target/name,copy_function=rt.immutable_copy,symlinks=True)
    elif source.exists():shutil.copyfile(source,target/name)
  elif json.loads((target/'APP_MANIFEST.json').read_text())!=new:raise RuntimeError('Immutable release name collision')
+ if rt.artifact_identity(target)!=rt.artifact_identity(bundle):raise RuntimeError('Staged release program bytes or executable links differ')
  quiesce(c)
  try:
   link=root/'current.next';link.symlink_to('releases/'+new['version'],target_is_directory=True);link.replace(root/'current')

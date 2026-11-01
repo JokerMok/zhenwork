@@ -86,6 +86,15 @@ def verify_bundle(bundle):
    for data in iter(lambda:f.read(1024*1024),b''):h.update(data)
   if h.hexdigest()!=expected:raise RuntimeError('Distribution checksum mismatch: '+name)
 
+def immutable_copy(source,destination):
+ source=pathlib.Path(source);destination=pathlib.Path(destination);info=source.lstat()
+ if not stat.S_ISREG(info.st_mode):raise RuntimeError('Only regular immutable program files can be installed')
+ mode=0o755 if info.st_mode&0o111 else 0o644
+ if info.st_uid==0 and stat.S_IMODE(info.st_mode)==mode:
+  try:os.link(source,destination);return str(destination)
+  except OSError:pass
+ shutil.copyfile(source,destination);destination.chmod(mode);return str(destination)
+
 def artifact_identity(release):
  result={}
  for name in ['app','runtime']:
@@ -157,15 +166,13 @@ def prepare(c,bundle,restoring=False):
  if not backupKey.exists():write(backupKey,secrets.token_hex(32)+'\n')
  if backupKey.is_symlink() or backupKey.stat().st_mode&0o077:raise RuntimeError('Backup key must be owner-only')
  target=root/'releases'/release['version']
- if (target/'APP_MANIFEST.json').exists() and json.loads((target/'APP_MANIFEST.json').read_text())!=release:raise RuntimeError('Immutable release identity differs; use an explicit new version and reviewed upgrade')
+ if (target/'APP_MANIFEST.json').exists():
+  if json.loads((target/'APP_MANIFEST.json').read_text())!=release or artifact_identity(target)!=artifact_identity(bundle):raise RuntimeError('Immutable release identity or bytes differ; use a reviewed new version')
+ elif target.exists() and any(target.iterdir()):raise RuntimeError('Incomplete unactivated release staging retained; inspect it before retrying with a fresh version')
  target.mkdir(exist_ok=True);target.chmod(0o755);(root/'releases').chmod(0o755)
  for name in ['app','runtime','licenses','docs','capabilities','examples']:
   src=bundle/name
-  if src.exists() and not (target/name).exists():
-   try:shutil.copytree(src,target/name,copy_function=os.link,symlinks=True)
-   except OSError:
-    if (target/name).exists():shutil.rmtree(target/name)
-    shutil.copytree(src,target/name,symlinks=True)
+  if src.exists() and not (target/name).exists():shutil.copytree(src,target/name,copy_function=immutable_copy,symlinks=True)
  for f in ['APP_MANIFEST.json','THIRD_PARTY_NOTICES.md','LICENSE','VERSION']:
   if (bundle/f).exists():shutil.copyfile(bundle/f,target/f)
  link=root/'current'
