@@ -95,6 +95,12 @@ def immutable_copy(source,destination):
   except OSError:pass
  shutil.copyfile(source,destination);destination.chmod(mode);return str(destination)
 
+def install_tree(source,destination):
+ destination=pathlib.Path(destination)
+ shutil.copytree(source,destination,copy_function=immutable_copy,symlinks=True)
+ for p in [destination,*destination.rglob('*')]:
+  if p.is_dir() and not p.is_symlink():p.chmod(0o755)
+
 def artifact_identity(release):
  result={}
  for name in ['app','runtime']:
@@ -172,7 +178,7 @@ def prepare(c,bundle,restoring=False):
  target.mkdir(exist_ok=True);target.chmod(0o755);(root/'releases').chmod(0o755)
  for name in ['app','runtime','licenses','docs','capabilities','examples']:
   src=bundle/name
-  if src.exists() and not (target/name).exists():shutil.copytree(src,target/name,copy_function=immutable_copy,symlinks=True)
+  if src.exists() and not (target/name).exists():install_tree(src,target/name)
  for f in ['APP_MANIFEST.json','THIRD_PARTY_NOTICES.md','LICENSE','VERSION']:
   if (bundle/f).exists():shutil.copyfile(bundle/f,target/f)
  link=root/'current'
