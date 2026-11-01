@@ -1,0 +1,46 @@
+services:
+  db:
+    image: ${POSTGRES_IMAGE:?required}
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1
+    shm_size: 128m
+    environment:
+      POSTGRES_DB: enterprise
+      POSTGRES_USER: enterprise
+      POSTGRES_PASSWORD_FILE: /run/secrets/database
+    command: [postgres, -c, shared_buffers=96MB, -c, max_connections=40, -c, work_mem=4MB]
+    ports: ["127.0.0.1:${DB_PORT}:5432"]
+    volumes: ["${ZW_ROOT}/shared/data/postgres:/var/lib/postgresql/data"]
+    secrets: [database]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U enterprise -d enterprise"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: ${REDIS_IMAGE:?required}
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+    ports: ["127.0.0.1:${REDIS_PORT}:6379"]
+    volumes: ["${ZW_ROOT}/shared/data/redis:/data", "${ZW_ROOT}/shared/config/redis.conf:/etc/redis/zhenwork.conf:ro"]
+    healthcheck:
+      test: [CMD-SHELL, "REDISCLI_AUTH=$$(sed -n 's/^requirepass //p' /etc/redis/zhenwork.conf) redis-cli --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  bridge:
+    image: ${BRIDGE_IMAGE:?required}
+    entrypoint: [/usr/bin/sleep, infinity]
+    restart: unless-stopped
+    network_mode: bridge
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 8
+    mem_limit: 8m
+secrets:
+  database:
+    file: ${ZW_ROOT}/shared/config/database-password

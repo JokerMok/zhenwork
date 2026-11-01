@@ -1,0 +1,7 @@
+ZhenWork Enterprise — license index
+
+This distribution is an aggregation. Each third-party component retains its own license; see THIRD_PARTY_NOTICES.md and licenses/ in the reviewed binary bundle. Apache-2.0/MIT notices are not removed by product branding.
+
+No blanket open-source license is granted to previously unlicensed original ZhenWork integration code. Rights for those parts require the applicable agreement with the rights holder. Public repository visibility alone grants no additional rights. This index does not replace any upstream license or customer agreement.
+
+Do not redistribute a candidate bundle whose licensing or acceptance review is incomplete. See docs/enterprise/ACCEPTANCE.md.

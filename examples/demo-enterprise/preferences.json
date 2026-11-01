@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "cutoff": "2026-11-02",
+  "methods": [
+    "ledger",
+    "inventory",
+    "transfer",
+    "settlement",
+    "checklist"
+  ],
+  "capacityPercent": "90",
+  "internalAgeDays": 90,
+  "groupBy": [
+    "warehouse",
+    "batch"
+  ],
+  "differencesOnly": false,
+  "outputTitle": "演示企业差异核对",
+  "outputSheets": {},
+  "analysis": {
+    "periods": [
+      "2026-10",
+      "2026-11"
+    ],
+    "groupBy": [
+      "workshop",
+      "productGroup"
+    ],
+    "aggregateScope": "DEMO_NOVEMBER",
+    "costDateField": "settlementDate",
+    "intensityAlertPercent": "2",
+    "costAlertPercent": "5",
+    "precision": {
+      "weight": 6,
+      "production": 6,
+      "intensity": 8,
+      "percent": 4,
+      "money": 2,
+      "price": 6
+    },
+    "differencesOnly": false,
+    "sheetNames": {},
+    "outputs": {
+      "summary": true,
+      "excel": true,
+      "wordWhenExplicit": true,
+      "pptWhenExplicit": true,
+      "detail": true
+    },
+    "weightDisplayUnit": "kg",
+    "costGroupBy": [
+      "project",
+      "supplier"
+    ],
+    "outputTitle": "产废强度与费用变化"
+  }
+}

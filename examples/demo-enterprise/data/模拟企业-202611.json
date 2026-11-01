@@ -1,0 +1,158 @@
+{
+  "notice": "完全虚构/仅安装和销售演示，不含客户数据",
+  "tables": {
+    "wastes": [
+      {
+        "waste": "DEMO-W",
+        "name": "模拟废物",
+        "classification": "general",
+        "basis": "完全虚构主数据，仅功能演示，不作危险属性认定"
+      }
+    ],
+    "warehouses": [
+      {
+        "warehouse": "DEMO-STORE",
+        "capacityKg": 500
+      }
+    ],
+    "batches": [
+      {
+        "batch": "DEMO-BATCH",
+        "waste": "DEMO-W",
+        "received": "2026-11-01"
+      }
+    ],
+    "events": [
+      {
+        "id": "DEMO-P",
+        "node": "产生",
+        "date": "2026-11-01",
+        "waste": "DEMO-W",
+        "weight": 10,
+        "unit": "kg",
+        "workshop": "演示车间",
+        "batch": "DEMO-BATCH",
+        "warehouse": "DEMO-STORE"
+      },
+      {
+        "id": "DEMO-IN",
+        "node": "入库",
+        "date": "2026-11-01",
+        "waste": "DEMO-W",
+        "weight": 10,
+        "unit": "kg",
+        "batch": "DEMO-BATCH",
+        "warehouse": "DEMO-STORE"
+      },
+      {
+        "id": "DEMO-OUT",
+        "node": "出库",
+        "date": "2026-11-02",
+        "waste": "DEMO-W",
+        "weight": 60,
+        "unit": "kg",
+        "batch": "DEMO-BATCH",
+        "warehouse": "DEMO-STORE",
+        "shipment": "DEMO-SHIP"
+      }
+    ],
+    "balances": [
+      {
+        "kind": "OPENING",
+        "date": "2026-11-01",
+        "batch": "DEMO-BATCH",
+        "waste": "DEMO-W",
+        "warehouse": "DEMO-STORE",
+        "weight": 200,
+        "unit": "kg"
+      },
+      {
+        "kind": "COUNT",
+        "date": "2026-11-02",
+        "batch": "DEMO-BATCH",
+        "waste": "DEMO-W",
+        "warehouse": "DEMO-STORE",
+        "weight": 145,
+        "unit": "kg"
+      }
+    ],
+    "shipments": [
+      {
+        "shipment": "DEMO-SHIP",
+        "waste": "DEMO-W",
+        "date": "2026-11-02",
+        "trips": "1"
+      }
+    ],
+    "tickets": [
+      {
+        "kind": "WEIGH",
+        "id": "DEMO-WEIGH",
+        "shipment": "DEMO-SHIP",
+        "waste": "DEMO-W",
+        "weight": 60,
+        "unit": "kg",
+        "date": "2026-11-02"
+      },
+      {
+        "kind": "RECEIVE",
+        "id": "DEMO-RECEIVE",
+        "shipment": "DEMO-SHIP",
+        "waste": "DEMO-W",
+        "weight": 60,
+        "unit": "kg",
+        "date": "2026-11-02"
+      }
+    ],
+    "contracts": [
+      {
+        "contract": "DEMO-CONTRACT",
+        "waste": "DEMO-W",
+        "direction": "处置支出",
+        "rate": 1200,
+        "rateUnit": "CNY/t",
+        "transportPerTrip": 100,
+        "weightBasis": "WEIGH",
+        "taxMode": "included",
+        "sourcePath": "示例资料/演示企业/演示合同.txt",
+        "quote": "完全虚构演示合同 DEMO-CONTRACT。DEMO-W：处置支出，按磅单重量1200元/吨，运输费100元/车次，含税。"
+      }
+    ],
+    "bills": [
+      {
+        "bill": "DEMO-BILL",
+        "shipment": "DEMO-SHIP",
+        "contract": "DEMO-CONTRACT",
+        "amount": 180,
+        "currency": "CNY"
+      }
+    ],
+    "attachments": [
+      {
+        "shipment": "DEMO-SHIP",
+        "kind": "WEIGH",
+        "path": "示例资料/演示企业/演示凭证-WEIGH.txt",
+        "sha256": "a333d68b02e0b8059519a9d1379c5e4da37e489cc036dcad907d1757f75a0891"
+      },
+      {
+        "shipment": "DEMO-SHIP",
+        "kind": "RECEIVE",
+        "path": "示例资料/演示企业/演示凭证-RECEIVE.txt",
+        "sha256": "4ddc4cedfb198d8f80e9095efed9034697622a6ccf8b3ef8a734bb0cca02a795"
+      }
+    ],
+    "requirements": [
+      {
+        "shipment": "DEMO-SHIP",
+        "kind": "WEIGH",
+        "basis": "虚构内部资料清单"
+      },
+      {
+        "shipment": "DEMO-SHIP",
+        "kind": "RECEIVE",
+        "basis": "虚构内部资料清单"
+      }
+    ],
+    "production": []
+  }
+}
