@@ -86,11 +86,18 @@ def verify_bundle(bundle):
    for data in iter(lambda:f.read(1024*1024),b''):h.update(data)
   if h.hexdigest()!=expected:raise RuntimeError('Distribution checksum mismatch: '+name)
 
+def manifest(bundle):
+ value=json.loads((bundle/'APP_MANIFEST.json').read_text())
+ if not re.fullmatch(r'[0-9][A-Za-z0-9.+_-]{1,80}',value.get('version','')) or '..' in value['version']:raise RuntimeError('Unsafe release version')
+ if not re.fullmatch(r'[a-f0-9]{40}',value.get('applicationSourceSha','')) or not re.fullmatch(r'[a-f0-9]{64}',value.get('coreBinarySha256','')):raise RuntimeError('Invalid application provenance')
+ if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',value.get('schemaCompatibility','')):raise RuntimeError('Invalid schema compatibility identifier')
+ return value
+
 def prepare(c,bundle):
  if os.geteuid()!=0 or os.uname().machine!='x86_64':raise RuntimeError('Root on Linux x86_64 is required')
  if not pathlib.Path('/run/systemd/system').exists():raise RuntimeError('A systemd Linux host is required')
  verify_bundle(bundle)
- release=json.loads((bundle/'APP_MANIFEST.json').read_text());root=pathlib.Path(c['ZW_ROOT'])
+ release=manifest(bundle);root=pathlib.Path(c['ZW_ROOT'])
  if any(x.is_symlink() for x in [root,*root.parents]):raise RuntimeError('Installation path must not contain symlinks')
  root.mkdir(parents=True,exist_ok=True);root.chmod(0o755)
  for name in ['shared','releases','shared/config','shared/profiles','shared/uploads','shared/data']:

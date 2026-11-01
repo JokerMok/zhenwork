@@ -107,7 +107,7 @@ def restore(c,bundle,source):
 
 def switch(c,bundle,rollback):
  rt.verify_bundle(bundle)
- root=pathlib.Path(c['ZW_ROOT']);old=(root/'current').resolve();before=json.loads((old/'APP_MANIFEST.json').read_text());new=json.loads((bundle/'APP_MANIFEST.json').read_text())
+ root=pathlib.Path(c['ZW_ROOT']);old=(root/'current').resolve();before=rt.manifest(old);new=rt.manifest(bundle)
  if new['schemaCompatibility']!=before['schemaCompatibility']:raise RuntimeError('Application rollback requires matching schemaCompatibility; use a reviewed forward upgrade/data restore for other schemas')
  applied=rt.sql(c,"SELECT version||':'||sha256 FROM ai_schema_migrations ORDER BY version;")
  desired='\n'.join(p.name+':'+digest(p) for p in sorted((bundle/'app/schema/migrations').glob('[0-9][0-9][0-9][0-9]_*.sql')))
