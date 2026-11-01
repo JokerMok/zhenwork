@@ -107,13 +107,19 @@ def manifest(bundle):
  if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',value.get('schemaCompatibility','')):raise RuntimeError('Invalid schema compatibility identifier')
  return value
 
-def prepare(c,bundle):
+def prepare(c,bundle,restoring=False):
  if os.geteuid()!=0 or os.uname().machine!='x86_64':raise RuntimeError('Root on Linux x86_64 is required')
  if not pathlib.Path('/run/systemd/system').exists():raise RuntimeError('A systemd Linux host is required')
  verify_bundle(bundle)
  release=manifest(bundle);root=pathlib.Path(c['ZW_ROOT'])
  if any(x.is_symlink() for x in [root,*root.parents]):raise RuntimeError('Installation path must not contain symlinks')
+ marker=root/'.enterprise-installation.json'
+ if root.exists() and any(root.iterdir()) and not restoring:
+  if not marker.is_file() or marker.is_symlink():raise RuntimeError('Non-empty foreign installation root; refusing to adopt or modify it')
+  recorded=json.loads(marker.read_text())
+  if recorded!={'root':str(root),'instance':c['ZW_INSTANCE']}:raise RuntimeError('Root belongs to a different installation')
  root.mkdir(parents=True,exist_ok=True);root.chmod(0o755)
+ write(marker,json.dumps({'root':str(root),'instance':c['ZW_INSTANCE']})+'\n')
  for name in ['shared','releases','shared/config','shared/profiles','shared/uploads','shared/data']:
   if (root/name).is_symlink():raise RuntimeError('Managed installation directory must not be a symlink')
  if shutil.disk_usage(root).free<1024**3:raise RuntimeError('At least 1 GiB free staging space is required; see capacity/storage guide')

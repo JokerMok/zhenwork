@@ -90,7 +90,7 @@ def restore(c,bundle,source):
    if not p.is_file() or p.is_symlink() or digest(p)!=h:raise RuntimeError('Restored file digest mismatch: '+rel)
   # Prepare directories/config/images with restored keys; never create enterprise records from the old pilot.
   (root/'shared').mkdir();shutil.copytree(content/'shared/config',root/'shared/config',symlinks=True)
-  rt.prepare(c,bundle);rt.run(['chown','-R',c['runtimeUser']+':'+c['runtimeUser'],str(root/'shared/config/caddy')]);rt.dc(c,'up','-d','--wait')
+  rt.prepare(c,bundle,restoring=True);rt.run(['chown','-R',c['runtimeUser']+':'+c['runtimeUser'],str(root/'shared/config/caddy')]);rt.dc(c,'up','-d','--wait')
   if rt.sql(c,"SELECT to_regclass('public.sys_user');"):raise RuntimeError('Target database is not empty')
   identity=json.loads((root/'shared/config/identity.json').read_text())
   rt.sql(c,"CREATE ROLE workspace_rc2_app LOGIN PASSWORD '"+identity['appDatabase']+"' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;")
