@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Encrypted, quiesced snapshots and checksum-gated application switching."""
-import argparse,hashlib,json,os,pathlib,shutil,subprocess,tarfile,tempfile,time
+import argparse,hashlib,json,os,pathlib,shutil,subprocess,tarfile,tempfile,time,sys
+sys.dont_write_bytecode=True
 import runtime as rt
 
 def digest(p):
