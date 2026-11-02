@@ -1,15 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, unlink } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { afterEach, expect, test } from "vitest";
 import { prepareEnterpriseProfile } from "../enterprise-core.js";
 import type { EnterpriseActor } from "../enterprise-gateway.js";
 import { TaskRunner } from "./runner.js";
 import { TaskStore } from "./store.js";
-import { recordTool } from "./protocol.js";
+import { recordTool, checkpoint } from "./protocol.js";
+import { enterpriseManagedResourcePath } from '../enterprise-resource-runtime.js';
 import { currentAttempt } from "./types.js";
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -34,6 +35,7 @@ async function fixture(trusted = false) {
   let pendingApproval = false;
   let approvalData: unknown;
   let nativeToolError = false;
+  let answerText = "Actual answer";
   let proposalInput: Record<string, unknown> = { command: "printf harmless" };
   const server = http.createServer(async (req, res) => {
     let data = {};
@@ -106,7 +108,7 @@ async function fixture(trusted = false) {
             type: "text",
             status: "finish",
             backend_turn_id: "turn1",
-            content: { content: "Actual answer" },
+            content: { content: answerText },
           },
         ],
       };
@@ -164,6 +166,7 @@ async function fixture(trusted = false) {
   cleanups.push(() => runner.stop());
   const store = await TaskStore.create(root, actor);
   return {
+    core,
     root,
     actor,
     store,
@@ -191,9 +194,51 @@ async function fixture(trusted = false) {
     proposal: (input: Record<string, unknown>) => {
       proposalInput = input;
     },
+    reply: (text: string) => { answerText = text; },
     counts: () => ({ sends, stops }),
   };
 }
+
+async function receiptFixture(content: string) {
+  const f = await fixture();
+  await f.runner.accept(f.actor, 'aabbccdd', { content, request_id: randomUUID() });
+  await expect.poll(() => f.counts().sends, { timeout: 5000 }).toBe(1);
+  const bytes = execFileSync('python3', ['-c', 'import io,zipfile,sys;b=io.BytesIO();z=zipfile.ZipFile(b,"w");z.writestr("[Content_Types].xml","<Types/>");z.writestr("xl/workbook.xml","<workbook/>");z.close();sys.stdout.buffer.write(b.getvalue())']);
+  const receipt = { path: '真实成果.xlsx', sha256: createHash('sha256').update(bytes).digest('hex'), versionId: randomUUID(), version: 1, validation: { valid: true } };
+  const directory = path.join(path.dirname(await enterpriseManagedResourcePath(f.root, f.actor)), 'office');
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, 'index.json'), JSON.stringify({ files: { [receipt.path]: [{ id: receipt.versionId, sha256: receipt.sha256, byteSize: bytes.length, createdAt: new Date().toISOString() }] }, memories: [] }));
+  const blob = path.join(directory, receipt.versionId + '.bin');
+  await writeFile(blob, bytes);
+  return { ...f, receipt, blob };
+}
+
+test('model-spelled paths cannot replace a generated pinned artifact or turn it into a missing file', async () => {
+  const f = await receiptFixture('给我Excel结果和简短总结');
+  await recordTool(f.root, f.actor, 'aabbccdd', 'create_office_document', {}, f.receipt);
+  await checkpoint(f.root, f.actor, 'aabbccdd', { state: 'completed', summary: '已生成名字写错.xlsx', requiredArtifacts: ['名字写错.xlsx'] });
+  f.reply('已生成名字写错.xlsx，[下载](https://employee.test/enterprise/files/download?path=名字写错.xlsx)');
+  f.finish();
+  await expect.poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 5000 }).toBe('completed');
+  expect(currentAttempt(await f.store.get('aabbccdd')).artifacts).toEqual([expect.objectContaining({ path: f.receipt.path, versionId: f.receipt.versionId, sha256: f.receipt.sha256 })]);
+});
+
+test.each([['生成Excel，不生成Word', 'completed'], ['生成Excel和Word', 'partial']])('required formats decide completion when an unrequested format fails: %s', async (content, expected) => {
+  const f = await receiptFixture(content);
+  await recordTool(f.root, f.actor, 'aabbccdd', 'create_evidence_deliverables', {}, { status: 'partial', outputs: [{ ...f.receipt, status: 'complete' }, { path: '真实成果.docx', status: 'failed', error: 'GENERATION_FAILED' }] });
+  f.finish();
+  await expect.poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 5000 }).toBe(expected);
+});
+
+test('a genuinely missing pinned file remains partial despite a completed model checkpoint', async () => {
+  const f = await receiptFixture('生成Excel');
+  await recordTool(f.root, f.actor, 'aabbccdd', 'create_office_document', {}, f.receipt);
+  await checkpoint(f.root, f.actor, 'aabbccdd', { state: 'completed', summary: '已完成', requiredArtifacts: [{ versionId: f.receipt.versionId }] });
+  await unlink(f.blob);
+  f.finish();
+  await expect.poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 5000 }).toBe('partial');
+  expect(currentAttempt(await f.store.get('aabbccdd')).reason).toBe('REQUIRED_ARTIFACTS_MISSING');
+}, 12000);
 test("accepted execution survives the absence of any browser and duplicates do not dispatch twice", async () => {
   const f = await fixture(),
     request_id = randomUUID();

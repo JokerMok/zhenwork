@@ -799,7 +799,7 @@ export class TaskRunner {
       !errors &&
       missing.length === 0 &&
       !a.artifacts.some((f) => !f.valid) &&
-      (!a.requiredFormats.length || a.terminalReported === true) &&
+      a.unresolvedArtifactReferences !== true &&
       failedSteps.length === 0 &&
       !a.steps.some((s) => s.state === "running") &&
       (!a.requiresToolEvidence || toolEvidence);
@@ -817,7 +817,7 @@ export class TaskRunner {
       x.artifacts = a.artifacts;
       x.state = complete
         ? "completed"
-        : valid
+        : valid || a.artifacts.length > 0
           ? "partial"
           : errors || failedSteps.length
             ? "failed"

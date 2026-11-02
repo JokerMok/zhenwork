@@ -188,7 +188,12 @@ export async function prepareRevision(options: {
     input: business.bytes,
     name: businessPath,
     methods: ['settlement', 'checklist'],
-    parameters: methodTime(p.preferences, snapshot.parameters.periods, snapshot.parameters.cutoff),
+    parameters: methodTime(
+      p.preferences,
+      snapshot.parameters.periods,
+      snapshot.parameters.cutoff,
+      snapshot.parameters.periods.length === 2
+    ),
     authorizedSourcePaths: [...snapshot.sources.map((f) => f.path), ...evidence.map((f) => f.path)],
     revisionPayload: {
       continuationState: {

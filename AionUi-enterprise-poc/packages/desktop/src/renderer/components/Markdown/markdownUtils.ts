@@ -357,7 +357,74 @@ export function isEnterpriseKnowledgeSourceLink(href: string, origin: string): b
     if (url.origin !== origin || url.pathname !== '/' || !url.hash.startsWith('#/workspace?')) return false;
     const params = new URLSearchParams(url.hash.slice('#/workspace?'.length));
     const version = Number(params.get('version'));
-    return params.get('section') === 'knowledge' && /^[0-9a-f-]{36}$/i.test(params.get('documentId') || '') &&
-      Number.isInteger(version) && version > 0 && version <= 2147483647;
-  } catch { return false; }
+    return (
+      params.get('section') === 'knowledge' &&
+      /^[0-9a-f-]{36}$/i.test(params.get('documentId') || '') &&
+      Number.isInteger(version) &&
+      version > 0 &&
+      version <= 2147483647
+    );
+  } catch {
+    return false;
+  }
+}
+export type TrustedArtifactLink = {
+  path: string;
+  sha256: string;
+  versionId?: string;
+  valid: boolean;
+  downloadUrl?: string;
+  previewUrl?: string;
+};
+
+/** Exact receipt lookup only. null means an unrecorded file link; undefined is
+ * an ordinary web/source link outside the artifact namespace. */
+export function trustedArtifactLink(
+  href: string,
+  receipts: readonly TrustedArtifactLink[],
+  origin: string,
+  workspace?: string
+): { href: string; download: boolean } | null | undefined {
+  let file: string | undefined;
+  let version: string | null = null;
+  let preview = false;
+  try {
+    const url = new URL(href, origin);
+    if (url.pathname.startsWith('/enterprise/files/')) {
+      if (url.origin !== origin || !['/enterprise/files/download', '/enterprise/files/preview'].includes(url.pathname))
+        return null;
+      file = url.searchParams.get('path') || '';
+      version = url.searchParams.get('version');
+      preview = url.pathname.endsWith('/preview');
+    } else if (url.hash.startsWith('#/workspace?')) {
+      if (url.origin !== origin) return null;
+      const query = new URLSearchParams(url.hash.slice(url.hash.indexOf('?') + 1));
+      if (query.has('previewPath')) {
+        file = query.get('previewPath') || '';
+        version = query.get('fileVersion');
+        preview = true;
+      }
+    }
+  } catch {
+    /* A workspace-relative file reference is checked below. */
+  }
+  if (file === undefined) {
+    const local = resolveLocalFileLinkReference(href);
+    if (!local && !/^(?!https?:\/\/).+\.(?:docx|xlsx|pptx|pdf|csv|json|txt|md)$/i.test(href)) return undefined;
+    file = local?.filePath ?? href;
+    if (workspace && file.startsWith(workspace + '/')) file = file.slice(workspace.length + 1);
+    preview = true;
+  }
+  const matches = receipts.filter(
+    (f) =>
+      f.valid &&
+      !!f.versionId &&
+      /^[a-f0-9]{64}$/.test(f.sha256) &&
+      f.path === file &&
+      (!version || f.versionId === version)
+  );
+  const unique = [...new Map(matches.map((f) => [f.versionId, f])).values()];
+  if (unique.length !== 1) return null;
+  const target = preview ? unique[0].previewUrl : unique[0].downloadUrl;
+  return target ? { href: target, download: !preview } : null;
 }

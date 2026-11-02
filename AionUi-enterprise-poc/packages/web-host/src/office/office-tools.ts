@@ -1,4 +1,4 @@
-import { methodTool, executeMethod, methodPackage, methodTime } from './methods/index.js';
+import { methodTool, executeMethod, methodPackage, methodTime, methodReportScope } from './methods/index.js';
 import {
   pinMethodTime,
   prepareRevision,
@@ -13,6 +13,7 @@ import { BusinessPresentation, presentationReceipts } from './presentation/servi
 import { presentationTheme } from './presentation/template.js';
 import { sourceSlides } from './presentation/build.js';
 import { taskProtocol } from '../tasks/instructions.js';
+import { requestsPeriodComparison } from '../tasks/types.js';
 import {
   beginTool,
   checkpoint,
@@ -21,6 +22,8 @@ import {
   reusableOutput,
   taskCheckpointTool,
   taskOfficeContext,
+  trustedTaskArtifacts,
+  artifactReferenceFeedback,
 } from '../tasks/protocol.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
@@ -144,6 +147,7 @@ const evidenceReferenceExactlyOne = [
   { required: ['quote'], not: { required: ['quoteIndex'] } },
   { required: ['quoteIndex'], not: { required: ['quote'] } },
 ];
+
 const evidenceReferenceSchema = {
   type: 'object',
   properties: {
@@ -664,6 +668,25 @@ const tools = [
   },
 ];
 
+const artifactInspectionTools = new Set([
+  'read_document',
+  'inspect_workbook',
+  'inspect_office_document',
+  'validate_artifact',
+]);
+for (const tool of tools) {
+  if (!artifactInspectionTools.has(tool.name)) continue;
+  const schema = tool.inputSchema as { properties: Record<string, unknown>; required?: string[]; anyOf?: unknown[] };
+  schema.properties.artifactVersionId = {
+    type: 'string',
+    format: 'uuid',
+    description:
+      "Exact versionId from this attempt's trusted file receipt. The Host selects its path and pinned bytes; a supplied path cannot override it.",
+  };
+  schema.required = schema.required?.filter((key) => key !== 'path');
+  schema.anyOf = [{ required: ['path'] }, { required: ['artifactVersionId'] }];
+}
+
 /** Per-employee MCP capability. Every exchange is bound to a current interactive session or one job grant. */
 export async function startOfficeTools(
   actor: EnterpriseActor,
@@ -697,8 +720,8 @@ export async function startOfficeTools(
   };
   const key = randomBytes(32).toString('hex'),
     store = await OfficeStore.create(profileRoot, actor);
-  const savedReceipt = async (relative: string, bytes: Buffer, signal?: AbortSignal) => {
-    const version = await store.fileReceipt(relative);
+  const savedReceipt = async (relative: string, bytes: Buffer, signal?: AbortSignal, versionId?: string) => {
+    const version = await store.fileReceipt(relative, versionId);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     if (!version || version.sha256 !== sha256) throw new Error('SAVED_ARTIFACT_VERSION_MISMATCH');
     const structure = /\.(docx|xlsx)$/i.test(relative)
@@ -933,6 +956,15 @@ export async function startOfficeTools(
         Object.assign(args, normalizeToolArguments(definition.inputSchema, args));
         invalidCalls.check(conversation, tool!, args);
         validateToolArguments(definition.inputSchema, args);
+        if (artifactInspectionTools.has(tool!)) {
+          if (args.artifactVersionId !== undefined) {
+            const receipts = await trustedTaskArtifacts(profileRoot, actor, conversation, executionId);
+            const receipt = receipts.find((f) => f.versionId === args.artifactVersionId);
+            if (!receipt) throw new Error('TASK_ARTIFACT_REFERENCE_NOT_FOUND');
+            args.path = receipt.path;
+          } else if (typeof args.path !== 'string' || !args.path)
+            throw new Error('OFFICE_ARGUMENT_PATH_OR_ARTIFACT_REFERENCE_REQUIRED');
+        }
         toolStepId = await beginTool(profileRoot, actor, conversation, tool!, args, executionId);
         const abort = new AbortController();
         res.once('close', () => abort.abort());
@@ -1163,7 +1195,7 @@ export async function startOfficeTools(
           const relative = path.isAbsolute(file) ? path.relative(core.workspaceRoot, file) : file;
           if (!relative) throw new Error('WORKSPACE_PATH_REQUIRED');
           if (tool === 'read_document') {
-            const input = await readInput(file, conversation);
+            const input = await readInput(file, conversation, args.artifactVersionId as string | undefined);
             const parsed = await readOfficeDocument(input.relative, input.bytes, {
               start: args.start as number | undefined,
               limit: args.limit as number | undefined,
@@ -1207,7 +1239,11 @@ export async function startOfficeTools(
           }
         } else if (tool === 'inspect_workbook' || tool === 'audit_workbook' || tool === 'edit_workbook_column') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
-          const input = await readInput(String(args.path || ''), conversation);
+          const input = await readInput(
+            String(args.path || ''),
+            conversation,
+            args.artifactVersionId as string | undefined
+          );
           const sha256 = createHash('sha256').update(input.bytes).digest('hex');
           if (tool === 'inspect_workbook')
             value = {
@@ -1252,7 +1288,11 @@ export async function startOfficeTools(
           }
         } else if (tool === 'inspect_office_document' || tool === 'revise_office_document') {
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
-          const input = await readInput(String(args.path || ''), conversation);
+          const input = await readInput(
+            String(args.path || ''),
+            conversation,
+            args.artifactVersionId as string | undefined
+          );
           const sha256 = createHash('sha256').update(input.bytes).digest('hex');
           if (tool === 'inspect_office_document')
             value = {
@@ -1318,6 +1358,8 @@ export async function startOfficeTools(
             ? (args.methods as string[])
             : (p.preferences.methods as string[]);
           const comparison = selectedMethods.some((m) => m === 'intensity' || m === 'cost_change');
+          const taskContext = (await taskOfficeContext(profileRoot, actor, conversation)) as { selectedInput?: { description?: string } } | null;
+          const comparisonIntent = comparison || requestsPeriodComparison(taskContext?.selectedInput?.description || '');
           if (args.revision && (args.periods !== undefined || args.cutoff !== undefined))
             throw Error('METHOD_REVISION_USES_ORIGINAL_TIME');
           const revision = args.revision
@@ -1343,8 +1385,13 @@ export async function startOfficeTools(
           } else {
             const input = await readInput(String(args.path || ''), conversation);
             let parameters = revision?.snapshot.parameters;
-            if (!revision && (comparison || args.periods !== undefined || args.cutoff !== undefined)) {
-              const requested = methodTime(p.preferences, args.periods, args.cutoff);
+            if (!revision && (comparisonIntent || args.periods !== undefined || args.cutoff !== undefined)) {
+              const requested = methodTime(
+                p.preferences,
+                args.periods,
+                args.cutoff,
+                comparisonIntent
+              );
               const scope = await currentTaskScope(profileRoot, actor, conversation);
               parameters = await pinMethodTime(
                 store,
@@ -1369,8 +1416,19 @@ export async function startOfficeTools(
             const comparisonOnly = (result.summary.methods as string[]).every(
               (m) => m === 'intensity' || m === 'cost_change'
             );
+            const presentation = methodReportScope(
+              result,
+              revision ? revision.snapshot.parameters.periods.length === 2 : comparisonIntent,
+              parameters?.periods,
+              comparisonOnly
+                ? (result.preferences.analysis as { outputTitle?: string } | undefined)?.outputTitle
+                : result.preferences.outputTitle
+            );
             const scopeIdentity = {
-              periods: parameters?.periods ?? [],
+              periods: presentation.periods,
+              requestedPeriods: parameters?.periods ?? [],
+              reportKind: presentation.kind,
+              reportTitle: presentation.title,
               cutoff: parameters?.cutoff ?? result.preferences.cutoff,
               inputVersion: revision?.snapshot.input.versionId ?? input.versionId,
               inputSha256: revision?.snapshot.input.sha256 ?? result.provenance.inputSha256,
@@ -1411,7 +1469,7 @@ export async function startOfficeTools(
               const base =
                 label +
                 '-' +
-                (parameters?.periods.join('_') || String(result.preferences.cutoff)) +
+                (presentation.periods.join('_') || '期间待核') +
                 '-截至' +
                 String(scopeIdentity.cutoff) +
                 '-' +
@@ -1433,7 +1491,8 @@ export async function startOfficeTools(
                       name: '来源版本',
                       headers: ['项目', '值'],
                       rows: [
-                        ['比较期间', parameters?.periods.join(' vs ') || '按原方法'],
+                        ['统计期间', presentation.periodLabel],
+                        ['成果类型', presentation.kind],
                         ['截止日', String(scopeIdentity.cutoff)],
                         ['输入文件', revision?.snapshot.input.path ?? input.inputPath],
                         ['输入版本', scopeIdentity.inputVersion || '未提供'],
@@ -1461,18 +1520,7 @@ export async function startOfficeTools(
               const bytes = await generateOfficeArtifact(
                 {
                   format: 'xlsx',
-                  title:
-                    String(
-                      (comparisonOnly
-                        ? (result.preferences.analysis as { outputTitle?: string } | undefined)?.outputTitle
-                        : undefined) ||
-                        result.preferences.outputTitle ||
-                        '业务核对'
-                    ) +
-                    '｜' +
-                    (parameters?.periods.join(' vs ') || '') +
-                    '｜截至' +
-                    String(scopeIdentity.cutoff),
+                  title: presentation.title + '｜截至' + String(scopeIdentity.cutoff),
                   sheets,
                 },
                 abort.signal
@@ -1770,12 +1818,16 @@ export async function startOfficeTools(
           if (!core.workspaceRoot) throw new Error('WORKSPACE_UNAVAILABLE');
           const file = String(args.path || '');
           const relative = path.isAbsolute(file) ? path.relative(core.workspaceRoot, file) : file;
-          const saved = await store.download(core.workspaceRoot, relative);
+          const saved = await store.download(
+            core.workspaceRoot,
+            relative,
+            args.artifactVersionId as string | undefined
+          );
           const validation = await inspectArtifact(relative, saved, abort.signal);
           // Snapshot external tool writes before issuing an immutable receipt.
           await store.files(core.workspaceRoot);
           value = {
-            ...(await savedReceipt(relative, saved, abort.signal)),
+            ...(await savedReceipt(relative, saved, abort.signal, args.artifactVersionId as string | undefined)),
             validation,
             ...validation,
           };
@@ -1916,6 +1968,48 @@ export async function startOfficeTools(
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ jsonrpc: '2.0', id: message.id ?? null, result }));
     })().catch(async (error: Error) => {
+      if (failedCall) {
+        const feedback = await artifactReferenceFeedback(
+          profileRoot,
+          actor,
+          failedCall.conversation,
+          failedCall.tool,
+          failedCall.args as Record<string, unknown>,
+          error.message,
+          executionId
+        ).catch((): undefined => undefined);
+        if (
+          feedback &&
+          (await clientFor(failedCall.conversation)
+            .then((client) => client.me())
+            .then(
+              () => true,
+              () => false
+            ))
+        ) {
+          await recordTool(
+            profileRoot,
+            actor,
+            failedCall.conversation,
+            failedCall.tool,
+            failedCall.args,
+            feedback,
+            undefined,
+            executionId,
+            toolStepId
+          );
+          if (!res.headersSent) res.writeHead(200, { 'content-type': 'application/json' });
+          if (!res.destroyed)
+            res.end(
+              JSON.stringify({
+                jsonrpc: '2.0',
+                id: messageId,
+                result: { content: [{ type: 'text', text: JSON.stringify(feedback) }] },
+              })
+            );
+          return;
+        }
+      }
       if (failedCall) {
         invalidCalls.failed(failedCall.conversation, failedCall.tool, failedCall.args);
         await recordTool(

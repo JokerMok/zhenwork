@@ -16,6 +16,7 @@ import LocalImageView from '@/renderer/components/media/LocalImageView';
 import { downloadFileFromPath } from '@/renderer/utils/file/download';
 import { useToolStepLabels } from './toolStepLabels';
 import './MessageToolGroupSummary.css';
+import type { WorkAttempt } from '@/renderer/pages/workspace/TaskWork/api';
 
 const statusToBadge = (status: NormalizedToolStatus): BadgeProps['status'] => {
   switch (status) {
@@ -192,13 +193,19 @@ const MessageToolGroupSummary: React.FC<{ messages: ToolMessage[] }> = ({ messag
 export default React.memo(MessageToolGroupSummary);
 
 /** Persistent delivery receipts for the most recent user turn, never inferred from prose. */
-export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing: boolean }> = ({
-  messages,
-  processing,
-}) => {
+export const TaskDeliverySummary: React.FC<{
+  messages: ToolMessage[];
+  processing: boolean;
+  trustedArtifacts?: WorkAttempt['artifacts'];
+}> = ({ messages, processing, trustedArtifacts }) => {
   const { t } = useTranslation();
   const tools = normalizeToolMessages(messages);
-  const files = toolDeliveryReceipts(tools);
+  const files: Array<ReturnType<typeof toolDeliveryReceipts>[number] & { sha256?: string; downloadUrl?: string }> =
+    trustedArtifacts === undefined
+      ? toolDeliveryReceipts(tools)
+      : trustedArtifacts
+          .filter((file) => !!file.versionId && /^[a-f0-9]{64}$/.test(file.sha256))
+          .map((file) => ({ ...file, status: file.valid ? ('complete' as const) : ('failed' as const) }));
   const failed = files.filter((file) => file.status === 'failed');
   const errors = tools.filter((tool) => tool.status === 'error');
   const running = tools.findLast((tool) => tool.status === 'running' || tool.status === 'pending');
@@ -239,7 +246,13 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
         ) : null}
       </Space>
       {files.map((file) => (
-        <div key={file.path} className='flex flex-wrap items-center gap-8px mt-8px'>
+        <div
+          key={file.versionId || file.path}
+          data-testid='trusted-artifact-card'
+          data-version-id={file.versionId}
+          data-sha256={'sha256' in file ? file.sha256 : undefined}
+          className='flex flex-wrap items-center gap-8px mt-8px'
+        >
           <span className='break-all'>{file.path}</span>
           {file.version ? <Tag>v{file.version}</Tag> : null}
           {file.headingCount !== undefined ? (
@@ -267,9 +280,12 @@ export const TaskDeliverySummary: React.FC<{ messages: ToolMessage[]; processing
               </Button>
               <Button
                 type='text'
+                disabled={trustedArtifacts !== undefined && !file.downloadUrl}
                 onClick={() =>
                   window.open(
-                    `/enterprise/files/download?${new URLSearchParams({ path: file.path, ...(file.versionId ? { version: file.versionId } : {}) })}`,
+                    'downloadUrl' in file && file.downloadUrl
+                      ? file.downloadUrl
+                      : `/enterprise/files/download?${new URLSearchParams({ path: file.path, ...(file.versionId ? { version: file.versionId } : {}) })}`,
                     '_blank',
                     'noopener,noreferrer'
                   )

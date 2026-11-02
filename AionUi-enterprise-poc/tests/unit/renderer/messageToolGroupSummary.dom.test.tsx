@@ -5,9 +5,36 @@ import { describe, expect, it, vi } from 'vitest';
 import { ipcBridge } from '@/common';
 import type { TMessage } from '@/common/chat/chatLib';
 import type { ToolMessage } from '@/common/chat/normalizeToolCall';
-import MessageToolGroupSummary, { TaskDeliverySummary } from '@/renderer/pages/conversation/Messages/components/MessageToolGroupSummary';
+import MessageToolGroupSummary, {
+  TaskDeliverySummary,
+} from '@/renderer/pages/conversation/Messages/components/MessageToolGroupSummary';
 
-vi.mock('@/renderer/utils/platform', async () => ({ ...await vi.importActual('@/renderer/utils/platform'), isEnterpriseWeb: () => true }));
+vi.mock('@/renderer/utils/platform', async () => ({
+  ...(await vi.importActual('@/renderer/utils/platform')),
+  isEnterpriseWeb: () => true,
+}));
+
+it('renders the pinned task receipt and downloads its server URL instead of a rewritten tool path', () => {
+  const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+  const file = {
+    path: '成果/真实.xlsx',
+    versionId: 'version-a',
+    version: 1,
+    sha256: 'a'.repeat(64),
+    valid: true,
+    downloadUrl: '/enterprise/files/download?path=real&version=version-a',
+    previewUrl: '/#/workspace?section=files&previewPath=real&fileVersion=version-a',
+  };
+  render(
+    <MemoryRouter>
+      <TaskDeliverySummary messages={[]} processing={false} trustedArtifacts={[file]} />
+    </MemoryRouter>
+  );
+  expect(screen.getByTestId('trusted-artifact-card').getAttribute('data-version-id')).toBe(file.versionId);
+  fireEvent.click(screen.getByText('workspace.files.download'));
+  expect(open).toHaveBeenCalledWith(file.downloadUrl, '_blank', 'noopener,noreferrer');
+  open.mockRestore();
+});
 
 vi.mock('@/common', () => ({
   ipcBridge: {
@@ -80,15 +107,40 @@ describe('MessageToolGroupSummary', () => {
   });
 });
 
-
 it('shows actual server revision structure and downloads the saved version rather than latest', () => {
-  const open = vi.spyOn(window,'open').mockImplementation(() => null);
-  const message = { id: 'receipt', conversation_id: 'conversation-1', type: 'tool_call', content: { call_id: 'revision-call', name: 'revise_office_document', status: 'completed', output: JSON.stringify({ path: 'actual.docx', sha256: 'a'.repeat(64), downloadUrl: 'https://workspace.example/enterprise/files/download?path=actual.docx', version: 3, versionId: '11111111-1111-4111-8111-111111111111', inspection: { headingCount: 6, tables: [{rows:2,columns:2}] }, changes: [{kind:'append_section',actualHeading:'6 核实资料'}] }) } } as ToolMessage;
-  render(<MemoryRouter><TaskDeliverySummary messages={[message]} processing={false} /></MemoryRouter>);
+  const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+  const message = {
+    id: 'receipt',
+    conversation_id: 'conversation-1',
+    type: 'tool_call',
+    content: {
+      call_id: 'revision-call',
+      name: 'revise_office_document',
+      status: 'completed',
+      output: JSON.stringify({
+        path: 'actual.docx',
+        sha256: 'a'.repeat(64),
+        downloadUrl: 'https://workspace.example/enterprise/files/download?path=actual.docx',
+        version: 3,
+        versionId: '11111111-1111-4111-8111-111111111111',
+        inspection: { headingCount: 6, tables: [{ rows: 2, columns: 2 }] },
+        changes: [{ kind: 'append_section', actualHeading: '6 核实资料' }],
+      }),
+    },
+  } as ToolMessage;
+  render(
+    <MemoryRouter>
+      <TaskDeliverySummary messages={[message]} processing={false} />
+    </MemoryRouter>
+  );
   expect(screen.getByText('actual.docx')).toBeInTheDocument();
   expect(screen.getByText('v3')).toBeInTheDocument();
   expect(screen.getByText('6 核实资料')).toBeInTheDocument();
   fireEvent.click(screen.getByText('workspace.files.download'));
-  expect(open).toHaveBeenCalledWith('/enterprise/files/download?path=actual.docx&version=11111111-1111-4111-8111-111111111111','_blank','noopener,noreferrer');
+  expect(open).toHaveBeenCalledWith(
+    '/enterprise/files/download?path=actual.docx&version=11111111-1111-4111-8111-111111111111',
+    '_blank',
+    'noopener,noreferrer'
+  );
   open.mockRestore();
 });

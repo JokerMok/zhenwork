@@ -2,6 +2,7 @@ import type { EnterpriseActor } from '../enterprise-gateway.js';
 import { TaskStore } from './store.js';
 import { currentAttempt, digest, type TaskArtifact, TaskError } from './types.js';
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 
 export const taskCheckpointTool = {
   name: 'task_checkpoint',
@@ -16,7 +17,23 @@ export const taskCheckpointTool = {
       },
       summary: { type: 'string', minLength: 1, maxLength: 1200 },
       question: { type: 'string', maxLength: 2000 },
-      requiredArtifacts: { type: 'array', maxItems: 16, items: { type: 'string', maxLength: 300 } },
+      requiredArtifacts: {
+        type: 'array',
+        maxItems: 16,
+        description:
+          "References to this attempt's Host-recorded receipts. Prefer {versionId}; legacy strings must exactly match a recorded versionId or path. Never declare a new file here.",
+        items: {
+          anyOf: [
+            {
+              type: 'object',
+              properties: { versionId: { type: 'string', format: 'uuid' } },
+              required: ['versionId'],
+              additionalProperties: false,
+            },
+            { type: 'string', maxLength: 300 },
+          ],
+        },
+      },
     },
     required: ['state', 'summary'],
     additionalProperties: false,
@@ -40,6 +57,15 @@ export async function checkpoint(
     (typeof args.question !== 'string' || !args.question.trim())
   )
     throw new TaskError(400, 'TASK_WAITING_QUESTION_REQUIRED');
+  const receipts = attempt.artifacts.filter((f) => f.valid && /^[a-f0-9]{64}$/.test(f.sha256));
+  const references = Array.isArray(args.requiredArtifacts) ? args.requiredArtifacts : [];
+  const unresolved = references.filter((ref) => {
+    const value = typeof ref === 'string' ? ref : (ref as { versionId?: unknown } | null)?.versionId;
+    return (
+      typeof value !== 'string' ||
+      !receipts.some((f) => f.versionId === value || (typeof ref === 'string' && f.path === value))
+    );
+  });
   await store.mutate(conversation, attempt.id, (a) => {
     if (a.state !== 'running') return;
     a.progress = String(args.summary).slice(0, 1200);
@@ -48,19 +74,63 @@ export async function checkpoint(
       a.question = String(args.question).slice(0, 2000);
     }
     if (args.state === 'completed') a.terminalReported = true;
-    if (Array.isArray(args.requiredArtifacts))
-      for (const p of args.requiredArtifacts) {
-        if (typeof p === 'string' && !a.artifacts.some((f) => f.path === p))
-          a.artifacts.push({ path: p, sha256: '', valid: false });
-      }
+    // A model reference is never a file fact. Only authenticated tool receipts
+    // enter artifacts; the runner independently rechecks their bytes and scope.
+    a.unresolvedArtifactReferences = unresolved.length > 0 && receipts.length === 0;
   });
   return {
     saved: true,
+    artifacts: receipts,
+    ...(unresolved.length
+      ? {
+          rejectedReferences: unresolved,
+          referenceStatus: 'unrecorded; use a returned versionId, never reconstruct a path',
+        }
+      : {}),
     waiting: ['waiting_input', 'waiting_confirmation'].includes(String(args.state)),
     instruction:
       args.state === 'completed'
         ? 'Completion will be checked against actual results and required files.'
         : 'If waiting, the server displays the saved question and ends this turn. Do not make another model or tool request.',
+  };
+}
+
+export async function trustedTaskArtifacts(
+  root: string,
+  actor: EnterpriseActor,
+  conversation: string,
+  attemptId?: string
+): Promise<TaskArtifact[]> {
+  const task = await (await TaskStore.create(root, actor)).get(conversation);
+  const a = currentAttempt(task);
+  if (a.state !== 'running' || (attemptId && a.id !== attemptId)) throw new TaskError(409, 'TASK_NOT_EXECUTING');
+  return a.artifacts.filter((f) => f.valid && /^[a-f0-9]{64}$/.test(f.sha256) && !!f.versionId);
+}
+
+/** Reject an unknown post-delivery inspection reference without guessing a file.
+ * Missing or corrupted recorded artifacts still fail the runner's byte checks. */
+export async function artifactReferenceFeedback(
+  root: string,
+  actor: EnterpriseActor,
+  conversation: string,
+  tool: string,
+  args: Record<string, unknown>,
+  error: string,
+  attemptId?: string
+): Promise<unknown | undefined> {
+  if (
+    !['inspect_workbook', 'inspect_office_document', 'validate_artifact'].includes(tool) ||
+    !/ENOENT|FILE_NOT_FOUND|TASK_ARTIFACT_REFERENCE_NOT_FOUND/.test(error)
+  )
+    return;
+  const receipts = await trustedTaskArtifacts(root, actor, conversation, attemptId);
+  if (!receipts.length || receipts.some((f) => f.path === args.path || f.versionId === args.artifactVersionId)) return;
+  return {
+    status: 'reference_rejected',
+    requestedReference: args.artifactVersionId ?? args.path,
+    artifacts: receipts,
+    instruction:
+      'This reference is not a recorded output. No file was selected or changed. Use one exact artifactVersionId above. Completion uses only real required formats and verified receipts, not this proposed path.',
   };
 }
 
@@ -122,7 +192,10 @@ export async function recordTool(
     'write_workspace_text',
     'write_text_file',
   ]);
-  const artifacts = artifactTools.has(tool) ? collect(result) : [];
+  const artifacts =
+    artifactTools.has(tool) && (result as { status?: string } | null)?.status !== 'reference_rejected'
+      ? collect(result)
+      : [];
   const input = args as Record<string, unknown>;
   const target = String(
     input?.path ||
@@ -136,7 +209,19 @@ export async function recordTool(
       ''
   );
   const partial = result && typeof result === 'object' && (result as { status?: string }).status === 'partial';
-  if (partial && !error) error = 'PARTIAL_OUTPUT';
+  if (partial && !error) {
+    const outputs = (result as { outputs?: Array<{ format?: string; path?: string; status?: string }> }).outputs;
+    const failed = outputs?.filter((o) => o.status !== 'complete');
+    if (
+      !failed?.length ||
+      !attempt.requiredFormats.length ||
+      failed.some((o) => {
+        const format = o.format || path.extname(o.path || '').slice(1);
+        return !format || attempt.requiredFormats.includes(format);
+      })
+    )
+      error = 'PARTIAL_OUTPUT';
+  }
   await store.mutate(conversation, attempt.id, (a) => {
     if (a.state !== 'running') return;
     const existing = stepId ? a.steps.find((s) => s.id === stepId) : undefined;
@@ -305,6 +390,7 @@ export async function taskOfficeContext(root: string, actor: EnterpriseActor, co
     round: a.round,
     attempt: a.attempt,
     requiredFormats: a.requiredFormats,
+    artifacts: a.artifacts.filter((f) => f.valid),
     selectedInput: { description: a.payload.content, files: a.payload.files },
     previousState: context?.priorState || prior?.state,
     pendingIssue: context?.question || prior?.question || prior?.reason,

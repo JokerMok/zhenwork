@@ -67,6 +67,7 @@ export type TaskAttempt = {
     approvedKind?: string;
   };
   terminalReported?: boolean;
+  unresolvedArtifactReferences?: boolean;
   stopReason?: 'waiting_input' | 'waiting_confirmation';
   retryOf?: string;
   scope?: unknown;
@@ -95,11 +96,17 @@ const operationClauses = (content: string): string[] =>
           c
         )
     );
+export const requestsPeriodComparison = (content: string): boolean =>
+  operationClauses(content).some((clause) => /比较|对比|环比|同比|\bcompar(?:e|ison)\b|\bmonth.over.month\b/i.test(clause));
 export function requiredFormats(content: string): string[] {
   content = operationClauses(content)
     .filter((c) => !/^(?:请问|请)?(?:什么是|如何|怎么|为什么|解释|介绍|what is|how|explain|why)/i.test(c))
     .join('\n');
-  if (!/生成|制作|交付|输出|修改|编辑|调整|做成|做一份|generate|create|produce|revise|modify|edit/i.test(content))
+  if (
+    !/生成|制作|交付|输出|修改|编辑|调整|做成|做一份|给我\s*(?:一[份个张]|必要的|Excel|Word|PPT)|generate|create|produce|revise|modify|edit/i.test(
+      content
+    )
+  )
     return [];
   return [
     ...(/word|docx|文档报告/i.test(content) ? ['docx'] : []),

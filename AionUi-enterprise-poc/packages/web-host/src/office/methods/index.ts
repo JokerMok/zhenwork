@@ -35,17 +35,33 @@ const obj = (v: unknown): Record<string, unknown> => {
   return v as Record<string, unknown>;
 };
 export type TaskTime = { periods: string[]; cutoff: string };
-export function methodTime(preferences: Record<string, unknown>, periods?: unknown, cutoff?: unknown): TaskTime {
+export function methodTime(
+  preferences: Record<string, unknown>,
+  periods?: unknown,
+  cutoff?: unknown,
+  comparison = true
+): TaskTime {
   const analysis = preferences.analysis as { periods?: string[] } | undefined;
-  const selected = periods ?? analysis?.periods ?? [];
+  const selected = periods ?? (comparison ? analysis?.periods : []) ?? [];
+  if (!comparison && Array.isArray(selected) && selected.length === 0) {
+    const value = cutoff ?? preferences.cutoff;
+    if (
+      typeof value !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+      !Number.isFinite(Date.parse(value)) ||
+      new Date(value).toISOString().slice(0, 10) !== value
+    )
+      throw Error('METHOD_CUTOFF_DATE_INVALID');
+    return { periods: [], cutoff: value };
+  }
   if (
     !Array.isArray(selected) ||
-    selected.length !== 2 ||
+    (comparison ? selected.length !== 2 : selected.length < 1 || selected.length > 2) ||
     selected.some((v) => typeof v !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) ||
-    selected[0] >= selected[1]
+    (selected.length === 2 && selected[0] >= selected[1])
   )
     throw Error('METHOD_TWO_ORDERED_PERIODS_REQUIRED');
-  const [year, month] = selected[1].split('-').map(Number);
+  const [year, month] = selected[selected.length - 1].split('-').map(Number);
   const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
   const value = cutoff ?? (periods !== undefined ? end : (preferences.cutoff ?? end));
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw Error('METHOD_CUTOFF_DATE_INVALID');
@@ -58,6 +74,64 @@ export function methodTime(preferences: Record<string, unknown>, periods?: unkno
   )
     throw Error('METHOD_CUTOFF_DATE_INVALID');
   return { periods: [...selected], cutoff: value };
+}
+
+/** Report semantics come from the reviewed processor's actual normalized rows,
+ * never from a saved comparison default or a model-authored title. */
+export function methodReportScope(
+  result: Pick<MethodResult, 'summary' | 'sheets' | 'analysisSheet'>,
+  comparison: boolean,
+  requested: string[] = [],
+  template?: unknown
+) {
+  const months = new Set<string>();
+  const month = (value: unknown) => {
+    if (typeof value !== 'string') return;
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) months.add(value);
+    else if (
+      /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+      Number.isFinite(Date.parse(value)) &&
+      new Date(value).toISOString().slice(0, 10) === value
+    )
+      months.add(value.slice(0, 7));
+  };
+  const input = result.summary.analysisInput as { periods?: unknown[] } | undefined;
+  input?.periods?.forEach(month);
+  const cost = result.summary.costChange as { observedPeriods?: unknown[] } | undefined;
+  cost?.observedPeriods?.forEach(month);
+  for (const sheet of [...result.sheets, result.analysisSheet]) {
+    const index = sheet.headers.findIndex((h) => ['期间', '业务日期', '产生日期'].includes(h));
+    if (index < 0) continue;
+    const source = sheet.headers.indexOf('来源');
+    for (const row of sheet.rows) {
+      // Comparison tables also contain empty placeholders for missing periods.
+      if (comparison && source >= 0 && !row[source]) continue;
+      month(row[index]);
+    }
+  }
+  const periods = [...months].sort();
+  const comparing =
+    comparison && requested.length === 2 && periods.length === 2 && requested.every((p) => months.has(p));
+  const describe = (p: string) => `${p.slice(0, 4)}年${Number(p.slice(5))}月`;
+  const label =
+    periods.length === 1
+      ? describe(periods[0])
+      : periods.length
+        ? `${describe(periods[0])}至${describe(periods.at(-1)!)}`
+        : '期间待核';
+  const kind = comparing ? 'comparison' : periods.length === 1 ? 'monthly' : periods.length ? 'range' : 'unconfirmed';
+  const style =
+    typeof template === 'string' && !/\d|年|月|环比|同比|对比|比较|变化|\bvs\b/i.test(template)
+      ? template.trim().slice(0, 80)
+      : '';
+  const title = `${label}固危废${comparing ? '对比分析' : kind === 'monthly' ? '月度分析' : '分析'}${style ? '｜' + style : ''}`;
+  return {
+    kind,
+    periods,
+    periodLabel: label,
+    title,
+    missingRequestedPeriods: comparison ? requested.filter((p) => !months.has(p)) : [],
+  };
 }
 export const methodTool = {
   name: 'run_enterprise_method',
@@ -81,10 +155,10 @@ export const methodTool = {
       },
       periods: {
         type: 'array',
-        minItems: 2,
+        minItems: 1,
         maxItems: 2,
         items: { type: 'string', pattern: '^\\d{4}-(0[1-9]|1[0-2])$' },
-        description: 'Two separate comparison months, ordered YYYY-MM. Task-only override; never edits saved Skill.',
+        description: 'One actual month for a monthly task, or two ordered comparison months (YYYY-MM). Task-only override; never edits saved Skill. Comparison calculations still require two months.',
       },
       cutoff: {
         type: 'string',

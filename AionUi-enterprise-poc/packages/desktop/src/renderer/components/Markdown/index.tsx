@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Link } from '@arco-design/web-react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 
 import rehypeKatex from 'rehype-katex';
@@ -32,6 +33,9 @@ import {
   splitWorkspaceFilePaths,
 } from './markdownUtils';
 import type { LocalFileLinkReference } from './markdownUtils';
+import { trustedArtifactLink, type TrustedArtifactLink } from './markdownUtils';
+
+export const TrustedArtifactContext = React.createContext<readonly TrustedArtifactLink[] | undefined>(undefined);
 
 const isLocalFilePath = (src: string): boolean => {
   if (src.startsWith('http://') || src.startsWith('https://')) return false;
@@ -65,6 +69,7 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
   }) => {
     const { t } = useTranslation();
     const preview = useOptionalPreviewContext();
+    const trustedArtifacts = React.useContext(TrustedArtifactContext);
 
     const normalizedChildren = useMemo(() => {
       if (typeof childrenProp === 'string') {
@@ -107,7 +112,12 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
         p: ({ node: _node, children: paragraphChildren, ...rest }: Record<string, unknown>) => (
           <p {...(rest as React.HTMLAttributes<HTMLParagraphElement>)}>
             {React.Children.toArray(paragraphChildren as React.ReactNode).map((child, index) => {
-              if (React.isValidElement(child) && autoLinkWorkspaceFiles && onLocalFileLink) {
+              if (
+                trustedArtifacts === undefined &&
+                React.isValidElement(child) &&
+                autoLinkWorkspaceFiles &&
+                onLocalFileLink
+              ) {
                 const childProps = child.props as { node?: { tagName?: string }; children?: unknown };
                 const code = childProps.node?.tagName === 'code' ? childProps.children : null;
                 const reference =
@@ -120,7 +130,13 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
                   );
                 }
               }
-              if (typeof child !== 'string' || !autoLinkWorkspaceFiles || !onLocalFileLink) return child;
+              if (
+                trustedArtifacts !== undefined ||
+                typeof child !== 'string' ||
+                !autoLinkWorkspaceFiles ||
+                !onLocalFileLink
+              )
+                return child;
               return (
                 <React.Fragment key={index}>
                   {splitWorkspaceFilePaths(child, autoLinkWorkspaceFiles).map((part, partIndex) =>
@@ -155,6 +171,21 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
         a: ({ node: _node, ...rest }: Record<string, unknown>) => {
           const anchorProps = rest as React.AnchorHTMLAttributes<HTMLAnchorElement>;
           const rawHref = typeof anchorProps.href === 'string' ? anchorProps.href : '';
+          if (trustedArtifacts !== undefined) {
+            const resolved = trustedArtifactLink(
+              rawHref,
+              trustedArtifacts,
+              window.location.origin,
+              autoLinkWorkspaceFiles
+            );
+            if (resolved === null) return <span data-untrusted-artifact-link>{anchorProps.children}</span>;
+            if (resolved)
+              return (
+                <Link href={resolved.href} download={resolved.download || undefined}>
+                  {anchorProps.children}
+                </Link>
+              );
+          }
           const localFileReference = resolveLocalFileLinkReference(rawHref);
           if (localFileReference) {
             return (
@@ -178,7 +209,7 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
           return <img {...imgProps} alt={imgProps.alt || ''} />;
         },
       }),
-      [autoLinkWorkspaceFiles, codeStyle, hiddenCodeCopyButton, handleLinkClick, onLocalFileLink]
+      [autoLinkWorkspaceFiles, codeStyle, hiddenCodeCopyButton, handleLinkClick, onLocalFileLink, trustedArtifacts]
     );
 
     const rehypePlugins = useMemo(() => (allowHtml ? [rehypeRaw, rehypeKatex] : [rehypeKatex]), [allowHtml]);

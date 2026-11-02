@@ -5,9 +5,23 @@ import { randomUUID } from "node:crypto";
 import { afterEach, expect, test } from "vitest";
 import { TaskStore } from "./store.js";
 import { currentAttempt, publicTask, requiredFormats, requiresToolEvidence } from "./types.js";
-import { checkpoint, recordTool, reusableOutput } from "./protocol.js";
+import { checkpoint, recordTool, reusableOutput, artifactReferenceFeedback, trustedTaskArtifacts } from "./protocol.js";
 const roots: string[] = [];
 const actor = { serverId: "rc2", userId: "17" };
+
+test('artifact references are attempt and actor scoped; unknown model names never become artifacts', async () => {
+  const { root, store } = await fixture();
+  const a = currentAttempt((await store.accept('aabbccdd', randomUUID(), { content: '生成Excel' })).task);
+  await store.mutate('aabbccdd', a.id, (x) => { x.state = 'running'; });
+  const file = { path: '真实.xlsx', versionId: randomUUID(), sha256: 'a'.repeat(64), validation: { valid: true } };
+  await recordTool(root, actor, 'aabbccdd', 'create_office_document', {}, file);
+  const result = await checkpoint(root, actor, 'aabbccdd', { state: 'completed', summary: 'done', requiredArtifacts: ['拼错.xlsx', { versionId: file.versionId }] });
+  expect(result).toMatchObject({ rejectedReferences: ['拼错.xlsx'] });
+  expect(currentAttempt(await store.get('aabbccdd')).artifacts).toHaveLength(1);
+  await expect(trustedTaskArtifacts(root, { ...actor, userId: '18' }, 'aabbccdd', a.id)).rejects.toThrow('TASK_NOT_FOUND');
+  expect(await artifactReferenceFeedback(root, actor, 'aabbccdd', 'validate_artifact', { path: '拼错.xlsx' }, 'ENOENT', a.id)).toMatchObject({ status: 'reference_rejected' });
+  expect(await artifactReferenceFeedback(root, actor, 'aabbccdd', 'validate_artifact', { path: file.path }, 'ENOENT', a.id)).toBeUndefined();
+});
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), "task-store-"));
   roots.push(root);

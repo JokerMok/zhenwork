@@ -1,4 +1,5 @@
 import { useTaskWork } from '@/renderer/pages/workspace/TaskWork/api';
+import { TrustedArtifactContext } from '@/renderer/components/Markdown';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
 /**
  * @license
@@ -344,7 +345,11 @@ const MessageList: React.FC<{
   const pagination = useMessagePaginationState();
   const artifacts = useConversationArtifacts();
   const conversationContext = useConversationContextSafe();
-  const { attempt: currentWork } = useTaskWork(conversationContext?.conversation_id);
+  const { task: currentTask, attempt: currentWork } = useTaskWork(conversationContext?.conversation_id);
+  const trustedArtifacts = useMemo(
+    () => (isEnterpriseWeb() && currentTask ? currentTask.attempts.flatMap((a) => a.artifacts) : undefined),
+    [currentTask]
+  );
   const rowWidthClass = getChatSurfaceWidthClass();
   const loadPreviousMessagePage = useLoadPreviousMessagePage(conversationContext?.conversation_id);
   const loadAnchorMessageWindow = useLoadAnchorMessageWindow(conversationContext?.conversation_id);
@@ -773,30 +778,35 @@ const MessageList: React.FC<{
             onScroll={handleMessageListScroll}
             onWheel={handleWheel}
           >
-            <div
-              ref={setContentRef}
-              data-testid='message-list-content'
-              style={{
-                overflowAnchor: 'none',
-                fontFamily: 'var(--chat-font-family, inherit)',
-                fontWeight: 'var(--chat-font-weight, inherit)',
-              }}
-            >
-              <div className='h-10px' />
-              {processedList.map((item, index) => (
-                <React.Fragment key={getProcessedItemAnchorId(item) || index}>{renderItem(index, item)}</React.Fragment>
-              ))}
-              <TaskDeliverySummary
-                processing={isProcessing}
-                messages={list
-                  .slice(list.findLastIndex((message) => message.position === 'right') + 1)
-                  .filter((message): message is IMessageToolGroup | IMessageAcpToolCall | IMessageToolCall =>
-                    ['tool_group', 'tool_call', 'acp_tool_call'].includes(message.type)
-                  )}
-              />
-              {activityFooter && <div className={`${rowWidthClass} min-w-0 px-8px`}>{activityFooter}</div>}
-              <div className='h-20px' />
-            </div>
+            <TrustedArtifactContext.Provider value={trustedArtifacts}>
+              <div
+                ref={setContentRef}
+                data-testid='message-list-content'
+                style={{
+                  overflowAnchor: 'none',
+                  fontFamily: 'var(--chat-font-family, inherit)',
+                  fontWeight: 'var(--chat-font-weight, inherit)',
+                }}
+              >
+                <div className='h-10px' />
+                {processedList.map((item, index) => (
+                  <React.Fragment key={getProcessedItemAnchorId(item) || index}>
+                    {renderItem(index, item)}
+                  </React.Fragment>
+                ))}
+                <TaskDeliverySummary
+                  processing={isProcessing}
+                  trustedArtifacts={currentTask ? currentWork?.artifacts || [] : undefined}
+                  messages={list
+                    .slice(list.findLastIndex((message) => message.position === 'right') + 1)
+                    .filter((message): message is IMessageToolGroup | IMessageAcpToolCall | IMessageToolCall =>
+                      ['tool_group', 'tool_call', 'acp_tool_call'].includes(message.type)
+                    )}
+                />
+                {activityFooter && <div className={`${rowWidthClass} min-w-0 px-8px`}>{activityFooter}</div>}
+                <div className='h-20px' />
+              </div>
+            </TrustedArtifactContext.Provider>
           </div>
         </ImagePreviewContext.Provider>
       </Image.PreviewGroup>

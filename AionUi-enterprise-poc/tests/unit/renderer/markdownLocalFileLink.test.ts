@@ -1,4 +1,4 @@
-import { isEnterpriseKnowledgeSourceLink } from '@/renderer/components/Markdown/markdownUtils';
+import { isEnterpriseKnowledgeSourceLink, trustedArtifactLink } from '@/renderer/components/Markdown/markdownUtils';
 /**
  * @license
  * Copyright 2025 AionUi (aionui.com)
@@ -6,6 +6,53 @@ import { isEnterpriseKnowledgeSourceLink } from '@/renderer/components/Markdown/
  */
 
 import { describe, expect, it } from 'vitest';
+
+describe('trusted task artifact links', () => {
+  const receipt = {
+    path: '成果/真实.xlsx',
+    versionId: 'version-a',
+    sha256: 'a'.repeat(64),
+    valid: true,
+    downloadUrl: '/enterprise/files/download?path=real&version=version-a',
+    previewUrl: '/#/workspace?section=files&previewPath=real&fileVersion=version-a',
+  };
+  it('uses only the Host URL for an exact pinned reference', () => {
+    expect(
+      trustedArtifactLink(
+        '/enterprise/files/download?path=' + encodeURIComponent(receipt.path) + '&version=version-a',
+        [receipt],
+        'https://employee.test'
+      )
+    ).toEqual({ href: receipt.downloadUrl, download: true });
+  });
+  it('does not guess similar filenames, unknown versions or a different employee server', () => {
+    expect(trustedArtifactLink('成果/写错.xlsx', [receipt], 'https://employee.test')).toBeNull();
+    expect(
+      trustedArtifactLink(
+        '/enterprise/files/download?path=' + encodeURIComponent(receipt.path) + '&version=other',
+        [receipt],
+        'https://employee.test'
+      )
+    ).toBeNull();
+    expect(
+      trustedArtifactLink(
+        'https://other.test/enterprise/files/download?path=' + encodeURIComponent(receipt.path),
+        [receipt],
+        'https://employee.test'
+      )
+    ).toBeNull();
+  });
+  it('keeps source web citations and refuses an ambiguous historical version', () => {
+    expect(trustedArtifactLink('https://official.example/law', [receipt], 'https://employee.test')).toBeUndefined();
+    expect(
+      trustedArtifactLink(
+        '/enterprise/files/download?path=' + encodeURIComponent(receipt.path),
+        [receipt, { ...receipt, versionId: 'version-b' }],
+        'https://employee.test'
+      )
+    ).toBeNull();
+  });
+});
 import {
   resolveLocalFileLinkPath,
   resolveLocalFileLinkReference,
@@ -152,8 +199,13 @@ describe('resolveLocalFileLinkPath', () => {
 });
 
 it('accepts only same-origin pinned knowledge links as normal application tabs', () => {
-  const path='/#/workspace?section=knowledge&documentId=11111111-1111-4111-8111-111111111111&version=2&chunk=3';
-  expect(isEnterpriseKnowledgeSourceLink('https://work.example'+path,'https://work.example')).toBe(true);
-  expect(isEnterpriseKnowledgeSourceLink('https://other.example'+path,'https://work.example')).toBe(false);
-  expect(isEnterpriseKnowledgeSourceLink('https://work.example'+path.replace('version=2','version=0'),'https://work.example')).toBe(false);
+  const path = '/#/workspace?section=knowledge&documentId=11111111-1111-4111-8111-111111111111&version=2&chunk=3';
+  expect(isEnterpriseKnowledgeSourceLink('https://work.example' + path, 'https://work.example')).toBe(true);
+  expect(isEnterpriseKnowledgeSourceLink('https://other.example' + path, 'https://work.example')).toBe(false);
+  expect(
+    isEnterpriseKnowledgeSourceLink(
+      'https://work.example' + path.replace('version=2', 'version=0'),
+      'https://work.example'
+    )
+  ).toBe(false);
 });
