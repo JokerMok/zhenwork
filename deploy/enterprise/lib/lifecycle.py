@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Encrypted, quiesced snapshots and checksum-gated application switching."""
-import argparse,hashlib,json,os,pathlib,shutil,subprocess,tarfile,tempfile,time,sys
+import argparse,hashlib,json,os,pathlib,posixpath,re,shutil,subprocess,tarfile,tempfile,time,sys
 sys.dont_write_bytecode=True
 import runtime as rt
 
@@ -28,15 +28,31 @@ def quiesce(c):
  ids=subprocess.check_output(['docker','ps','-q','--filter','label=aionui.root='+key],text=True).split()
  if ids:raise RuntimeError('Instance still has running worker containers; drain them before snapshot/switch')
 
-def validate_archive(archive):
+def validate_archive(archive,canonical_root=None):
  members=archive.getmembers()
+ entries={m.name:m for m in members}
+ if len(entries)!=len(members):raise RuntimeError('Duplicate backup member')
+ links={m.name for m in members if m.issym()}
  for m in members:
   p=pathlib.PurePosixPath(m.name)
   if p.is_absolute() or '..' in p.parts or not p.parts or p.parts[0] not in ['metadata.json','database.dump','shared']:raise RuntimeError('Unsafe backup member')
+  if any(str(parent) in links for parent in p.parents):raise RuntimeError('Backup member traverses a link')
   if m.isdev() or m.isfifo() or m.islnk():raise RuntimeError('Unsupported archive entry')
   if m.issym():
-   # Only the installer-managed relative uploads link is expected.
-   if m.name!='shared/config/uploads' or m.linkname!='../uploads':raise RuntimeError('Untrusted backup link')
+   if m.name=='shared/config/uploads' and m.linkname=='../uploads':continue
+   # Core builds session Skill links within one employee profile. Normalize these
+   # to relative links so extraction never follows an absolute installation path.
+   parts=p.parts
+   if not canonical_root or len(parts)!=10 or parts[:3]!=('shared','profiles','profiles') or not re.fullmatch(r'[a-f0-9]{24}',parts[3]) or not parts[4].isdigit() or parts[5:7]!=('session-skills','system_default_user') or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',parts[7]):raise RuntimeError('Untrusted backup link')
+   target=pathlib.PurePosixPath(m.linkname)
+   if target.is_absolute():
+    try:target=target.relative_to(canonical_root)
+    except ValueError:raise RuntimeError('Backup link escapes installation')
+   else:target=pathlib.PurePosixPath(posixpath.normpath(str(p.parent/target)))
+   employee=pathlib.PurePosixPath(*parts[:5])
+   allowed=(parts[8:]==('.aionrs','skills') and target==pathlib.PurePosixPath(*parts[:8])/'skills') or (parts[8]=='skills' and target.name==parts[9] and any(target.is_relative_to(employee/q) for q in ['builtin-skills','skills/users/system_default_user']))
+   if not allowed or '..' in target.parts or str(target) not in entries or not entries[str(target)].isdir():raise RuntimeError('Backup Skill link is not an internal directory')
+   m.linkname=posixpath.relpath(str(target),str(p.parent))
  return members
 
 def backup(c,output):
@@ -83,7 +99,7 @@ def restore(c,bundle,source):
   temp=pathlib.Path(temp);plain=temp/'backup.tar'
   with plain.open('xb') as f:rt.run(['gpg','--batch','--pinentry-mode','loopback','--passphrase-file',c['ZW_BACKUP_KEY_FILE'],'--decrypt',str(source)],stdout=f,stderr=subprocess.PIPE)
   with tarfile.open(plain) as archive:
-   members=validate_archive(archive);meta=json.load(archive.extractfile('metadata.json'))
+   members=validate_archive(archive,str(root));meta=json.load(archive.extractfile('metadata.json'))
    if meta['canonicalRoot']!=str(root):raise RuntimeError('RC1 restore requires the same canonical installation path on the fresh host/environment')
    matching=rt.manifest(bundle)
    if any(meta['version'][key]!=matching[key] for key in ['version','coreBinarySha256','schemaCompatibility']) or meta['artifacts']!=rt.artifact_identity(bundle):raise RuntimeError('Use the version and exact application/runtime bytes matching the backup')
@@ -106,7 +122,7 @@ def restore(c,bundle,source):
   for name in ['profiles','uploads','tls']:
    dest=root/'shared'/name
    if any(dest.iterdir()):raise RuntimeError('Restore destination unexpectedly contains data: '+name)
-   dest.rmdir();shutil.copytree(content/'shared'/name,dest,symlinks=False)
+   dest.rmdir();shutil.copytree(content/'shared'/name,dest,symlinks=True)
    rt.run(['chown','-R',c['runtimeUser']+':'+c['runtimeUser'],str(dest)])
   rt.write(root/'shared/config/restore.receipt.json',json.dumps({'backupSha256':checksum,'filesVerified':len(meta['files']),'restoredAt':time.time(),'applicationVersion':meta['version']['version']},indent=2))
  rt.start(c);print(json.dumps({'restore':'completed','filesVerified':len(meta['files']),'applicationVersion':meta['version']['version']}))
