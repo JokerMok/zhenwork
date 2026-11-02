@@ -4,6 +4,10 @@ import argparse,hashlib,json,os,pathlib,shutil,subprocess,tarfile,tempfile,time,
 sys.dont_write_bytecode=True
 import runtime as rt
 
+def managed_cache(rel):
+ parts=pathlib.PurePosixPath(rel).parts
+ return len(parts)>=6 and parts[:2]==('profiles','profiles') and len(parts[2])==24 and all(x in '0123456789abcdef' for x in parts[2]) and parts[3].isdigit() and parts[4:6]==('runtime','node')
+
 def digest(p):
  h=hashlib.sha256()
  with pathlib.Path(p).open('rb') as f:
@@ -14,7 +18,8 @@ def fingerprint(root):
  result={}
  for directory in ['profiles','uploads','config']:
   for p in sorted((root/'shared'/directory).rglob('*')):
-   if p.is_file() and not p.is_symlink():result[str(p.relative_to(root/'shared'))]=digest(p)
+   rel=str(p.relative_to(root/'shared'))
+   if not managed_cache(rel) and p.is_file() and not p.is_symlink():result[rel]=digest(p)
  return result
 
 def quiesce(c):
@@ -45,7 +50,7 @@ def backup(c,output):
   with tempfile.TemporaryDirectory(prefix='zw-backup-',dir=root/'shared/config') as temp:
    staging=pathlib.Path(temp);dump=staging/'database.dump'
    with dump.open('wb') as f:rt.dc(c,'exec','-T','db','pg_dump','-U','enterprise','-d','enterprise','--format=custom','--no-owner','--no-acl',stdout=f)
-   meta={'format':1,'artifacts':rt.artifact_identity(root/'current'),'canonicalRoot':str(root),'instance':c['ZW_INSTANCE'],'version':json.loads((root/'current/APP_MANIFEST.json').read_text()),'migrations':rt.sql(c,'SELECT version||\':\'||sha256 FROM ai_schema_migrations ORDER BY version;'),'files':fingerprint(root),'dumpSha256':digest(dump),'createdAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+   meta={'format':1,'artifacts':rt.artifact_identity(root/'current'),'canonicalRoot':str(root),'instance':c['ZW_INSTANCE'],'version':json.loads((root/'current/APP_MANIFEST.json').read_text()),'migrations':rt.sql(c,'SELECT version||\':\'||sha256 FROM ai_schema_migrations ORDER BY version;'),'files':fingerprint(root),'excludedCaches':['profiles/profiles/<organization>/<employee>/runtime/node (managed runtime; rebuilt from release resources)'],'dumpSha256':digest(dump),'createdAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
    # Exclude our temporary dump from the shared tree; it is included once at the archive root.
    meta['files']={k:v for k,v in meta['files'].items() if not k.startswith('config/'+staging.name+'/')}
    (staging/'metadata.json').write_text(json.dumps(meta,indent=2)+'\n')
@@ -57,7 +62,7 @@ def backup(c,output):
       with tarfile.open(fileobj=gpg.stdin,mode='w|') as archive:
        for name in ['metadata.json','database.dump']:archive.add(staging/name,arcname=name)
        for name in ['profiles','uploads','config','tls']:
-        archive.add(root/'shared'/name,arcname='shared/'+name,filter=lambda m:None if m.name.startswith('shared/config/'+staging.name) else m)
+        archive.add(root/'shared'/name,arcname='shared/'+name,filter=lambda m:None if m.name.startswith('shared/config/'+staging.name) or managed_cache(m.name.removeprefix('shared/')) else m)
      finally:gpg.stdin.close()
      error=gpg.stderr.read();code=gpg.wait()
      if code:raise RuntimeError('Backup encryption failed')

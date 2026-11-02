@@ -114,7 +114,7 @@
         "transportPerTrip": 100,
         "weightBasis": "WEIGH",
         "taxMode": "included",
-        "sourcePath": "示例资料/演示企业/演示合同.txt",
+        "sourcePath": "资料/示例资料/演示企业/演示合同.txt",
         "quote": "完全虚构演示合同 DEMO-CONTRACT。DEMO-W：处置支出，按磅单重量1200元/吨，运输费100元/车次，含税。"
       }
     ],
@@ -131,13 +131,13 @@
       {
         "shipment": "DEMO-SHIP",
         "kind": "WEIGH",
-        "path": "示例资料/演示企业/演示凭证-WEIGH.txt",
+        "path": "资料/示例资料/演示企业/演示凭证-WEIGH.txt",
         "sha256": "a333d68b02e0b8059519a9d1379c5e4da37e489cc036dcad907d1757f75a0891"
       },
       {
         "shipment": "DEMO-SHIP",
         "kind": "RECEIVE",
-        "path": "示例资料/演示企业/演示凭证-RECEIVE.txt",
+        "path": "资料/示例资料/演示企业/演示凭证-RECEIVE.txt",
         "sha256": "4ddc4cedfb198d8f80e9095efed9034697622a6ccf8b3ef8a734bb0cca02a795"
       }
     ],
