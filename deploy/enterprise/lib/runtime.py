@@ -117,7 +117,7 @@ def artifact_identity(release):
 
 def manifest(bundle):
  value=json.loads((bundle/'APP_MANIFEST.json').read_text())
- if not re.fullmatch(r'[0-9][A-Za-z0-9.+_-]{1,80}',value.get('version','')) or '..' in value['version']:raise RuntimeError('Unsafe release version')
+ if len(value.get('version',''))>80 or not re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?',value.get('version','')) or '..' in value['version']:raise RuntimeError('Release version must match the runtime version contract (numeric major.minor.patch with optional prerelease)')
  if not re.fullmatch(r'[a-f0-9]{40}',value.get('applicationSourceSha','')) or not re.fullmatch(r'[a-f0-9]{64}',value.get('coreBinarySha256','')):raise RuntimeError('Invalid application provenance')
  if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',value.get('schemaCompatibility','')):raise RuntimeError('Invalid schema compatibility identifier')
  return value
