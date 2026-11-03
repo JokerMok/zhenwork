@@ -145,7 +145,7 @@ async function authorizedQueryCatalog(client: Rc2GatewayClient, conversation: st
   );
   return {
     instruction:
-      'These are CURRENT authorized READ query schemas, callable through the office connection already mounted in this conversation. Use ToolSearch with the exact name query_enterprise_data, then call it with source.resourceId, toolName and arguments matching that tool inputSchema. Do not search for ledger or other remote tool names directly; they need not be separately mounted. Read this context again on each new request. Unavailable sources are not callable; do not ask for refresh as a remedy. Never scan files/environment or guess commands to find credentials. Report unavailable sources honestly.',
+      'These are CURRENT authorized READ query schemas, callable through the office connection already mounted in this conversation. Call query_enterprise_data DIRECTLY with source.resourceId, toolName and arguments matching that tool inputSchema. Its schema is already advertised by the office connection. ToolSearch only searches deferred tools and may return no match for an available direct tool; do not use that as an availability check. Do not search for ledger or other remote tool names directly; they need not be separately mounted. Read this context again on each new request. Unavailable sources are not callable; do not ask for refresh as a remedy. Never scan files/environment or guess commands to find credentials. Report unavailable sources honestly.',
     sources,
     sourceCount: catalog.length,
     shownSourceLimit: 8,
@@ -385,7 +385,7 @@ const tools = [
   {
     name: 'query_enterprise_data',
     description:
-      'Execute a current employee-authorized READ business query, including ledger or companyData, through this office connection. First refresh office_context.enterpriseQueries for source resourceId, exact toolName and inputSchema. It works in existing expert conversations without a separate business MCP mount. Never guess a source or mix enterprises. Each call rechecks resource, connection, READ allowlist and current task authorization. No writes or submissions.',
+      'Execute a current employee-authorized READ business query, including ledger or companyData, through this office connection. Call this tool directly; do not search for it with ToolSearch. First refresh office_context.enterpriseQueries for source resourceId, exact toolName and inputSchema. It works in existing expert conversations without a separate business MCP mount. Never guess a source or mix enterprises. Each call rechecks resource, connection, READ allowlist and current task authorization. No writes or submissions.',
     inputSchema: {
       type: 'object', additionalProperties: false,
       properties: {
@@ -446,7 +446,7 @@ const tools = [
   {
     name: 'office_context',
     description:
-      'Get the actual output workspace and authorized Skill/knowledge/calculator/business MCP tool names before a task. For enterprise business queries load query_enterprise_data and use the actual source resourceId, toolName and inputSchema from enterpriseQueries. Do not search Skills or scan environment for business connectors.',
+      'Get the actual output workspace and authorized Skill/knowledge/calculator/business MCP tool names before a task. For enterprise business queries call query_enterprise_data directly and use the actual source resourceId, toolName and inputSchema from enterpriseQueries. Do not search Skills or scan environment for business connectors.',
     inputSchema: { type: 'object', properties: {} },
   },
   {

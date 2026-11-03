@@ -694,6 +694,7 @@ test('existing office-only conversations can discover and execute authorized bus
   try {
     const context=JSON.parse((await call('office_context',{})).result.content[0].text);
     expect(context.enterpriseQueries.sources[0]).toMatchObject({resourceId,callWith:'query_enterprise_data',status:'available',tools:[{name:'ledger',inputSchema:{required:['page']}}]});
+    expect(context.enterpriseQueries.instruction).toContain('Call query_enterprise_data DIRECTLY');
     const result=JSON.parse((await call('query_enterprise_data',{resourceId,toolName:'ledger',arguments:{page:3}})).result.content[0].text);
     expect(JSON.parse(result.result.content[0].text)).toEqual({rows:[],page:3});
     expect(connection).toHaveBeenCalledWith('connection-id',resourceId);
