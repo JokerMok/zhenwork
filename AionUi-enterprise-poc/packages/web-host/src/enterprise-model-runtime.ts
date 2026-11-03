@@ -403,7 +403,11 @@ export function createEnterpriseModelRuntime(
             return current.relayModel(modelId, raw, signal, conversationId);
           } catch (error) {
             if (error instanceof Error && error.message === 'TASK_EXECUTION_PAUSED') {
-              return new Response(null, { status: 409, headers: { 'X-Aion-Execution-State': 'paused' } });
+              const task = options.profileRoot && conversationId
+                ? await currentTaskScope(options.profileRoot, actor, conversationId) : undefined;
+              return new Response(JSON.stringify({ question: task?.question }), {
+                status: 409, headers: { 'X-Aion-Execution-State': 'paused', 'Content-Type': 'application/json' },
+              });
             }
             console.warn('[Enterprise model] relay authorization rejected', { code: 'EXECUTION_AUTHORIZATION_DENIED', conversationId, modelId });
             return new Response(null, { status: 403 });

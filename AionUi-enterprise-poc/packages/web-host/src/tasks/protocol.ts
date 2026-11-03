@@ -353,6 +353,7 @@ export async function currentTaskScope(
   scope?: import('../office/office-store.js').KnowledgeScope;
   state?: string;
   waiting?: string;
+  question?: string;
 }> {
   const store = await TaskStore.create(root, actor);
   try {
@@ -365,6 +366,7 @@ export async function currentTaskScope(
       scope: a.scope as import('../office/office-store.js').KnowledgeScope | undefined,
       state: a.state,
       waiting: a.stopReason,
+      question: a.stopReason ? a.question : undefined,
     };
   } catch (error) {
     if (error instanceof TaskError && error.status === 404) return { active: false };

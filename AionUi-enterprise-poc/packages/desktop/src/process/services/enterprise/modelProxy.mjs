@@ -100,15 +100,23 @@ export class EnterpriseModelProxy {
       }
       const forwarded = selected.upstreamCode ? JSON.stringify({ ...payload, model: selected.upstreamCode }) : raw;
       const upstream = await this.client.relayModel(selected.id, forwarded, controller.signal, conversationId);
-      // A persisted waiting checkpoint is a transport stop, not a provider
-      // credential failure. End without content and without another model call;
-      // the durable task remains waiting, never completed by this envelope.
+      // Deliver the persisted question as the visible pause result. An empty
+      // completion is retried and rejected by the native Agent as EmptyFinal.
       if (upstream.status === 409 && upstream.headers.get('x-aion-execution-state') === 'paused') {
+        const pause = await upstream.json().catch(() => null);
+        const question = typeof pause?.question === 'string' ? pause.question.trim() : '';
+        if (!question || question.length > 2000) {
+          response.writeHead(502).end();
+          return;
+        }
         const id = `pause-${crypto.randomUUID()}`;
+        const envelope = { id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: payload.model };
         response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store' });
         response.end(
-          `data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: payload.model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`
+          `data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: { content: question }, finish_reason: null }] })}\n\n` +
+          `data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`
         );
+        console.info('[Enterprise model]', JSON.stringify({ event: 'task_waiting_finalized', conversationId }));
         return;
       }
       const contentType = upstream.headers.get('content-type') || '';

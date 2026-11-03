@@ -656,7 +656,7 @@ test('shared enterprise calculators are discoverable and executed under current 
   const fixture=await coreFixture();const root=await profileRoot();fixture.core.workspaceRoot=path.join(root,'workspace');
   const resourceId='11111111-1111-4111-8111-111111111111';let allowed=true;
   const request=vi.fn(async()=>({response:new Response('{}',{status:allowed?200:403}),body:allowed?{code:200,data:{value:'20.75',rounding:'HALF_UP'}}:{code:403}}));
-  const client={me:async()=>({userId:actor.userId}),resources:async(type:string)=>type==='TOOL'?[{id:resourceId,name:'Shared calculator',version:1}]:type==='MCP'?[{id:resourceId,name:'Authorized business source',version:2}]:[],readyMcpConnection:async()=>({id:resourceId}),relayMcp:async()=>new Response(JSON.stringify({result:{tools:[{name:'entSummary',description:'Fixed read query'}]}})),authorizedResource:async()=>({config:{toolType:'CALCULATOR'}}),request};
+  const client={me:async()=>({userId:actor.userId}),resources:async(type:string)=>type==='TOOL'?[{id:resourceId,name:'Shared calculator',version:1}]:type==='MCP'?[{id:resourceId,name:'Authorized business source',version:2}]:[],readyMcpConnection:async()=>({id:resourceId}),relayMcp:async()=>new Response(JSON.stringify({result:{tools:[{name:'entSummary',description:'Fixed read query'}]}})),authorizedResource:async()=>({config:{toolType:'CALCULATOR',managedProfile:'external-query',allowedTools:['entSummary'],toolEffects:{entSummary:'READ'}}}),request};
   const office=await startOfficeTools(actor,fixture.core,root,async()=>client as never,'https://workspace.example');const registration=fixture.registered();
   const call=async(name:string,args:unknown)=>await(await fetch(registration.transport.url.replace('/mcp','/conversations/c1/mcp'),{method:'POST',headers:{'content-type':'application/json',authorization:registration.transport.headers.Authorization},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json();
   try{
@@ -668,4 +668,41 @@ test('shared enterprise calculators are discoverable and executed under current 
     allowed=false;expect((await call('calculate_enterprise_tool',args)).error.message).toContain('UNAVAILABLE');
     const count=request.mock.calls.length;expect((await call('calculate_enterprise_tool',{...args,resourceId:'../../other'})).error.message).toContain('ID_INVALID');expect(request.mock.calls.length).toBe(count);
   }finally{await office.stop();await fixture.close()}
+});
+
+
+test('existing office-only conversations can discover and execute authorized business reads, with revocation and writes denied', async () => {
+  const fixture=await coreFixture(), root=await profileRoot();
+  const resourceId='22222222-2222-4222-8222-222222222222';
+  let allowed=true, effect='READ';
+  const relay=vi.fn(async (_id:string, raw:string, _headers:unknown, _signal:unknown, conversation:string) => {
+    expect(conversation).toBe('c1');
+    const call=JSON.parse(raw);
+    return new Response(JSON.stringify({result:call.method==='tools/list'
+      ?{tools:[{name:'ledger',description:'Monthly ledger',inputSchema:{type:'object',properties:{page:{type:'integer'}},required:['page']}},{name:'submit',inputSchema:{type:'object'}}]}
+      :{content:[{type:'text',text:JSON.stringify({rows:[],page:call.params.arguments.page})}]}}));
+  });
+  const connection=vi.fn(async()=>{});
+  const client={me:async()=>({userId:actor.userId}),resources:async(type:string)=>type==='MCP'?[{id:resourceId,name:'Authorized ledger',version:2}]:[],
+    authorizedResource:async(id:string,type:string)=>{
+      if(!allowed || id!==resourceId || type!=='MCP')throw Error('RESOURCE_USE_DENIED');
+      return {version:2,name:'Authorized ledger',config:{managedProfile:'external-query',allowedTools:['ledger','submit'],toolEffects:{ledger:effect,submit:'WRITE'}}};
+    },readyMcpConnection:async()=>({id:'connection-id'}),authorizedMcpConnection:connection,relayMcp:relay};
+  const office=await startOfficeTools(actor,fixture.core,root,async()=>client as never,'https://workspace.example');
+  const registration=fixture.registered();
+  const call=async(name:string,args:unknown)=>await(await fetch(registration.transport.url.replace('/mcp','/conversations/c1/mcp'),{method:'POST',headers:{'content-type':'application/json',authorization:registration.transport.headers.Authorization},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json();
+  try {
+    const context=JSON.parse((await call('office_context',{})).result.content[0].text);
+    expect(context.enterpriseQueries.sources[0]).toMatchObject({resourceId,callWith:'query_enterprise_data',status:'available',tools:[{name:'ledger',inputSchema:{required:['page']}}]});
+    const result=JSON.parse((await call('query_enterprise_data',{resourceId,toolName:'ledger',arguments:{page:3}})).result.content[0].text);
+    expect(JSON.parse(result.result.content[0].text)).toEqual({rows:[],page:3});
+    expect(connection).toHaveBeenCalledWith('connection-id',resourceId);
+    const before=relay.mock.calls.length;
+    expect((await call('query_enterprise_data',{resourceId,toolName:'submit',arguments:{}})).error.message).toBe('BUSINESS_QUERY_READ_ONLY_REQUIRED');
+    effect='WRITE';
+    expect((await call('query_enterprise_data',{resourceId,toolName:'ledger',arguments:{}})).error.message).toBe('BUSINESS_QUERY_READ_ONLY_REQUIRED');
+    allowed=false;
+    expect((await call('query_enterprise_data',{resourceId,toolName:'ledger',arguments:{}})).error.message).toBe('RESOURCE_USE_DENIED');
+    expect(relay.mock.calls.length).toBe(before);
+  }finally{await office.stop();await fixture.close();}
 });

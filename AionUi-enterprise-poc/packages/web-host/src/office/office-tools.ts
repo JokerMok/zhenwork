@@ -97,6 +97,11 @@ async function authorizedQueryCatalog(client: Rc2GatewayClient, conversation: st
   const sources = await Promise.all(
     catalog.slice(0, 8).map(async (item) => {
       try {
+        const resource = await client.authorizedResource(item.id, 'MCP') as { config?: Record<string, unknown> };
+        const config = resource.config || {};
+        const effects = config.toolEffects as Record<string, unknown> | undefined;
+        if (config.managedProfile !== 'external-query' || !Array.isArray(config.allowedTools)) throw new Error('Read query unavailable');
+        const allowedTools = config.allowedTools;
         const connection = await client.readyMcpConnection(item.id);
         const response = await client.relayMcp(
           connection.id,
@@ -106,19 +111,23 @@ async function authorizedQueryCatalog(client: Rc2GatewayClient, conversation: st
           conversation
         );
         const body = (await response.json()) as {
-          result?: { tools?: Array<{ name?: unknown; description?: unknown }> };
+          result?: { tools?: Array<{ name?: unknown; description?: unknown; inputSchema?: unknown }> };
         };
         if (!response.ok || !Array.isArray(body.result?.tools)) throw new Error('Unavailable');
         return {
+          resourceId: item.id,
           name: item.name,
           version: item.version,
           status: 'available',
+          callWith: 'query_enterprise_data',
           tools: body.result.tools.slice(0, 64).flatMap((tool) =>
-            typeof tool.name === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(tool.name)
+            typeof tool.name === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(tool.name) &&
+            allowedTools.includes(tool.name) && effects?.[tool.name] === 'READ'
               ? [
                   {
                     name: tool.name,
                     description: typeof tool.description === 'string' ? tool.description.slice(0, 400) : '',
+                    inputSchema: tool.inputSchema,
                   },
                 ]
               : []
@@ -136,7 +145,7 @@ async function authorizedQueryCatalog(client: Rc2GatewayClient, conversation: st
   );
   return {
     instruction:
-      'These are REAL tools/list results under current employee/task authorization, not Skills. For business data first use ToolSearch with ONE exact tool name below, without company/source labels or other search words; then call its returned business tool with its schema. Never scan files/environment or guess commands to find credentials. Report unavailable sources honestly.',
+      'These are CURRENT authorized READ query schemas, callable through the office connection already mounted in this conversation. Use ToolSearch with the exact name query_enterprise_data, then call it with source.resourceId, toolName and arguments matching that tool inputSchema. Do not search for ledger or other remote tool names directly; they need not be separately mounted. Read this context again on each new request. Unavailable sources are not callable; do not ask for refresh as a remedy. Never scan files/environment or guess commands to find credentials. Report unavailable sources honestly.',
     sources,
     sourceCount: catalog.length,
     shownSourceLimit: 8,
@@ -374,6 +383,20 @@ const tools = [
     },
   },
   {
+    name: 'query_enterprise_data',
+    description:
+      'Execute a current employee-authorized READ business query, including ledger or companyData, through this office connection. First refresh office_context.enterpriseQueries for source resourceId, exact toolName and inputSchema. It works in existing expert conversations without a separate business MCP mount. Never guess a source or mix enterprises. Each call rechecks resource, connection, READ allowlist and current task authorization. No writes or submissions.',
+    inputSchema: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        resourceId: { type: 'string', pattern: '^[0-9a-fA-F-]{36}$' },
+        toolName: { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,100}$' },
+        arguments: { type: 'object' },
+      },
+      required: ['resourceId', 'toolName', 'arguments'],
+    },
+  },
+  {
     name: 'calculate_enterprise_tool',
     description:
       'Execute an authorized enterprise CALCULATOR from office_context.enterpriseCalculators. Use its real resourceId; never treat a TOOL as a Skill or run guessed commands. Decimal strings are calculated with BigDecimal on RC2. USE, tool status and employee/task authorization are rechecked every call. No external side effects.',
@@ -423,7 +446,7 @@ const tools = [
   {
     name: 'office_context',
     description:
-      'Get the actual output workspace and authorized Skill/knowledge/calculator/business MCP tool names before a task. For enterprise business queries use ToolSearch with ONE exact tool name from enterpriseQueries, then its actual business tool. Do not search Skills or scan environment for business connectors.',
+      'Get the actual output workspace and authorized Skill/knowledge/calculator/business MCP tool names before a task. For enterprise business queries load query_enterprise_data and use the actual source resourceId, toolName and inputSchema from enterpriseQueries. Do not search Skills or scan environment for business connectors.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -1057,6 +1080,25 @@ export async function startOfficeTools(
               formats
             );
           } else value = await data.analysis(String(args.analysisId));
+        } else if (tool === 'query_enterprise_data') {
+          const resourceId = String(args.resourceId || ''), toolName = String(args.toolName || '');
+          if (!/^[0-9a-f-]{36}$/i.test(resourceId) || !/^[A-Za-z0-9_.-]{1,100}$/.test(toolName) ||
+              !args.arguments || typeof args.arguments !== 'object' || Array.isArray(args.arguments))
+            throw new Error('BUSINESS_QUERY_ARGUMENTS_INVALID');
+          const resource = await client.authorizedResource(resourceId, 'MCP') as { name?: string; version?: number; config?: Record<string, unknown> };
+          const config = resource.config || {}, effects = config.toolEffects as Record<string, unknown> | undefined;
+          if (config.managedProfile !== 'external-query' || !Array.isArray(config.allowedTools) ||
+              !config.allowedTools.includes(toolName) || effects?.[toolName] !== 'READ')
+            throw new Error('BUSINESS_QUERY_READ_ONLY_REQUIRED');
+          const connection = await client.readyMcpConnection(resourceId);
+          await client.authorizedMcpConnection(connection.id, resourceId);
+          const response = await client.relayMcp(connection.id, JSON.stringify({
+            jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: toolName, arguments: args.arguments },
+          }), {}, abort.signal, conversation);
+          const result = await response.json() as { error?: unknown; result?: { isError?: boolean } };
+          if (!response.ok || result.error || !result.result || result.result.isError)
+            throw new Error('BUSINESS_QUERY_UPSTREAM_FAILED');
+          value = { source: { resourceId, name: resource.name, version: resource.version }, toolName, result: result.result };
         } else if (tool === 'office_context') {
           const knowledge = await knowledgeContext(conversation, client);
           const taskContext = record(await taskOfficeContext(profileRoot, actor, conversation));
@@ -2111,6 +2153,7 @@ export async function startOfficeTools(
         'task_checkpoint',
         'office_context',
         'calculate_enterprise_tool',
+        'query_enterprise_data',
         'read_document',
         'inspect_office_document',
         'revise_office_document',
