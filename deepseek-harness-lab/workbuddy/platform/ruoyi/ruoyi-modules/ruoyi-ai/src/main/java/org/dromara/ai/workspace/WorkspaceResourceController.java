@@ -27,8 +27,18 @@ public class WorkspaceResourceController {
     private long subject(String value){try{return Long.parseLong(value);}catch(NumberFormatException e){throw new WorkspaceDenied(400,"InvalidShareSubject");}}
     private long actor(){var actor=principals.current();if(actor.mustChangePassword())throw new WorkspaceDenied(403,"PasswordChangeRequired");return actor.userId();}
     @PostMapping("/resources") public R<?> create(@Valid @RequestBody Create input){return R.ok(resources.create(actor(),input.resourceType(),input.name(),Objects.toString(input.description(),""),Boolean.TRUE.equals(input.enterprise()),input.config(),input.idempotencyKey()));}
-    @GetMapping("/resources") public R<?> list(@RequestParam(defaultValue="ASSISTANT") String type,@RequestParam(defaultValue="mine") String scope,@RequestParam(defaultValue="1") int page){return R.ok(resources.list(actor(),type,scope,page));}
-    @GetMapping("/resources/{id}") public R<?> get(@PathVariable UUID id,@RequestParam(defaultValue="false") boolean active){return R.ok(active?resources.active(id,actor()):resources.get(id,actor()));}
+    @GetMapping("/resources") public R<?> list(@RequestParam(defaultValue="ASSISTANT") String type,
+        @RequestParam(defaultValue="mine") String scope,@RequestParam(defaultValue="1") int page,
+        @RequestParam(defaultValue="false") boolean paged){
+        long user=actor();
+        return R.ok(paged?resources.listPage(user,type,scope,page):resources.list(user,type,scope,page));
+    }
+    @GetMapping("/resources/dependency-options") public R<?> dependencyOptions(@RequestParam List<UUID> ids){
+        return R.ok(resources.dependencyOptions(actor(),ids));
+    }
+    @GetMapping("/resources/{id}") public R<?> get(@PathVariable UUID id,@RequestParam(defaultValue="false") boolean active){
+        return R.ok(active?resources.active(id,actor()):resources.get(id,actor()));
+    }
     @GetMapping("/resources/{id}/versions") public R<?> versions(@PathVariable UUID id){return R.ok(resources.versions(id,actor()));}
     @GetMapping("/resources/{id}/versions/{version}") public R<?> version(@PathVariable UUID id,@PathVariable @Min(1) int version){return R.ok(resources.version(id,version,actor()));}
     @GetMapping("/resources/{id}/readiness") public R<?> readiness(@PathVariable UUID id){return R.ok(readiness.check(id,actor()));}

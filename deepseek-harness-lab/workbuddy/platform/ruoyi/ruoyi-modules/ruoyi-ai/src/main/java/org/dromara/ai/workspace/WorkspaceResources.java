@@ -50,7 +50,17 @@ public class WorkspaceResources {
             jdbc.update("INSERT INTO ai_command(actor_user_id,operation,idempotency_key,input_hash,result) VALUES(?,'resource.create',?,?,?::jsonb)",actor,key,digest,JsonUtils.toJsonString(Map.of("id",resource.toString())));audit(actor,"resource.created",resource,Map.of("type",type));return resource;
         });return get(id,actor);
     }
-    public Map<String,Object> get(UUID id,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.VIEW);int version=((Number)(guard.owner(row,actor)||guard.acl(id,actor,AiResourceGuard.Action.EDIT)?row.get("latest_version"):row.get("published_version"))).intValue();var v=guard.version(id,version,actor,AiResourceGuard.Action.VIEW);return dto(row,v,version,actor,true);}
+    public Map<String,Object> get(UUID id,long actor){
+        return get(id,actor,true);
+    }
+    private Map<String,Object> get(UUID id,long actor,boolean content){
+        var row=guard.require(id,actor,AiResourceGuard.Action.VIEW);
+        var versionValue=guard.owner(row,actor)||guard.acl(id,actor,AiResourceGuard.Action.EDIT)
+            ?row.get("latest_version"):row.get("published_version");
+        if(!(versionValue instanceof Number number))throw new WorkspaceDenied(404,"VersionNotFound");
+        int version=number.intValue();
+        return dto(row,guard.version(id,version,actor,AiResourceGuard.Action.VIEW),version,actor,content);
+    }
     public Map<String,Object> active(UUID id,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.USE);readiness.requireDependencies(id,row.get("resource_type").toString(),actor);int version=((Number)row.get("published_version")).intValue();var v=guard.version(id,version,actor,AiResourceGuard.Action.USE);return dto(row,v,version,actor,true);}
     public List<Map<String,Object>> versions(UUID id,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.VIEW);if(!guard.owner(row,actor)&&!guard.acl(id,actor,AiResourceGuard.Action.EDIT))throw new WorkspaceDenied(403,"VersionHistoryRequiresEdit");return jdbc.queryForList("SELECT version,review_state,content_hash,created_by::text,created_at::text FROM ai_resource_version WHERE resource_id=? ORDER BY version DESC LIMIT 200",id);}
     public Map<String,Object> version(UUID id,int version,long actor){var row=guard.require(id,actor,AiResourceGuard.Action.VIEW);if(!guard.owner(row,actor)&&!guard.acl(id,actor,AiResourceGuard.Action.EDIT))throw new WorkspaceDenied(403,"VersionHistoryRequiresEdit");return dto(row,guard.version(id,version,actor,AiResourceGuard.Action.VIEW),version,actor,true);}
@@ -60,13 +70,54 @@ public class WorkspaceResources {
         if("ASSISTANT".equals(row.get("resource_type")))value.put("avatar",JsonUtils.parseMap(version.get("config").toString()).getOrDefault("avatar","✦"));value.put("id",row.get("id").toString());value.put("ownerUserId",row.get("owner_user_id")==null?null:row.get("owner_user_id").toString());value.put("version",number);value.put("publishedVersion",row.get("published_version"));value.put("securityDisabled",row.get("security_disabled"));value.put("reviewState",version.get("review_state"));value.put("updatedAt",row.get("updated_at").toString());
         List<String> actions=new ArrayList<>();for(var action:AiResourceGuard.Action.values())if(action!=AiResourceGuard.Action.GOVERN)try{guard.require((UUID)row.get("id"),actor,action);actions.add(action.name());}catch(WorkspaceDenied ignored){}value.put("actions",actions);if(content)value.put("config",JsonUtils.parseMap(version.get("config").toString()));return value;
     }
+    public record ResourcePage(List<Map<String,Object>> items,boolean hasMore) {}
+
     public List<Map<String,Object>> list(long actor,String type,String scope,int page){
-        if(!TYPES.contains(type)||!Set.of("mine","shared","public","enterprise","available").contains(scope))throw new WorkspaceDenied(400,"InvalidResourceFilter");permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":view");
-        if(scope.equals("available"))return available(actor,type,page);
-        if(scope.equals("enterprise"))permissions.require(actor,"ai:resource:enterprise");String predicate=switch(scope){case "enterprise"->"r.owner_type='ENTERPRISE' AND ? IS NOT NULL";case "mine"->"r.owner_type='USER' AND r.owner_user_id=?";case "public"->"r.visibility='ENTERPRISE_PUBLIC' AND r.lifecycle_state='ACTIVE' AND r.published_version IS NOT NULL AND ? IS NOT NULL";default->"r.published_version IS NOT NULL AND EXISTS(SELECT 1 FROM ai_effective_resource_acl a WHERE a.resource_id=r.id AND a.action='VIEW' AND ((a.subject_type='USER' AND a.subject_id=?) OR (a.subject_type='ROLE' AND a.subject_id IN(SELECT role_id FROM sys_user_role WHERE user_id=?)) OR (a.subject_type='DEPARTMENT' AND a.subject_id=(SELECT dept_id FROM sys_user WHERE user_id=?))))";};
-        List<Object> args=new ArrayList<>();args.add(type);args.add(actor);if(scope.equals("shared")){args.add(actor);args.add(actor);}args.add((Math.min(1000,Math.max(1,page))-1)*30);
-        var ids=jdbc.queryForList("SELECT r.id FROM ai_resource r WHERE r.lifecycle_state<>'ARCHIVED' AND r.resource_type=? AND "+predicate+" ORDER BY r.updated_at DESC LIMIT 30 OFFSET ?",UUID.class,args.toArray());List<Map<String,Object>> result=new ArrayList<>();for(UUID id:ids)try{var item=get(id,actor);item.remove("config");result.add(item);}catch(WorkspaceDenied ignored){}return result;
+        if("available".equals(scope)&&TYPES.contains(type)){
+            permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":view");
+            return available(actor,type,page);
+        }
+        return listPage(actor,type,scope,page).items();
     }
+
+    public ResourcePage listPage(long actor,String type,String scope,int page){
+        if(!TYPES.contains(type)||!Set.of("mine","shared","public","enterprise").contains(scope))
+            throw new WorkspaceDenied(400,"InvalidResourceFilter");
+        permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":view");
+        if(scope.equals("enterprise"))permissions.require(actor,"ai:resource:enterprise");
+        String predicate=switch(scope){
+            case "enterprise"->"r.owner_type='ENTERPRISE' AND ? IS NOT NULL";
+            case "mine"->"r.owner_type='USER' AND r.owner_user_id=?";
+            case "public"->"r.visibility='ENTERPRISE_PUBLIC' AND r.lifecycle_state='ACTIVE' AND r.published_version IS NOT NULL AND ? IS NOT NULL";
+            default->"r.published_version IS NOT NULL AND EXISTS(SELECT 1 FROM ai_effective_resource_acl a WHERE a.resource_id=r.id AND a.action='VIEW' AND ((a.subject_type='USER' AND a.subject_id=?) OR (a.subject_type='ROLE' AND a.subject_id IN(SELECT role_id FROM sys_user_role WHERE user_id=?)) OR (a.subject_type='DEPARTMENT' AND a.subject_id=(SELECT dept_id FROM sys_user WHERE user_id=?))))";
+        };
+        List<Object> args=new ArrayList<>();
+        args.add(type);
+        args.add(actor);
+        if(scope.equals("shared")){
+            args.add(actor);
+            args.add(actor);
+        }
+        args.add((Math.min(1000,Math.max(1,page))-1)*30);
+        var ids=jdbc.queryForList("SELECT r.id FROM ai_resource r WHERE r.lifecycle_state<>'ARCHIVED' AND r.resource_type=? AND "+predicate+" ORDER BY r.updated_at DESC,r.id LIMIT 31 OFFSET ?",UUID.class,args.toArray());
+        List<Map<String,Object>> items=new ArrayList<>();
+        for(UUID id:ids.stream().limit(30).toList()){
+            try{items.add(get(id,actor,false));}
+            catch(WorkspaceDenied ignored){/* Authorization may change after selecting the page. */}
+        }
+        return new ResourcePage(items,ids.size()>30);
+    }
+    public List<Map<String,Object>> dependencyOptions(long actor,List<UUID> ids){
+        permissions.require(actor,"ai:resource:enterprise");
+        if(ids.size()>40)throw new WorkspaceDenied(400,"TooManyDependencies");
+        List<Map<String,Object>> items=new ArrayList<>();
+        for(UUID id:new LinkedHashSet<>(ids)){
+            try{items.add(get(id,actor,false));}
+            catch(WorkspaceDenied ignored){/* Missing and unauthorized targets remain indistinguishable. */}
+        }
+        return items;
+    }
+
     /** Canonical effective catalog. Execution reuses the same guard and published version checks. */
     public List<Map<String,Object>> available(long actor,String type,int page){
         permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":use");

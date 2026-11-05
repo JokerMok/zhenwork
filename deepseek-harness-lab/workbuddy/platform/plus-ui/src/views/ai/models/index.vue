@@ -5,10 +5,10 @@
 <el-skeleton v-if="loading" :rows="6" animated />
 <el-table v-else :data="rows" empty-text="尚未登记模型"><el-table-column prop="name" label="显示名称" min-width="140" /><el-table-column prop="provider_name" label="Provider" min-width="130" /><el-table-column prop="code" label="实际 Model ID" min-width="220" /><el-table-column label="验证状态" width="140"><template #default="{row}"><el-tag :type="row.enabled && row.verified_status==='VERIFIED'?'success':'info'">{{ !row.enabled?'已停用':row.verified_status==='VERIFIED'?'连接已验证':'待验证' }}</el-tag></template></el-table-column><el-table-column label="操作" width="330"><template #default="{row}"><el-button link type="primary" @click="edit(row as ModelRow)">编辑</el-button><el-tooltip :disabled="row.enabled&&row.streaming&&row.tools" content="企业默认模型须启用，并支持流式输出和工具调用"><span tabindex="0"><el-button link type="primary" :disabled="!row.enabled||!row.streaming||!row.tools" @click="setDefault(row as ModelRow)">设为企业默认</el-button></span></el-tooltip><el-button link type="primary" @click="openGrants(row as ModelRow)">授权</el-button><el-button link type="primary" @click="openTests(row as ModelRow)">验证连接</el-button></template></el-table-column></el-table>
 <div class="paging"><el-button :disabled="page===1||loading" @click="page--;load()">上一页</el-button><span>第 {{ page }} 页</span><el-button :disabled="rows.length<30||loading" @click="page++;load()">下一页</el-button></div>
-<el-dialog v-model="dialog" :title="editing?'编辑模型':'新增模型'" width="640px" destroy-on-close :before-close="closeEditor" :close-on-click-modal="false"><el-form label-position="top">
+<el-dialog v-model="dialog" :title="editing?'编辑模型':'新增模型'" width="640px" destroy-on-close :before-close="closeEditor" :close-on-click-modal="false"><el-form label-position="top" :disabled="saving">
 <el-form-item label="Provider" required><el-select v-model="form.providerId" placeholder="选择 Provider" filterable><el-option v-for="p in providers" :key="p.id" :label="p.name" :value="p.id" /></el-select></el-form-item>
 <el-form-item label="实际 Model ID" required><el-input v-model="form.code" placeholder="服务商的模型 ID 或推理接入点 ID" /></el-form-item><el-form-item label="显示名称" required><el-input v-model="form.name" placeholder="员工看到的模型名称" /></el-form-item>
-<div class="grid"><el-form-item label="上下文窗口（Token）"><el-input-number v-model="form.contextWindow" :min="1024" :max="2000000" /></el-form-item><el-form-item label="最大输出 Token"><el-input-number v-model="form.maxOutputTokens" :min="1" :max="32768" /></el-form-item><el-form-item label="流式输出"><el-switch v-model="form.streaming" /></el-form-item><el-form-item label="Tool Calling 能力"><el-switch v-model="form.tools" /></el-form-item><el-form-item label="Temperature（可选）"><el-input v-model="temperature" placeholder="留空使用默认值" /></el-form-item><el-form-item label="Top P（可选）"><el-input v-model="topP" placeholder="0–1；留空使用默认值" /></el-form-item><el-form-item label="计费币种"><el-select v-model="currency"><el-option label="人民币 CNY" value="CNY" /><el-option label="美元 USD" value="USD" /></el-select></el-form-item><el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item><el-form-item label="每百万输入 Token 价格（可选）"><el-input v-model="inputPrice" placeholder="未设置" /></el-form-item><el-form-item label="每百万输出 Token 价格（可选）"><el-input v-model="outputPrice" placeholder="未设置" /></el-form-item></div>
+<div class="grid"><el-form-item label="上下文窗口（Token）"><el-input-number v-model="form.contextWindow" :min="1024" :max="2000000" /></el-form-item><el-form-item label="最大输出 Token"><el-input-number v-model="form.maxOutputTokens" :min="1" :max="32768" /></el-form-item><el-form-item label="流式输出"><el-switch v-model="form.streaming" /></el-form-item><el-form-item label="Tool Calling 能力"><el-switch v-model="form.tools" /></el-form-item><el-form-item label="Temperature（可选）"><el-input v-model="form.temperature" placeholder="留空使用默认值" /></el-form-item><el-form-item label="Top P（可选）"><el-input v-model="form.topP" placeholder="0–1；留空使用默认值" /></el-form-item><el-form-item label="计费币种"><el-select v-model="form.currency"><el-option label="人民币 CNY" value="CNY" /><el-option label="美元 USD" value="USD" /></el-select></el-form-item><el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item><el-form-item label="每百万输入 Token 价格（可选）"><el-input v-model="form.inputPrice" placeholder="未设置" /></el-form-item><el-form-item label="每百万输出 Token 价格（可选）"><el-input v-model="form.outputPrice" placeholder="未设置" /></el-form-item></div>
 <el-alert title="保存修改会终止该模型的在途任务，并重置验证状态。" type="warning" :closable="false" /><el-alert v-if="saveError" :title="saveError" type="error" :closable="false" /></el-form><template #footer><el-button :disabled="saving" @click="closeEditor()">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存模型</el-button></template></el-dialog>
 <el-dialog v-model="grantDialog" :title="'模型授权 · '+selected?.name" width="720px"><el-alert title="授权只决定模型使用资格，不授予他人的助手、知识或凭据权限。撤销会取消该模型的在途任务。" type="info" :closable="false" /><el-form label-position="top" class="grant-form"><el-form-item label="授权范围"><el-select v-model="subjectType" @change="changeTargetType"><el-option label="全体员工" value="ALL" /><el-option label="用户" value="USER" /><el-option label="部门" value="DEPARTMENT" /><el-option label="角色" value="ROLE" /></el-select></el-form-item><el-form-item v-if="subjectType!=='ALL'" label="选择授权对象" required>
 <el-tree-select v-if="subjectType==='DEPARTMENT'" v-model="subjectId" :data="departmentOptions" node-key="id" :props="{value:'id',label:'name',children:'children'}" filterable check-strictly placeholder="选择部门" />
@@ -21,15 +21,78 @@ import {useUnsavedDialog} from '@/hooks/dialog/useUnsavedDialog';
 import {workspaceLabel} from '@/utils/workspacePresentation';
 import {modelApi,type ModelRow,type ProviderRow,type GrantRow,type TestRow} from '@/features/workspace/models';
 import request from '@/utils/request';
-const rows=ref<ModelRow[]>([]),providers=ref<ProviderRow[]>([]),loading=ref(true),error=ref(''),page=ref(1),dialog=ref(false),saving=ref(false),saveError=ref(''),editing=ref<string>();
+const rows=ref<ModelRow[]>([]),providers=ref<Pick<ProviderRow,'id'|'name'>[]>([]),loading=ref(true),error=ref(''),page=ref(1),dialog=ref(false),saving=ref(false),saveError=ref(''),editing=ref<string>();
 const selected=ref<ModelRow>(),grants=ref<GrantRow[]>([]),tests=ref<TestRow[]>([]),grantDialog=ref(false),testDialog=ref(false),grantLoading=ref(false),testing=ref(false),searching=ref(false);
 const subjectType=ref('USER'),subjectId=ref(''),lookup=ref(''),targets=ref<{id:string;name:string}[]>([]);
-const temperature=ref(''),topP=ref(''),currency=ref('CNY'),inputPrice=ref(''),outputPrice=ref('');
-const defaults=()=>({providerId:'',code:'',name:'',enabled:true,streaming:true,tools:true,vision:false,contextWindow:32000,maxOutputTokens:2048,expectedVersion:undefined as number|undefined});const form=reactive(defaults());
+const defaults=()=>({providerId:'',code:'',name:'',enabled:true,streaming:true,tools:true,vision:false,
+  contextWindow:32000,maxOutputTokens:2048,expectedVersion:undefined as number|undefined,
+  temperature:'',topP:'',currency:'CNY',inputPrice:'',outputPrice:''});
+const form=reactive(defaults());
 const closeEditor=useUnsavedDialog(dialog,()=>form,saving);
 async function load(){loading.value=true;error.value='';try{rows.value=(await modelApi.models(page.value)).data;}catch{error.value='模型加载失败，请重试。';}finally{loading.value=false;}}
-async function edit(row?:ModelRow){try{providers.value=(await modelApi.providers()).data;}catch{ElMessage.error('无法加载 Provider');return;}editing.value=row?.id;Object.assign(form,row?{providerId:row.provider_id,code:row.code,name:row.name,enabled:row.enabled,streaming:row.streaming,tools:row.tools,vision:row.vision,contextWindow:row.context_window,maxOutputTokens:row.max_output_tokens,expectedVersion:row.version}:defaults());const parameters=JSON.parse(row?.default_parameters||'{}'),cost=JSON.parse(row?.cost_config||'{}');temperature.value=parameters.temperature===undefined?'':String(parameters.temperature);topP.value=parameters.top_p===undefined?'':String(parameters.top_p);currency.value=cost.currency||'CNY';inputPrice.value=cost.inputPerMillion===undefined?'':String(cost.inputPerMillion);outputPrice.value=cost.outputPerMillion===undefined?'':String(cost.outputPerMillion);saveError.value='';dialog.value=true;}
-async function save(){if(saving.value)return;if(!form.providerId||!form.code||!form.name){saveError.value='请选择 Provider，并填写模型 ID 和名称。';return;}const parameters:Record<string,number>={},cost:Record<string,string|number>={currency:currency.value};if(temperature.value)parameters.temperature=Number(temperature.value);if(topP.value)parameters.top_p=Number(topP.value);if(inputPrice.value)cost.inputPerMillion=Number(inputPrice.value);if(outputPrice.value)cost.outputPerMillion=Number(outputPrice.value);if([...Object.values(parameters),...Object.values(cost).filter(x=>typeof x==='number')].some(x=>!Number.isFinite(x))){saveError.value='参数和价格必须填写数字。';return;}saving.value=true;try{await modelApi.saveModel(editing.value,{...form,defaultParameters:parameters,costConfig:cost});dialog.value=false;ElMessage.success('模型已保存');await load();}catch{saveError.value='保存失败，请检查参数或重新加载最新版本。';}finally{saving.value=false;}}
+
+async function loadProviders(row?:ModelRow) {
+  const options=new Map<string,Pick<ProviderRow,'id'|'name'>>();
+  for(let page=1;page<=1000;page++){
+    const {data}=await modelApi.providers(page);
+    for(const provider of data)options.set(provider.id,provider);
+    if(data.length<30)break;
+    if(page===1000)throw new Error('Provider 目录超过可加载范围。');
+  }
+  // A current binding remains readable even if a concurrent catalog edit moves it between pages.
+  if(row&&!options.has(row.provider_id))options.set(row.provider_id,{id:row.provider_id,name:row.provider_name});
+  return [...options.values()];
+}
+
+let opening=false;
+async function edit(row?:ModelRow){
+  if(opening)return;
+  opening=true;
+  try{
+    providers.value=await loadProviders(row);
+    const parameters=JSON.parse(row?.default_parameters||'{}'),cost=JSON.parse(row?.cost_config||'{}');
+    editing.value=row?.id;
+    Object.assign(form,defaults(),row?{
+      providerId:row.provider_id,code:row.code,name:row.name,enabled:row.enabled,streaming:row.streaming,
+      tools:row.tools,vision:row.vision,contextWindow:row.context_window,maxOutputTokens:row.max_output_tokens,
+      expectedVersion:row.version,temperature:String(parameters.temperature??''),topP:String(parameters.top_p??''),
+      currency:cost.currency||'CNY',inputPrice:String(cost.inputPerMillion??''),outputPrice:String(cost.outputPerMillion??'')
+    }:{});
+    saveError.value='';
+    dialog.value=true;
+  }catch{
+    ElMessage.error('无法加载模型或 Provider。');
+  }finally{
+    opening=false;
+  }
+}
+
+async function save(){
+  if(saving.value)return;
+  const {temperature,topP,currency,inputPrice,outputPrice,...model}=form;
+  if(!model.providerId||!model.code||!model.name){saveError.value='请选择 Provider，并填写模型 ID 和名称。';return;}
+  const parameters:Record<string,number>={},cost:Record<string,string|number>={currency};
+  if(temperature)parameters.temperature=Number(temperature);
+  if(topP)parameters.top_p=Number(topP);
+  if(inputPrice)cost.inputPerMillion=Number(inputPrice);
+  if(outputPrice)cost.outputPerMillion=Number(outputPrice);
+  if([...Object.values(parameters),...Object.values(cost).filter(x=>typeof x==='number')].some(x=>!Number.isFinite(x))){
+    saveError.value='参数和价格必须填写数字。';
+    return;
+  }
+  saving.value=true;
+  try{
+    await modelApi.saveModel(editing.value,{...model,defaultParameters:parameters,costConfig:cost});
+    closeEditor.markSaved();
+    dialog.value=false;
+    ElMessage.success('模型已保存');
+    await load();
+  }catch{
+    saveError.value='保存失败，请检查参数或重新加载最新版本。';
+  }finally{
+    saving.value=false;
+  }
+}
 async function openGrants(row:ModelRow){clearTimeout(targetTimer);++targetGeneration;searching.value=false;subjectType.value='USER';subjectId.value='';lookup.value='';targets.value=[];targetError.value='';selected.value=row;grantDialog.value=true;grantLoading.value=true;try{grants.value=(await modelApi.grants(row.id)).data;}catch{ElMessage.error('授权加载失败');}finally{grantLoading.value=false;}}
 const departmentOptions=ref<any[]>([]),targetError=ref('');let targetGeneration=0,targetTimer:ReturnType<typeof setTimeout>|undefined;
 async function changeTargetType(){clearTimeout(targetTimer);searching.value=false;subjectId.value='';lookup.value='';targets.value=[];targetError.value='';++targetGeneration;if(subjectType.value==='DEPARTMENT'){try{const r:any=await request({url:'/system/dept/list'});const items=r.data||r.rows||[];const map=new Map(items.map((x:any)=>[String(x.deptId),{id:String(x.deptId),parentId:String(x.parentId),name:x.deptName,children:[] as any[]}]));const roots:any[]=[];for(const n of map.values() as Iterable<any>){const parent:any=map.get(n.parentId);if(parent)parent.children.push(n);else roots.push(n)}departmentOptions.value=roots}catch{targetError.value='部门加载失败，请重新选择类型重试'}}}

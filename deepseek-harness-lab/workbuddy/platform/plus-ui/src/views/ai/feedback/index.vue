@@ -16,13 +16,7 @@
     <el-table v-loading="loading" :data="rows" empty-text="当前没有反馈记录">
       <el-table-column prop="created_at" label="提交时间" min-width="170" />
       <el-table-column prop="owner_user_id" label="员工 ID" min-width="110" />
-      <el-table-column label="任务 / 会话" min-width="180">
-        <template #default="{ row }">
-          <el-link :href="row.conversation_path" target="_blank" rel="noopener noreferrer" type="primary">
-            {{ row.task_id }}
-          </el-link>
-        </template>
-      </el-table-column>
+      <el-table-column prop="task_id" label="任务 ID" min-width="180" />
       <el-table-column label="分类" min-width="120"><template #default="{ row }">{{ label(row.category) }}</template></el-table-column>
       <el-table-column label="状态" min-width="110"><template #default="{ row }"><el-tag>{{ label(row.status) }}</el-tag></template></el-table-column>
       <el-table-column label="任务结果" min-width="100"><template #default="{ row }">{{ taskState(row.actual_task_state) }}</template></el-table-column>
@@ -46,10 +40,9 @@
       <el-skeleton v-if="detailLoading" :rows="8" animated />
       <template v-else-if="detail">
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="任务 / 会话">
-            <el-link :href="detail.conversation_path" target="_blank" rel="noopener noreferrer" type="primary">
-              {{ detail.task_id }}
-            </el-link>
+          <el-descriptions-item label="任务 ID">
+            <span>{{ detail.task_id }}</span>
+            <el-button link type="primary" class="ml-2" @click="copyTaskId(detail.task_id)">复制任务 ID</el-button>
           </el-descriptions-item>
           <el-descriptions-item label="员工 ID">{{ detail.owner_user_id }}</el-descriptions-item>
           <el-descriptions-item label="反馈分类">{{ label(detail.category) }}</el-descriptions-item>
@@ -107,6 +100,15 @@
 
 <script setup lang="ts">
 import request from '@/utils/request';
+
+async function copyTaskId(id: string) {
+  try {
+    await navigator.clipboard.writeText(id);
+    ElMessage.success('任务 ID 已复制');
+  } catch {
+    ElMessage.error('复制失败，请手动选中任务 ID 复制。');
+  }
+}
 
 type Row = Record<string, any>;
 type VersionItem = { id?: string; version?: number; type?: string };

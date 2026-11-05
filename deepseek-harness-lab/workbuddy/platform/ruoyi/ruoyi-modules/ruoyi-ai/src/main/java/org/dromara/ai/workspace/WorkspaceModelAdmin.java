@@ -20,7 +20,7 @@ public class WorkspaceModelAdmin {
     private static final String PROVIDER_COLUMNS="id,name,provider_type,base_url,protocol,enabled,version,timeout_seconds,retry_count,secret_updated_at,(secret_cipher<>'') AS configured";
     private static final String MODEL_COLUMNS="m.id,m.provider_id,m.code,m.name,m.enabled,m.streaming,m.tools,m.vision,m.context_window,m.max_output_tokens,m.version,m.verified_status,m.default_parameters::text,m.cost_config::text,p.name AS provider_name";
     private void audit(long actor,String action,UUID id){jdbc.update("INSERT INTO ai_security_event(id,actor_user_id,action,resource_id,metadata) VALUES(?,?,?,?, '{}'::jsonb)",UUID.randomUUID(),actor,action,id);}
-    public List<Map<String,Object>> providers(int page){return jdbc.queryForList("SELECT "+PROVIDER_COLUMNS+" FROM ai_provider ORDER BY created_at DESC LIMIT 30 OFFSET ?",offset(page));}
+    public List<Map<String,Object>> providers(int page){return jdbc.queryForList("SELECT "+PROVIDER_COLUMNS+" FROM ai_provider ORDER BY created_at DESC,id LIMIT 30 OFFSET ?",offset(page));}
     private int offset(int page){return (Math.max(1,Math.min(1000,page))-1)*30;}
     public Map<String,Object> provider(UUID id){var rows=jdbc.queryForList("SELECT "+PROVIDER_COLUMNS+" FROM ai_provider WHERE id=?",id);if(rows.isEmpty())throw new WorkspaceDenied(404,"ProviderNotFound");return rows.getFirst();}
     public Map<String,Object> saveProvider(UUID id,long actor,WorkspaceModelAdminController.Provider input){
