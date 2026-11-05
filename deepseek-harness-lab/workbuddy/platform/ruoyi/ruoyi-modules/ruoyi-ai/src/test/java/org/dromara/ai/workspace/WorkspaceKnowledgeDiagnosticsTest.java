@@ -15,7 +15,7 @@ class WorkspaceKnowledgeDiagnosticsTest {
   var fixture=fixture();UUID doc=UUID.randomUUID();when(fixture.jdbc.queryForList(startsWith("SELECT d.id::text"),eq(fixture.base))).thenReturn(List.of(scope(doc,2,2,"READY",3)));
   when(fixture.knowledge.diagnosticMatches(fixture.base,"secret-query",null,null)).thenReturn(List.of(hit(doc,2,"第 3 页",1)));
   var result=fixture.service.diagnose(fixture.base,7," secret-query ",null,null);assertEquals("HIT",result.get("outcome"));var candidate=((List<Map<String,Object>>)result.get("candidates")).getFirst();assertEquals("第 3 页",candidate.get("locationLabel"));assertEquals(true,candidate.get("returned"));
-  verify(fixture.access,atLeastOnce()).version(doc,2,7,AiResourceGuard.Action.EDIT);verify(fixture.jdbc).update(startsWith("INSERT INTO ai_security_event"),argThat((Object[] values)->!Arrays.toString(values).contains("secret-query")));
+  verify(fixture.access,atLeastOnce()).version(doc,2,7,AiResourceGuard.Action.EDIT);var metadata=org.mockito.ArgumentCaptor.forClass(String.class);verify(fixture.jdbc).update(startsWith("INSERT INTO ai_security_event"),any(UUID.class),eq(7L),eq(fixture.base),metadata.capture());var audit=org.dromara.common.json.utils.JsonUtils.parseMap(metadata.getValue());assertEquals(Set.of("queryHash","candidateCount","returnedCount"),audit.keySet());assertTrue(audit.get("queryHash").toString().matches("[0-9a-f]{64}"));assertEquals(1,((Number)audit.get("candidateCount")).intValue());assertEquals(1,((Number)audit.get("returnedCount")).intValue());assertFalse(metadata.getValue().contains("secret-query"));assertFalse(metadata.getValue().contains("matched content"));
  }
 
  @Test void distinguishesNoHitFromMissingIndex(){
