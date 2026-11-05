@@ -20,6 +20,7 @@ class WorkspaceSkillPackageTest {
         name: office-report
         description: Create a report from workspace files.
         version: 1.2.0
+        license: MIT
         ---
         Read the references and run the packaged script when needed.
         """;
@@ -38,6 +39,20 @@ class WorkspaceSkillPackageTest {
         assertEquals("assets/报销模板.xlsx", ((Map<?,?>) files.getFirst()).get("path"));
         assertEquals("base64", ((Map<?,?>) files.getFirst()).get("encoding"));
         assertEquals(64, ((Map<?,?>) files.getFirst()).get("sha256").toString().length());
+        assertEquals(64, config.get("packageSha256").toString().length());
+        assertEquals("MIT", ((Map<?,?>)config.get("manifest")).get("license"));
+    }
+
+    @Test
+    void packageDigestChangesWithSourcePathAndBytesAndOriginCannotBeSpoofed() {
+        var first=WorkspaceSkills.parse(Map.of("source",SOURCE,"files",List.of(Map.of("path","references/a.md","content","one"))));
+        var second=WorkspaceSkills.parse(Map.of("source",SOURCE,"files",List.of(Map.of("path","references/b.md","content","one"))));
+        var third=WorkspaceSkills.parse(Map.of("source",SOURCE,"files",List.of(Map.of("path","references/a.md","content","two"))));
+        assertNotEquals(first.get("packageSha256"),second.get("packageSha256"));
+        assertNotEquals(first.get("packageSha256"),third.get("packageSha256"));
+        assertThrows(WorkspaceDenied.class,()->WorkspaceSkills.parse(Map.of("source",SOURCE,"files",List.of(),"origin",Map.of("provider","GITHUB"))));
+        var trusted=WorkspaceSkills.parseTrusted(Map.of("source",SOURCE,"files",List.of()),Map.of("provider","GITHUB"));
+        assertEquals("GITHUB",((Map<?,?>)trusted.get("origin")).get("provider"));
     }
 
     @Test

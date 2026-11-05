@@ -9,6 +9,8 @@ import { removeManagedSkillCache } from './enterprise-skill-cleanup.js';
 import type { EnterpriseActor, EnterpriseCore } from './enterprise-gateway.js';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 import { enterpriseCoreBase, enterpriseProxyBindHost, enterpriseProxyHost } from './enterprise-core-address.js';
+import { dependencyDeclarations, evaluateCoreDependencies, validateCoreDependencyInventory,
+  type CoreDependencyProbe, type DependencyProbeResult } from './maintenance/core-dependency-probe.js';
 
 type Model = { id: string; code: string; name?: string;
   availableModels?: Array<{ id: string; code: string; name?: string }> };
@@ -20,7 +22,7 @@ type KnowledgeBinding = { baseId: string; version: number; name: string };
 type Assistant = CatalogItem & { instruction: string; modelId: string; modelCode: string;
   skillIds: string[]; mcpIds: string[]; knowledgeBases: KnowledgeBinding[] };
 type SkillResource = { id: string; name: string; source: string; version: number;
-  files: SkillFile[]; dependencyIds: string[] };
+  files: SkillFile[]; dependencyIds: string[]; packageSha256: string; dependencyProbe?: DependencyProbeResult };
 export type RuntimeResourceIssue = { type: 'SKILL' | 'MCP' | 'ASSISTANT'; id: string; code: string };
 
 type McpBinding = {resourceId: string; port: string; key: string; host: string; version: number; connectionId: string};
@@ -55,6 +57,13 @@ export async function trustedEnterpriseRead(core: EnterpriseCore, confirmation: 
 }
 
 const MCP_METADATA_METHODS = new Set(['initialize', 'notifications/initialized', 'ping', 'tools/list']);
+
+export type McpRuntimeFailureStage = 'resource' | 'connection' | 'authorization' | 'proxy' | 'route';
+export function mcpRuntimeFailureCode(stage: McpRuntimeFailureStage): string {
+  return { resource: 'RESOURCE_UNAVAILABLE', connection: 'CONNECTION_NOT_READY',
+    authorization: 'CONNECTION_UNAUTHORIZED', proxy: 'PROXY_START_FAILED',
+    route: 'PROXY_ROUTE_FAILED' }[stage];
+}
 
 const MAX_SYNC_SKILL_BYTES = 48 * 1024 * 1024;
 
@@ -164,12 +173,29 @@ function skillFiles(value: unknown): { files: SkillFile[]; decodedBytes: number 
   return { files, decodedBytes: bytes };
 }
 
-function declaredDependencyIssue(files: SkillFile[]): 'DEPENDENCY_UNVERIFIED' | null {
-  // The Web Host must not inspect its own Python/Node environment: Skills execute in the isolated Core image.
-  // Until Core exposes a read-only package diagnostic, keep declarations visible and explicitly unverified.
-  return files.some((file) => ['requirements.txt', 'requirements.lock', 'pyproject.toml', 'uv.lock',
-    'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'].includes(file.path))
-    ? 'DEPENDENCY_UNVERIFIED' : null;
+export function runtimeSkillPackageSha256(source: string, files: SkillFile[]): string {
+  const digest = createHash('sha256');
+  const update = (filePath: string, bytes: Buffer) => {
+    const name = Buffer.from(filePath, 'utf8');
+    const nameLength = Buffer.alloc(4);nameLength.writeUInt32BE(name.length);
+    const contentLength = Buffer.alloc(8);contentLength.writeBigUInt64BE(BigInt(bytes.length));
+    digest.update(nameLength);digest.update(name);digest.update(contentLength);digest.update(bytes);
+  };
+  digest.update('SKILL_PACKAGE_V1');
+  update('SKILL.md', Buffer.from(source, 'utf8'));
+  for (const file of [...files].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0)) {
+    update(file.path, file.encoding === 'base64' ? Buffer.from(file.content, 'base64') : Buffer.from(file.content, 'utf8'));
+    digest.update(Buffer.from([file.executable === true ? 1 : 0]));
+  }
+  return digest.digest('hex');
+}
+
+export function verifyRuntimeSkillPackageSha256(source: string, files: SkillFile[], expected: unknown): string {
+  const actual = runtimeSkillPackageSha256(source, files);
+  if (expected !== undefined && (typeof expected !== 'string' || !/^[0-9a-f]{64}$/.test(expected) || expected !== actual)) {
+    throw new Error('RC2 Skill package hash mismatch');
+  }
+  return actual;
 }
 
 function mergedIds(dependencies: string[], catalogItems: CatalogItem[]): string[] {
@@ -201,8 +227,11 @@ export async function syncEnterpriseWebResources(
   activeClient: () => Promise<Rc2GatewayClient>,
   relayClient: (conversationId?: string) => Promise<Rc2GatewayClient>,
   onCatalogChange?: () => void,
-  proxyCache?: EnterpriseMcpCache
-): Promise<{ stop: () => Promise<void>; invalidated: Promise<void>; issues: RuntimeResourceIssue[]; trustedConfirmation: (c:Record<string,unknown>)=>Promise<boolean> }> {
+  proxyCache?: EnterpriseMcpCache,
+  dependencyProbe?: CoreDependencyProbe
+): Promise<{ stop: () => Promise<void>; invalidated: Promise<void>; issues: RuntimeResourceIssue[];
+  dependencyProbes: Record<string, DependencyProbeResult>;
+  trustedConfirmation: (c:Record<string,unknown>)=>Promise<boolean> }> {
   const profile = enterpriseProfilePath(profileRoot, actor);
   const stage = await mkdtemp(path.join(profile, 'rc2-stage-'));
   await mkdir(stage, { recursive: true, mode: 0o700 });
@@ -291,8 +320,7 @@ export async function syncEnterpriseWebResources(
             !Number.isInteger(resource.version)) throw new Error('RC2 Skill invalid');
         const dependencyIds = stringIds(manifest?.dependencies);
         const skillPackage = skillFiles(resource.config?.files);
-        const dependencyIssue = declaredDependencyIssue(skillPackage.files);
-        if (dependencyIssue) issues.push({ type: 'SKILL', id: skillId, code: dependencyIssue });
+        const packageSha256 = verifyRuntimeSkillPackageSha256(source, skillPackage.files, resource.config?.packageSha256);
         const packageBytes = Buffer.byteLength(source) + skillPackage.decodedBytes;
         if (decodedSkillBytes + packageBytes > MAX_SYNC_SKILL_BYTES) {
           issues.push({ type: 'SKILL', id: skillId, code: 'PACKAGE_BUDGET_EXCEEDED' });
@@ -300,7 +328,7 @@ export async function syncEnterpriseWebResources(
         }
         decodedSkillBytes += packageBytes;
         skillResources.push({ id: skillId, name, source, version: resource.version,
-          files: skillPackage.files, dependencyIds });
+          files: skillPackage.files, dependencyIds, packageSha256 });
         for (const dependencyId of dependencyIds.toReversed()) {
           if (!visitedSkillIds.has(dependencyId) && !pendingSkillIds.includes(dependencyId)) {
             pendingSkillIds.unshift(dependencyId);
@@ -319,6 +347,40 @@ export async function syncEnterpriseWebResources(
     }
     for (const item of skillResources) if (!resolvedSkillIds.has(item.id)) {
       issues.push({ type: 'SKILL', id: item.id, code: 'DEPENDENCY_UNAVAILABLE' });
+    }
+    const dependencyProbes: Record<string, DependencyProbeResult> = {};
+    const probeSkills = skillResources.filter((item) => {
+      const declared = dependencyDeclarations(item.files);
+      return declared.declarations.length > 0 || declared.unsupported.length > 0;
+    });
+    let inventory = {};
+    if (probeSkills.length && dependencyProbe) {
+      try {
+        inventory = validateCoreDependencyInventory(await dependencyProbe({ core: {
+          port: core.port, ...(core.host ? { host: core.host } : {}),
+          ...(core.networkMode ? { networkMode: core.networkMode } : {}),
+        }, skills: probeSkills.map((item) => ({ id: item.id, version: item.version,
+          packageSha256: item.packageSha256, files: item.files })) }));
+      } catch { /* A failed or malformed read-only probe stays explicitly unverified. */ }
+    }
+    for (const item of probeSkills) {
+      const result: DependencyProbeResult = { resourceId: item.id, resourceVersion: item.version,
+        packageSha256: item.packageSha256, ...evaluateCoreDependencies(item.files, inventory) };
+      item.dependencyProbe = result;
+      dependencyProbes[item.id] = result;
+      if (result.state !== 'READY') {
+        issues.push({ type: 'SKILL', id: item.id, code: `DEPENDENCY_${result.state}` });
+        if (result.state === 'MISSING' || result.state === 'INCOMPATIBLE') resolvedSkillIds.delete(item.id);
+      }
+    }
+    let dependencyReduced = true;
+    while (dependencyReduced) {
+      dependencyReduced = false;
+      for (const item of skillResources) if (resolvedSkillIds.has(item.id) &&
+          item.dependencyIds.some((id) => !resolvedSkillIds.has(id))) {
+        resolvedSkillIds.delete(item.id);dependencyReduced = true;
+        issues.push({ type: 'SKILL', id: item.id, code: 'DEPENDENCY_UNAVAILABLE' });
+      }
     }
     const resolvedSkillResources = skillResources.filter((item) => resolvedSkillIds.has(item.id));
     const counts = new Map<string, number>();
@@ -350,9 +412,12 @@ export async function syncEnterpriseWebResources(
     }
     for (const mcpResourceId of mcpIds) {
       let mcpProxy: EnterpriseMcpProxy | undefined;
+      let mcpStage: McpRuntimeFailureStage = 'resource';
       try {
         const resource = await client.authorizedResource(mcpResourceId, 'MCP') as Resource;
+        mcpStage = 'connection';
         const connection = await client.readyMcpConnection(mcpResourceId);
+        mcpStage = 'authorization';
         await client.authorizedMcpConnection(connection.id, mcpResourceId);
         const cached=proxyCache?.get(mcpResourceId);
         if (cached && cached.binding.version === resource.version && cached.binding.connectionId === connection.id) {
@@ -361,6 +426,7 @@ export async function syncEnterpriseWebResources(
         if (cached) {
           proxyCache!.delete(mcpResourceId);await core.unregisterProxyPort?.(Number(cached.binding.port)).catch(()=>{});await cached.proxy.stop();
         }
+        mcpStage = 'proxy';
         mcpProxy = new EnterpriseMcpProxy({ connectionId: connection.id, requireConversationId: true,
         client: { relayMcp: async (connectionId, raw, headers, signal, conversationId) => {
           let stage = 'identity';
@@ -385,12 +451,13 @@ export async function syncEnterpriseWebResources(
         });
         const host = enterpriseProxyHost(core);
         const proxy = await mcpProxy.start(enterpriseProxyBindHost(core));
+        mcpStage = 'route';
         await core.registerProxyPort?.(proxy.port);
         mcpProxies.push({ proxy: mcpProxy, port: proxy.port, resourceId: mcpResourceId });
         const binding={resourceId: mcpResourceId, port: String(proxy.port), key: proxy.key,host,version:resource.version,connectionId:connection.id};
         proxyCache?.set(mcpResourceId,{proxy:mcpProxy,binding});bundle.mcps.push(binding);
       } catch {
-        issues.push({ type: 'MCP', id: mcpResourceId, code: 'CONNECTION_UNAVAILABLE' });
+        issues.push({ type: 'MCP', id: mcpResourceId, code: mcpRuntimeFailureCode(mcpStage) });
         if (mcpProxy) await mcpProxy.stop().catch(() => {});
       }
     }
@@ -460,7 +527,8 @@ export async function syncEnterpriseWebResources(
     };
     const monitor = setInterval(() => { void check(); }, 5000);
     monitor.unref();
-    return { invalidated, issues: syncResult.issues, trustedConfirmation: c => trustedEnterpriseRead(core,c,bundle.mcps,activeClient), stop: async () => {
+    return { invalidated, issues: syncResult.issues, dependencyProbes,
+      trustedConfirmation: c => trustedEnterpriseRead(core,c,bundle.mcps,activeClient), stop: async () => {
       clearInterval(monitor);
       if (!proxyCache) await closeProxies();
       await rm(stage, { recursive: true, force: true });

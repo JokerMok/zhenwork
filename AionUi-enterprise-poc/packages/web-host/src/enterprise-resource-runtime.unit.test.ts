@@ -4,7 +4,10 @@ import { mkdtemp, mkdir, readFile, readdir, rm, symlink } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { enterpriseProfilePath } from './enterprise-core.js';
-import { enterpriseManagedResourcePath, syncEnterpriseWebResources, trustedEnterpriseRead, closeEnterpriseMcpCache, type EnterpriseMcpCache } from './enterprise-resource-runtime.js';
+import { enterpriseManagedResourcePath, syncEnterpriseWebResources, trustedEnterpriseRead, closeEnterpriseMcpCache,
+  mcpRuntimeFailureCode, verifyRuntimeSkillPackageSha256, type EnterpriseMcpCache } from './enterprise-resource-runtime.js';
+import { createDockerCoreDependencyProbe, evaluateCoreDependencies } from './maintenance/core-dependency-probe.js';
+import { mcpCoreFailureCode } from '../../desktop/src/process/services/enterprise/resourceSync.mjs';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 
 test.each(['assistant dependencies', 'standalone authorization', 'mixed authorization',
@@ -145,14 +148,16 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     availableModels: async () => [{ id: 'model-1' }, { id: 'model-2' }],
   } as unknown as Rc2GatewayClient;
   try {
+    const dependencyProbe = async () => ({ python: { Pillow: '11.3.0' } });
     const synced = await syncEnterpriseWebResources(actor, { port, localToken: 'local-secret', stop: async () => {} },
       root, { id: 'model-1', code: 'model-code', availableModels: [
         { id: 'model-1', code: 'model-code' }, { id: 'model-2', code: 'assistant-model-code' },
-      ] }, async () => client, async () => { executionSelections += 1; return client; }, undefined, proxyCache);
+      ] }, async () => client, async () => { executionSelections += 1; return client; }, undefined, proxyCache,
+      dependencyProbe);
     const manifest = JSON.parse(await readFile(await enterpriseManagedResourcePath(root, actor), 'utf8'));
     const skillNames = [skillId, secondSkillId].map((id) => `safe-skill-${id.replaceAll('-', '')}`);
     expect(manifest.skills).toEqual(skillNames);
-    expect(synced.issues).toContainEqual({ type: 'SKILL', id: skillId, code: 'DEPENDENCY_UNVERIFIED' });
+    expect(synced.dependencyProbes[skillId].state).toBe('READY');
     expect(manifest.mcpIds).toHaveLength(2);
     const registeredMcp = writes.find(({ route, body }) => route === '/api/mcp/servers' && body.name === `rc2-enterprise-${firstMcpId}`)!.body;
     const transport = registeredMcp.transport as { url: string; headers: Record<string, string> };
@@ -196,7 +201,7 @@ test.each(['assistant dependencies', 'standalone authorization', 'mixed authoriz
     }
     if (mode === 'assistant dependencies') {
       await synced.stop();
-      const next=await syncEnterpriseWebResources(actor,{port,localToken:'local-secret',stop:async()=>{}},root,{id:'model-1',code:'model-code',availableModels:[{id:'model-1',code:'model-code'},{id:'model-2',code:'assistant-model-code'}]},async()=>client,async()=>client,undefined,proxyCache);
+      const next=await syncEnterpriseWebResources(actor,{port,localToken:'local-secret',stop:async()=>{}},root,{id:'model-1',code:'model-code',availableModels:[{id:'model-1',code:'model-code'},{id:'model-2',code:'assistant-model-code'}]},async()=>client,async()=>client,undefined,proxyCache,dependencyProbe);
       const after=writes.filter(({route,body})=>route==='/api/mcp/servers' && body.name===`rc2-enterprise-${firstMcpId}`).at(-1)!.body;
       expect((after.transport as {url:string}).url).toBe(transport.url);
       expect((await fetch(mcpUrl,{method:'POST',headers:{...transport.headers,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})})).status).toBe(200);
@@ -277,4 +282,62 @@ test('trusted read-only enterprise queries require current policy and the exact 
  expect(await trustedEnterpriseRead(core,{...c,questions:[{question:'confirm'}]},[binding],async()=>client,fetchImpl)).toBe(false);
  expect(await trustedEnterpriseRead(core,{description:'Execute: anything'},[binding],async()=>client,fetchImpl)).toBe(false);
  expect(await trustedEnterpriseRead(core,c,[],async()=>client,fetchImpl)).toBe(false);
+});
+
+test('Core dependency preflight classifies actual installed versions without executing Skill files', async () => {
+  const files = [
+    { path: 'requirements.txt', content: 'Pillow>=11,<12\nmissing-lib==1.0.0\n', encoding: 'utf8' as const },
+    { path: 'package.json', content: JSON.stringify({ dependencies: { zod: '^4.0.0' } }), encoding: 'utf8' as const },
+  ];
+  const incompatible = evaluateCoreDependencies(files, {
+    python: { Pillow: '10.4.0' }, node: { zod: '4.2.1' },
+  });
+  expect(incompatible.state).toBe('MISSING');
+  expect(incompatible.declarations).toEqual(expect.arrayContaining([
+    expect.objectContaining({ name: 'pillow', installed: '10.4.0', state: 'INCOMPATIBLE' }),
+    expect.objectContaining({ name: 'missing-lib', state: 'MISSING' }),
+    expect.objectContaining({ name: 'zod', installed: '4.2.1', state: 'READY' }),
+  ]));
+  let inspected = 0;
+  const probe = createDockerCoreDependencyProbe({ installedPackages: async (core) => {
+    inspected += 1; expect(core.networkMode).toBe('container'); return { python: { Pillow: '11.3.0' } };
+  } });
+  await expect(probe({ core: { port: 3000, networkMode: 'container' }, skills: [] }))
+    .resolves.toEqual({ python: { Pillow: '11.3.0' } });
+  expect(inspected).toBe(1);
+});
+
+test('dependency ranges preserve ecosystem semantics and uncertain declarations never become ready', () => {
+  const probe = (path:string,content:string,encoding:'utf8'|'base64'='utf8',inventory:Parameters<typeof evaluateCoreDependencies>[1]) =>
+    evaluateCoreDependencies([{path,content,encoding}],inventory);
+  expect(probe('package.json',JSON.stringify({dependencies:{demo:'~1.2'}}),'utf8',{node:{demo:'1.3.0'}}).state)
+    .toBe('INCOMPATIBLE');
+  expect(probe('requirements.txt','demo~=1.2\n','utf8',{python:{demo:'1.9.0'}}).state).toBe('READY');
+  expect(probe('requirements.txt','demo~=1.2.3\n','utf8',{python:{demo:'1.3.0'}}).state)
+    .toBe('INCOMPATIBLE');
+  expect(probe('package.json',JSON.stringify({dependencies:{demo:'latest'}}),'utf8',{node:{demo:'9.0.0'}}).state)
+    .toBe('UNVERIFIED');
+  expect(probe('package.json',JSON.stringify({dependencies:{demo:'~1.2.3.4'}}),'utf8',{node:{demo:'1.2.3.4'}}).state)
+    .toBe('UNVERIFIED');
+  expect(probe('requirements.txt',Buffer.from('demo==1.0\n').toString('base64'),'base64',{python:{demo:'1.0'}}).state)
+    .toBe('UNVERIFIED');
+});
+
+test('runtime binds the exact Skill bytes to the package hash', () => {
+  const source='---\nname: safe\n---\nUse safely.';
+  const files=[{path:'requirements.txt',content:'demo==1.0\n',encoding:'utf8' as const,executable:false}];
+  const hash=verifyRuntimeSkillPackageSha256(source,files,undefined);
+  expect(hash).toMatch(/^[0-9a-f]{64}$/);
+  expect(()=>verifyRuntimeSkillPackageSha256(source,[{...files[0],content:'demo==2.0\n'}],hash))
+    .toThrow('package hash mismatch');
+});
+
+test('MCP failures retain the failing existing-path stage', () => {
+  expect(['resource','connection','authorization','proxy','route'].map((stage) =>
+    mcpRuntimeFailureCode(stage as Parameters<typeof mcpRuntimeFailureCode>[0])))
+    .toEqual(['RESOURCE_UNAVAILABLE','CONNECTION_NOT_READY','CONNECTION_UNAUTHORIZED',
+      'PROXY_START_FAILED','PROXY_ROUTE_FAILED']);
+  expect(['register','verify','enable'].map((stage) =>
+    mcpCoreFailureCode(stage as Parameters<typeof mcpCoreFailureCode>[0])))
+    .toEqual(['CORE_REGISTRATION_FAILED','CORE_REGISTRATION_INVALID','CORE_ENABLE_FAILED']);
 });

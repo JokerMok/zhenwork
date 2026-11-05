@@ -7,6 +7,7 @@ import javax.xml.stream.*;
 import javax.imageio.ImageIO;
 import org.dromara.common.json.utils.JsonUtils;
 import java.security.MessageDigest;
+import java.nio.ByteBuffer;
 import java.util.*;
 
 /** Validates immutable companion files stored with one Skill resource version. */
@@ -68,6 +69,33 @@ final class WorkspaceSkillPackage {
         result.sort(Comparator.comparing(file -> file.get("path").toString()));
         validatePresentationTemplate(result);
         return List.copyOf(result);
+    }
+
+    /** Stable digest of the exact immutable Skill bytes, including SKILL.md. */
+    static String packageHash(String source, List<Map<String,Object>> files) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            digest.update("SKILL_PACKAGE_V1".getBytes(StandardCharsets.UTF_8));
+            update(digest, "SKILL.md", source.getBytes(StandardCharsets.UTF_8));
+            for (var file : files) {
+                byte[] bytes = "base64".equals(file.get("encoding"))
+                    ? Base64.getDecoder().decode(file.get("content").toString())
+                    : file.get("content").toString().getBytes(StandardCharsets.UTF_8);
+                update(digest, file.get("path").toString(), bytes);
+                digest.update((byte)(Boolean.TRUE.equals(file.get("executable")) ? 1 : 0));
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void update(MessageDigest digest, String path, byte[] bytes) {
+        byte[] name = path.getBytes(StandardCharsets.UTF_8);
+        digest.update(ByteBuffer.allocate(4).putInt(name.length).array());
+        digest.update(name);
+        digest.update(ByteBuffer.allocate(8).putLong(bytes.length).array());
+        digest.update(bytes);
     }
 
     /** Validate passive presentation assets at save time, before any immutable version is stored. */
@@ -173,7 +201,7 @@ final class WorkspaceSkillPackage {
         return parts.length == 1 ? ROOT_FILES.contains(path) : DIRECTORIES.contains(parts[0]);
     }
 
-    private static String sha256(byte[] content) {
+    static String sha256(byte[] content) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                 .digest(content));

@@ -20,19 +20,26 @@ public class WorkspaceResources {
     private final WorkspaceShareSupport shareSupport;
     public WorkspaceResources(JdbcTemplate jdbc,TransactionTemplate tx,WorkspacePermissions permissions,AiResourceGuard guard,WorkspaceConversations conversations,WorkspaceAssistantReadiness readiness,WorkspaceShareSupport shareSupport){this.jdbc=jdbc;this.tx=tx;this.permissions=permissions;this.guard=guard;this.conversations=conversations;this.readiness=readiness;this.shareSupport=shareSupport;}
     static String hash(String content){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException();}}
-    private String config(String type,Map<String,Object> data){
+    private String config(String type,Map<String,Object> data){return config(type,data,null);}
+    private String config(String type,Map<String,Object> data,Map<String,Object> trustedSkillOrigin){
         if(data==null)throw new WorkspaceDenied(400,"ConfigurationRequired");
         if(type.equals("ASSISTANT")){
             if(!Set.of("avatar","instruction","modelId","skillIds","mcpIds","toolIds","knowledgeIds").containsAll(data.keySet())||!(data.get("instruction") instanceof String instruction)||instruction.isBlank()||instruction.length()>4000)throw new WorkspaceDenied(400,"InvalidAssistantConfiguration");
             if(data.containsKey("avatar")&&(!(data.get("avatar") instanceof String avatar)||avatar.length()>12))throw new WorkspaceDenied(400,"InvalidAssistantAvatar");
             for(String key:List.of("skillIds","mcpIds","toolIds","knowledgeIds")){Object value=data.get(key);if(value==null)continue;if(!(value instanceof List<?> ids)||ids.size()>(key.equals("toolIds")?16:8)||new HashSet<>(ids).size()!=ids.size())throw new WorkspaceDenied(400,"InvalidAssistantDependencies");for(Object item:ids)try{UUID.fromString(item.toString());}catch(Exception e){throw new WorkspaceDenied(400,"InvalidAssistantDependencies");}}
             try{UUID.fromString(Objects.toString(data.get("modelId")));}catch(Exception e){throw new WorkspaceDenied(400,"ModelRequired");}
-        }else if(type.equals("KNOWLEDGE")){if(!data.keySet().equals(Set.of("format"))||!"TEXT_V1".equals(data.get("format")))throw new WorkspaceDenied(400,"UnsupportedKnowledgeFormat");}else if(type.equals("TOOL")){return JsonUtils.toJsonString(WorkspaceToolAccess.configuration(data));}else if(type.equals("MCP")){return JsonUtils.toJsonString(WorkspaceMcpAccess.configuration(data));}else if(type.equals("SKILL")){return JsonUtils.toJsonString(WorkspaceSkills.parse(data));}else if(!data.isEmpty())throw new WorkspaceDenied(400,"ResourceFormatNotEnabledYet");
+        }else if(type.equals("KNOWLEDGE")){if(!data.keySet().equals(Set.of("format"))||!"TEXT_V1".equals(data.get("format")))throw new WorkspaceDenied(400,"UnsupportedKnowledgeFormat");}else if(type.equals("TOOL")){return JsonUtils.toJsonString(WorkspaceToolAccess.configuration(data));}else if(type.equals("MCP")){return JsonUtils.toJsonString(WorkspaceMcpAccess.configuration(data));}else if(type.equals("SKILL")){return JsonUtils.toJsonString(trustedSkillOrigin==null?WorkspaceSkills.parse(data):WorkspaceSkills.parseTrusted(data,trustedSkillOrigin));}else if(!data.isEmpty())throw new WorkspaceDenied(400,"ResourceFormatNotEnabledYet");
         return JsonUtils.toJsonString(new TreeMap<>(data));
     }
     private void audit(long actor,String action,UUID resource,Map<String,Object> metadata){jdbc.update("INSERT INTO ai_security_event(id,actor_user_id,action,resource_id,metadata) VALUES(?,?,?,?,?::jsonb)",UUID.randomUUID(),actor,action,resource,JsonUtils.toJsonString(metadata));}
     public Map<String,Object> create(long actor,String type,String name,String description,boolean enterprise,Map<String,Object> data,UUID key){
-        if(!TYPES.contains(type))throw new WorkspaceDenied(400,"InvalidResourceType");permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":create");if(enterprise)permissions.require(actor,"ai:resource:enterprise");String json=config(type,data);
+        return create(actor,type,name,description,enterprise,data,key,null);
+    }
+    Map<String,Object> createImportedSkill(long actor,String name,String description,Map<String,Object> data,Map<String,Object> origin,UUID key){
+        return create(actor,"SKILL",name,description,true,data,key,origin);
+    }
+    private Map<String,Object> create(long actor,String type,String name,String description,boolean enterprise,Map<String,Object> data,UUID key,Map<String,Object> trustedSkillOrigin){
+        if(!TYPES.contains(type))throw new WorkspaceDenied(400,"InvalidResourceType");permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":create");if(enterprise)permissions.require(actor,"ai:resource:enterprise");String json=config(type,data,trustedSkillOrigin);
         UUID id=tx.execute(status->{
             jdbc.queryForObject("SELECT user_id FROM sys_user WHERE user_id=? FOR UPDATE",Long.class,actor);
             String digest=hash(type+"\n"+name+"\n"+description+"\n"+enterprise+"\n"+json);var old=jdbc.queryForList("SELECT input_hash,result::text FROM ai_command WHERE actor_user_id=? AND operation='resource.create' AND idempotency_key=?",actor,key);
@@ -69,7 +76,13 @@ public class WorkspaceResources {
         return result;
     }
     public Map<String,Object> edit(UUID id,long actor,int expected,String name,String description,Map<String,Object> data){
-        tx.executeWithoutResult(status->{jdbc.queryForList("SELECT id FROM ai_resource WHERE id=? FOR UPDATE",id);var resource=guard.require(id,actor,AiResourceGuard.Action.EDIT);if(((Number)resource.get("latest_version")).intValue()!=expected)throw new WorkspaceDenied(409,"VersionConflict");String json=config(resource.get("resource_type").toString(),data);int next=expected+1;
+        return edit(id,actor,expected,name,description,data,null);
+    }
+    Map<String,Object> editImportedSkill(UUID id,long actor,int expected,String name,String description,Map<String,Object> data,Map<String,Object> origin){
+        return edit(id,actor,expected,name,description,data,origin);
+    }
+    private Map<String,Object> edit(UUID id,long actor,int expected,String name,String description,Map<String,Object> data,Map<String,Object> trustedSkillOrigin){
+        tx.executeWithoutResult(status->{jdbc.queryForList("SELECT id FROM ai_resource WHERE id=? FOR UPDATE",id);var resource=guard.require(id,actor,AiResourceGuard.Action.EDIT);if(trustedSkillOrigin!=null&&!"SKILL".equals(resource.get("resource_type")))throw new WorkspaceDenied(400,"SkillResourceRequired");if(((Number)resource.get("latest_version")).intValue()!=expected)throw new WorkspaceDenied(409,"VersionConflict");String json=config(resource.get("resource_type").toString(),data,trustedSkillOrigin);int next=expected+1;
             jdbc.update("INSERT INTO ai_resource_version(resource_id,version,config,content_hash,created_by,metadata) VALUES(?,?,?::jsonb,?,?,?::jsonb)",id,next,json,hash(json),actor,JsonUtils.toJsonString(Map.of("name",name,"description",description)));
             jdbc.update("UPDATE ai_resource SET latest_version=?,name=?,description=?,updated_by=?,updated_at=NOW() WHERE id=?",next,name,description,actor,id);audit(actor,"resource.version.created",id,Map.of("version",next));
         });return get(id,actor);

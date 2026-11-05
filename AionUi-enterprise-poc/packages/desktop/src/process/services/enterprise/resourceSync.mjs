@@ -165,6 +165,13 @@ function assistantDefaultsMatch(actual, expected) {
     actual?.mcps?.mode === expected.mcps.mode && sameValues(actual.mcps.value, expected.mcps.value);
 }
 
+export function mcpCoreFailureCode(stage) {
+  if (stage === 'register') return 'CORE_REGISTRATION_FAILED';
+  if (stage === 'verify') return 'CORE_REGISTRATION_INVALID';
+  if (stage === 'enable') return 'CORE_ENABLE_FAILED';
+  throw new Error('Unknown MCP Core failure stage');
+}
+
 // Register RC2-authorized resources in AionCore's existing Skill/MCP stores.
 // They remain selectable through AionUi's native conversation controls.
 export async function syncEnterpriseResources(corePort, localToken, config = process.env, fetchImpl = fetch, hooks = {}) {
@@ -251,17 +258,20 @@ export async function syncEnterpriseResources(corePort, localToken, config = pro
     result.skillName = currentSkills.values().next().value;
   }
   for (const mcp of bundle.mcps) {
+    let stage = 'register';
     try {
       const server = await request('/api/mcp/servers', { name: mcp.name,
         description: MCP_DESCRIPTION,
         transport: { type: 'http', url: `http://${proxyHost(mcp.host)}:${mcp.port}/mcp`,
           headers: { Authorization: `Bearer ${mcp.key}` } } });
+      stage = 'verify';
       if (server?.name !== mcp.name || !server?.id) throw new Error('AionCore MCP registration failed');
       if (!listedMcp.some((item) => item.name === mcp.name)) newlyRegisteredMcps.push(server.id);
+      stage = 'enable';
       if (!server.enabled) await request(`/api/mcp/servers/${server.id}/toggle`, {});
       currentMcps.set(mcp.resourceId, server.id);
     } catch {
-      result.issues.push({ type: 'MCP', id: mcp.resourceId, code: 'REGISTRATION_FAILED' });
+      result.issues.push({ type: 'MCP', id: mcp.resourceId, code: mcpCoreFailureCode(stage) });
     }
   }
   if (currentMcps.size) {
