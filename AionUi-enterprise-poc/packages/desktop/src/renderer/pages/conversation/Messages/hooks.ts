@@ -162,7 +162,23 @@ export function composeMessageWithIndex(
   // After composeMessage, the returned list may have different length/ordering,
   // so we must invalidate the index to prevent stale lookups in subsequent calls.
   if (message.type === 'tool_group') {
-    const result = composeMessage(message, list);
+    const terminal = new Map(
+      list.flatMap((item) =>
+        item.type === 'tool_group'
+          ? item.content
+              .filter((tool) => ['Success', 'Error', 'Canceled'].includes(tool.status))
+              .map((tool) => [tool.call_id, tool] as const)
+          : []
+      )
+    );
+    const guarded = {
+      ...message,
+      content: message.content.map((tool) => {
+        const settled = terminal.get(tool.call_id);
+        return settled && ['Executing', 'Pending', 'Confirming'].includes(tool.status) ? settled : tool;
+      }),
+    };
+    const result = composeMessage(guarded, list);
     if (result !== list) {
       // Rebuild index maps from the new list to keep them in sync
       const rebuilt = buildMessageIndex(result);

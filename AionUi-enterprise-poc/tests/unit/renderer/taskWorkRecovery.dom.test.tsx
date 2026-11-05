@@ -90,4 +90,39 @@ describe('existing execution event identity', () => {
     });
     expect((result.current.messages[0].content as { status: string }).status).toBe('completed');
   });
+  it('does not reopen a settled tool group when an earlier executing event arrives', async () => {
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <MessageListProvider value={[]}>{children}</MessageListProvider>
+    );
+    const { result } = renderHook(() => ({ add: useAddOrUpdateMessage(), messages: useMessageList() }), { wrapper });
+    const event = {
+      id: 'group-one',
+      conversation_id: 'group-conversation',
+      msg_id: 'group-turn',
+      type: 'tool_group',
+      content: [
+        {
+          call_id: 'settled-tool',
+          name: 'read_document',
+          description: 'read',
+          render_output_as_markdown: false,
+          status: 'Success',
+        },
+      ],
+    } as TMessage;
+    act(() => result.current.add(event));
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    act(() =>
+      result.current.add({
+        ...event,
+        id: 'older-group-frame',
+        content: [{ ...(event.content as Array<Record<string, unknown>>)[0], status: 'Executing' }],
+      } as TMessage)
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect((result.current.messages[0].content as Array<{ status: string }>)[0].status).toBe('Success');
+    expect(result.current.messages).toHaveLength(1);
+  });
 });
