@@ -23,7 +23,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+@org.junit.jupiter.api.Tag("local")
 class WorkspaceFeedbackTest {
+    @org.junit.jupiter.api.BeforeAll static void configureJson() {
+        var context = new org.springframework.context.support.GenericApplicationContext();
+        context.registerBean(tools.jackson.databind.json.JsonMapper.class, () -> tools.jackson.databind.json.JsonMapper.builder().build());
+        context.refresh();
+        new cn.hutool.extra.spring.SpringUtil().postProcessBeanFactory(context.getBeanFactory());
+    }
     @Test
     void employeeSubmissionUsesTheRealSessionPrincipal() {
         var principals = mock(WorkspacePrincipal.class);
@@ -50,7 +57,8 @@ class WorkspaceFeedbackTest {
         var feedback = mock(WorkspaceFeedback.class);
         var execution = mock(ExecutionCredentials.class);
         var controller = new WorkspaceFeedbackController(principals, feedback, execution);
-        var input = new WorkspaceFeedback.Capture("task-1", UUID.randomUUID(), UUID.randomUUID());
+        var input = new WorkspaceFeedback.Capture(
+            "task-1", UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         when(principals.require("ai:session:use"))
             .thenReturn(new WorkspacePrincipal.Actor(17L, 3L, false));
         when(feedback.capture(17L, input)).thenReturn(Map.of("captured", true));
@@ -63,13 +71,50 @@ class WorkspaceFeedbackTest {
     }
 
     @Test
+    void provenanceUsesTheRuntimeModelInsteadOfTheAssistantDefault() {
+        var jdbc = mock(JdbcTemplate.class);
+        var resources = mock(AiResourceGuard.class);
+        var models = mock(WorkspaceModelAccess.class);
+        var skills = mock(WorkspaceSkills.class);
+        var mcps = mock(WorkspaceMcpAccess.class);
+        var tools = mock(WorkspaceToolAccess.class);
+        var assistantId = UUID.randomUUID();
+        var defaultModelId = UUID.randomUUID();
+        var runtimeModelId = UUID.randomUUID();
+        var provenanceId = UUID.randomUUID();
+        var providerId = UUID.randomUUID();
+        when(resources.require(assistantId, 17L, AiResourceGuard.Action.USE))
+            .thenReturn(Map.of("resource_type", "ASSISTANT", "published_version", 4));
+        when(resources.version(assistantId, 4, 17L, AiResourceGuard.Action.USE))
+            .thenReturn(Map.of("config", org.dromara.common.json.utils.JsonUtils.toJsonString(Map.of(
+                "modelId", defaultModelId.toString(), "skillIds", List.of(),
+                "mcpIds", List.of(), "toolIds", List.of()))));
+        when(models.model(17L, runtimeModelId)).thenReturn(Map.of(
+            "model_version", 8L, "provider_id", providerId, "provider_version", 3L));
+        when(skills.resolve(List.of(), 17L)).thenReturn(List.of());
+        when(mcps.resolve(List.of(), 17L)).thenReturn(List.of());
+        when(tools.resolve(List.of(), List.of(), 17L)).thenReturn(List.of());
+        when(jdbc.queryForObject(anyString(), org.mockito.ArgumentMatchers.eq(UUID.class), any(Object[].class)))
+            .thenReturn(provenanceId);
+        var feedback = new WorkspaceFeedback(
+            jdbc, mock(TransactionTemplate.class), resources, models, skills, mcps, tools);
+        var input = new WorkspaceFeedback.Capture(
+            "task-1", UUID.randomUUID(), assistantId, runtimeModelId);
+
+        feedback.capture(17L, input);
+
+        verify(models).model(17L, runtimeModelId);
+        verify(models, never()).model(17L, defaultModelId);
+    }
+
+    @Test
     void categoryOnlyFeedbackStoresAnEmptyNoteAndHostMetadata() {
         var jdbc = mock(JdbcTemplate.class);
         var tx = mock(TransactionTemplate.class);
         when(tx.execute(any())).thenAnswer(invocation ->
             ((TransactionCallback<?>) invocation.getArgument(0)).doInTransaction(null));
         when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(List.of());
-        when(jdbc.queryForMap("SELECT * FROM ai_feedback WHERE id=?", any(UUID.class)))
+        when(jdbc.queryForMap(org.mockito.ArgumentMatchers.eq("SELECT * FROM ai_feedback WHERE id=?"), any(UUID.class)))
             .thenReturn(Map.of("note", "", "actual_task_state", "completed"));
         var feedback = new WorkspaceFeedback(
             jdbc,

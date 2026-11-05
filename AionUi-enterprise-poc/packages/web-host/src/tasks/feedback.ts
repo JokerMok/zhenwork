@@ -122,10 +122,13 @@ export async function captureTaskFeedbackProvenance(
   actor: EnterpriseActor,
   taskId: string,
   assistantId: string,
-  request: TaskControlRequest
+  request: TaskControlRequest,
+  modelId: string
 ): Promise<void> {
   const normalizedAssistant = assistantId.replace(/^rc2-/, '');
-  if (!UUID.test(normalizedAssistant)) throw new TaskError(400, 'TASK_PROVENANCE_INPUT_INVALID');
+  if (!UUID.test(normalizedAssistant) || !UUID.test(modelId)) {
+    throw new TaskError(400, 'TASK_PROVENANCE_INPUT_INVALID');
+  }
   const task = await (await TaskStore.create(root, actor)).get(taskId);
   const attempt = currentAttempt(task);
   if (attempt.state !== 'running') throw new TaskError(409, 'TASK_NOT_EXECUTING');
@@ -135,7 +138,7 @@ export async function captureTaskFeedbackProvenance(
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ taskId, attemptId: attempt.id, assistantId: normalizedAssistant }),
+      body: JSON.stringify({ taskId, attemptId: attempt.id, assistantId: normalizedAssistant, modelId }),
     },
     request
   );

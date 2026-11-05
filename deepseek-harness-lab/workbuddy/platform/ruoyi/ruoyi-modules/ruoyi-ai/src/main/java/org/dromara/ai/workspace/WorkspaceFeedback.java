@@ -46,7 +46,7 @@ public class WorkspaceFeedback {
         List<String> actualTools,
         List<UUID> artifactVersionIds
     ) {}
-    public record Capture(String taskId, UUID attemptId, UUID assistantId) {}
+    public record Capture(String taskId, UUID attemptId, UUID assistantId, UUID modelId) {}
     public record Update(
         String status,
         String badcaseDescription,
@@ -66,7 +66,7 @@ public class WorkspaceFeedback {
 
     public Map<String, Object> capture(long user, Capture input) {
         requireTask(input.taskId());
-        if (input.attemptId() == null || input.assistantId() == null)
+        if (input.attemptId() == null || input.assistantId() == null || input.modelId() == null)
             throw new WorkspaceDenied(400, "InvalidFeedbackProvenance");
         var assistant = resources.require(input.assistantId(), user, AiResourceGuard.Action.USE);
         if (!"ASSISTANT".equals(assistant.get("resource_type")))
@@ -74,8 +74,7 @@ public class WorkspaceFeedback {
         int assistantVersion = ((Number) assistant.get("published_version")).intValue();
         var config = JsonUtils.parseMap(resources.version(
             input.assistantId(), assistantVersion, user, AiResourceGuard.Action.USE).get("config").toString());
-        UUID modelId = uuid(config.get("modelId"), "InvalidAssistantModel");
-        var model = models.model(user, modelId);
+        var model = models.model(user, input.modelId());
         List<Map<String, Object>> resolvedSkills = skills.resolve(config.get("skillIds"), user);
         List<Map<String, Object>> resolvedMcps = mcps.resolve(config.get("mcpIds"), user);
         List<Map<String, Object>> resolvedTools = tools.resolve(config.get("toolIds"), resolvedSkills, user);
@@ -88,7 +87,7 @@ public class WorkspaceFeedback {
             ON CONFLICT(owner_user_id,task_id,attempt_id) DO NOTHING
             """,
             id, user, input.taskId(), input.attemptId(), input.assistantId(), assistantVersion,
-            modelId, number(model, "model_version"), model.get("provider_id"), number(model, "provider_version"),
+            input.modelId(), number(model, "model_version"), model.get("provider_id"), number(model, "provider_version"),
             JsonUtils.toJsonString(project(resolvedSkills, "id", "name", "version")),
             JsonUtils.toJsonString(project(resolvedMcps,
                 "id", "version", "connectionId", "connectionAuthVersion", "allowedTools")),
@@ -368,11 +367,6 @@ public class WorkspaceFeedback {
 
     private static <T> boolean jsonListEquals(Object stored, List<T> expected, Class<T> type) {
         return Objects.equals(jsonList(stored, type), expected);
-    }
-
-    private static UUID uuid(Object value, String error) {
-        try { return UUID.fromString(Objects.toString(value, "")); }
-        catch (Exception ignored) { throw new WorkspaceDenied(400, error); }
     }
 
     private static void requireTask(String value) {

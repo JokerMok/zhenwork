@@ -142,20 +142,48 @@ test('feedback rejects active work and invalid categories before contacting cont
   expect(requests).toBe(0);
 });
 
-test('provenance capture sends only task identity and the real assistant resource id', async () => {
+test('provenance capture sends task identity plus the real assistant and model resource ids', async () => {
   const { root, taskId, attemptId } = await fixture('running');
   const assistantId = randomUUID();
+  const modelId = randomUUID();
   let sent: unknown;
 
-  await captureTaskFeedbackProvenance(root, actor, taskId, `rc2-${assistantId}`, async (_actor, route, init) => {
-    sent = { route, body: JSON.parse(String(init.body)) };
-    return new Response(JSON.stringify({ code: 200, data: { captured: true } }));
-  });
+  await captureTaskFeedbackProvenance(
+    root,
+    actor,
+    taskId,
+    `rc2-${assistantId}`,
+    async (_actor, route, init) => {
+      sent = { route, body: JSON.parse(String(init.body)) };
+      return new Response(JSON.stringify({ code: 200, data: { captured: true } }));
+    },
+    modelId
+  );
 
   expect(sent).toEqual({
     route: '/ai/me/feedback/provenance',
-    body: { taskId, attemptId, assistantId },
+    body: { taskId, attemptId, assistantId, modelId },
   });
+});
+
+test('provenance capture rejects a non-UUID runtime model before contacting control', async () => {
+  const { root, taskId } = await fixture('running');
+  let requests = 0;
+
+  await expect(
+    captureTaskFeedbackProvenance(
+      root,
+      actor,
+      taskId,
+      randomUUID(),
+      async () => {
+        requests += 1;
+        return new Response('{}');
+      },
+      'not-a-model-id'
+    )
+  ).rejects.toThrow('TASK_PROVENANCE_INPUT_INVALID');
+  expect(requests).toBe(0);
 });
 
 test('invalid control responses fail without exposing upstream text', async () => {
