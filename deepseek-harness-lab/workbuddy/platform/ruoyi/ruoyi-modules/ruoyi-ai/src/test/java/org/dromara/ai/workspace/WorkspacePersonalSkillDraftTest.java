@@ -21,7 +21,14 @@ class WorkspacePersonalSkillDraftTest {
         var files=new ArrayList<Map<String,Object>>();
         files.add(Map.of("path","references/preferences.json","encoding","utf8","content","{\"schemaVersion\":1,\"analysis\":{\"periods\":[\"2026-08\",\"2026-09\"],\"groupBy\":[\"workshop\"],\"intensityAlertPercent\":\"2\",\"costAlertPercent\":\"5\",\"sheetNames\":{},\"outputs\":{\"excel\":true}}}"));
         files.add(Map.of("path","references/company.json","encoding","utf8","content","{\"analysis\":{\"dimensions\":[\"workshop\",\"line\"]}}"));original.put("files",files);
-        for(var patch:List.of(Map.<String,Object>of("periods",List.of("2026-99","2026-10")),Map.<String,Object>of("outputs",Map.of("excel","false")),Map.<String,Object>of("groupBy",List.of("private-warehouse"))))assertThrows(WorkspaceDenied.class,()->WorkspacePersonalSkillDraft.apply(original,generated(Map.of("analysis",patch))));
+        for(var patch:List.of(Map.<String,Object>of("periods",List.of("2026-99","2026-10")),Map.<String,Object>of("outputs",Map.of("excel","false")),Map.<String,Object>of("outputs","bad"),Map.<String,Object>of("sheetNames","bad"),Map.<String,Object>of("groupBy",List.of("private-warehouse"))))assertThrows(WorkspaceDenied.class,()->WorkspacePersonalSkillDraft.apply(original,generated(Map.of("analysis",patch))));
+    }
+
+    @Test void sheetNamesMustStayStructuredAndUniqueIgnoringCase(){
+        var original=new LinkedHashMap<String,Object>(original());
+        original.put("files",List.of(Map.of("path","references/preferences.json","encoding","utf8","content","{\"schemaVersion\":1,\"outputSheets\":{\"库存差异\":\"Inventory\",\"贮存关注\":\"Attention\"}}")));
+        assertThrows(WorkspaceDenied.class,()->WorkspacePersonalSkillDraft.apply(original,generated(Map.of("outputSheets","bad"))));
+        assertThrows(WorkspaceDenied.class,()->WorkspacePersonalSkillDraft.apply(original,generated(Map.of("outputSheets",Map.of("贮存关注","INVENTORY")))));
     }
 
 }

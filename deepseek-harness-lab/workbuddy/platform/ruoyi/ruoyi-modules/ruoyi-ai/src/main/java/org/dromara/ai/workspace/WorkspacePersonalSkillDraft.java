@@ -115,6 +115,7 @@ public class WorkspacePersonalSkillDraft {
                 target.put(key,child);
             }else {
                 Object old=target.get(key),value=e.getValue();
+                if(old instanceof Map<?,?>)throw new WorkspaceDenied(400,"InvalidMethodPreference");
                 if(value==null || old instanceof Boolean && !(value instanceof Boolean) || old instanceof List<?> && (!(value instanceof List<?> values)||values.size()>16||values.stream().anyMatch(v->!(v instanceof String s)||s.length()>100)) || old instanceof String && !(value instanceof String || value instanceof Number))throw new WorkspaceDenied(400,"InvalidMethodPreference");
                 target.put(key,value);
             }
@@ -135,6 +136,7 @@ public class WorkspacePersonalSkillDraft {
                 for(String key:List.of("intensityAlertPercent","costAlertPercent")){double value=Double.parseDouble(analysis.get(key).toString());if(!Double.isFinite(value)||value<0||value>1000000)throw new IllegalArgumentException();}
                 if(analysis.get("outputTitle") instanceof String title && (title.isBlank()||title.length()>100))throw new IllegalArgumentException();
                 validateSheetNames(analysis.get("sheetNames"));
+                if(!(analysis.get("outputs") instanceof Map<?,?> outputs) || outputs.values().stream().anyMatch(value->!(value instanceof Boolean)))throw new IllegalArgumentException();
                 Map<?,?> companyAnalysis=Map.of();
                 if(original.get("files") instanceof List<?> files)for(Object item:files)if(item instanceof Map<?,?> file && "references/company.json".equals(file.get("path")) && !"base64".equals(file.get("encoding"))){var company=JsonUtils.parseMap(file.get("content").toString());if(company.get("analysis") instanceof Map<?,?> value)companyAnalysis=value;}
                 validateDimensions(analysis.get("groupBy"),companyAnalysis.get("dimensions"));
@@ -143,7 +145,10 @@ public class WorkspacePersonalSkillDraft {
         }catch(Exception e){throw new WorkspaceDenied(400,"InvalidMethodPreference");}
     }
     private static void validateSheetNames(Object value){
-        if(value instanceof Map<?,?> names)for(Object name:names.values()){if(!(name instanceof String text)||text.isBlank()||text.length()>31||text.chars().anyMatch(c->c<32||"[]*?/\\:".indexOf(c)>=0))throw new IllegalArgumentException();}
+        if(value==null)return;
+        if(!(value instanceof Map<?,?> names))throw new IllegalArgumentException();
+        Set<String> unique=new HashSet<>();
+        for(Object name:names.values()){if(!(name instanceof String text)||text.isBlank()||text.length()>31||text.chars().anyMatch(c->c<32||"[]*?/\\:".indexOf(c)>=0)||!unique.add(text.toLowerCase(Locale.ROOT)))throw new IllegalArgumentException();}
     }
     private static void validateDimensions(Object value,Object allowed){
         if(!(value instanceof List<?> dims)||dims.isEmpty()||dims.size()>4||new HashSet<>(dims).size()!=dims.size()||!(allowed instanceof List<?> choices)||!choices.containsAll(dims))throw new IllegalArgumentException();
