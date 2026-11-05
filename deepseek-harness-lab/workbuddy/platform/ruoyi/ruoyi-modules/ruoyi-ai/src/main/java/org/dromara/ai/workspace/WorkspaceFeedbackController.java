@@ -68,12 +68,14 @@ public class WorkspaceFeedbackController {
     @PatchMapping("/admin/feedback/{id}")
     public R<?> update(@PathVariable UUID id, @RequestBody WorkspaceFeedback.Update input) {
         long actor = principals.require("ai:audit:view").userId();
+        principals.require("ai:resource:enterprise");
         return R.ok(feedback.update(actor, id, input));
     }
 
     @PostMapping("/admin/feedback/{id}/rechecks")
     public R<?> recheck(@PathVariable UUID id, @RequestBody WorkspaceFeedback.Recheck input) {
         long actor = principals.require("ai:audit:view").userId();
+        principals.require("ai:resource:enterprise");
         return R.ok(feedback.recheck(actor, id, input));
     }
 }

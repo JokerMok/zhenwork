@@ -33,7 +33,7 @@
         </template>
       </el-table-column>
       <el-table-column label="操作" width="90" fixed="right">
-        <template #default="{ row }"><el-button link type="primary" @click="open(row.id)">处理</el-button></template>
+        <template #default="{ row }"><el-button link type="primary" @click="open(row.id)">查看</el-button></template>
       </el-table-column>
     </el-table>
     <div class="paging">
@@ -70,7 +70,7 @@
           <el-descriptions-item label="工具">{{ versions(detail.provenance.tools) }}</el-descriptions-item>
         </el-descriptions>
 
-        <el-form label-position="top" class="case-form">
+        <el-form v-hasPermi="['ai:resource:enterprise']" label-position="top" class="case-form">
           <el-form-item label="处理状态"><el-select v-model="form.status"><el-option v-for="value in statuses" :key="value" :label="label(value)" :value="value" /></el-select></el-form-item>
           <el-form-item label="Badcase 描述"><el-input v-model="form.badcaseDescription" type="textarea" :rows="2" maxlength="2000" show-word-limit /></el-form-item>
           <el-form-item label="人工确认原因"><el-input v-model="form.rootCause" type="textarea" :rows="2" maxlength="2000" show-word-limit /></el-form-item>
@@ -88,7 +88,7 @@
           <el-table-column prop="evidence" label="证据" min-width="160" />
           <el-table-column label="结论" width="90"><template #default="{ row }">{{ label(row.result) }}</template></el-table-column>
         </el-table>
-        <el-form v-if="detail.status === 'RESOLVED'" label-position="top" class="recheck-form">
+        <el-form v-if="detail.status === 'RESOLVED'" v-hasPermi="['ai:resource:enterprise']" label-position="top" class="recheck-form">
           <el-form-item label="检查项"><el-input v-model="check.checkDescription" maxlength="500" /></el-form-item>
           <el-form-item label="预期"><el-input v-model="check.expectedResult" maxlength="1000" /></el-form-item>
           <el-form-item label="实际结果"><el-input v-model="check.actualResult" maxlength="1000" /></el-form-item>
@@ -99,7 +99,7 @@
       </template>
       <template #footer>
         <el-button @click="dialog = false">关闭</el-button>
-        <el-button v-if="detail?.status === 'RESOLVED'" type="primary" :disabled="!canClose" :loading="saving" @click="closeCase">复核通过并关闭</el-button>
+        <el-button v-if="detail?.status === 'RESOLVED'" v-hasPermi="['ai:resource:enterprise']" type="primary" :disabled="!canClose" :loading="saving" @click="closeCase">复核通过并关闭</el-button>
       </template>
     </el-dialog>
   </div>

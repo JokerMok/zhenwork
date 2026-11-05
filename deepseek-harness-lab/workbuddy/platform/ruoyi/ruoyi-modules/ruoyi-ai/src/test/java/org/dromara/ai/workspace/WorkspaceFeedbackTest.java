@@ -20,6 +20,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class WorkspaceFeedbackTest {
@@ -104,6 +105,7 @@ class WorkspaceFeedbackTest {
         controller.list("NEW", null, 1);
 
         verify(principals).require("ai:audit:view");
+        verify(principals, never()).require("ai:resource:enterprise");
         verify(feedback).list("NEW", null, 1);
     }
 
@@ -118,12 +120,36 @@ class WorkspaceFeedbackTest {
         var input = new WorkspaceFeedback.Recheck(
             "Recalculate the affected total", "42", "42", "check-43", "PASSED");
         when(principals.require("ai:audit:view")).thenReturn(actor);
+        when(principals.require("ai:resource:enterprise")).thenReturn(actor);
         when(feedback.recheck(9L, id, input)).thenReturn(Map.of("status", "RESOLVED"));
 
         controller.recheck(id, input);
 
         verify(principals).require("ai:audit:view");
+        verify(principals).require("ai:resource:enterprise");
         verify(feedback).recheck(9L, id, input);
+    }
+
+    @Test
+    void readOnlyAuditorCannotUpdateOrRecheckFeedback() {
+        var principals = mock(WorkspacePrincipal.class);
+        var feedback = mock(WorkspaceFeedback.class);
+        var controller = new WorkspaceFeedbackController(
+            principals, feedback, mock(ExecutionCredentials.class));
+        when(principals.require("ai:audit:view"))
+            .thenReturn(new WorkspacePrincipal.Actor(11L, 1L, false));
+        when(principals.require("ai:resource:enterprise"))
+            .thenThrow(new WorkspaceDenied(403, "PermissionDenied"));
+        var id = UUID.randomUUID();
+        var update = new WorkspaceFeedback.Update(
+            "IN_PROGRESS", null, null, null, null, null, 1);
+        var recheck = new WorkspaceFeedback.Recheck(
+            "check", "expected", "actual", "evidence", "PASSED");
+
+        assertThrows(WorkspaceDenied.class, () -> controller.update(id, update));
+        assertThrows(WorkspaceDenied.class, () -> controller.recheck(id, recheck));
+
+        verifyNoInteractions(feedback);
     }
 
     @Test
