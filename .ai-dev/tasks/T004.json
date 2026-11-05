@@ -1,0 +1,24 @@
+{
+  "id": "T004",
+  "depends_on": [],
+  "wave": 1,
+  "executor": "cloud",
+  "risk": "high",
+  "verification_commands": [
+    "cd AionUi-enterprise-poc && node node_modules/vitest/vitest.mjs run tests/unit/skills/personalMethod.dom.test.tsx"
+  ],
+  "allowed_paths": [
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspacePersonalSkillController.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspacePersonalSkillDraft.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspacePersonalSkillDraftTest.java",
+    "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/capabilities/SkillEditor.tsx",
+    "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/capabilities/SkillDraft.tsx",
+    "AionUi-enterprise-poc/tests/unit/skills/personalMethod.dom.test.tsx"
+  ],
+  "excluded_snapshot_paths": [
+    "AionUi-enterprise-poc/node_modules/",
+    "AionUi-enterprise-poc/packages/web-host/node_modules/",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/node_modules/"
+  ],
+  "dependencies": []
+}

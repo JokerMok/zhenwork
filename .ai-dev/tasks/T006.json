@@ -1,0 +1,44 @@
+{
+  "id": "T006",
+  "depends_on": [
+    "T001",
+    "T002",
+    "T003",
+    "T004",
+    "T005"
+  ],
+  "wave": 2,
+  "executor": "cloud",
+  "risk": "high",
+  "verification_commands": [
+    "git diff --check",
+    "just verify"
+  ],
+  "allowed_paths": [
+    "AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.ts",
+    "AionUi-enterprise-poc/packages/web-cli/src/enterprise-entry.ts",
+    "AionUi-enterprise-poc/packages/desktop/src/renderer/i18n/",
+    "AionUi-enterprise-poc/packages/desktop/src/common/config/i18n-keys.d.ts",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/index.vue",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/audit/index.vue",
+    "VERSION",
+    "RELEASE_NOTES.md",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/enterprise/optimization-1.0.1.md",
+    "scripts/enterprise-optimizations/",
+    "deploy/tencent/deploy.sh",
+    "deploy/tencent/verify-maintenance.py"
+  ],
+  "excluded_snapshot_paths": [
+    "AionUi-enterprise-poc/node_modules/",
+    "AionUi-enterprise-poc/packages/web-host/node_modules/",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/node_modules/"
+  ],
+  "dependencies": [
+    "T001",
+    "T002",
+    "T003",
+    "T004",
+    "T005"
+  ]
+}

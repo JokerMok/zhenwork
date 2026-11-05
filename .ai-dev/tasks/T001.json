@@ -1,0 +1,30 @@
+{
+  "id": "T001",
+  "depends_on": [],
+  "wave": 1,
+  "executor": "cloud",
+  "risk": "high",
+  "verification_commands": [
+    "cd AionUi-enterprise-poc && node node_modules/vitest/vitest.mjs run packages/web-host/src/enterprise-resource-runtime.unit.test.ts"
+  ],
+  "allowed_paths": [
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceSkills.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceSkillPackage.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceSkillController.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceSkillImports.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceSkillImportsTest.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceSkillPackageTest.java",
+    "AionUi-enterprise-poc/packages/web-host/src/enterprise-resource-runtime.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/enterprise-resource-runtime.unit.test.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/maintenance/",
+    "AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.mjs",
+    "AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.d.mts",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/SkillMaintenance.vue"
+  ],
+  "excluded_snapshot_paths": [
+    "AionUi-enterprise-poc/node_modules/",
+    "AionUi-enterprise-poc/packages/web-host/node_modules/",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/node_modules/"
+  ],
+  "dependencies": []
+}

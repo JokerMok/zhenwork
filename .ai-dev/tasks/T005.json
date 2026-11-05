@@ -1,0 +1,23 @@
+{
+  "id": "T005",
+  "depends_on": [],
+  "wave": 1,
+  "executor": "cloud",
+  "risk": "medium",
+  "verification_commands": [
+    "cd AionUi-enterprise-poc && node node_modules/vitest/vitest.mjs run tests/unit/renderer/taskWorkRecovery.dom.test.tsx tests/unit/renderer/messageListStreaming.dom.test.tsx"
+  ],
+  "allowed_paths": [
+    "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/TaskWork/api.ts",
+    "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/conversation/Messages/hooks.ts",
+    "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/conversation/runtime/conversationRuntimeViewStore.ts",
+    "AionUi-enterprise-poc/tests/unit/renderer/messageListStreaming.dom.test.tsx",
+    "AionUi-enterprise-poc/tests/unit/renderer/taskWorkRecovery.dom.test.tsx"
+  ],
+  "excluded_snapshot_paths": [
+    "AionUi-enterprise-poc/node_modules/",
+    "AionUi-enterprise-poc/packages/web-host/node_modules/",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/node_modules/"
+  ],
+  "dependencies": []
+}

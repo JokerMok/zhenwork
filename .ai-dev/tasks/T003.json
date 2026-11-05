@@ -1,0 +1,31 @@
+{
+  "id": "T003",
+  "depends_on": [],
+  "wave": 1,
+  "executor": "cloud",
+  "risk": "high",
+  "verification_commands": [
+    "cd AionUi-enterprise-poc && node node_modules/vitest/vitest.mjs run packages/web-host/src/tasks/feedback.unit.test.ts packages/web-host/src/tasks/store.unit.test.ts"
+  ],
+  "allowed_paths": [
+    "AionUi-enterprise-poc/packages/web-host/src/tasks/types.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/tasks/store.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/tasks/integration.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/tasks/feedback.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/tasks/feedback.unit.test.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/tasks/store.unit.test.ts",
+    "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/TaskWork/index.tsx",
+    "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/TaskWork/Feedback/",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceFeedback.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceFeedbackController.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceFeedbackTest.java",
+    "deepseek-harness-lab/workbuddy/migrations/rc2/0025_feedback.sql",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/feedback/index.vue"
+  ],
+  "excluded_snapshot_paths": [
+    "AionUi-enterprise-poc/node_modules/",
+    "AionUi-enterprise-poc/packages/web-host/node_modules/",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/node_modules/"
+  ],
+  "dependencies": []
+}

@@ -1,0 +1,25 @@
+{
+  "id": "T002",
+  "depends_on": [],
+  "wave": 1,
+  "executor": "cloud",
+  "risk": "high",
+  "verification_commands": [
+    "git diff --check"
+  ],
+  "allowed_paths": [
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceKnowledge.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceKnowledgeAccess.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceKnowledgeDiagnostics.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceKnowledgeDiagnosticsController.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceKnowledgeDiagnosticsTest.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceKnowledgeQueryTest.java",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/KnowledgeDiagnostics.vue"
+  ],
+  "excluded_snapshot_paths": [
+    "AionUi-enterprise-poc/node_modules/",
+    "AionUi-enterprise-poc/packages/web-host/node_modules/",
+    "deepseek-harness-lab/workbuddy/platform/plus-ui/node_modules/"
+  ],
+  "dependencies": []
+}

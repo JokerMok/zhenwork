@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "planner": "orchestrate-hybrid-development.scheduler",
+  "project_root": "/Users/jokermok/Documents/工作文件/企业 AI 工作台本地化项目/.codex/five-optimizations/integration",
+  "valid": true,
+  "errors": [],
+  "cycles_or_blocked": [],
+  "conflicts": [],
+  "completed": [],
+  "blocked": [],
+  "planned": [
+    "T001",
+    "T002",
+    "T003",
+    "T004",
+    "T005",
+    "T006"
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "tasks": [
+        "T001",
+        "T002",
+        "T003",
+        "T004",
+        "T005"
+      ],
+      "dispatches": [
+        {
+          "task_id": "T001",
+          "concurrency_group": "wave-1-group-1",
+          "executor": "cloud",
+          "risk": "high",
+          "depends_on": [],
+          "allowed_paths": [
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceSkills.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceSkillPackage.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceSkillController.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceSkillImports.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceSkillImportsTest.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceSkillPackageTest.java",
+            "AionUi-enterprise-poc/packages/web-host/src/enterprise-resource-runtime.ts",
+            "AionUi-enterprise-poc/packages/web-host/src/enterprise-resource-runtime.unit.test.ts",
+            "AionUi-enterprise-poc/packages/web-host/src/maintenance/",
+            "AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.mjs",
+            "AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.d.mts",
+            "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/SkillMaintenance.vue"
+          ],
+          "context_ref": ".ai-dev/context/T001.json",
+          "serialized_after": []
+        },
+        {
+          "task_id": "T002",
+          "concurrency_group": "wave-1-group-1",
+          "executor": "cloud",
+          "risk": "high",
+          "depends_on": [],
+          "allowed_paths": [
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceKnowledge.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceKnowledgeAccess.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceKnowledgeDiagnostics.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceKnowledgeDiagnosticsController.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceKnowledgeDiagnosticsTest.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceKnowledgeQueryTest.java",
+            "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/KnowledgeDiagnostics.vue"
+          ],
+          "context_ref": ".ai-dev/context/T002.json",
+          "serialized_after": []
+        },
+        {
+          "task_id": "T003",
+          "concurrency_group": "wave-1-group-1",
+          "executor": "cloud",
+          "risk": "high",
+          "depends_on": [],
+          "allowed_paths": [
+            "AionUi-enterprise-poc/packages/web-host/src/tasks/types.ts",
+            "AionUi-enterprise-poc/packages/web-host/src/tasks/store.ts",
+            "AionUi-enterprise-poc/packages/web-host/src/tasks/integration.ts",
+            "AionUi-enterprise-poc/packages/web-host/src/tasks/feedback.ts",
+            "AionUi-enterprise-poc/packages/web-host/src/tasks/feedback.unit.test.ts",
+            "AionUi-enterprise-poc/packages/web-host/src/tasks/store.unit.test.ts",
+            "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/TaskWork/index.tsx",
+            "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/TaskWork/Feedback/",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceFeedback.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceFeedbackController.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceFeedbackTest.java",
+            "deepseek-harness-lab/workbuddy/migrations/rc2/0025_feedback.sql",
+            "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/feedback/index.vue"
+          ],
+          "context_ref": ".ai-dev/context/T003.json",
+          "serialized_after": []
+        },
+        {
+          "task_id": "T004",
+          "concurrency_group": "wave-1-group-1",
+          "executor": "cloud",
+          "risk": "high",
+          "depends_on": [],
+          "allowed_paths": [
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspacePersonalSkillController.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspacePersonalSkillDraft.java",
+            "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspacePersonalSkillDraftTest.java",
+            "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/capabilities/SkillEditor.tsx",
+            "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/capabilities/SkillDraft.tsx",
+            "AionUi-enterprise-poc/tests/unit/skills/personalMethod.dom.test.tsx"
+          ],
+          "context_ref": ".ai-dev/context/T004.json",
+          "serialized_after": []
+        },
+        {
+          "task_id": "T005",
+          "concurrency_group": "wave-1-group-1",
+          "executor": "cloud",
+          "risk": "medium",
+          "depends_on": [],
+          "allowed_paths": [
+            "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/TaskWork/api.ts",
+            "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/conversation/Messages/hooks.ts",
+            "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/conversation/runtime/conversationRuntimeViewStore.ts",
+            "AionUi-enterprise-poc/tests/unit/renderer/messageListStreaming.dom.test.tsx",
+            "AionUi-enterprise-poc/tests/unit/renderer/taskWorkRecovery.dom.test.tsx"
+          ],
+          "context_ref": ".ai-dev/context/T005.json",
+          "serialized_after": []
+        }
+      ]
+    },
+    {
+      "wave": 2,
+      "tasks": [
+        "T006"
+      ],
+      "dispatches": [
+        {
+          "task_id": "T006",
+          "concurrency_group": "wave-2-group-1",
+          "executor": "cloud",
+          "risk": "high",
+          "depends_on": [
+            "T001",
+            "T002",
+            "T003",
+            "T004",
+            "T005"
+          ],
+          "allowed_paths": [
+            "AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.ts",
+            "AionUi-enterprise-poc/packages/web-cli/src/enterprise-entry.ts",
+            "AionUi-enterprise-poc/packages/desktop/src/renderer/i18n/",
+            "AionUi-enterprise-poc/packages/desktop/src/common/config/i18n-keys.d.ts",
+            "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/index.vue",
+            "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/audit/index.vue",
+            "VERSION",
+            "RELEASE_NOTES.md",
+            "THIRD_PARTY_NOTICES.md",
+            "docs/enterprise/optimization-1.0.1.md",
+            "scripts/enterprise-optimizations/",
+            "deploy/tencent/deploy.sh",
+            "deploy/tencent/verify-maintenance.py"
+          ],
+          "context_ref": ".ai-dev/context/T006.json",
+          "serialized_after": []
+        }
+      ]
+    }
+  ],
+  "dispatch_policy": "仅输出计划；由主协调器在门禁、上下文包和独立 worktree 准备后派发"
+}
