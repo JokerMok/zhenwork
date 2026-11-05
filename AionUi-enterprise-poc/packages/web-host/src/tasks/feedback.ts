@@ -86,19 +86,31 @@ export async function submitTaskFeedback(
   request: TaskControlRequest
 ): Promise<unknown> {
   const attemptId = typeof input.attemptId === 'string' ? input.attemptId : '';
-  await ownedAttempt(root, actor, taskId, attemptId, TERMINAL_FEEDBACK_STATES);
+  const attempt = await ownedAttempt(root, actor, taskId, attemptId, TERMINAL_FEEDBACK_STATES);
   const category = typeof input.category === 'string' ? input.category : '';
   const note = typeof input.note === 'string' ? input.note.trim() : '';
-  if (!taskFeedbackCategories.includes(category as TaskFeedbackCategory) || !note || note.length > 500) {
+  if (!taskFeedbackCategories.includes(category as TaskFeedbackCategory) || note.length > 500) {
     throw new TaskError(400, 'TASK_FEEDBACK_INPUT_INVALID');
   }
+  const actualTools = [...new Set(attempt.steps.map((step) => step.tool))];
+  const artifactVersionIds = [
+    ...new Set(attempt.artifacts.flatMap((artifact) => (artifact.versionId ? [artifact.versionId] : []))),
+  ];
   return control(
     actor,
     '/ai/me/feedback',
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ taskId, attemptId, category, note }),
+      body: JSON.stringify({
+        taskId,
+        attemptId,
+        category,
+        note,
+        actualTaskState: attempt.state,
+        actualTools,
+        artifactVersionIds,
+      }),
     },
     request
   );

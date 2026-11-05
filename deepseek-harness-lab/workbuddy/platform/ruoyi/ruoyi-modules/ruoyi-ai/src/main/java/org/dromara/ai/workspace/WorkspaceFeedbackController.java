@@ -1,6 +1,7 @@
 package org.dromara.ai.workspace;
 
 import lombok.RequiredArgsConstructor;
+import org.dromara.ai.workspace.runtime.ExecutionCredentials;
 import org.dromara.common.core.domain.R;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -19,9 +21,14 @@ import java.util.UUID;
 public class WorkspaceFeedbackController {
     private final WorkspacePrincipal principals;
     private final WorkspaceFeedback feedback;
+    private final ExecutionCredentials execution;
 
     @PostMapping("/me/feedback/provenance")
-    public R<?> capture(@RequestBody WorkspaceFeedback.Capture input) {
+    public R<?> capture(
+        @RequestHeader("X-ZhenWork-Host-Service") String serviceAuthorization,
+        @RequestBody WorkspaceFeedback.Capture input
+    ) {
+        execution.checkBackgroundService(serviceAuthorization);
         long user = principals.require("ai:session:use").userId();
         return R.ok(feedback.capture(user, input));
     }
@@ -33,7 +40,11 @@ public class WorkspaceFeedbackController {
     }
 
     @PostMapping("/me/feedback")
-    public R<?> create(@RequestBody WorkspaceFeedback.Create input) {
+    public R<?> create(
+        @RequestHeader("X-ZhenWork-Host-Service") String serviceAuthorization,
+        @RequestBody WorkspaceFeedback.Create input
+    ) {
+        execution.checkBackgroundService(serviceAuthorization);
         long user = principals.require("ai:session:use").userId();
         return R.ok(feedback.create(user, input));
     }

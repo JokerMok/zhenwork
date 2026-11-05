@@ -28,13 +28,38 @@ afterEach(async () => {
 });
 
 test('employee feedback forwards only the selected category and short note', async () => {
-  const { root, taskId, attemptId } = await fixture();
+  const { root, store, taskId, attemptId } = await fixture();
+  const artifactVersion = randomUUID();
+  await store.mutate(taskId, attemptId, (attempt) => {
+    attempt.steps.push({
+      id: randomUUID(),
+      tool: 'create_office_document',
+      digest: 'a'.repeat(64),
+      state: 'completed',
+      at: Date.now(),
+      summary: 'created',
+    });
+    attempt.artifacts.push({
+      path: 'result.xlsx',
+      sha256: 'b'.repeat(64),
+      versionId: artifactVersion,
+      valid: true,
+    });
+  });
   const calls: Array<{ route: string; body: unknown }> = [];
   const result = await submitTaskFeedback(
     root,
     actor,
     taskId,
-    { attemptId, category: 'data_calculation', note: '  total is wrong  ', ignored: 'private' },
+    {
+      attemptId,
+      category: 'data_calculation',
+      note: '  total is wrong  ',
+      ignored: 'private',
+      actualTaskState: 'failed',
+      actualTools: ['browser-forged'],
+      artifactVersionIds: [randomUUID()],
+    },
     async (_actor, route, init) => {
       calls.push({ route, body: JSON.parse(String(init.body)) });
       return new Response(JSON.stringify({ code: 200, data: { id: 'feedback-1', status: 'NEW' } }));
@@ -45,9 +70,29 @@ test('employee feedback forwards only the selected category and short note', asy
   expect(calls).toEqual([
     {
       route: '/ai/me/feedback',
-      body: { taskId, attemptId, category: 'data_calculation', note: 'total is wrong' },
+      body: {
+        taskId,
+        attemptId,
+        category: 'data_calculation',
+        note: 'total is wrong',
+        actualTaskState: 'completed',
+        actualTools: ['create_office_document'],
+        artifactVersionIds: [artifactVersion],
+      },
     },
   ]);
+});
+
+test('a category-only feedback keeps the optional note empty', async () => {
+  const { root, taskId, attemptId } = await fixture();
+  let sent: Record<string, unknown> | undefined;
+
+  await submitTaskFeedback(root, actor, taskId, { attemptId, category: 'correct' }, async (_actor, _route, init) => {
+    sent = JSON.parse(String(init.body));
+    return new Response(JSON.stringify({ code: 200, data: { id: 'feedback-2', status: 'NEW' } }));
+  });
+
+  expect(sent).toMatchObject({ category: 'correct', note: '', actualTaskState: 'completed' });
 });
 
 test('feedback remains scoped to the current terminal attempt and actor', async () => {

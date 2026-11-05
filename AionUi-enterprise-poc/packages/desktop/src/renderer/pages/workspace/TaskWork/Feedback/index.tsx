@@ -41,7 +41,7 @@ export default function TaskFeedback({ taskId, attemptId }: { taskId: string; at
 
   const submit = async () => {
     const normalized = note.trim();
-    if (!category || !normalized || busy) return;
+    if (!category || busy) return;
     setBusy(true);
     try {
       const value = await submitFeedback(taskId, attemptId, category, normalized);
@@ -97,7 +97,7 @@ export default function TaskFeedback({ taskId, attemptId }: { taskId: string; at
         placeholder={t('workspace.feedback.notePlaceholder')}
       />
       <Space>
-        <Button type='primary' size='mini' loading={busy} disabled={!category || !note.trim()} onClick={submit}>
+        <Button type='primary' size='mini' loading={busy} disabled={!category} onClick={submit}>
           {t('workspace.feedback.submit')}
         </Button>
         <Button size='mini' disabled={busy} onClick={() => setOpen(false)}>

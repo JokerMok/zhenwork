@@ -23,6 +23,7 @@ public class WorkspaceFeedback {
     private static final Set<String> CATEGORIES = Set.of(
         "correct", "data_calculation", "citation", "tool", "artifact", "other");
     private static final Set<String> STATUSES = Set.of("NEW", "IN_PROGRESS", "RESOLVED", "CLOSED");
+    private static final Set<String> TASK_STATES = Set.of("completed", "partial");
     private static final Pattern TASK_ID = Pattern.compile("[A-Za-z0-9_-]{1,100}");
     private static final Pattern SENSITIVE = Pattern.compile(
         "(?i)(?:authorization|password|api[_-]?key|access[_-]?token|cookie|secret)\\s*[:=]|Bearer\\s+[A-Za-z0-9._-]{12,}|sk-[A-Za-z0-9]{12,}");
@@ -35,7 +36,15 @@ public class WorkspaceFeedback {
     private final WorkspaceMcpAccess mcps;
     private final WorkspaceToolAccess tools;
 
-    public record Create(String taskId, UUID attemptId, String category, String note) {}
+    public record Create(
+        String taskId,
+        UUID attemptId,
+        String category,
+        String note,
+        String actualTaskState,
+        List<String> actualTools,
+        List<UUID> artifactVersionIds
+    ) {}
     public record Capture(String taskId, UUID attemptId, UUID assistantId) {}
     public record Update(
         String status,
@@ -92,9 +101,13 @@ public class WorkspaceFeedback {
 
     public Map<String, Object> create(long user, Create input) {
         requireTask(input.taskId());
-        if (input.attemptId() == null || !CATEGORIES.contains(Objects.toString(input.category(), "")))
+        if (input.attemptId() == null || !CATEGORIES.contains(Objects.toString(input.category(), ""))
+            || !TASK_STATES.contains(Objects.toString(input.actualTaskState(), "")))
             throw new WorkspaceDenied(400, "InvalidFeedback");
-        String note = required(input.note(), 500, "InvalidFeedbackNote");
+        String normalizedNote = optional(input.note(), 500, "InvalidFeedbackNote");
+        String note = normalizedNote == null ? "" : normalizedNote;
+        List<String> actualTools = toolNames(input.actualTools());
+        List<UUID> artifactVersions = artifactVersions(input.artifactVersionIds());
         return tx.execute(status -> {
             var old = jdbc.queryForList("""
                 SELECT * FROM ai_feedback
@@ -102,17 +115,22 @@ public class WorkspaceFeedback {
                 """, user, input.taskId(), input.attemptId());
             if (!old.isEmpty()) {
                 var row = old.getFirst();
-                if (!Objects.equals(row.get("category"), input.category()) || !Objects.equals(row.get("note"), note))
+                if (!Objects.equals(row.get("category"), input.category()) || !Objects.equals(row.get("note"), note)
+                    || !Objects.equals(row.get("actual_task_state"), input.actualTaskState())
+                    || !jsonListEquals(row.get("actual_tools"), actualTools, String.class)
+                    || !jsonListEquals(row.get("artifact_version_ids"), artifactVersions.stream().map(UUID::toString).toList(), String.class))
                     throw new WorkspaceDenied(409, "FeedbackAlreadySubmitted");
                 return employeeDto(row);
             }
             UUID id = UUID.randomUUID();
             jdbc.update("""
-                INSERT INTO ai_feedback(id,owner_user_id,task_id,attempt_id,provenance_id,category,note)
+                INSERT INTO ai_feedback(id,owner_user_id,task_id,attempt_id,provenance_id,category,note,
+                  actual_task_state,actual_tools,artifact_version_ids)
                 VALUES(?,?,?,?,(SELECT id FROM ai_task_feedback_provenance
-                  WHERE owner_user_id=? AND task_id=? AND attempt_id=?),?,?)
+                  WHERE owner_user_id=? AND task_id=? AND attempt_id=?),?,?,?,?::jsonb,?::jsonb)
                 """, id, user, input.taskId(), input.attemptId(), user, input.taskId(), input.attemptId(),
-                input.category(), note);
+                input.category(), note, input.actualTaskState(), JsonUtils.toJsonString(actualTools),
+                JsonUtils.toJsonString(artifactVersions.stream().map(UUID::toString).toList()));
             audit(user, "feedback.created", id, Map.of(
                 "taskId", input.taskId(), "attemptId", input.attemptId().toString(),
                 "category", input.category(), "status", "NEW"));
@@ -139,7 +157,7 @@ public class WorkspaceFeedback {
             throw new WorkspaceDenied(400, "InvalidFeedbackCategory");
         StringBuilder sql = new StringBuilder("""
             SELECT f.id::text,f.owner_user_id::text,f.task_id,f.attempt_id::text,f.category,f.status,
-              f.record_version,f.created_at,f.updated_at,f.closed_at,
+              f.actual_task_state,f.record_version,f.created_at,f.updated_at,f.closed_at,
               p.assistant_id::text,p.assistant_version,p.model_id::text,p.model_version
             FROM ai_feedback f LEFT JOIN ai_task_feedback_provenance p ON p.id=f.provenance_id WHERE 1=1
             """);
@@ -164,9 +182,11 @@ public class WorkspaceFeedback {
         var row = rows.getFirst();
         Map<String, Object> result = new LinkedHashMap<>();
         for (String key : List.of("id", "owner_user_id", "task_id", "attempt_id", "category", "note",
-            "status", "badcase_description", "root_cause", "cause_evidence", "expected_result", "resolution", "resolution_revision",
+            "status", "actual_task_state", "badcase_description", "root_cause", "cause_evidence", "expected_result", "resolution", "resolution_revision",
             "record_version", "handled_by", "created_at", "updated_at", "closed_at"))
             result.put(key, printable(row.get(key)));
+        result.put("actual_tools", jsonList(row.get("actual_tools"), String.class));
+        result.put("artifact_version_ids", jsonList(row.get("artifact_version_ids"), String.class));
         result.put("conversation_path", "/#/conversation/" + row.get("task_id"));
         result.put("provenance", provenance(row));
         result.put("rechecks", jdbc.queryForList("""
@@ -259,8 +279,9 @@ public class WorkspaceFeedback {
 
     private boolean closeReady(UUID id, int revision) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
-            SELECT EXISTS(SELECT 1 FROM ai_feedback_recheck
-              WHERE feedback_id=? AND resolution_revision=? AND result='PASSED')
+            SELECT COALESCE((SELECT result='PASSED' FROM ai_feedback_recheck
+              WHERE feedback_id=? AND resolution_revision=?
+              ORDER BY checked_at DESC,id DESC LIMIT 1),FALSE)
             """, Boolean.class, id, revision));
     }
 
@@ -319,6 +340,33 @@ public class WorkspaceFeedback {
         Object value = row.get(key);
         if (!(value instanceof Number number)) throw new WorkspaceDenied(503, "FeedbackProvenanceUnavailable");
         return number;
+    }
+
+    private static List<String> toolNames(List<String> value) {
+        if (value == null || value.size() > 100) throw new WorkspaceDenied(400, "InvalidFeedbackTools");
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        for (String item : value) {
+            if (item == null || item.isBlank() || item.length() > 200
+                || item.codePoints().anyMatch(Character::isISOControl))
+                throw new WorkspaceDenied(400, "InvalidFeedbackTools");
+            result.add(item);
+        }
+        return List.copyOf(result);
+    }
+
+    private static List<UUID> artifactVersions(List<UUID> value) {
+        if (value == null || value.size() > 100 || value.stream().anyMatch(Objects::isNull))
+            throw new WorkspaceDenied(400, "InvalidFeedbackArtifacts");
+        return List.copyOf(new LinkedHashSet<>(value));
+    }
+
+    private static <T> List<T> jsonList(Object value, Class<T> type) {
+        if (value == null) return List.of();
+        return JsonUtils.parseArray(value.toString(), type);
+    }
+
+    private static <T> boolean jsonListEquals(Object stored, List<T> expected, Class<T> type) {
+        return Objects.equals(jsonList(stored, type), expected);
     }
 
     private static UUID uuid(Object value, String error) {

@@ -25,6 +25,7 @@
       </el-table-column>
       <el-table-column label="分类" min-width="120"><template #default="{ row }">{{ label(row.category) }}</template></el-table-column>
       <el-table-column label="状态" min-width="110"><template #default="{ row }"><el-tag>{{ label(row.status) }}</el-tag></template></el-table-column>
+      <el-table-column label="任务结果" min-width="100"><template #default="{ row }">{{ taskState(row.actual_task_state) }}</template></el-table-column>
       <el-table-column label="执行版本" min-width="180">
         <template #default="{ row }">
           {{ row.assistant_version == null ? '未知' : `助手 v${row.assistant_version}` }} ·
@@ -52,7 +53,10 @@
           </el-descriptions-item>
           <el-descriptions-item label="员工 ID">{{ detail.owner_user_id }}</el-descriptions-item>
           <el-descriptions-item label="反馈分类">{{ label(detail.category) }}</el-descriptions-item>
-          <el-descriptions-item label="员工说明">{{ detail.note }}</el-descriptions-item>
+          <el-descriptions-item label="员工说明">{{ detail.note || '未补充' }}</el-descriptions-item>
+          <el-descriptions-item label="任务结果">{{ taskState(detail.actual_task_state) }}</el-descriptions-item>
+          <el-descriptions-item label="实际工具">{{ values(detail.actual_tools) }}</el-descriptions-item>
+          <el-descriptions-item label="成果版本">{{ values(detail.artifact_version_ids) }}</el-descriptions-item>
         </el-descriptions>
 
         <h3>执行版本</h3>
@@ -129,6 +133,8 @@ const labels: Record<string, string> = {
   citation: '引用', tool: '工具', artifact: '成果文件', other: '其他',
 };
 const label = (value: unknown) => labels[String(value)] || String(value || '未知');
+const taskState = (value: unknown) => ({ completed: '已完成', partial: '部分完成' }[String(value)] || '未知');
+const values = (items?: unknown[]) => items?.length ? items.join('；') : '无';
 const version = (id?: string, value?: number) => id && value != null ? `${id} · v${value}` : '未知';
 const versions = (items?: VersionItem[]) => items?.length
   ? items.map(item => version(item.id, item.version)).join('；')
