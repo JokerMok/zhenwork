@@ -27,7 +27,9 @@
     "docs/enterprise/optimization-1.0.1.md",
     "scripts/enterprise-optimizations/",
     "deploy/tencent/deploy.sh",
-    "deploy/tencent/verify-maintenance.py"
+    "deploy/tencent/verify-maintenance.py",
+    "AionUi-enterprise-poc/packages/web-host/src/enterprise-docker-core.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/enterprise-model-runtime.ts"
   ],
   "excluded_snapshot_paths": [
     "AionUi-enterprise-poc/node_modules/",
