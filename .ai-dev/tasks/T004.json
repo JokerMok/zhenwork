@@ -13,7 +13,10 @@
     "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspacePersonalSkillDraftTest.java",
     "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/capabilities/SkillEditor.tsx",
     "AionUi-enterprise-poc/packages/desktop/src/renderer/pages/workspace/capabilities/SkillDraft.tsx",
-    "AionUi-enterprise-poc/tests/unit/skills/personalMethod.dom.test.tsx"
+    "AionUi-enterprise-poc/tests/unit/skills/personalMethod.dom.test.tsx",
+    "AionUi-enterprise-poc/packages/web-host/src/office/methods/index.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/office/methods/inventoryGrouping.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/office/methods/inventoryGrouping.unit.test.ts"
   ],
   "excluded_snapshot_paths": [
     "AionUi-enterprise-poc/node_modules/",
