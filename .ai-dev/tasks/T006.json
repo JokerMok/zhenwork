@@ -16,9 +16,8 @@
   ],
   "allowed_paths": [
     "AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.ts",
-    "AionUi-enterprise-poc/packages/web-cli/src/enterprise-entry.ts",
-    "AionUi-enterprise-poc/packages/desktop/src/renderer/i18n/",
-    "AionUi-enterprise-poc/packages/desktop/src/common/config/i18n-keys.d.ts",
+    "AionUi-enterprise-poc/packages/web-cli/src/enterprise.ts",
+    "AionUi-enterprise-poc/packages/desktop/src/renderer/services/i18n/",
     "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/index.vue",
     "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/audit/index.vue",
     "VERSION",
@@ -29,7 +28,9 @@
     "deploy/tencent/deploy.sh",
     "deploy/tencent/verify-maintenance.py",
     "AionUi-enterprise-poc/packages/web-host/src/enterprise-docker-core.ts",
-    "AionUi-enterprise-poc/packages/web-host/src/enterprise-model-runtime.ts"
+    "AionUi-enterprise-poc/packages/web-host/src/enterprise-model-runtime.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/enterprise-model-runtime.unit.test.ts",
+    "AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.unit.test.ts"
   ],
   "excluded_snapshot_paths": [
     "AionUi-enterprise-poc/node_modules/",

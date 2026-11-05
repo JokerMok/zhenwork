@@ -4,10 +4,10 @@
   "status": "approved",
   "recorded_by": "coordinator",
   "authorization_basis": "initial_request",
-  "authorization_evidence": "用户要求管理员准确查看资源版本绑定的Core依赖状态；复用既有审计表保存可信摘要的两文件拆分属于原A范围。",
-  "approved_at": "2026-11-05T03:47:52.248149+00:00",
+  "authorization_evidence": "用户授权统一集成发布；按实际源码纠正CLI与i18n归属路径，并限定新可信Host边界的直接定向测试。",
+  "approved_at": "2026-11-05T03:54:09.727889+00:00",
   "git_common_dir": "621f967e679af645a720a4fcf5eecbb02e4649135b0d9ca2e499021aa20c79a2",
-  "base_sha": "ef26d33d0a6c418c9a68faeebe85140d88079afa",
+  "base_sha": "65d77d5c3ba9b759225ae89bf4da579a68ddc020",
   "target_branch": "feat/enterprise-1.0.1-optimization",
   "artifacts": {
     "prd.md": "b7669fa895a050e7a1d8f36c628f36abaf2d12779d2385f09cb3105673dd09c4",
@@ -18,12 +18,12 @@
     "tasks/T003.md": "5e5e5615fe0949953e948a6b5f834ca6842c926165b9b15f1291f01fb7489331",
     "tasks/T004.md": "67d260a0ae694833bc7a1c26d0d92a0854dc4def92fd8b86206e764b78b305d4",
     "tasks/T005.md": "9c1cc755f7fb80cf598ecdd2c51f0f5ccef45484d15bcf93c500820d2659f69f",
-    "tasks/T006.md": "1ee6268164f9f725581cafbb6ba40b22d2732119fb5091e58975379c6580c84a",
+    "tasks/T006.md": "2d1fb74256a088bd6e453f59e9024ffdaf907845ea02c6cfb39cb37f6a1bd190",
     "tasks/T001.json": "da46f5f98d25bac159cba238d3f5c3131a61b4cb279a73c99147ff2b8b62db57",
     "tasks/T002.json": "9d923656549674aecf8d111cf217fd0335617db885e4929e2349ba4be3b6027f",
     "tasks/T003.json": "fbe14c97ecbe315673245f7e66efffaca4e10d84bd4d05ef878d911f4f7ca8c9",
     "tasks/T004.json": "3b6136e7ccfd59f4750bd62ae2e4033a48ca2559a3fdc139795f6a6f746d768f",
     "tasks/T005.json": "0684baa7b0ad2de18e623bad3877c87910ef58c7cf387273f93a2486880fed6e",
-    "tasks/T006.json": "df11b4c4f631c7ba058cbeef588f3f044541bd0a93d17e23b35994d2a5f73945"
+    "tasks/T006.json": "2e37654f3813711bf8f414281b588256dff97c1ba1e22880e95707b623597c05"
   }
 }
