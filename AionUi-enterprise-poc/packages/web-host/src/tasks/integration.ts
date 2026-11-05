@@ -1,4 +1,11 @@
 import type { EnterpriseActor } from "../enterprise-gateway.js";
+
+export type TaskControlRequest = (
+  actor: EnterpriseActor,
+  route: string,
+  init: RequestInit,
+) => Promise<Response>;
+
 export type TaskRuntime = {
   issueTaskGrant(actor: EnterpriseActor, jobId: string): Promise<void>;
   checkTaskGrant(actor: EnterpriseActor, jobId: string): Promise<boolean>;

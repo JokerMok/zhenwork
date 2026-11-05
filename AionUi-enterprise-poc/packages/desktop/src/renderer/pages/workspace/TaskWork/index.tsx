@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { enterpriseRequest, workspaceErrorCode } from '../workspaceApi';
 import { taskAccepted, taskRequestId, taskStatusVisible, useTaskWork } from './api';
+import TaskFeedback from './Feedback';
 
 /** One business status, one approval; all additional employee input uses the main conversation composer. */
 export default function TaskWork({
@@ -49,7 +50,9 @@ export default function TaskWork({
         action={<Button onClick={() => void reload()}>{t('common.retry')}</Button>}
       />
     ) : null;
-  if (embedded && !taskStatusVisible(a)) return null;
+  const feedbackVisible = ['completed', 'partial'].includes(a.state);
+  const statusVisible = taskStatusVisible(a);
+  if (embedded && !statusVisible && !feedbackVisible) return null;
   const action = async (kind: string): Promise<void> => {
     if (requestBusy.current) return;
     requestBusy.current = true;
@@ -89,6 +92,9 @@ export default function TaskWork({
     } catch {
       /* Preserve plain employee text. */
     }
+  }
+  if (embedded && !statusVisible && feedbackVisible) {
+    return <TaskFeedback taskId={conversationId} attemptId={a.id} />;
   }
   const body = (
     <>
@@ -226,6 +232,7 @@ export default function TaskWork({
             )}
           </Space>
         ))}
+      {feedbackVisible && <TaskFeedback taskId={conversationId} attemptId={a.id} />}
     </section>
   );
 }
