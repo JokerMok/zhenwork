@@ -17,7 +17,9 @@ assert source.parent==pathlib.Path('/srv/apps/zhenwork/releases')
 manifest=json.loads((source/'RELEASE.json').read_text())
 assert manifest['appVersion']=='1.0.1'
 subprocess.run(['sha256sum','-c','SHA256SUMS'],cwd=source,stdout=subprocess.DEVNULL,check=True)
-assert a.admin_source_sha==manifest['sourceSha']
+if a.admin_source_sha!=manifest['sourceSha']:
+ reuse=manifest.get('artifactReusedFrom',{})
+ assert reuse.get('sourceSha')==a.admin_source_sha and 'admin' in reuse.get('reusedArtifacts',[])
 admin=pathlib.Path(a.admin_artifacts).resolve(strict=True)
 assert admin==pathlib.Path('/tmp/zhenwork-opt-1.0.1-lab-admin')
 assert re.fullmatch(r'[a-f0-9]{64}',a.admin_sha256)

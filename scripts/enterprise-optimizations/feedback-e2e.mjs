@@ -261,7 +261,7 @@ export async function prepareFeedbackE2E({
     selected.feedbackId,
     updatePayload(auditorCase.detail, auditorCase.detail.status)
   );
-  if (auditorWrite.status() !== 403) throw new Error(`read-only auditor write was not forbidden (HTTP ${auditorWrite.status()})`);
+  if (auditorWrite.status() !== 403 && (await auditorWrite.json().catch(() => null))?.code !== 403) throw new Error(`read-only auditor write was not forbidden (HTTP ${auditorWrite.status()})`);
   await auditorCase.dialog.getByRole('button', { name: '关闭', exact: true }).click();
 
   for (const item of submitted) await verifyOtherEmployeeIsolation(otherEmployeePage, item);

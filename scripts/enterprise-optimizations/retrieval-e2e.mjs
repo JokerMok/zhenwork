@@ -248,7 +248,7 @@ export async function runRetrievalE2E({ adminPage, employeePage }) {
     documentId: v2.id,
     versions: [1, 2],
     outcomes: { current: current.outcome, noHit: noHit.outcome, historyV1: historyV1.outcome, historyV2: historyV2.outcome },
-    employeeDenied: { diagnostics: deniedDiagnostic.status, source: deniedSource.status },
+    employeeDenied: { diagnostics: deniedDiagnostic.code || deniedDiagnostic.status, source: deniedSource.code || deniedSource.status },
   };
 }
 
