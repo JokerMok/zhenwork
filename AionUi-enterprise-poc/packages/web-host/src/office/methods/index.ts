@@ -4,6 +4,7 @@ import path from 'node:path';
 import { PARSER_PYTHON } from '../workbook/analysis/parserScript.js';
 import type { OfficeSheet } from '../generate.js';
 import { APPROVED_METHOD_PROCESSORS } from './registry.js';
+import { groupInventory } from './inventoryGrouping.js';
 
 type File = { path: string; content: string; encoding?: string; sha256?: string };
 type Detail = {
@@ -158,7 +159,8 @@ export const methodTool = {
         minItems: 1,
         maxItems: 2,
         items: { type: 'string', pattern: '^\\d{4}-(0[1-9]|1[0-2])$' },
-        description: 'One actual month for a monthly task, or two ordered comparison months (YYYY-MM). Task-only override; never edits saved Skill. Comparison calculations still require two months.',
+        description:
+          'One actual month for a monthly task, or two ordered comparison months (YYYY-MM). Task-only override; never edits saved Skill. Comparison calculations still require two months.',
       },
       cutoff: {
         type: 'string',
@@ -322,10 +324,20 @@ export async function executeMethod(options: {
         periods: [...options.parameters.periods],
       };
     }
+    const selectedMethods = options.methods ?? preferences.methods;
+    const warehouseGrouping = JSON.stringify(preferences.groupBy) === JSON.stringify(['warehouse']);
+    if (
+      warehouseGrouping &&
+      (JSON.stringify(selectedMethods) !== JSON.stringify(['inventory']) || options.revisionPayload)
+    )
+      throw Error('METHOD_WAREHOUSE_GROUPING_REQUIRES_INVENTORY');
+    const processorPreferences = structuredClone(preferences);
+    // Aggregate all batch rows first; filtering earlier could conceal a cancelling discrepancy.
+    if (warehouseGrouping) processorPreferences.differencesOnly = false;
     const payload = {
       ...options.revisionPayload,
       company: p.company,
-      preferences,
+      preferences: processorPreferences,
       methods: options.methods,
       name: options.name,
       input: options.input.toString('base64'),
@@ -406,6 +418,22 @@ export async function executeMethod(options: {
     const result = await runMethodProcessor(p.script, payload, options.signal);
     if (result.needsDataSources || !result.coverage.allRowsProcessed) throw Error('METHOD_RESULT_INCOMPLETE');
     result.issues.push(...contractIssues);
+    if (warehouseGrouping) {
+      const inventory = obj(result.summary.inventory);
+      const names = preferences.outputSheets as Record<string, string> | undefined;
+      const inventoryName = names?.['库存差异'] || '库存差异';
+      const attentionName = names?.['贮存关注'] || '贮存关注';
+      let grouped = 0;
+      result.sheets = result.sheets
+        .filter((sheet) => preferences.differencesOnly !== true || sheet.name !== attentionName)
+        .map((sheet) => {
+          if (sheet.name !== inventoryName) return sheet;
+          grouped++;
+          return groupInventory(sheet, preferences.differencesOnly === true, inventory);
+        });
+      if (grouped !== 1) throw Error('METHOD_GROUP_SCHEMA_CHANGED');
+      inventory.groupBy = 'warehouse';
+    }
     // Recheck the same immutable method config before any output writes.
     const current = await methodPackage(options.client, options.resourceId);
     if (current.configSha256 !== p.configSha256 || current.detail.version !== p.detail.version)

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { enterpriseControl, newIdempotencyKey, workspaceErrorCode } from '../workspaceApi';
 import type { WorkspaceResource } from '../workspaceTypes';
+import SkillDraft from './SkillDraft';
 
 type SkillFile = {
   path: string;
@@ -198,6 +199,24 @@ export default function SkillEditor({
           </Space>
           {canEdit && (
             <Input aria-label={t('workspace.abilities.methodName')} value={name} onChange={setName} maxLength={80} />
+          )}
+          {mode === 'view' && editableSkill(resource) && (
+            <SkillDraft
+              key={`${resource.id}:${resource.version}`}
+              resource={resource}
+              disabled={saving || Object.keys(drafts).length > 0}
+              onApply={(draft) => {
+                const values: Record<string, string> = {};
+                for (const change of draft.changes) {
+                  if (change.path === 'SKILL.md') values['SKILL.md'] = draft.source;
+                  else {
+                    const updated = draft.files.find((f) => f.path === change.path);
+                    if (updated && updated.encoding === 'utf8') values[change.path] = updated.content;
+                  }
+                }
+                setDrafts(values);
+              }}
+            />
           )}
           <Select aria-label={t('workspace.abilities.packageFiles')} value={selected} onChange={setSelected} showSearch>
             {files.map((f) => (

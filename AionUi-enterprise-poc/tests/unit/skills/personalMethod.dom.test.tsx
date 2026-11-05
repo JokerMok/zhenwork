@@ -5,6 +5,7 @@ import {
   editableSkill,
   type SkillResource,
 } from '../../../packages/desktop/src/renderer/pages/workspace/capabilities/SkillEditor';
+import { preferenceChanges } from '../../../packages/desktop/src/renderer/pages/workspace/capabilities/SkillDraft';
 const resource = {
   id: '11111111-1111-4111-a111-111111111111',
   name: 'Standard',
@@ -38,5 +39,19 @@ describe('private methods preserve source and permissions', () => {
     expect(lineage.sourceVersion).toBe(2);
     expect(lineage.sourceConfigSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(lineage.updatePolicy).toBe('explicit-only');
+  });
+});
+
+describe('natural method preview', () => {
+  it('shows actual nested preference differences', () => {
+    expect(
+      preferenceChanges(
+        '{"capacityPercent":"90","analysis":{"outputs":{"excel":true,"summary":true}}}',
+        '{"capacityPercent":"80","analysis":{"outputs":{"excel":true,"summary":false}}}'
+      )
+    ).toEqual([
+      { key: 'capacityPercent', before: '"90"', after: '"80"' },
+      { key: 'analysis.outputs.summary', before: 'true', after: 'false' },
+    ]);
   });
 });
