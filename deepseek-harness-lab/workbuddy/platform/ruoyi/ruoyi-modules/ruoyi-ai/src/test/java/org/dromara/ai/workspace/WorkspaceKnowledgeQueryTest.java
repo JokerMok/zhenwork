@@ -63,7 +63,7 @@ class WorkspaceKnowledgeQueryTest {
     }
 
     @Test
-    void diagnosticCandidateQueryUsesTheProductionStagesAndRealTopK() {
+    void diagnosticCandidateQueryUsesProductionStagesWithABoundedExplanationPool() {
         var jdbc=mock(JdbcTemplate.class);UUID base=UUID.randomUUID();
         when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of());
         var knowledge=new WorkspaceKnowledge(jdbc,mock(TransactionTemplate.class),mock(WorkspaceKnowledgeAccess.class),mock(WorkspaceFileStore.class),mock(WorkspaceKnowledgeDocumentExtractor.class),mock(WorkspaceConversations.class),mock(WorkspaceEvents.class));
@@ -73,8 +73,15 @@ class WorkspaceKnowledgeQueryTest {
         assertTrue(sql.getValue().contains("i.content % ? AS trigram_match"));
         assertTrue(sql.getValue().contains("count(*) OVER() AS candidate_count"));
         assertTrue(sql.getValue().contains("text_rank+trigram_similarity"));
-        assertTrue(sql.getValue().endsWith("LIMIT 8"));
+        assertTrue(sql.getValue().endsWith("LIMIT 40"));
         assertEquals("product",args.getValue()[1]);assertEquals(base,args.getValue()[6]);assertEquals(7,args.getValue().length);
+    }
+
+    @Test
+    void productionCandidateQueryKeepsTopEight() {
+        var jdbc=mock(JdbcTemplate.class);var access=mock(WorkspaceKnowledgeAccess.class);UUID base=UUID.randomUUID();when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of());
+        var knowledge=new WorkspaceKnowledge(jdbc,mock(TransactionTemplate.class),access,mock(WorkspaceFileStore.class),mock(WorkspaceKnowledgeDocumentExtractor.class),mock(WorkspaceConversations.class),mock(WorkspaceEvents.class));knowledge.search(base,7,"product");
+        var sql=org.mockito.ArgumentCaptor.forClass(String.class);verify(jdbc).queryForList(sql.capture(),any(Object[].class));assertTrue(sql.getValue().contains("0::bigint AS candidate_count"));assertTrue(sql.getValue().endsWith("LIMIT 8"));
     }
 
     @Test

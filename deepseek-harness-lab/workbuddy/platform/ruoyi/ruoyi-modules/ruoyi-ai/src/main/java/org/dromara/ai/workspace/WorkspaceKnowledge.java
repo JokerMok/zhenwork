@@ -11,7 +11,7 @@ import java.util.regex.*;
 
 @Service @RequiredArgsConstructor
 public class WorkspaceKnowledge {
- static final int SEARCH_LIMIT=8;
+ static final int SEARCH_LIMIT=8,DIAGNOSTIC_LIMIT=40;
  private final JdbcTemplate jdbc;private final TransactionTemplate tx;private final WorkspaceKnowledgeAccess access;private final WorkspaceFileStore files;private final WorkspaceKnowledgeDocumentExtractor extractor;private final WorkspaceConversations conversations;private final WorkspaceEvents events;
  public Map<String,Object> upload(UUID base,UUID document,Integer expected,UUID key,long user,MultipartFile file){
   access.base(base,user,AiResourceGuard.Action.EDIT);String name=WorkspaceFileStore.filename(file);byte[] bytes=WorkspaceFileStore.upload(file,10*1024*1024);var descriptor=extractor.describe(name,bytes);
@@ -49,7 +49,7 @@ public class WorkspaceKnowledge {
    "i.search_vector @@ websearch_to_tsquery('simple',?) AS full_text_match,i.content % ? AS trigram_match,EXISTS(SELECT 1 FROM query_terms q WHERE i.content ILIKE q.pattern ESCAPE '!' OR f.filename ILIKE q.pattern ESCAPE '!' OR d.title ILIKE q.pattern ESCAPE '!' OR COALESCE(i.location_label,'') ILIKE q.pattern ESCAPE '!') AS term_match,"+
    "CASE WHEN i.search_vector @@ websearch_to_tsquery('simple',?) THEN ts_rank_cd(i.search_vector,websearch_to_tsquery('simple',?)) ELSE 0 END AS text_rank,similarity(i.content,?) AS trigram_similarity "+
    "FROM ai_knowledge_index i JOIN ai_knowledge_document d ON d.id=i.document_id JOIN ai_knowledge_document_version v ON v.document_id=i.document_id AND v.version=i.version JOIN ai_file f ON f.id=v.file_id "+source+" AND d.deleted_at IS NULL AND v.status='READY'),matched AS (SELECT scored.*,"+candidateCount+" AS candidate_count FROM scored WHERE full_text_match OR trigram_match OR term_match) "+
-   "SELECT * FROM matched ORDER BY lexical_score DESC,text_rank+trigram_similarity DESC,document_id,chunk_index LIMIT "+SEARCH_LIMIT;
+   "SELECT * FROM matched ORDER BY lexical_score DESC,text_rank+trigram_similarity DESC,document_id,chunk_index LIMIT "+(diagnostics?DIAGNOSTIC_LIMIT:SEARCH_LIMIT);
   return jdbc.queryForList(sql,args.toArray());
  }
  public Map<String,Object> search(UUID base,long user,String query){return search(base,user,query,null,null);}

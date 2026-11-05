@@ -29,9 +29,14 @@ class WorkspaceKnowledgeDiagnosticsTest {
   var result=fixture.service.diagnose(fixture.base,7,"legacy",doc,1);var scope=(Map<String,Object>)result.get("scope");assertEquals("VERSION_HISTORY",scope.get("mode"));assertEquals(1,scope.get("version"));var selected=(Map<String,Object>)((List<?>)scope.get("versions")).getFirst();assertEquals(1,selected.get("version"));assertEquals("HISTORY_INDEXED",selected.get("reason"));
  }
 
- @Test void reportsTheProductionTopKWithoutReturningExtraDiagnosticRows(){
-  var fixture=fixture();UUID doc=UUID.randomUUID();when(fixture.jdbc.queryForList(startsWith("SELECT d.id::text"),eq(fixture.base))).thenReturn(List.of(scope(doc,1,1,"READY",12)));List<Map<String,Object>> rows=new ArrayList<>();for(int i=0;i<8;i++){var row=hit(doc,1,"section "+i,12);row.put("chunk_index",i);rows.add(row);}when(fixture.knowledge.diagnosticMatches(fixture.base,"many",null,null)).thenReturn(rows);
-  var result=fixture.service.diagnose(fixture.base,7,"many",null,null);var summary=(Map<String,Object>)result.get("summary");assertEquals(12,summary.get("matchedCandidates"));assertEquals(8,summary.get("returnedHits"));assertEquals(4,summary.get("filteredByTopK"));assertEquals(8,((List<?>)result.get("candidates")).size());assertTrue(((List<?>)result.get("causes")).contains("FILTERED_TOP_K"));
+ @Test void exposesTheNinthCandidateAndBoundsTheDiagnosticPool(){
+  var fixture=fixture();UUID doc=UUID.randomUUID();when(fixture.jdbc.queryForList(startsWith("SELECT d.id::text"),eq(fixture.base))).thenReturn(List.of(scope(doc,1,1,"READY",45)));List<Map<String,Object>> rows=new ArrayList<>();for(int i=0;i<40;i++){var row=hit(doc,1,"section "+i,45);row.put("chunk_index",i);rows.add(row);}when(fixture.knowledge.diagnosticMatches(fixture.base,"many",null,null)).thenReturn(rows);
+  var result=fixture.service.diagnose(fixture.base,7,"many",null,null);var summary=(Map<String,Object>)result.get("summary");assertEquals(45,summary.get("matchedCandidates"));assertEquals(8,summary.get("returnedHits"));assertEquals(37,summary.get("filteredByTopK"));assertEquals(5,summary.get("omittedCandidates"));var candidates=(List<Map<String,Object>>)result.get("candidates");assertEquals(40,candidates.size());assertEquals(false,candidates.get(8).get("returned"));assertEquals("FILTERED_TOP_K",candidates.get(8).get("filterStatus"));assertTrue(((List<?>)result.get("causes")).contains("FILTERED_TOP_K"));
+ }
+
+ @Test void candidateVersionDenialPreventsDiagnosticDisclosure(){
+  var fixture=fixture();UUID allowed=UUID.randomUUID(),denied=UUID.randomUUID();when(fixture.jdbc.queryForList(startsWith("SELECT d.id::text"),eq(fixture.base))).thenReturn(List.of(scope(allowed,1,1,"READY",9)));List<Map<String,Object>> rows=new ArrayList<>();for(int i=0;i<8;i++){var row=hit(allowed,1,"section "+i,9);row.put("chunk_index",i);rows.add(row);}rows.add(hit(denied,1,"denied",9));when(fixture.knowledge.diagnosticMatches(fixture.base,"many",null,null)).thenReturn(rows);doThrow(new WorkspaceDenied(404,"DocumentVersionNotFound")).when(fixture.access).version(denied,1,7,AiResourceGuard.Action.EDIT);
+  assertThrows(WorkspaceDenied.class,()->fixture.service.diagnose(fixture.base,7,"many",null,null));verify(fixture.access).version(denied,1,7,AiResourceGuard.Action.EDIT);
  }
 
  @Test void controllerRequiresEnterprisePermissionBeforeCallingDiagnostics(){
