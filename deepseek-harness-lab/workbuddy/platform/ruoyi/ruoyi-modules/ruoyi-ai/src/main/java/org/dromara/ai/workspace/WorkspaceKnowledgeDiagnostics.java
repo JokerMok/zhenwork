@@ -1,0 +1,43 @@
+package org.dromara.ai.workspace;
+
+import lombok.RequiredArgsConstructor;
+import org.dromara.common.json.utils.JsonUtils;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.*;
+
+@Service
+@RequiredArgsConstructor
+public class WorkspaceKnowledgeDiagnostics {
+ private final JdbcTemplate jdbc;private final WorkspaceKnowledgeAccess access;private final WorkspaceKnowledge knowledge;
+
+ @Transactional(noRollbackFor=WorkspaceDenied.class)
+ public Map<String,Object> diagnose(UUID base,long user,String query,UUID document,Integer version){
+  access.base(base,user,AiResourceGuard.Action.EDIT);String normalized=WorkspaceKnowledge.normalizedQuery(query);
+  try{return diagnoseAuthorized(base,user,normalized,document,version);}catch(RuntimeException e){audit(user,base,Map.of("queryHash",WorkspaceTools.hash(normalized),"candidateCount",0,"returnedCount",0));throw e;}
+ }
+ private Map<String,Object> diagnoseAuthorized(UUID base,long user,String normalized,UUID document,Integer version){
+  if((document==null)!=(version==null))throw new WorkspaceDenied(400,"DocumentVersionRequired");
+  String mode=document==null?"CURRENT_INDEXED":"VERSION_HISTORY";List<Map<String,Object>> versions=document==null?currentScope(base,user):explicitScope(base,document,version,user);
+  int searchableVersions=0,searchableChunks=0;for(var item:versions){if(Boolean.TRUE.equals(item.get("searchable"))){searchableVersions++;searchableChunks+=((Number)item.get("chunkCount")).intValue();}}
+  List<Map<String,Object>> rows=searchableChunks==0?List.of():knowledge.diagnosticMatches(base,normalized,document,version);
+  access.base(base,user,AiResourceGuard.Action.EDIT);for(var row:rows)access.version(UUID.fromString(row.get("document_id").toString()),((Number)row.get("version")).intValue(),user,AiResourceGuard.Action.EDIT);
+  int matched=rows.isEmpty()?0:((Number)rows.getFirst().get("candidate_count")).intValue(),returned=Math.min(matched,WorkspaceKnowledge.SEARCH_LIMIT),filtered=Math.max(0,matched-returned);
+  String outcome=matched>0?"HIT":searchableChunks==0?"NOT_INDEXED":"NO_HIT";List<String> causes=new ArrayList<>();if("NOT_INDEXED".equals(outcome))causes.add("NOT_INDEXED");if("NO_HIT".equals(outcome))causes.add("NO_HIT");if(filtered>0)causes.add("FILTERED_TOP_K");
+  List<Map<String,Object>> candidates=new ArrayList<>();for(int i=0;i<rows.size();i++)candidates.add(candidate(rows.get(i),i+1));
+  UUID diagnostic=UUID.randomUUID();Map<String,Object> scope=new LinkedHashMap<>();scope.put("mode",mode);scope.put("baseId",base.toString());scope.put("documentId",document==null?null:document.toString());scope.put("version",version);scope.put("versions",versions);
+  Map<String,Object> summary=Map.of("authorizedVersions",versions.size(),"searchableVersions",searchableVersions,"searchableChunks",searchableChunks,"matchedCandidates",matched,"returnedHits",returned,"filteredByTopK",filtered);
+  Map<String,Object> result=new LinkedHashMap<>();result.put("diagnosticId",diagnostic.toString());result.put("retrievalMode","POSTGRES_LEXICAL");result.put("query",Map.of("normalized",normalized,"terms",WorkspaceKnowledge.queryTerms(normalized)));result.put("scope",scope);result.put("config",config());result.put("outcome",outcome);result.put("summary",summary);result.put("causes",causes);result.put("candidates",candidates);
+  audit(user,base,Map.of("queryHash",WorkspaceTools.hash(normalized),"candidateCount",matched,"returnedCount",returned));return result;
+ }
+
+ private List<Map<String,Object>> currentScope(UUID base,long user){
+  var rows=jdbc.queryForList("SELECT d.id::text AS document_id,d.latest_version,d.indexed_version,COALESCE(d.indexed_version,d.latest_version) AS version,v.status,(SELECT count(*) FROM ai_knowledge_index i WHERE i.document_id=d.id AND i.version=COALESCE(d.indexed_version,d.latest_version)) AS chunk_count FROM ai_knowledge_document d JOIN ai_knowledge_document_version v ON v.document_id=d.id AND v.version=COALESCE(d.indexed_version,d.latest_version) WHERE d.base_id=? AND d.deleted_at IS NULL ORDER BY d.created_at",base);List<Map<String,Object>> result=new ArrayList<>();for(var row:rows){UUID id=UUID.fromString(row.get("document_id").toString());int v=((Number)row.get("version")).intValue(),chunks=((Number)row.get("chunk_count")).intValue();access.version(id,v,user,AiResourceGuard.Action.EDIT);boolean searchable=row.get("indexed_version")!=null&&"READY".equals(row.get("status"))&&chunks>0;String reason=row.get("indexed_version")==null?"NOT_INDEXED":!"READY".equals(row.get("status"))?"INDEX_VERSION_NOT_READY":chunks==0?"INDEX_EMPTY":"CURRENT_INDEXED";result.add(scopeItem(row,searchable,reason));}return result;
+ }
+ private List<Map<String,Object>> explicitScope(UUID base,UUID document,int version,long user){var doc=access.document(document,user,AiResourceGuard.Action.EDIT);if(!base.equals(doc.get("base_id")))throw new WorkspaceDenied(404,"DocumentNotFound");var value=access.version(document,version,user,AiResourceGuard.Action.EDIT);int chunks=jdbc.queryForObject("SELECT count(*) FROM ai_knowledge_index WHERE document_id=? AND version=?",Integer.class,document,version);Map<String,Object> row=new LinkedHashMap<>();row.put("document_id",document.toString());row.put("latest_version",doc.get("latest_version"));row.put("indexed_version",doc.get("indexed_version"));row.put("version",version);row.put("status",value.get("status"));row.put("chunk_count",chunks);boolean searchable="READY".equals(value.get("status"))&&chunks>0;String reason=!"READY".equals(value.get("status"))?"VERSION_NOT_READY":chunks==0?"INDEX_EMPTY":Objects.equals(doc.get("indexed_version"),version)?"CURRENT_INDEXED":"HISTORY_INDEXED";return List.of(scopeItem(row,searchable,reason));}
+ private Map<String,Object> scopeItem(Map<String,Object> row,boolean searchable,String reason){Map<String,Object> item=new LinkedHashMap<>();item.put("documentId",row.get("document_id"));item.put("latestVersion",row.get("latest_version"));item.put("indexedVersion",row.get("indexed_version"));item.put("version",row.get("version"));item.put("status",row.get("status"));item.put("chunkCount",row.get("chunk_count"));item.put("searchable",searchable);item.put("reason",reason);return item;}
+ private Map<String,Object> config(){String threshold=jdbc.queryForObject("SELECT current_setting('pg_trgm.similarity_threshold')",String.class);Map<String,Object> value=new LinkedHashMap<>();value.put("queryMaxChars",200);value.put("termMax",32);value.put("textSearchConfig","simple");value.put("trigramCandidateThreshold",Double.parseDouble(threshold));value.put("globalScoreThreshold",null);value.put("filters",List.of("AUTHORIZED_BASE_EDIT","AUTHORIZED_DOCUMENT_VERSION_EDIT","DOCUMENT_NOT_DELETED","VERSION_READY"));value.put("matchAny",List.of("FULL_TEXT","TRIGRAM","TERM_CONTAINS"));value.put("scoreWeights",Map.of("titleOrFilename",4,"location",2,"content",1));value.put("secondaryRank",List.of("ts_rank_cd","similarity"));value.put("topK",WorkspaceKnowledge.SEARCH_LIMIT);value.put("rerank","NONE");value.put("metadataFilters",List.of());value.put("dedupStage","NONE");return value;}
+ private Map<String,Object> candidate(Map<String,Object> row,int rank){Map<String,Object> value=new LinkedHashMap<>();String document=row.get("document_id").toString();int version=((Number)row.get("version")).intValue();value.put("returned",true);value.put("filterStatus","RETURNED");value.put("rank",rank);value.put("documentId",document);value.put("version",version);value.put("chunkIndex",row.get("chunk_index"));value.put("title",row.get("title"));value.put("locationType",row.get("location_type"));value.put("locationLabel",row.get("location_label"));value.put("lineStart",row.get("line_start"));value.put("lineEnd",row.get("line_end"));value.put("content",row.get("content"));value.put("matchedBy",Map.of("fullText",row.get("full_text_match"),"trigram",row.get("trigram_match"),"termContains",row.get("term_match")));value.put("lexicalScore",row.get("lexical_score"));value.put("textRank",row.get("text_rank"));value.put("trigramSimilarity",row.get("trigram_similarity"));value.put("sourceUrl","/api/ai/knowledge/documents/"+document+"/versions/"+version);return value;}
+ private void audit(long user,UUID base,Map<String,Object> metadata){jdbc.update("INSERT INTO ai_security_event(id,actor_user_id,action,resource_id,metadata) VALUES(?,?,'knowledge.retrieval.diagnosed',?,?::jsonb)",UUID.randomUUID(),user,base,JsonUtils.toJsonString(metadata));}
+}

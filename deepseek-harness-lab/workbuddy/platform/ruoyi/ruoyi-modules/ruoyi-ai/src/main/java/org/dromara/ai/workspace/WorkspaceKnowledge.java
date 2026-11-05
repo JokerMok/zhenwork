@@ -11,6 +11,7 @@ import java.util.regex.*;
 
 @Service @RequiredArgsConstructor
 public class WorkspaceKnowledge {
+ static final int SEARCH_LIMIT=8;
  private final JdbcTemplate jdbc;private final TransactionTemplate tx;private final WorkspaceKnowledgeAccess access;private final WorkspaceFileStore files;private final WorkspaceKnowledgeDocumentExtractor extractor;private final WorkspaceConversations conversations;private final WorkspaceEvents events;
  public Map<String,Object> upload(UUID base,UUID document,Integer expected,UUID key,long user,MultipartFile file){
   access.base(base,user,AiResourceGuard.Action.EDIT);String name=WorkspaceFileStore.filename(file);byte[] bytes=WorkspaceFileStore.upload(file,10*1024*1024);var descriptor=extractor.describe(name,bytes);
@@ -35,16 +36,20 @@ public class WorkspaceKnowledge {
   return List.copyOf(terms);
  }
  private static String likePattern(String value){return "%"+value.replace("!","!!").replace("%","!%").replace("_","!_")+"%";}
- private List<Map<String,Object>> matches(UUID base,UUID run,String query,boolean publicOnly){return matches(base,run,query,publicOnly,null,null);}
- private List<Map<String,Object>> matches(UUID base,UUID run,String query,boolean publicOnly,UUID selectedDocument,Integer selectedVersion){
-  if(query==null||query.isBlank()||query.length()>200)throw new WorkspaceDenied(400,"InvalidKnowledgeQuery");String normalized=query.trim();List<String> terms=queryTerms(normalized);if(terms.isEmpty())throw new WorkspaceDenied(400,"InvalidKnowledgeQuery");
+ static String normalizedQuery(String query){if(query==null||query.isBlank()||query.length()>200)throw new WorkspaceDenied(400,"InvalidKnowledgeQuery");String normalized=query.trim();if(queryTerms(normalized).isEmpty())throw new WorkspaceDenied(400,"InvalidKnowledgeQuery");return normalized;}
+ private List<Map<String,Object>> matches(UUID base,UUID run,String query,boolean publicOnly){return matches(base,run,query,publicOnly,null,null,false);}
+ private List<Map<String,Object>> matches(UUID base,UUID run,String query,boolean publicOnly,UUID selectedDocument,Integer selectedVersion){return matches(base,run,query,publicOnly,selectedDocument,selectedVersion,false);}
+ List<Map<String,Object>> diagnosticMatches(UUID base,String query,UUID selectedDocument,Integer selectedVersion){return matches(base,null,query,false,selectedDocument,selectedVersion,true);}
+ private List<Map<String,Object>> matches(UUID base,UUID run,String query,boolean publicOnly,UUID selectedDocument,Integer selectedVersion,boolean diagnostics){
+  String normalized=normalizedQuery(query);List<String> terms=queryTerms(normalized);
   String values=String.join(",",Collections.nCopies(terms.size(),"(?::text)"));List<Object> args=new ArrayList<>();for(String term:terms)args.add(likePattern(term));
-  String source;if(selectedDocument!=null){source="WHERE d.base_id=? AND i.document_id=? AND i.version=?";args.add(base);args.add(selectedDocument);args.add(selectedVersion);}else if(run!=null){source="JOIN ai_run_document p ON p.document_id=i.document_id AND p.version=i.version WHERE p.run_id=?";args.add(run);}else{source="WHERE d.base_id=? AND i.version="+(publicOnly?"(SELECT version FROM ai_public_document p WHERE p.resource_id=d.base_id AND p.document_id=d.id)":"d.indexed_version");args.add(base);}args.add(normalized);args.add(normalized);args.add(normalized);args.add(normalized);args.add(normalized);
-  String sql="WITH query_terms(pattern) AS (VALUES "+values+") SELECT i.document_id::text,i.version,i.chunk_index,i.line_start,i.line_end,i.location_type,i.location_label,i.content,f.filename AS title,v.file_id::text,f.sha256,v.source_media_type,"+
-   "COALESCE((SELECT SUM((CASE WHEN f.filename ILIKE q.pattern ESCAPE '!' OR d.title ILIKE q.pattern ESCAPE '!' THEN 4 ELSE 0 END)+(CASE WHEN COALESCE(i.location_label,'') ILIKE q.pattern ESCAPE '!' THEN 2 ELSE 0 END)+(CASE WHEN i.content ILIKE q.pattern ESCAPE '!' THEN 1 ELSE 0 END)) FROM query_terms q),0) AS lexical_score "+
-   "FROM ai_knowledge_index i JOIN ai_knowledge_document d ON d.id=i.document_id JOIN ai_knowledge_document_version v ON v.document_id=i.document_id AND v.version=i.version JOIN ai_file f ON f.id=v.file_id "+source+
-   " AND d.deleted_at IS NULL AND v.status='READY' AND (i.search_vector @@ websearch_to_tsquery('simple',?) OR i.content % ? OR EXISTS(SELECT 1 FROM query_terms q WHERE i.content ILIKE q.pattern ESCAPE '!' OR f.filename ILIKE q.pattern ESCAPE '!' OR d.title ILIKE q.pattern ESCAPE '!' OR COALESCE(i.location_label,'') ILIKE q.pattern ESCAPE '!')) "+
-   "ORDER BY lexical_score DESC,(CASE WHEN i.search_vector @@ websearch_to_tsquery('simple',?) THEN ts_rank_cd(i.search_vector,websearch_to_tsquery('simple',?)) ELSE 0 END)+similarity(i.content,?) DESC,i.document_id,i.chunk_index LIMIT 8";
+  String source;List<Object> scopeArgs=new ArrayList<>();if(selectedDocument!=null){source="WHERE d.base_id=? AND i.document_id=? AND i.version=?";scopeArgs.add(base);scopeArgs.add(selectedDocument);scopeArgs.add(selectedVersion);}else if(run!=null){source="JOIN ai_run_document p ON p.document_id=i.document_id AND p.version=i.version WHERE p.run_id=?";scopeArgs.add(run);}else{source="WHERE d.base_id=? AND i.version="+(publicOnly?"(SELECT version FROM ai_public_document p WHERE p.resource_id=d.base_id AND p.document_id=d.id)":"d.indexed_version");scopeArgs.add(base);}args.add(normalized);args.add(normalized);args.add(normalized);args.add(normalized);args.add(normalized);args.addAll(scopeArgs);
+  String candidateCount=diagnostics?"count(*) OVER()":"0::bigint";String sql="WITH query_terms(pattern) AS (VALUES "+values+"),scored AS (SELECT i.document_id::text,i.version,i.chunk_index,i.line_start,i.line_end,i.location_type,i.location_label,i.content,f.filename AS title,v.file_id::text,f.sha256,v.source_media_type,"+
+   "COALESCE((SELECT SUM((CASE WHEN f.filename ILIKE q.pattern ESCAPE '!' OR d.title ILIKE q.pattern ESCAPE '!' THEN 4 ELSE 0 END)+(CASE WHEN COALESCE(i.location_label,'') ILIKE q.pattern ESCAPE '!' THEN 2 ELSE 0 END)+(CASE WHEN i.content ILIKE q.pattern ESCAPE '!' THEN 1 ELSE 0 END)) FROM query_terms q),0) AS lexical_score,"+
+   "i.search_vector @@ websearch_to_tsquery('simple',?) AS full_text_match,i.content % ? AS trigram_match,EXISTS(SELECT 1 FROM query_terms q WHERE i.content ILIKE q.pattern ESCAPE '!' OR f.filename ILIKE q.pattern ESCAPE '!' OR d.title ILIKE q.pattern ESCAPE '!' OR COALESCE(i.location_label,'') ILIKE q.pattern ESCAPE '!') AS term_match,"+
+   "CASE WHEN i.search_vector @@ websearch_to_tsquery('simple',?) THEN ts_rank_cd(i.search_vector,websearch_to_tsquery('simple',?)) ELSE 0 END AS text_rank,similarity(i.content,?) AS trigram_similarity "+
+   "FROM ai_knowledge_index i JOIN ai_knowledge_document d ON d.id=i.document_id JOIN ai_knowledge_document_version v ON v.document_id=i.document_id AND v.version=i.version JOIN ai_file f ON f.id=v.file_id "+source+" AND d.deleted_at IS NULL AND v.status='READY'),matched AS (SELECT scored.*,"+candidateCount+" AS candidate_count FROM scored WHERE full_text_match OR trigram_match OR term_match) "+
+   "SELECT * FROM matched ORDER BY lexical_score DESC,text_rank+trigram_similarity DESC,document_id,chunk_index LIMIT "+SEARCH_LIMIT;
   return jdbc.queryForList(sql,args.toArray());
  }
  public Map<String,Object> search(UUID base,long user,String query){return search(base,user,query,null,null);}

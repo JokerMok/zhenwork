@@ -63,6 +63,21 @@ class WorkspaceKnowledgeQueryTest {
     }
 
     @Test
+    void diagnosticCandidateQueryUsesTheProductionStagesAndRealTopK() {
+        var jdbc=mock(JdbcTemplate.class);UUID base=UUID.randomUUID();
+        when(jdbc.queryForList(anyString(),any(Object[].class))).thenReturn(List.of());
+        var knowledge=new WorkspaceKnowledge(jdbc,mock(TransactionTemplate.class),mock(WorkspaceKnowledgeAccess.class),mock(WorkspaceFileStore.class),mock(WorkspaceKnowledgeDocumentExtractor.class),mock(WorkspaceConversations.class),mock(WorkspaceEvents.class));
+        knowledge.diagnosticMatches(base,"product",null,null);
+        var sql=org.mockito.ArgumentCaptor.forClass(String.class);var args=org.mockito.ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc).queryForList(sql.capture(),args.capture());
+        assertTrue(sql.getValue().contains("i.content % ? AS trigram_match"));
+        assertTrue(sql.getValue().contains("count(*) OVER() AS candidate_count"));
+        assertTrue(sql.getValue().contains("text_rank+trigram_similarity"));
+        assertTrue(sql.getValue().endsWith("LIMIT 8"));
+        assertEquals("product",args.getValue()[1]);assertEquals(base,args.getValue()[6]);assertEquals(7,args.getValue().length);
+    }
+
+    @Test
     void expertCannotBePublishedAgainstAnEmptyKnowledgeBase() {
         UUID base=UUID.randomUUID();var jdbc=mock(JdbcTemplate.class);var guard=mock(AiResourceGuard.class);
         var resource=Map.<String,Object>of("resource_type","KNOWLEDGE","latest_version",1);
