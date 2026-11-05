@@ -133,3 +133,8 @@ assert "@monitorAuthorized status 204" in caddy
 assert "handle_response @monitorAuthorized" in caddy
 assert 'respond "Administrator login and monitoring permission required" 401' in caddy
 assert caddy.index("handle_response @monitorAuthorized") < caddy.index("request_header X-ZhenWork-Monitor-Authorization {$ZHENWORK_MONITOR_PROXY_TOKEN}")
+
+# Product version follows the committed immutable release, never the prior env.
+assert "app_version.read_text().strip()" in stage
+assert "m['appVersion']=version" in prepare
+assert "'AION_ENTERPRISE_WEB_APP_VERSION='+m['appVersion']" in activate

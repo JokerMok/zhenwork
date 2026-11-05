@@ -8,6 +8,7 @@
     <p>{{ scope === 'enterprise' ? '独立维护助手、技能、MCP、工具和知识库；助手只组合已授权能力。' : '私人资源只展示运行治理元数据，不显示名称、配置或正文。' }}</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb-3" />
     <div v-if="scope === 'enterprise'" class="toolbar">
+      <el-button v-if="type==='SKILL'" :disabled="busy" @click="openSkillMaintenance()">从 GitHub 导入</el-button>
       <el-select v-model="type" aria-label="资源类型" @change="page=1;load()">
         <el-option v-for="(label,key) in types" :key="key" :label="label" :value="key" />
       </el-select>
@@ -34,6 +35,7 @@
             <el-button v-if="row.resourceType === 'KNOWLEDGE'" link @click="openDocuments(row)">文档</el-button>
             <el-button v-if="row.resourceType === 'MCP'" link :disabled="!row.publishedVersion" @click="openConnection(row)">企业连接</el-button>
             <el-button link @click="act(()=>api('/ai/resources/'+row.id+'/enabled',{enabled:!row.enabled},'put'))">{{ row.enabled ? '停用' : '启用' }}</el-button>
+            <el-button v-if="type==='SKILL'" link @click="openSkillMaintenance(row)">维护来源</el-button>
             <el-button v-if="row.visibility === 'ENTERPRISE_PUBLIC'" link @click="withdraw(row)">撤回发布</el-button>
           </template>
           <el-button v-else link @click="govern(row)">{{ row.securityDisabled ? '解除安全停用' : '安全停用' }}</el-button>
@@ -77,7 +79,7 @@
             <el-select v-model="form.skillRequiredTools" multiple :multiple-limit="8"><el-option v-for="r in choices.TOOL||[]" :key="r.id" :label="r.name" :value="r.id" /></el-select>
           </el-form-item>
           <el-alert v-if="missingSkillDependencies.length" :title="'当前无权使用或未激活的依赖：'+missingSkillDependencies.join('、')" type="error" :closable="false" class="mb-3" />
-          <el-alert v-if="packageDependencyFiles.length" :title="'检测到运行环境依赖声明：'+packageDependencyNames+'。保存不会自动安装；在 Core 提供只读依赖诊断前，员工端会明确标为运行环境未验证。'" type="warning" :closable="false" class="mb-3" />
+          <el-alert v-if="packageDependencyFiles.length" :title="'检测到运行环境依赖声明：'+packageDependencyNames+'。不会自动安装；已授权 Core 的实际检测结果见“维护来源”。'" type="warning" :closable="false" class="mb-3" />
           <el-collapse v-if="packageDependencyFiles.length" class="mb-3">
             <el-collapse-item v-for="file in packageDependencyFiles" :key="file.path" :title="file.path"><pre class="source">{{ file.content }}</pre></el-collapse-item>
           </el-collapse>
@@ -128,9 +130,11 @@
       <pre v-if="versionPreview" class="source">{{ versionPreview }}</pre>
     </el-dialog>
 
+    <SkillMaintenance v-model="skillMaintenanceVisible" :resource="skillMaintenanceResource" @saved="load" />
     <el-dialog v-model="documentsVisible" title="企业知识文档" width="850px">
       <el-alert v-if="error" :title="error" type="error" :closable="false" />
       <template v-if="selected"><p>{{ selected.name }} · Word/Excel/PPT/PDF/图片/扫描件及 UTF-8 文本，最大 10 MiB。解析失败保留原因，只有索引成功后生效；定向共享使用当前索引，公开发布更新需重新审核。</p><input type="file" accept=".txt,.md,.csv,.json,.docx,.xlsx,.pptx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff" :disabled="busy" @change="uploadDocument" /><el-button @click="loadDocuments">刷新索引状态</el-button><el-table :data="documents"><el-table-column prop="title" label="文件" /><el-table-column prop="latest_version" label="最新版本" width="90" /><el-table-column prop="indexed_version" label="索引生效版本" width="120" /><el-table-column label="索引状态"><template #default="{row}">{{ statuses[row.status]||row.status }}</template></el-table-column><el-table-column label="解析失败原因"><template #default="{row}">{{ documentIssue(row) || "—" }}</template></el-table-column><el-table-column label="操作"><template #default="{row}"><el-button link @click="previewDocument(row)">预览</el-button><input type="file" accept=".txt,.md,.csv,.json,.docx,.xlsx,.pptx,.pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff" :disabled="busy" @change="uploadDocument($event,row)" /><el-button link @click="reindex(row.id)">重新索引</el-button><el-button link @click="removeDocument(row.id)">删除</el-button></template></el-table-column></el-table><el-button :disabled="documentPage===1" @click="documentPage--;loadDocuments()">上一页文档</el-button><span>第 {{ documentPage }} 页</span><el-button :disabled="documents.length<30" @click="documentPage++;loadDocuments()">下一页文档</el-button><pre class="source">{{ source }}</pre></template>
+      <KnowledgeDiagnostics v-if="documentsVisible && selected" :base-id="selected.id" />
     </el-dialog>
 
     <el-dialog v-model="connectionVisible" title="企业 MCP 连接" width="760px">
@@ -153,6 +157,8 @@
 
 <script setup lang="ts">
 import BusinessRuleEditor from './BusinessRuleEditor.vue';
+import SkillMaintenance from './SkillMaintenance.vue';
+import KnowledgeDiagnostics from './KnowledgeDiagnostics.vue';
 import {useUnsavedDialog} from '@/hooks/dialog/useUnsavedDialog';
 import {workspaceLabel} from '@/utils/workspacePresentation';
 import ResourceShareDialog from '@/components/ResourceShareDialog/index.vue';
@@ -167,6 +173,10 @@ const allowedRoots=new Set(['scripts','templates','references','examples','asset
 const allowedRootFiles=new Set(['requirements.txt','requirements.lock','pyproject.toml','uv.lock','package.json','package-lock.json','pnpm-lock.yaml','yarn.lock','README.md','CHANGELOG.md','USAGE.md','VERSION','LICENSE','LICENSE.md']);
 const ignoredNames=new Set(['.DS_Store','Thumbs.db']);
 const type=ref('ASSISTANT'),scope=ref('enterprise'),rows=ref<any[]>([]),page=ref(1),loading=ref(true),error=ref(''),busy=ref(false),dialog=ref(false),editing=ref<any>(),form=ref<any>({}),models=ref<any[]>([]),choices=ref<Record<string,any[]>>({}),toolTypes=ref<any[]>([]),selected=ref<any>();
+const skillMaintenanceVisible=ref(false),skillMaintenanceResource=ref<any>();
+let skillOpenGeneration=0;
+watch(skillMaintenanceVisible,(visible)=>{if(!visible)skillOpenGeneration++;});
+async function openSkillMaintenance(row?:any){const generation=++skillOpenGeneration;await act(async()=>{const detail=row?await api('/ai/resources/'+row.id):undefined;if(generation!==skillOpenGeneration)return;skillMaintenanceResource.value=detail;skillMaintenanceVisible.value=true;},false);}
 const documentsVisible=ref(false),documents=ref<any[]>([]),documentJobs=ref<any[]>([]),source=ref(''),documentPage=ref(1);
 const connectionVisible=ref(false),connection=ref<any>(),connectionTests=ref<any[]>([]),secret=ref(''),clearSecret=ref(false),connectionEnabled=ref(true);
 const versionsVisible=ref(false),versions=ref<any[]>([]),versionPreview=ref('');

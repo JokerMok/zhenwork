@@ -1,4 +1,5 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
+import * as resourceRuntime from './enterprise-resource-runtime.js';
 import http from 'node:http';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -298,4 +299,59 @@ test('gateway accepts one deferred update without treating an active task as a c
     await new Promise<void>((resolve) => coreServer.close(() => resolve()));
     await rm(staticDir, { recursive: true, force: true });
   }
+});
+
+
+test('only trusted receipt callbacks attach the Host service credential', async () => {
+  const seen: Array<{ route: string; service?: string }> = [];
+  const server = http.createServer((req, res) => {
+    seen.push({ route: req.url!, service: req.headers['x-zhenwork-host-service'] as string | undefined });
+    res.setHeader('content-type', 'application/json');res.end(JSON.stringify({ code: 200, data: {} }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  const actor = { serverId: 'receipt-test', userId: '17' };
+  const client = { baseUrl: `http://127.0.0.1:${port}`, cookie: 'session=17', clientId: 'qa', origin: 'https://work.example', me: async () => ({ userId: '17' }) };
+  const runtime = createEnterpriseModelRuntime(async () => ({ actor, client: client as never, validate: async () => true, close: async () => {} }), async () => { throw Error('unused'); }, { background: { rc2Url: client.baseUrl, serviceToken: 'a'.repeat(40) } });
+  const login = await runtime.login('qa', 'unused', { ipAddress: '127.0.0.1', userAgent: 'qa' });
+  try {
+    await runtime.taskFeedbackRequest!(actor, '/ai/me/feedback', { method: 'POST', body: '{}' });
+    await runtime.controlRequest!(actor, '/ai/me/feedback', { method: 'POST', body: '{}' });
+    expect(seen.map((request) => request.service)).toEqual(['Bearer ' + 'a'.repeat(40), undefined]);
+    await expect(runtime.taskFeedbackRequest!(actor, '/ai/models', { method: 'POST' })).rejects.toThrow('HOST_RECEIPT_ROUTE_UNAVAILABLE');
+    await expect(runtime.taskFeedbackRequest!(actor, '/ai/me/feedback', { method: 'DELETE' })).rejects.toThrow('HOST_RECEIPT_ROUTE_UNAVAILABLE');
+    expect(seen).toHaveLength(2);
+  } finally { await login.close(); await new Promise<void>((resolve) => server.close(() => resolve())); }
+});
+
+test('a Core without a streaming model still probes and records version-bound dependencies', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'zhenwork-probe-no-model-'));
+  const receipts: Array<Record<string, unknown>> = [];
+  const server = http.createServer((req, res) => {
+    let body = '';req.on('data', (chunk) => { body += chunk; });req.on('end', () => {
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/api/providers') return res.end(JSON.stringify({ success: true, data: [] }));
+      receipts.push(JSON.parse(body));res.end(JSON.stringify({ code: 200, data: {} }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  const actor = { serverId: 'probe-test', userId: '17' }, id = '11111111-1111-4111-a111-111111111111';
+  const digest = 'a'.repeat(64), image = 'sha256:' + 'b'.repeat(64);
+  const inventory = vi.fn(async () => ({ python: { openpyxl: '3.1.5' } }));
+  const sync = vi.spyOn(resourceRuntime, 'syncEnterpriseWebResources').mockImplementation(async (...args) => {
+    const probe = args[8]!;expect(typeof probe).toBe('function');
+    await probe({ core: { port, host: '127.0.0.1', networkMode: 'container' }, skills: [] });
+    return { issues: [], dependencyProbes: { [id]: { resourceId: id, resourceVersion: 2, packageSha256: digest, state: 'READY', declarations: [] } }, invalidated: new Promise<void>(() => {}), stop: async () => {}, trustedConfirmation: async () => false };
+  });
+  const client = { baseUrl: `http://127.0.0.1:${port}`, cookie: 'session=17', clientId: 'qa', origin: 'https://work.example', me: async () => ({ userId: '17' }), availableModels: async () => [] };
+  const runtime = createEnterpriseModelRuntime(async () => ({ actor, client: client as never, validate: async () => true, close: async () => {} }), async () => ({ port, host: '127.0.0.1', networkMode: 'container', runtimeFingerprint: image, readDependencyInventory: inventory, localToken: 'local', stop: async () => {} }), { profileRoot: root, background: { rc2Url: client.baseUrl, serviceToken: 'c'.repeat(40) } });
+  let core: Awaited<ReturnType<typeof runtime.startCore>> | undefined;
+  try {
+    await runtime.login('qa', 'unused', { ipAddress: '127.0.0.1', userAgent: 'qa' });
+    core = await runtime.startCore(actor);
+    expect(inventory).toHaveBeenCalledOnce();
+    expect(receipts[0]).toMatchObject({ resourceVersion: 2, packageSha256: digest, runtimeFingerprint: image, state: 'READY' });
+    expect(receipts[0]).not.toHaveProperty('actorUserId');
+  } finally { await core?.stop();sync.mockRestore();await new Promise<void>((resolve) => server.close(() => resolve()));await rm(root, { recursive: true, force: true }); }
 });

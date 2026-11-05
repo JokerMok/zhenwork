@@ -272,7 +272,36 @@
     "methodName": "方法名称",
     "methodContent": "方法内容",
     "methodProtectedFile": "处理器和来源文件受保护；可修改步骤、字段映射、提醒和模板。",
-    "methodBinaryFile": "此文件为二进制或超过查看限制，保存时保留原件。"
+    "methodBinaryFile": "此文件为二进制或超过查看限制，保存时保留原件。",
+    "naturalRequest": "说明要调整的方法",
+    "naturalPlaceholder": "例如：按库区分组，容量达到80%时提醒，只输出异常Excel。",
+    "generateDraft": "预览修改",
+    "applyDraft": "采用草稿",
+    "protectedChange": "本次要求涉及权限、脚本或受保护的企业口径，请仅调整个人方法规则。",
+    "draftVersionConflict": "方法已被更新，请重新打开后生成草稿。",
+    "draftFailed": "暂时无法生成草稿，请重试。",
+    "draftBoundary": "权限、脚本和企业口径保持受保护。采用草稿后，点击“保存方法”才会发布。",
+    "draftChanges": "修改差异",
+    "beforeChange": "修改前",
+    "afterChange": "修改后",
+    "preferenceLabels": {
+      "capacityPercent": "容量提醒阈值（%）",
+      "internalAgeDays": "内部库龄提醒（天）",
+      "differencesOnly": "只输出异常",
+      "outputTitle": "成果标题",
+      "cutoff": "截止日期",
+      "methods": "核查内容",
+      "groupBy": "分组",
+      "costGroupBy": "费用分组",
+      "periods": "对比月份",
+      "intensityAlertPercent": "产废强度提醒（%）",
+      "costAlertPercent": "费用变化提醒（%）",
+      "summary": "摘要",
+      "excel": "Excel",
+      "wordWhenExplicit": "按要求生成Word",
+      "pptWhenExplicit": "按要求生成PPT",
+      "detail": "明细"
+    }
   },
   "memory": {
     "title": "记忆与定时任务",
@@ -494,6 +523,28 @@
       "REVERSAL_REQUIRES_REVIEW": "冲销记录待核实",
       "FORMULA_VALUE_UNVERIFIED": "公式无法重新计算",
       "ORGANIZATION_OUTSIDE_SCOPE": "业务单位未映射或超出范围"
+    }
+  },
+  "feedback": {
+    "action": "结果反馈",
+    "submit": "提交反馈",
+    "submitted": "已收到反馈",
+    "error": "反馈未提交，请重试。",
+    "categoryPlaceholder": "选择反馈类型",
+    "notePlaceholder": "补充说明（可选）",
+    "categories": {
+      "correct": "结果正确",
+      "data_calculation": "数据或计算错误",
+      "citation": "引用或资料错误",
+      "tool": "工具执行失败",
+      "artifact": "成果文件问题",
+      "other": "其他问题"
+    },
+    "status": {
+      "NEW": "待处理",
+      "IN_PROGRESS": "处理中",
+      "RESOLVED": "已修复，待复核",
+      "CLOSED": "已关闭"
     }
   }
 }

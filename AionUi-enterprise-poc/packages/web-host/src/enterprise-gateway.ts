@@ -1,5 +1,6 @@
 import { DataAnalysis, type DataClient } from './office/workbook/analysis/service.js';
 import { TaskRunner } from './tasks/runner.js';
+import { readTaskFeedback, submitTaskFeedback } from './tasks/feedback.js';
 import { TaskError } from './tasks/types.js';
 import type { TaskRuntime } from './tasks/integration.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -122,6 +123,9 @@ export type EnterpriseCore = {
   proxyHost?: '127.0.0.1' | 'model-gateway';
   /** A loopback tunnel into a Core that only joins its actor's internal network. */
   networkMode?: 'container';
+  /** Immutable image used by this actor's Core; never inferred from the Host. */
+  runtimeFingerprint?: string;
+  readDependencyInventory?: () => Promise<unknown>;
   /** Host-local loopback on Docker Desktop, or the Linux docker0 gateway. */
   proxyBindHost?: string;
   /** Admit a newly started host proxy into the actor's bridge before Core uses it. */
@@ -153,6 +157,8 @@ export type EnterpriseGatewayOptions = {
   ) => Promise<void>;
   /** Only explicit employee control routes; RC2 credentials never enter the browser. */
   controlRequest?: (actor: EnterpriseActor, route: string, init: RequestInit) => Promise<Response>;
+  /** Host-only callback for attested task feedback; never exposed by the generic control proxy. */
+  taskFeedbackRequest?: (actor: EnterpriseActor, route: string, init: RequestInit) => Promise<Response>;
   profileRoot?: string;
   taskRuntime?: TaskRuntime;
   adminUrl?: string;
@@ -1286,6 +1292,25 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         return replyCoreFailure(res, error);
       }
     }
+    const feedbackRoute = /^\/enterprise\/tasks\/([A-Za-z0-9_-]{1,100})\/feedback$/.exec(req.url.split('?')[0]);
+    if (feedbackRoute && opts.profileRoot && opts.taskFeedbackRequest) {
+      try {
+        if (req.method === 'GET') {
+          const attemptId = new URL(req.url, opts.publicOrigin).searchParams.get('attemptId') || '';
+          return reply(res, 200, await readTaskFeedback(opts.profileRoot, auth.session.actor, feedbackRoute[1], attemptId, opts.taskFeedbackRequest));
+        }
+        if (req.method === 'POST') {
+          let input: unknown;
+          try { input = JSON.parse((await body(req, 4000)).toString()); } catch { return reply(res, 400, { error: 'INVALID_FEEDBACK' }); }
+          if (!input || typeof input !== 'object' || Array.isArray(input)) return reply(res, 400, { error: 'INVALID_FEEDBACK' });
+          return reply(res, 200, await submitTaskFeedback(opts.profileRoot, auth.session.actor, feedbackRoute[1], input as Record<string, unknown>, opts.taskFeedbackRequest));
+        }
+        return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
+      } catch (error) {
+        if (error instanceof TaskError) return reply(res, error.status, { error: error.message });
+        return reply(res, 503, { error: 'TASK_FEEDBACK_UNAVAILABLE' });
+      }
+    }
     const taskRoute =
       /^\/enterprise\/tasks(?:\/([A-Za-z0-9_-]{1,100})(?:\/(events|cancel|continue|retry|approve|decline))?)?$/.exec(
         req.url.split('?')[0]
@@ -1416,7 +1441,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       const route = req.url.slice('/enterprise/control'.length);
       // No arbitrary proxy, auth reset, internal service routes or admin wildcard.
       if (
-        !/^\/ai\/(?:resources|knowledge|citations|files|share-targets|mcp|models|brand|me|usage)(?:[/?]|$)/.test(
+        !/^\/ai\/(?:resources|skills|knowledge|citations|files|share-targets|mcp|models|brand|me|usage)(?:[/?]|$)/.test(
           route
         ) ||
         /(?:\.\.|%2e|%2f|%5c)/i.test(route.split('?')[0]) ||

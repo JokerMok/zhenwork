@@ -39,6 +39,49 @@ async function docker(args: string[], timeout = 30_000): Promise<string> {
   }
 }
 
+// Fixed metadata readers run inside the authorized Core. They never import a tested package,
+// process .pth hooks, execute Skill bytes, invoke an installer or access the network.
+const PYTHON_DEPENDENCY_METADATA = String.raw`
+import sys, pathlib, json, site, importlib.metadata
+prefix = pathlib.Path(sys.executable).parent.parent
+cfg = prefix / 'pyvenv.cfg'
+roots = [str(prefix)] if cfg.is_file() else [sys.base_prefix]
+if cfg.is_file() and any(line.strip().lower() == 'include-system-site-packages = true' for line in cfg.read_text().splitlines()):
+    roots.append(sys.base_prefix)
+paths = list(dict.fromkeys(site.getsitepackages(roots)))
+packages = {}
+for item in importlib.metadata.distributions(path=paths):
+    name = item.metadata.get('Name')
+    if not name: continue
+    name = name.lower().replace('_', '-').replace('.', '-')
+    value = item.version
+    packages[name] = value if name not in packages or packages[name] == value else 'AMBIGUOUS'
+    if len(packages) > 10000: raise RuntimeError('InventoryLimit')
+print(json.dumps(packages))
+`;
+const NODE_DEPENDENCY_METADATA = String.raw`
+const fs = require('node:fs');
+const path = require('node:path');
+const packages = {};
+let scanned = 0;
+for (const root of (process.env.NODE_PATH || '').split(path.delimiter).filter(Boolean)) {
+  if (!path.isAbsolute(root) || !fs.existsSync(root)) continue;
+  for (const entry of fs.readdirSync(root)) {
+    const candidates = entry.startsWith('@') ? fs.readdirSync(path.join(root, entry)).map(x => path.join(root, entry, x)) : [path.join(root, entry)];
+    for (const candidate of candidates) {
+      if (++scanned > 10000) throw Error('InventoryLimit');
+      const file = path.join(candidate, 'package.json');
+      if (!fs.existsSync(file) || fs.statSync(file).size > 1048576) continue;
+      const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (typeof value.name === 'string' && typeof value.version === 'string') {
+        packages[value.name] = packages[value.name] && packages[value.name] !== value.version ? 'AMBIGUOUS' : value.version;
+      }
+    }
+  }
+}
+process.stdout.write(JSON.stringify(packages));
+`;
+
 /** Deliver the one-use capability through stdin into container tmpfs, never OCI env or argv. */
 async function deliverCapability(container: string, uid: number, gid: number, token: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -307,6 +350,19 @@ export function createEnterpriseDockerCoreStarter(opts: EnterpriseDockerCoreOpti
         host: '127.0.0.1', port: hostCorePort, localToken: token,
         workspaceRoot: workDir,
         proxyHost: 'model-gateway', proxyBindHost, networkMode: 'container', invalidated,
+        runtimeFingerprint: opts.coreImage.match(/sha256:[a-f0-9]{64}$/)?.[0],
+        readDependencyInventory: async () => {
+          if (stopPromise) throw new Error('CORE_DEPENDENCY_PROBE_UNAVAILABLE');
+          const inventory: { python?: Record<string, string>; node?: Record<string, string> } = {};
+          try {
+            inventory.python = JSON.parse(await docker(['exec', '--user', `${uid}:${gid}`, coreName, 'python3', '-I', '-S', '-B', '-c', PYTHON_DEPENDENCY_METADATA], 15_000));
+          } catch { /* No successful metadata read means unverified, never missing. */ }
+          try {
+            inventory.node = JSON.parse(await docker(['exec', '--user', `${uid}:${gid}`, '--env', 'NODE_OPTIONS=', '--env', 'NODE_COMPILE_CACHE=', coreName, 'node', '--no-addons', '-e', NODE_DEPENDENCY_METADATA], 15_000));
+          } catch { /* Unsupported Node inventory stays unverified. */ }
+          if (stopPromise) throw new Error('CORE_DEPENDENCY_PROBE_UNAVAILABLE');
+          return inventory;
+        },
         registerProxyPort: async (port) => {
           if (stopPromise || !Number.isInteger(port) || port < 1024 || port > 65535) {
             throw new Error('Enterprise proxy port invalid');

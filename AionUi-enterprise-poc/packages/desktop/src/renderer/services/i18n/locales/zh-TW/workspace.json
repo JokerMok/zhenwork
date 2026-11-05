@@ -256,7 +256,36 @@
     "methodName": "方法名稱",
     "methodContent": "方法內容",
     "methodProtectedFile": "處理器及來源檔案受保護；可修改步驟、欄位對應、提醒和範本。",
-    "methodBinaryFile": "此檔案為二進位或超過檢視限制，儲存時保留原件。"
+    "methodBinaryFile": "此檔案為二進位或超過檢視限制，儲存時保留原件。",
+    "naturalRequest": "說明要調整的方法",
+    "naturalPlaceholder": "例如：按庫区分组，容量達到80%時提醒，只輸出異常Excel。",
+    "generateDraft": "預覽修改",
+    "applyDraft": "采用草稿",
+    "protectedChange": "本次要求涉及權限、腳本或受保護的企業口径，請僅調整個人方法規則。",
+    "draftVersionConflict": "方法已被更新，請重新打开後生成草稿。",
+    "draftFailed": "暫時无法生成草稿，請重試。",
+    "draftBoundary": "權限、腳本和企業口径保持受保護。采用草稿後，点击“保存方法”才會发布。",
+    "draftChanges": "修改差異",
+    "beforeChange": "修改前",
+    "afterChange": "修改後",
+    "preferenceLabels": {
+      "capacityPercent": "容量提醒閾值（%）",
+      "internalAgeDays": "内部庫龄提醒（天）",
+      "differencesOnly": "只輸出異常",
+      "outputTitle": "成果标题",
+      "cutoff": "截止日期",
+      "methods": "核查内容",
+      "groupBy": "分组",
+      "costGroupBy": "費用分组",
+      "periods": "對比月份",
+      "intensityAlertPercent": "产废强度提醒（%）",
+      "costAlertPercent": "費用變化提醒（%）",
+      "summary": "摘要",
+      "excel": "Excel",
+      "wordWhenExplicit": "按要求生成Word",
+      "pptWhenExplicit": "按要求生成PPT",
+      "detail": "明细"
+    }
   },
   "memory": {
     "title": "記憶與排程任務",
@@ -478,6 +507,28 @@
       "REVERSAL_REQUIRES_REVIEW": "Reversal requires review",
       "FORMULA_VALUE_UNVERIFIED": "Formula value unverified",
       "ORGANIZATION_OUTSIDE_SCOPE": "Organization outside scope"
+    }
+  },
+  "feedback": {
+    "action": "结果反馈",
+    "submit": "提交反馈",
+    "submitted": "已收到反馈",
+    "error": "反馈未提交，請重試。",
+    "categoryPlaceholder": "选择反馈類型",
+    "notePlaceholder": "補充說明（可选）",
+    "categories": {
+      "correct": "结果正確",
+      "data_calculation": "數據或计算错誤",
+      "citation": "引用或资料错誤",
+      "tool": "工具執行失敗",
+      "artifact": "成果文件问题",
+      "other": "其他问题"
+    },
+    "status": {
+      "NEW": "待處理",
+      "IN_PROGRESS": "處理中",
+      "RESOLVED": "已修複，待複核",
+      "CLOSED": "已關閉"
     }
   }
 }

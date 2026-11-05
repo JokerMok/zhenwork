@@ -215,7 +215,11 @@ python3 - "$stage/IMAGE_IDS.json" "$current_json" "$release" "$base_release" "$c
 import json,pathlib,sys
 out,current,release,base,core,gateway,core_changed,gateway_changed,tree,lock,binary,legacy,gateway_source,reuse_employee,reuse_admin,reuse_monitor=sys.argv[1:]
 m=json.loads(current); images=dict(m['images']); images.update(core=core,gateway=gateway)
-data={'release':release,'baseRelease':base,'images':images,'runtimeBase':m['runtimeBase'],
+app_version=(out_path:=pathlib.Path(out)).parents[1]/'source'/'VERSION'
+version=app_version.read_text().strip()
+import re
+assert re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?',version), 'Invalid committed application version'
+data={'appVersion':version,'release':release,'baseRelease':base,'images':images,'runtimeBase':m['runtimeBase'],
       'coreSourceChanged':core_changed=='1','gatewaySourceChanged':gateway_changed=='1',
       'coreSourceTreeSha256':tree,'coreCargoLockSha256':lock,'coreBinarySha256':binary,
       'gatewaySourceSha256':gateway_source,

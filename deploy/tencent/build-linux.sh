@@ -33,6 +33,8 @@ actual_binary=subprocess.check_output([
  'docker','run','--rm','--network','none','--read-only','--entrypoint','sha256sum',images['core'],
  '/opt/aionui/core/aioncore'],text=True).split()[0]
 assert actual_binary==request['coreBinarySha256'],(actual_binary,request['coreBinarySha256'])
+version=request.get('appVersion')
+if version is not None: assert re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?',version),'Invalid application version'
 m={'sourceSha':source,'release':release,'platform':'linux/amd64','images':images,'runtimeBase':runtime,
    'desktopArtifactsBuilt':False,'baseRelease':request['baseRelease'],
    'coreSourceChanged':request['coreSourceChanged'],'gatewaySourceChanged':request['gatewaySourceChanged'],
@@ -46,6 +48,7 @@ m={'sourceSha':source,'release':release,'platform':'linux/amd64','images':images
    'builtAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),
    'buildLocation':'macOS web/admin/java; retained tencent-main linux/amd64 images by exact ID',
    'privateConfigurationVersion':release}
+if version is not None: m['appVersion']=version
 reuse=request.get('artifactReusedFrom')
 if reuse is not None:
  assert set(reuse)=={'release','sourceSha','reusedArtifacts'}

@@ -12,7 +12,8 @@
   "risk": "high",
   "verification_commands": [
     "git diff --check",
-    "just verify"
+    "affected Web/Host/Admin/Java build",
+    "directed runtime and UI E2E"
   ],
   "allowed_paths": [
     "AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.ts",
@@ -30,7 +31,9 @@
     "AionUi-enterprise-poc/packages/web-host/src/enterprise-docker-core.ts",
     "AionUi-enterprise-poc/packages/web-host/src/enterprise-model-runtime.ts",
     "AionUi-enterprise-poc/packages/web-host/src/enterprise-model-runtime.unit.test.ts",
-    "AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.unit.test.ts"
+    "AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.unit.test.ts",
+    "deploy/tencent/activate.sh",
+    "deploy/tencent/build-linux.sh"
   ],
   "excluded_snapshot_paths": [
     "AionUi-enterprise-poc/node_modules/",

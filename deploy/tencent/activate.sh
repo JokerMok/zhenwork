@@ -238,6 +238,10 @@ m=json.loads((pathlib.Path(sys.argv[1])/'RELEASE.json').read_text())
 p=pathlib.Path('/srv/apps/zhenwork/shared/config/web.env'); s=p.read_text()
 for name,key in [('core','AION_ENTERPRISE_WEB_DOCKER_CORE_IMAGE'),('gateway','AION_ENTERPRISE_WEB_DOCKER_GATEWAY_IMAGE')]:
  s,n=re.subn(r'^'+key+r'=.*$',key+'='+m['images'][name],s,flags=re.M); assert n==1,key
+if m.get('appVersion'):
+ assert re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?',m['appVersion'])
+ s,n=re.subn(r'^AION_ENTERPRISE_WEB_APP_VERSION=.*$', 'AION_ENTERPRISE_WEB_APP_VERSION='+m['appVersion'], s, flags=re.M)
+ assert n==1, 'Missing application version setting'
 p.write_text(s)
 pathlib.Path('/srv/apps/zhenwork/.env').write_text('POSTGRES_IMAGE='+m['images']['postgres']+'\nREDIS_IMAGE='+m['images']['redis']+'\nBRIDGE_IMAGE='+m['images']['bridge']+'\n')
 PY

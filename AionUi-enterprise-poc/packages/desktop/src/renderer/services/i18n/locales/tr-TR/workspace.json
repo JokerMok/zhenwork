@@ -256,7 +256,36 @@
     "methodName": "Method name",
     "methodContent": "Method content",
     "methodProtectedFile": "Processor and provenance files are protected. Edit steps, mappings, preferences and templates.",
-    "methodBinaryFile": "This binary or oversized file is preserved unchanged."
+    "methodBinaryFile": "This binary or oversized file is preserved unchanged.",
+    "naturalRequest": "Describe your change",
+    "naturalPlaceholder": "For example: group inventory by warehouse, alert at 80% capacity, and export exceptions only.",
+    "generateDraft": "Preview change",
+    "applyDraft": "Use this draft",
+    "protectedChange": "This change affects permissions, scripts, or protected business rules. Edit only your personal method rules.",
+    "draftVersionConflict": "This method changed. Reopen it and preview again.",
+    "draftFailed": "Could not generate a draft. Please try again.",
+    "draftBoundary": "Permissions, scripts and company rules stay protected. Use Save method to publish this draft.",
+    "draftChanges": "Changes",
+    "beforeChange": "Before",
+    "afterChange": "After",
+    "preferenceLabels": {
+      "capacityPercent": "Capacity alert (%)",
+      "internalAgeDays": "Internal age reminder (days)",
+      "differencesOnly": "Exceptions only",
+      "outputTitle": "Result title",
+      "cutoff": "Cutoff date",
+      "methods": "Checks",
+      "groupBy": "Group by",
+      "costGroupBy": "Cost grouping",
+      "periods": "Comparison months",
+      "intensityAlertPercent": "Intensity alert (%)",
+      "costAlertPercent": "Cost alert (%)",
+      "summary": "Summary",
+      "excel": "Excel",
+      "wordWhenExplicit": "Word when requested",
+      "pptWhenExplicit": "PowerPoint when requested",
+      "detail": "Details"
+    }
   },
   "memory": {
     "title": "Memory and schedules",
@@ -478,6 +507,28 @@
       "REVERSAL_REQUIRES_REVIEW": "Reversal requires review",
       "FORMULA_VALUE_UNVERIFIED": "Formula value unverified",
       "ORGANIZATION_OUTSIDE_SCOPE": "Organization outside scope"
+    }
+  },
+  "feedback": {
+    "action": "Feedback",
+    "submit": "Submit",
+    "submitted": "Feedback submitted",
+    "error": "Could not submit feedback. Try again.",
+    "categoryPlaceholder": "Choose a result",
+    "notePlaceholder": "Add a short note (optional)",
+    "categories": {
+      "correct": "Correct result",
+      "data_calculation": "Data or calculation error",
+      "citation": "Source or citation error",
+      "tool": "Tool execution failed",
+      "artifact": "Result file issue",
+      "other": "Other issue"
+    },
+    "status": {
+      "NEW": "New",
+      "IN_PROGRESS": "In progress",
+      "RESOLVED": "Resolved, pending recheck",
+      "CLOSED": "Closed"
     }
   }
 }

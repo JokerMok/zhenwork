@@ -73,6 +73,7 @@ export async function startEnterpriseWebFromEnvironment() {
     profileRoot,
       taskRuntime: runtime,
       controlRequest: runtime.controlRequest,
+      taskFeedbackRequest: runtime.taskFeedbackRequest,
     refreshResources: runtime.refreshResources, resourceStatus: runtime.resourceStatus,
     syncCronGrant: runtime.syncCronGrant, hasBackgroundJobs: runtime.hasBackgroundJobs,
     authorizeBackground: runtime.authorizeBackground,
