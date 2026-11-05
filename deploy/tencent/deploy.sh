@@ -8,6 +8,7 @@ cd "$repo"
 ref=HEAD
 release=
 core_image=
+build_base_release=
 core_binary_sha=
 gateway_image=
 legacy=0
@@ -15,12 +16,13 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --ref) ref=${2:?--ref requires a Git ref}; shift 2 ;;
     --release) release=${2:?--release requires an ID}; shift 2 ;;
+    --base-release) build_base_release=${2:?--base-release requires an immutable release ID}; shift 2 ;;
     --core-image) core_image=${2:?--core-image requires a sha256 image ID}; shift 2 ;;
     --core-binary-sha256) core_binary_sha=${2:?--core-binary-sha256 requires a digest}; shift 2 ;;
     --gateway-image) gateway_image=${2:?--gateway-image requires a sha256 image ID}; shift 2 ;;
     --legacy-42d834a-patches) legacy=1; shift ;;
     -h|--help)
-      echo 'Usage: deploy.sh [--ref COMMIT] [--release ID] [--core-image sha256:...] [--core-binary-sha256 HEX] [--gateway-image sha256:...] [--legacy-42d834a-patches]'
+      echo 'Usage: deploy.sh [--ref COMMIT] [--release ID] [--base-release ID] [--core-image sha256:...] [--core-binary-sha256 HEX] [--gateway-image sha256:...] [--legacy-42d834a-patches]'
       exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -70,7 +72,13 @@ elif [[ $sha == 42d834a75722bdbe6331dba226d0febdc6179383 ]]; then
 fi
 
 # Resolve native-image provenance before any expensive application build.
-current_json=$(ssh tencent-main 'sudo cat /srv/apps/zhenwork/current/RELEASE.json')
+if [[ -n $build_base_release ]]; then
+  [[ $build_base_release =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{5,100}$ ]] || { echo 'Invalid build base release ID' >&2; exit 2; }
+  ssh tencent-main "cd '/srv/apps/zhenwork/releases/$build_base_release' && sudo sha256sum -c SHA256SUMS >/dev/null"
+  current_json=$(ssh tencent-main "sudo cat '/srv/apps/zhenwork/releases/$build_base_release/RELEASE.json'")
+else
+  current_json=$(ssh tencent-main 'sudo cat /srv/apps/zhenwork/current/RELEASE.json')
+fi
 base_sha=$(python3 -c 'import json,sys;print(json.load(sys.stdin)["sourceSha"])' <<<"$current_json")
 base_release=$(python3 -c 'import json,sys;print(json.load(sys.stdin)["release"])' <<<"$current_json")
 git cat-file -e "$base_sha^{commit}" 2>/dev/null || { echo "Current server source $base_sha is absent locally; fetch it before staging." >&2; exit 1; }

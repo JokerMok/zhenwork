@@ -33,7 +33,9 @@
     "AionUi-enterprise-poc/packages/web-host/src/enterprise-model-runtime.unit.test.ts",
     "AionUi-enterprise-poc/packages/web-host/src/enterprise-gateway.unit.test.ts",
     "deploy/tencent/activate.sh",
-    "deploy/tencent/build-linux.sh"
+    "deploy/tencent/build-linux.sh",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspacePersonalSkillDraft.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspacePersonalSkillDraftTest.java"
   ],
   "excluded_snapshot_paths": [
     "AionUi-enterprise-poc/node_modules/",

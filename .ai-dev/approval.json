@@ -4,10 +4,10 @@
   "status": "approved",
   "recorded_by": "coordinator",
   "authorization_basis": "initial_request",
-  "authorization_evidence": "用户已授权自主集成、实测及发布；追加版本清单和激活脚本的最小同步，确保当前正式应用版本可核验，备份迁移流程不变。",
-  "approved_at": "2026-11-05T04:10:27.811959+00:00",
+  "authorization_evidence": "用户授权五项实际端到端验收和发布；隔离实测发现个人草稿的模型中继契约不匹配，修复该服务和直接回归测试，复用已暂存且无变化的组件。",
+  "approved_at": "2026-11-05T04:43:34.912604+00:00",
   "git_common_dir": "621f967e679af645a720a4fcf5eecbb02e4649135b0d9ca2e499021aa20c79a2",
-  "base_sha": "fb6a3197cf858277f73afff99143401eeae2bff9",
+  "base_sha": "4b1e196e5c3fcb5e653808f13e4b0d3ec7c7cc6d",
   "target_branch": "feat/opt-release-integration",
   "artifacts": {
     "prd.md": "b7669fa895a050e7a1d8f36c628f36abaf2d12779d2385f09cb3105673dd09c4",
@@ -18,12 +18,12 @@
     "tasks/T003.md": "5e5e5615fe0949953e948a6b5f834ca6842c926165b9b15f1291f01fb7489331",
     "tasks/T004.md": "67d260a0ae694833bc7a1c26d0d92a0854dc4def92fd8b86206e764b78b305d4",
     "tasks/T005.md": "9c1cc755f7fb80cf598ecdd2c51f0f5ccef45484d15bcf93c500820d2659f69f",
-    "tasks/T006.md": "4b19c7ed2bbb0ea7bf9c589f218b1f7fe9459b20bd79f6d2e58b16b115b3f611",
+    "tasks/T006.md": "dbd0f0b12a4561e9c721ac0755b01ab0f087b59181201f10de96d8d8e63a8201",
     "tasks/T001.json": "da46f5f98d25bac159cba238d3f5c3131a61b4cb279a73c99147ff2b8b62db57",
     "tasks/T002.json": "9d923656549674aecf8d111cf217fd0335617db885e4929e2349ba4be3b6027f",
     "tasks/T003.json": "fbe14c97ecbe315673245f7e66efffaca4e10d84bd4d05ef878d911f4f7ca8c9",
     "tasks/T004.json": "3b6136e7ccfd59f4750bd62ae2e4033a48ca2559a3fdc139795f6a6f746d768f",
     "tasks/T005.json": "0684baa7b0ad2de18e623bad3877c87910ef58c7cf387273f93a2486880fed6e",
-    "tasks/T006.json": "89d0306dc085dbf09f4cbf5c8df4672407cf817827190eebab8fa11371c8fc79"
+    "tasks/T006.json": "61337b38608b58780b0e47ce60661d36e66daba7f9bf25d2f1e280d30da583d4"
   }
 }

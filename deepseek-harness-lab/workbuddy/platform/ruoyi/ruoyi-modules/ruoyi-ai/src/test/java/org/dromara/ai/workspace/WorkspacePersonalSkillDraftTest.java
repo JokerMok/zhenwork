@@ -1,7 +1,11 @@
 package org.dromara.ai.workspace;
 
 import org.junit.jupiter.api.*;
+import org.springframework.http.*;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -16,6 +20,28 @@ class WorkspacePersonalSkillDraftTest {
     @Test void organizationAndOtherEmployeesRemainProtected(){var guard=mock(AiResourceGuard.class);UUID id=UUID.randomUUID();var service=new WorkspacePersonalSkillDraft(guard,mock(WorkspaceModelAccess.class),mock(WorkspaceModelRelayController.class));when(guard.require(id,7,AiResourceGuard.Action.EDIT)).thenReturn(Map.of("resource_type","SKILL","owner_type","ENTERPRISE","latest_version",1));assertThrows(WorkspaceDenied.class,()->service.personal(id,1,7));when(guard.require(id,7,AiResourceGuard.Action.EDIT)).thenReturn(Map.of("resource_type","SKILL","owner_type","USER","owner_user_id",8L,"latest_version",1));assertThrows(WorkspaceDenied.class,()->service.personal(id,1,7));}
     @Test void staleVersionIsRejectedBeforeModelCall(){var guard=mock(AiResourceGuard.class);var models=mock(WorkspaceModelAccess.class);UUID id=UUID.randomUUID();var service=new WorkspacePersonalSkillDraft(guard,models,mock(WorkspaceModelRelayController.class));when(guard.require(id,7,AiResourceGuard.Action.EDIT)).thenReturn(Map.of("resource_type","SKILL","owner_type","USER","owner_user_id",7L,"latest_version",2));assertThrows(WorkspaceDenied.class,()->service.generate(id,1,"Change reminder",7,1,()->{}));verifyNoInteractions(models);}
     @Test void incompleteOutputCannotBecomeDraft(){assertThrows(WorkspaceDenied.class,()->WorkspacePersonalSkillDraft.decode("data: {\"choices\":[]}\n"));var content="{\"instruction\":\"check\",\"preferencesPatch\":{},\"summary\":\"ok\",\"unsupported\":[]}";var event=org.dromara.common.json.utils.JsonUtils.toJsonString(Map.of("choices",List.of(Map.of("delta",Map.of("content",content)))));assertEquals("check",WorkspacePersonalSkillDraft.decode("data: "+event+"\n\ndata: [DONE]\n").get("instruction"));}
+    @Test void generateUsesAuthorizedModelCodeAndPreservesProtectedConfiguration(){
+        var guard=mock(AiResourceGuard.class);var models=mock(WorkspaceModelAccess.class);var relay=mock(WorkspaceModelRelayController.class);
+        UUID skillId=UUID.randomUUID(),modelId=UUID.randomUUID();long user=7,authVersion=11;var before=original();
+        when(guard.require(skillId,user,AiResourceGuard.Action.EDIT)).thenReturn(Map.of("resource_type","SKILL","owner_type","USER","owner_user_id",user,"latest_version",1));
+        when(guard.version(skillId,1,user,AiResourceGuard.Action.EDIT)).thenReturn(Map.of("config",org.dromara.common.json.utils.JsonUtils.toJsonString(before)));
+        when(models.models(user)).thenReturn(List.of(Map.of("id",modelId.toString(),"code","vendor-code","isDefault",true)));
+        var draft=generated(Map.of("capacityPercent","80","differencesOnly",true));
+        String content=org.dromara.common.json.utils.JsonUtils.toJsonString(draft);
+        String event=org.dromara.common.json.utils.JsonUtils.toJsonString(Map.of("choices",List.of(Map.of("delta",Map.of("content",content)))));
+        byte[] sse=("data: "+event+"\n\ndata: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
+        var normalized=new AtomicReference<Map<String,Object>>();
+        when(relay.relayAuthorized(eq(modelId),anyString(),eq(user),eq(authVersion),any(Runnable.class))).thenAnswer(call->{
+            normalized.set(WorkspaceModelRelayController.normalize(call.getArgument(1,String.class),"vendor-code"));
+            call.getArgument(4,Runnable.class).run();
+            return ResponseEntity.ok().contentType(org.springframework.http.MediaType.TEXT_EVENT_STREAM).body((StreamingResponseBody)output->output.write(sse));
+        });
+        var identity=mock(Runnable.class);var result=new WorkspacePersonalSkillDraft(guard,models,relay).generate(skillId,1,"Use an 80% reminder and report differences only",user,authVersion,identity);
+        assertEquals("vendor-code",normalized.get().get("model"));assertEquals(modelId.toString(),result.get("modelId"));
+        var files=(List<?>)result.get("files");var originalFiles=(List<?>)before.get("files");assertEquals(originalFiles.subList(1,3),files.subList(1,3));
+        assertEquals("80",WorkspacePersonalSkillDraft.preferences(result).get("capacityPercent"));assertEquals(true,WorkspacePersonalSkillDraft.preferences(result).get("differencesOnly"));assertEquals(List.of(),result.get("permissionChanges"));
+        verify(identity,times(2)).run();verify(models,times(2)).checkIdentity(user,authVersion);
+    }
     @Test void nestedPreferencesRejectInvalidRuntimeTypesAndMonths(){
         var original=new LinkedHashMap<String,Object>(original());
         var files=new ArrayList<Map<String,Object>>();
