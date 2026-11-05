@@ -1,6 +1,7 @@
 package org.dromara.ai.workspace;
 
 import org.dromara.ai.workspace.runtime.ExecutionCredentials;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -11,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
+@Tag("local")
 class WorkspaceBackgroundCatalogControllerTest {
     private final WorkspaceBackgroundGrants grants = mock(WorkspaceBackgroundGrants.class);
     private final ExecutionCredentials execution = mock(ExecutionCredentials.class);
@@ -28,7 +30,7 @@ class WorkspaceBackgroundCatalogControllerTest {
         when(resources.list(17L, "SKILL", "available", 2)).thenReturn(List.of(Map.of(
             "id", "resource-1", "actions", List.of("USE"), "publishedVersion", 3, "version", 3)));
 
-        controller.resources(grantId, "SKILL", "available", 2, "Bearer service", "a".repeat(64));
+        controller.resources(grantId, "SKILL", "available", 2, false, "Bearer service", "a".repeat(64));
 
         verify(resources).list(17L, "SKILL", "available", 2);
     }
@@ -38,7 +40,7 @@ class WorkspaceBackgroundCatalogControllerTest {
         authorize();
 
         WorkspaceDenied denied = assertThrows(WorkspaceDenied.class, () ->
-            controller.resources(grantId, "SKILL", "shared", 1, "Bearer service", "a".repeat(64)));
+            controller.resources(grantId, "SKILL", "shared", 1, false, "Bearer service", "a".repeat(64)));
 
         assertEquals(400, denied.status);
         assertEquals("InvalidResourceFilter", denied.getMessage());

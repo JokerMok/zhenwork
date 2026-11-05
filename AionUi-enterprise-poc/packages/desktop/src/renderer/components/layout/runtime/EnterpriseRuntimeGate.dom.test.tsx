@@ -11,7 +11,9 @@ vi.mock('@/renderer/pages/conversation/GroupedHistory/hooks/useConversationListS
 vi.mock('@/renderer/hooks/context/LayoutContext', () => ({ useLayoutContext: (): null => null }));
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useLocation: () => ({ pathname: '/guid' }) }));
+const route = vi.hoisted(() => ({ pathname: '/guid' }));
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useLocation: () => route }));
+vi.mock('@/renderer/pages/workspace/TaskWork', () => ({ default: (): null => null }));
 vi.mock('@arco-design/web-react', () => ({
   Alert: ({ content }: { content: string }) => <span>{content}</span>,
   Spin: () => <span>spinner</span>,
@@ -27,6 +29,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  route.pathname = '/guid';
 });
 
 test('keeps execution unavailable while queued and automatically mounts it only after readiness', async () => {
@@ -104,4 +107,29 @@ test('preparation timeout ends polling and exposes a local retry without raw tec
   });
   expect(fetcher).toHaveBeenCalledTimes(count);
   expect(document.body.textContent).not.toContain('PREPARATION_TIMEOUT');
+});
+
+
+test('opens a saved conversation while cold and prepares execution only after Continue', async () => {
+  route.pathname = '/conversation/aabbccdd';
+  const fetcher = vi.fn().mockImplementation(async (url: string) => {
+    if (url.includes('/view')) return {
+      ok: true,
+      json: async () => ({ name: 'Saved conversation', messages: [{ id: 'm1', position: 'left', text: 'Saved answer' }] }),
+    };
+    return {
+      status: 200,
+      json: async () => ({ ready: !url.includes('inspect=1') }),
+    };
+  });
+  vi.stubGlobal('fetch', fetcher);
+  render(<EnterpriseRuntimeGate><span>execution</span></EnterpriseRuntimeGate>);
+  expect(await screen.findByText('Saved answer')).toBeTruthy();
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+    '/enterprise/conversations/aabbccdd/view?page=1',
+    '/enterprise/ready?inspect=1',
+  ]);
+  await act(async () => screen.getByText('workspace.work.continue').click());
+  expect(await screen.findByText('execution')).toBeTruthy();
+  expect(fetcher.mock.calls.at(-1)?.[0]).toBe('/enterprise/ready?retry=1');
 });

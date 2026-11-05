@@ -50,8 +50,9 @@ export async function startEnterpriseWebFromEnvironment() {
   const upstreamProxyPort = process.env.AION_ENTERPRISE_WEB_UPSTREAM_PROXY_PORT
     ? Number(process.env.AION_ENTERPRISE_WEB_UPSTREAM_PROXY_PORT) : undefined;
   let runtime: ReturnType<typeof createEnterpriseModelRuntime> | undefined;
+  const appVersion = required('AION_ENTERPRISE_WEB_APP_VERSION');
   const startCore = createEnterpriseDockerCoreStarter({ profileRoot, supervisor,
-    appVersion: required('AION_ENTERPRISE_WEB_APP_VERSION'),
+    appVersion,
     coreImage: required('AION_ENTERPRISE_WEB_DOCKER_CORE_IMAGE'), gatewayImage, upstreamProxyPort,
     authorizeCronJob: async (actor, jobId) => (runtime ? runtime.authorizeCronJob(actor, jobId) : false),
     });
@@ -59,7 +60,7 @@ export async function startEnterpriseWebFromEnvironment() {
     { profileRoot, publicOrigin, rc2Resume: createRc2GatewayResume(rc2Url, publicOrigin),
       background: { rc2Url, serviceToken },
     });
-  const gateway = await startEnterpriseGateway({ staticDir, publicOrigin, port, adminUrl: new URL('/admin/', rc2Url).toString(),
+  const gateway = await startEnterpriseGateway({ staticDir, publicOrigin, port, appVersion, adminUrl: new URL('/admin/', rc2Url).toString(),
     maxSessions: optionalLimit('AION_ENTERPRISE_WEB_MAX_SESSIONS', 1, 1000),
     maxCores: optionalLimit('AION_ENTERPRISE_WEB_MAX_CORES', 1, 200),
     maxStartingCores: optionalLimit('AION_ENTERPRISE_WEB_MAX_STARTING_CORES', 1, 32),

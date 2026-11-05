@@ -15,11 +15,13 @@ import {
   Speed,
   System,
   Toolkit,
+  User,
+  SettingTwo,
 } from '@icon-park/react';
 import classNames from 'classnames';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Tooltip } from '@arco-design/web-react';
 import { getSiderTooltipProps } from '@/renderer/utils/ui/siderTooltip';
 
@@ -68,11 +70,26 @@ type SiderItem = {
   path: string;
 };
 
+/** The enterprise settings sidebar and its narrow-screen tabs use the same destinations. */
+export function getEnterpriseSettingsNavItems(t: (key: string) => string): SiderItem[] {
+  return [
+    { id: 'profile', label: t('settings.enterpriseAccount.profile'), icon: <User />, path: 'profile' },
+    {
+      id: 'personalization',
+      label: t('settings.enterpriseAccount.personalization'),
+      icon: <SettingTwo />,
+      path: 'personalization',
+    },
+    { id: 'appearance', label: t('settings.appearancePanel'), icon: <Computer />, path: 'appearance' },
+    { id: 'archived', label: t('settings.archived.navLabel'), icon: <Inbox />, path: 'archived' },
+    { id: 'about', label: t('settings.about'), icon: <Info />, path: 'about' },
+  ];
+}
+
 const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }> = ({
   collapsed = false,
   tooltipEnabled = false,
 }) => {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const isDesktop = isElectronDesktop();
@@ -82,6 +99,8 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
   const { resolveExtTabName } = useExtI18n();
 
   const { menus, groupHeaderAt } = useMemo(() => {
+    if (hostedWeb) return { menus: getEnterpriseSettingsNavItems(t), groupHeaderAt: new Map<number, string>() };
+
     // Build builtin items
     const builtinMap: Record<string, SiderItem> = {
       model: { id: 'model', label: t('settings.model'), icon: <LinkCloud />, path: 'model' },
@@ -120,7 +139,7 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
       about: { id: 'about', label: t('settings.about'), icon: <Info />, path: 'about' },
     };
 
-    const result: SiderItem[] = BUILTIN_TAB_IDS.filter((id) => !(hostedWeb && id === 'webui')).map((id) => builtinMap[id]);
+    const result: SiderItem[] = BUILTIN_TAB_IDS.map((id) => builtinMap[id]);
 
     // Extension tabs with position anchoring
     const beforeMap = new Map<string, IExtensionSettingsTab[]>();
@@ -204,7 +223,7 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
       })}
     >
       {menus.map((item, index) => {
-        const isSelected = pathname.includes(item.path);
+        const isSelected = pathname === `/settings/${item.path}` || pathname.startsWith(`/settings/${item.path}/`);
         const groupHeaderKey = groupHeaderAt.get(index);
         const groupHeader =
           groupHeaderKey && !collapsed ? (
@@ -216,22 +235,20 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
           <React.Fragment key={item.id}>
             {groupHeader}
             <Tooltip {...siderTooltipProps} content={item.label} position='right'>
-              <div
+              <NavLink
+                to={`/settings/${item.path}`}
+                replace
+                aria-label={item.label}
                 data-settings-id={item.id}
                 data-settings-path={item.path}
                 className={classNames(
-                  'settings-sider__item h-34px rd-8px flex items-center gap-8px group cursor-pointer relative overflow-hidden shrink-0 conversation-item [&.conversation-item+&.conversation-item]:mt-2px transition-colors',
+                  'settings-sider__item no-underline h-34px rd-8px flex items-center gap-8px group cursor-pointer relative overflow-hidden shrink-0 conversation-item [&.conversation-item+&.conversation-item]:mt-2px transition-colors',
                   collapsed ? 'w-full justify-center px-0' : 'justify-start px-10px',
                   {
                     'hover:bg-fill-3': !isSelected,
                     '!bg-fill-3': isSelected,
                   }
                 )}
-                onClick={() => {
-                  Promise.resolve(navigate(`/settings/${item.path}`, { replace: true })).catch((error) => {
-                    console.error('Navigation failed:', error);
-                  });
-                }}
               >
                 {/* Leading icon — 22px slot to align with main sider rows */}
                 <span className='size-22px flex items-center justify-center shrink-0 line-height-0'>
@@ -259,7 +276,7 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
                     {item.label}
                   </div>
                 </FlexFullContainer>
-              </div>
+              </NavLink>
             </Tooltip>
           </React.Fragment>
         );

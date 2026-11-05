@@ -17,9 +17,9 @@ export type UseConversationAssistantsResult = {
   refresh: () => Promise<void>;
 };
 
-export const useConversationAssistants = (): UseConversationAssistantsResult => {
+export const useConversationAssistants = (useRuntimeCatalog = true): UseConversationAssistantsResult => {
   const { assistantOrder } = useAssistantOrder();
-  const { data: assistants, isLoading } = useSWR('assistants.list', async () => {
+  const { data: assistants, isLoading } = useSWR(useRuntimeCatalog ? 'assistants.list' : null, async () => {
     try {
       return await ipcBridge.assistants.list.invoke();
     } catch (error) {

@@ -10,9 +10,10 @@ import AionModal from '@/renderer/components/base/AionModal';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import { useCronJobsMap } from '@/renderer/pages/cron';
 import { restrictToVerticalAxis } from '@/renderer/utils/ui/dndModifiers';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Button, Dropdown, Empty, Input, Menu, Modal, Tooltip } from '@arco-design/web-react';
+import { Button, Dropdown, Empty, Input, Menu, Modal, Spin, Tooltip } from '@arco-design/web-react';
 import { FolderClose, MoreOne, Plus, Right } from '@icon-park/react';
 import classNames from 'classnames';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -45,10 +46,16 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
   const enterpriseSources = hasEnterpriseWebConversationSource();
   const [sourceFilter, setSourceFilter] = useState<'all' | 'desktop' | 'web'>('all');
   const activeSourceFilter = enterpriseSources ? sourceFilter : 'all';
+  const enterprise = isEnterpriseWeb();
   const { getJobStatus, markAsRead, setActiveConversation } = useCronJobsMap();
 
   const {
     conversations,
+    historyLoading,
+    historyError,
+    historyHasMore,
+    loadMoreHistory,
+    retryHistory,
     isConversationGenerating,
     isConversationWaitingConfirmation,
     hasCompletionUnread,
@@ -273,16 +280,52 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
     </div>
   );
 
+  const historyStatus = enterprise && (
+    <div className='px-8px py-4px' data-testid='employee-history-status'>
+      {historyError && (
+        <div className='text-12px text-t-secondary' role='alert'>
+          <span className={classNames(collapsed && 'sr-only')}>
+            {t('workspace.errors.load', { code: historyError })}
+          </span>
+          <Button long type='text' size='mini' onClick={retryHistory} aria-label={t('common.retry')}>
+            {t('common.retry')}
+          </Button>
+        </div>
+      )}
+      {historyHasMore && !historyError && (
+        <Button
+          long
+          type='text'
+          size='mini'
+          loading={historyLoading}
+          onClick={loadMoreHistory}
+          aria-label={t('conversation.historySearch.loadMore')}
+        >
+          {collapsed ? '+' : t('conversation.historySearch.loadMore')}
+        </Button>
+      )}
+    </div>
+  );
+
   if (timelineSections.length === 0 && pinnedConversations.length === 0) {
     return (
       <>
         {sourceControls}
         {activeSourceFilter !== 'web' && afterPinnedContent}
         {activeSourceFilter !== 'desktop' && <EnterpriseWebConversations collapsed={collapsed} />}
-        {activeSourceFilter !== 'web' && <div className='py-48px flex-center'>
-          <Empty description={t(enterpriseSources
-            ? 'conversation.history.noDesktopHistory' : 'conversation.history.noHistory')} />
-        </div>}
+        {activeSourceFilter !== 'web' && (
+          enterprise && historyLoading ? (
+            <div className='flex justify-center py-16px' role='status' aria-label={t('common.loading')}>
+              <Spin size={16} />
+            </div>
+          ) : !historyError && !historyHasMore && (
+            <div className='py-48px flex-center'>
+              <Empty description={t(enterpriseSources
+                ? 'conversation.history.noDesktopHistory' : 'conversation.history.noHistory')} />
+            </div>
+          )
+        )}
+        {historyStatus}
       </>
     );
   }
@@ -560,6 +603,7 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
           </div>
         )}
         </>}
+        {historyStatus}
       </div>
     </>
   );

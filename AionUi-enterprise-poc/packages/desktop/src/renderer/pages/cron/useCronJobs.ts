@@ -11,6 +11,7 @@ import { emitter } from '@/renderer/utils/emitter';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { repairCronJobTimeZones } from '@renderer/pages/cron/repairCronJobTimeZone';
 import { formatCronRunConversationTitle } from '@renderer/pages/cron/cronUtils';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { getActivityTime } from '@/renderer/utils/chat/timeline';
 
 const isJobErrorLike = (job: ICronJob): boolean => {
@@ -210,14 +211,18 @@ export function useCronJobs(conversation_id?: string) {
 export function useAllCronJobs() {
   const [jobs, setJobs] = useState<ICronJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   // Fetch all jobs
   const fetchJobs = useCallback(async () => {
     setLoading(true);
     try {
       const allJobs = await ipcBridge.cron.listJobs.invoke();
-      setJobs(await repairCronJobTimeZones(allJobs || []));
+      if (!Array.isArray(allJobs)) throw new Error('Invalid scheduled task list');
+      setJobs(isEnterpriseWeb() ? allJobs : await repairCronJobTimeZones(allJobs));
+      setLoadError(false);
     } catch (err) {
+      setLoadError(true);
       console.error('[useAllCronJobs] Failed to fetch jobs:', err);
     } finally {
       setLoading(false);
@@ -267,6 +272,7 @@ export function useAllCronJobs() {
     loading,
     activeCount,
     hasError,
+    loadError,
     refetch: fetchJobs,
     ...actions,
   };
@@ -310,7 +316,8 @@ export function useCronJobsMap() {
   const fetchAllJobs = useCallback(async () => {
     setLoading(true);
     try {
-      const allJobs = await repairCronJobTimeZones(await ipcBridge.cron.listJobs.invoke());
+      const jobs = await ipcBridge.cron.listJobs.invoke();
+      const allJobs = isEnterpriseWeb() ? jobs : await repairCronJobTimeZones(jobs);
       const map = new Map<string, ICronJob[]>();
 
       for (const job of allJobs || []) {
@@ -333,7 +340,6 @@ export function useCronJobsMap() {
     }
   }, []);
 
-  // Initial fetch
   useEffect(() => {
     void fetchAllJobs();
   }, [fetchAllJobs]);
@@ -512,6 +518,7 @@ export function useCronJobsMap() {
 
 export function useCronJobConversations(job_id: string | undefined) {
   const [conversations, setConversations] = useState<TChatConversation[]>([]);
+  const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(Boolean(job_id));
   const requestSeqRef = useRef(0);
 
@@ -530,11 +537,12 @@ export function useCronJobConversations(job_id: string | undefined) {
       const result = await ipcBridge.conversation.listByCronJob.invoke({ cron_job_id: job_id });
       if (requestSeqRef.current === requestSeq) {
         setConversations(result ?? []);
+        setLoadError(false);
       }
     } catch (err) {
       console.error('[useCronJobConversations] Failed to fetch conversations:', err);
       if (requestSeqRef.current === requestSeq) {
-        setConversations([]);
+        setLoadError(true);
       }
     } finally {
       if (requestSeqRef.current === requestSeq) {
@@ -580,7 +588,7 @@ export function useCronJobConversations(job_id: string | undefined) {
     };
   }, [fetchConversations, job_id]);
 
-  return { conversations, loading, refetch: fetchConversations };
+  return { conversations, loading, loadError, refetch: fetchConversations };
 }
 
 export default useCronJobs;

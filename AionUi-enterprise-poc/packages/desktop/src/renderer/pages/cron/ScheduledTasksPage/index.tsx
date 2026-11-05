@@ -8,7 +8,7 @@ import classNames from 'classnames';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Empty, Message, Spin, Switch, Tooltip } from '@arco-design/web-react';
+import { Alert, Button, Empty, Message, Spin, Switch, Tooltip } from '@arco-design/web-react';
 import { useLayoutContext } from '@renderer/hooks/context/LayoutContext';
 import { useAllCronJobs } from '@renderer/pages/cron/useCronJobs';
 import { formatSchedule, formatNextRun } from '@renderer/pages/cron/cronUtils';
@@ -31,13 +31,13 @@ const ScheduledTasksPage: React.FC = () => {
   const isMobile = layout?.isMobile ?? false;
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { jobs, loading, pauseJob, resumeJob } = useAllCronJobs();
-  const { presetAssistants } = useConversationAssistants();
-  const logos = useAgentLogos();
+  const hostedWeb = isEnterpriseWeb();
+  const { jobs, loading, loadError, refetch, pauseJob, resumeJob } = useAllCronJobs();
+  const { presetAssistants } = useConversationAssistants(!hostedWeb);
+  const logos = useAgentLogos(!hostedWeb);
   const [createDialogVisible, setCreateDialogVisible] = useState(false);
   const [keepAwake, setKeepAwake] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const hostedWeb = isEnterpriseWeb();
 
   useEffect(() => {
     if (!hostedWeb) setKeepAwake(configService.get('system.keepAwake') ?? false);
@@ -192,6 +192,12 @@ const ScheduledTasksPage: React.FC = () => {
             <div className='flex min-h-220px items-center justify-center rounded-16px border border-dashed border-border-2 bg-fill-1'>
               <Spin />
             </div>
+          ) : loadError ? (
+            <Alert
+              type='error'
+              content={t('workspace.errors.load', { code: 'SCHEDULE_READ_UNAVAILABLE' })}
+              action={<Button onClick={() => void refetch()}>{t('common.retry')}</Button>}
+            />
           ) : jobs.length === 0 ? (
             <div className='flex min-h-220px items-center justify-center rounded-16px border border-dashed border-border-2 bg-fill-1'>
               <Empty description={t('cron.noTasks')} />
@@ -286,7 +292,9 @@ const ScheduledTasksPage: React.FC = () => {
         </div>
       </div>
 
-      <CreateTaskDialog visible={createDialogVisible} onClose={() => setCreateDialogVisible(false)} />
+      {(!hostedWeb || createDialogVisible) && (
+        <CreateTaskDialog visible={createDialogVisible} onClose={() => setCreateDialogVisible(false)} />
+      )}
     </div>
   );
 };

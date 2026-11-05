@@ -1,5 +1,5 @@
 import classNames from 'classnames';
-import { Button } from '@arco-design/web-react';
+import { Spin } from '@arco-design/web-react';
 import { useTranslation } from 'react-i18next';
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -46,7 +46,10 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
   const showLogout =
     typeof window !== 'undefined' && !(window as { electronAPI?: unknown }).electronAPI && status === 'authenticated';
   const showEnterpriseWorkspace = isEnterpriseWeb();
-  const browsing = showEnterpriseWorkspace && ['/', '/workspace'].includes(pathname);
+  const workspaceParams = new URLSearchParams(search);
+  const isWorkspace = pathname === '/workspace';
+  const isEnterpriseAssistant = isWorkspace &&
+    workspaceParams.get('section') === 'abilities' && workspaceParams.get('capability') === 'ASSISTANT';
 
   useEffect(() => {
     if (!pathname.startsWith('/settings')) {
@@ -124,7 +127,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
     blurActiveElement();
     closePreview();
     setIsBatchMode(false);
-    Promise.resolve(navigate('/assistants')).catch((error) => {
+    Promise.resolve(navigate(showEnterpriseWorkspace ? '/workspace?section=abilities&capability=ASSISTANT' : '/assistants')).catch((error) => {
       console.error('Navigation failed:', error);
     });
     if (onSessionClick) {
@@ -198,7 +201,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
     <div className='size-full flex flex-col'>
       {/* Main content area */}
       <div className='flex-1 min-h-0 overflow-hidden'>
-        {isSettings ? (
+        {isSettings && !showEnterpriseWorkspace ? (
           <Suspense fallback={<div className='size-full' />}>
             <SettingsSider collapsed={collapsed} tooltipEnabled={tooltipEnabled} />
           </Suspense>
@@ -225,7 +228,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
             {showEnterpriseWorkspace ? (
               <SiderWorkspaceEntry
                 isMobile={isMobile}
-                isActive={pathname.startsWith('/workspace')}
+                isActive={isWorkspace && !isEnterpriseAssistant}
                 collapsed={collapsed}
                 siderTooltipProps={siderTooltipProps}
                 onClick={handleWorkspaceClick}
@@ -234,7 +237,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
             {/* Scrollable content: pinned → team (slot) → projects → conversations */}
             <SiderAssistantEntry
               isMobile={isMobile}
-              isActive={pathname.startsWith('/assistants')}
+              isActive={showEnterpriseWorkspace ? isEnterpriseAssistant : pathname.startsWith('/assistants')}
               collapsed={collapsed}
               siderTooltipProps={siderTooltipProps}
               onClick={handleAssistantClick}
@@ -256,27 +259,25 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
             />
             {/* Scrollable content: pinned → team (slot) → projects → conversations */}
             <div className={classNames('flex-1 min-h-0 overflow-y-auto', siderStyles.scrollArea)}>
-              {browsing ? (
-                <Button type='text' long onClick={() => navigate('/workspace?section=tasks')}>
-                  {t('workspace.tabs.tasks')}
-                </Button>
-              ) : (
-                <Suspense fallback={<div className='min-h-200px' />}>
+              <Suspense fallback={
+                showEnterpriseWorkspace ? (
+                  <div className='flex justify-center py-16px' role='status' aria-label={t('common.loading')}>
+                    <Spin size={16} />
+                  </div>
+                ) : <div className='min-h-200px' />
+              }>
                 <WorkspaceGroupedHistory
                   {...workspaceHistoryProps}
                   afterPinnedContent={
-                    <>
-                      <TeamSiderSection
-                        collapsed={collapsed}
-                        pathname={pathname}
-                        siderTooltipProps={siderTooltipProps}
-                        onSessionClick={onSessionClick}
-                      />
-                    </>
+                    <TeamSiderSection
+                      collapsed={collapsed}
+                      pathname={pathname}
+                      siderTooltipProps={siderTooltipProps}
+                      onSessionClick={onSessionClick}
+                    />
                   }
                 />
               </Suspense>
-              )}
             </div>
           </div>
         )}
@@ -285,6 +286,8 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
       <SiderFooter
         isMobile={isMobile}
         isSettings={isSettings}
+        enterpriseWeb={showEnterpriseWorkspace}
+        onSessionClick={onSessionClick}
         collapsed={collapsed}
         theme={theme}
         siderTooltipProps={siderTooltipProps}

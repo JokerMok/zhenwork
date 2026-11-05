@@ -76,6 +76,7 @@
     "capacityBusy": "Çalıştırma kapasitesi dolu. Biraz sonra yeniden deneyin."
   },
   "errors": {
+    "runtimeUnavailable": "Çalıştırma ortamı hazır değil. Biraz sonra tekrar deneyin.",
     "load": "Unable to load this section ({{code}}).",
     "action": "The action failed ({{code}}).",
     "noModel": "Bu hesap için kullanılabilir bir model yok. Kuruluş yöneticinizden varsayılan modeli ve erişim izinlerini denetlemesini isteyin.",
@@ -180,6 +181,7 @@
     "availableEmpty": "No knowledge base is available. Create a private one, or ask an administrator to grant access."
   },
   "abilities": {
+    "resourcePageEmpty": "Bu sayfada kullanılabilir kaynak yok. Gezinmeye devam edin veya sayfayı yenileyin.",
     "title": "Abilities",
     "subtitle": "Manage personal assistants and inspect assistants shared with you. Runtime and model details stay managed by the workspace.",
     "create": "Create ability",

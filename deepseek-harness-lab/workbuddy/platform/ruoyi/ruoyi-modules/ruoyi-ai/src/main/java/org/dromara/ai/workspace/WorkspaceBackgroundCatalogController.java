@@ -51,15 +51,22 @@ public class WorkspaceBackgroundCatalogController {
 
     @GetMapping("/internal/rc2/background/grants/{grantId}/resources")
     public R<?> resources(@PathVariable UUID grantId, @RequestParam String type,
-        @RequestParam String scope, @RequestParam int page,
+        @RequestParam String scope, @RequestParam int page, @RequestParam(defaultValue="false") boolean paged,
         @RequestHeader("Authorization") String serviceAuthorization,
         @RequestHeader("X-Aion-Background-Secret") String secret) {
         long userId = owner(grantId, serviceAuthorization, secret);
         if (!"available".equals(scope)) throw new WorkspaceDenied(400, "InvalidResourceFilter");
         resourcePermission(userId, type);
-        List<Map<String, Object>> items = resources.list(userId, type, "available", page);
-        return R.ok(items.stream().filter(item -> item.get("actions") instanceof List<?> actions && actions.contains("USE") &&
-            item.get("publishedVersion") != null).map(item -> {var active=new java.util.LinkedHashMap<>(item);active.put("version",item.get("publishedVersion"));return active;}).toList());
+        var result = paged ? resources.listPage(userId, type, "available", page)
+            : new WorkspaceResources.ResourcePage(resources.list(userId, type, "available", page), false);
+        List<Map<String, Object>> items = result.items().stream()
+            .filter(item -> item.get("actions") instanceof List<?> actions && actions.contains("USE") && item.get("publishedVersion") != null)
+            .map(item -> {
+                Map<String, Object> active = new java.util.LinkedHashMap<>(item);
+                active.put("version", item.get("publishedVersion"));
+                return active;
+            }).toList();
+        return R.ok(paged ? new WorkspaceResources.ResourcePage(items, result.hasMore()) : items);
     }
 
     @GetMapping("/internal/rc2/background/grants/{grantId}/resources/{id}")

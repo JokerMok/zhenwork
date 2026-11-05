@@ -18,6 +18,8 @@ import { previewOfficeFile } from './office/preview/index.js';
 import { BusinessPresentation } from './office/presentation/service.js';
 import { enterpriseProfilePath, prepareEnterpriseProfile } from './enterprise-core.js';
 import { readProfile } from './read-model/profile.js';
+import { PreferenceError, readEmployeePreferences, saveEmployeePreferences } from './read-model/preferences.js';
+import { readSelfProfile, saveSelfProfile, SelfProfileError } from './read-model/selfProfile.js';
 import { enterpriseBootstrapShell, enterpriseLoginLocale } from './enterprise-readiness-page.js';
 
 // Only content-addressed, release-owned code/assets may use the browser cache.
@@ -142,6 +144,8 @@ export type EnterpriseLogin = {
 };
 export type EnterpriseGatewayOptions = {
   staticDir: string;
+  /** Deployed ZhenWork release version shown in hosted About. */
+  appVersion?: string;
   /** Public HTTPS origin terminated by the trusted reverse proxy. */
   publicOrigin: string;
   port: number;
@@ -153,7 +157,8 @@ export type EnterpriseGatewayOptions = {
     username: string,
     oldPassword: string,
     newPassword: string,
-    client: EnterpriseClientMetadata
+    client: EnterpriseClientMetadata,
+    expectedActor?: EnterpriseActor
   ) => Promise<void>;
   /** Only explicit employee control routes; RC2 credentials never enter the browser. */
   controlRequest?: (actor: EnterpriseActor, route: string, init: RequestInit) => Promise<Response>;
@@ -224,6 +229,7 @@ const SESSION_MS = 8 * 60 * 60 * 1000;
 const IDLE_CORE_WS_CLOSE = Buffer.from([0x88, 0x02, 0x0f, 0xa1]); // 4001
 const MAX_BODY = 50 * 1024 * 1024;
 const LOGIN_BODY = 4096;
+const NEW_PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/;
 const MAX_PROVIDER_RESPONSE = 2 * 1024 * 1024;
 
 // These POST endpoints inspect or release runtime state; they are not execution intent.
@@ -351,7 +357,7 @@ try{const lang=localStorage.getItem('i18nextLng');if(lang&&lang!==document.docum
 const form=document.getElementById('login');const button=document.getElementById('submit');const error=document.getElementById('error');const notice=document.getElementById('notice');let changing=false;
 function passwordMode(enabled){changing=enabled;notice.hidden=!enabled;notice.textContent=enabled?copy.passwordRequired:'';for(const id of ['new-password','confirm-password']){const input=document.getElementById(id);input.disabled=!enabled;input.required=enabled;document.getElementById(id+'-label').hidden=!enabled;}button.textContent=enabled?copy.passwordUpdate:copy.login;}
 async function send(route,data){return fetch(route,{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify(data)});}
-form.addEventListener('submit',async(event)=>{event.preventDefault();error.textContent='';button.disabled=true;button.textContent=copy.submitting;try{const fields=new FormData(form);const data={username:fields.get('username'),password:fields.get('password')};if(changing){const next=fields.get('newPassword');if(!/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/.test(next)){error.textContent=copy.passwordRule;return;}if(next!==fields.get('confirmPassword')){error.textContent=copy.mismatch;return;}const changed=await send('/enterprise/password',{...data,newPassword:next});if(!changed.ok){error.textContent=changed.status===429?copy.busy:copy.passwordFailed;return;}data.password=next;document.getElementById('password').value=next;document.getElementById('new-password').value='';document.getElementById('confirm-password').value='';passwordMode(false);}const response=await send('/enterprise/login',data);if(response.ok){try{localStorage.setItem('rememberedAccount',String(data.username).trim());}catch{}document.getElementById('password').value='';location.replace('/'+(location.hash||'#/workspace'));return;}const result=await response.json().catch(()=>({}));if(response.status===409&&result.error==='PASSWORD_CHANGE_REQUIRED'){passwordMode(true);document.getElementById('new-password').focus();return;}error.textContent=response.status===401?copy.invalid:response.status===429?copy.busy:copy.unavailable;}catch{error.textContent=copy.network;}finally{button.disabled=false;button.textContent=changing?copy.passwordUpdate:copy.login;}});</script></body></html>`;
+form.addEventListener('submit',async(event)=>{event.preventDefault();error.textContent='';button.disabled=true;button.textContent=copy.submitting;try{const fields=new FormData(form);const data={username:fields.get('username'),password:fields.get('password')};if(changing){const next=fields.get('newPassword');if(!/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/.test(next)){error.textContent=copy.passwordRule;return;}if(next!==fields.get('confirmPassword')){error.textContent=copy.mismatch;return;}const changed=await send('/enterprise/password',{...data,newPassword:next});if(!changed.ok){error.textContent=changed.status===429?copy.busy:copy.passwordFailed;return;}data.password=next;document.getElementById('password').value=next;document.getElementById('new-password').value='';document.getElementById('confirm-password').value='';passwordMode(false);}const response=await send('/enterprise/login',data);if(response.ok){try{localStorage.setItem('rememberedAccount',String(data.username).trim());localStorage.setItem('enterprise:session-changed',crypto.randomUUID());}catch{}document.getElementById('password').value='';location.replace('/'+(location.hash||'#/workspace'));return;}const result=await response.json().catch(()=>({}));if(response.status===409&&result.error==='PASSWORD_CHANGE_REQUIRED'){passwordMode(true);document.getElementById('new-password').focus();return;}error.textContent=response.status===401?copy.invalid:response.status===429?copy.busy:copy.unavailable;}catch{error.textContent=copy.network;}finally{button.disabled=false;button.textContent=changing?copy.passwordUpdate:copy.login;}});</script></body></html>`;
 }
 
 function providerRoute(url: string): boolean {
@@ -587,6 +593,8 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
   startBackgroundCore: (actor: EnterpriseActor) => Promise<void>;
 }> {
   const origin = new URL(opts.publicOrigin);
+  const appVersion = opts.appVersion && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(opts.appVersion)
+    ? opts.appVersion : '';
   const localDev =
     opts.allowInsecureLoopbackDev === true &&
     origin.protocol === 'http:' &&
@@ -1100,6 +1108,13 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       .recover()
       .catch(() => console.warn('[Enterprise tasks] recovery deferred; employee login remains available'));
 
+  const consumeLoginAttempt = (): boolean => {
+    const now = Date.now();
+    while (loginAttempts.length && loginAttempts[0] < now - 60_000) loginAttempts.shift();
+    if (loginAttempts.length >= 300) return false;
+    loginAttempts.push(now);
+    return true;
+  };
   const server = http.createServer(async (req, res) => {
     const requestStarted = performance.now();
     res.setHeader('x-aion-enterprise-web', '1');
@@ -1126,10 +1141,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       const client = clientMetadata(req, opts.trustedProxyToken);
       if (!client) return reply(res, 401, { error: 'LOGIN_FAILED' });
       if (sessions.size + pendingSessions >= maxSessions) return reply(res, 503, { error: 'SESSION_CAPACITY' });
-      const now = Date.now();
-      while (loginAttempts.length && loginAttempts[0] < now - 60_000) loginAttempts.shift();
-      if (loginAttempts.length >= 300) return reply(res, 429, { error: 'TOO_MANY_ATTEMPTS' });
-      loginAttempts.push(now);
+      if (!consumeLoginAttempt()) return reply(res, 429, { error: 'TOO_MANY_ATTEMPTS' });
       pendingSessions += 1;
       try {
         const input = JSON.parse((await body(req, LOGIN_BODY)).toString('utf8')) as {
@@ -1142,7 +1154,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
           if (!opts.changePassword) return reply(res, 404, { error: 'NOT_FOUND' });
           if (
             typeof input.newPassword !== 'string' ||
-            !/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/.test(input.newPassword)
+            !NEW_PASSWORD_PATTERN.test(input.newPassword)
           ) {
             return reply(res, 400, { error: 'INVALID_NEW_PASSWORD' });
           }
@@ -1218,6 +1230,9 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       }
       return reply(res, 401, { error: 'UNAUTHENTICATED' });
     }
+    if (req.url === '/enterprise/ready?inspect=1' && req.method === 'GET') {
+      return reply(res, 200, { ready: cores.get(actorKey(auth.session.actor))?.ready === true });
+    }
     if (/^\/enterprise\/ready(?:\?retry=1)?$/.test(req.url) && req.method === 'GET') {
       const key = actorKey(auth.session.actor);
       if (req.url.endsWith('?retry=1') && preparationFailures.has(key)) {
@@ -1274,6 +1289,62 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       } catch {
         return reply(res, 502, { error: 'BRAND_UNAVAILABLE' });
       }
+    }
+    if (/^\/enterprise\/(?:self-profile|self-password|preferences)[/?#]/.test(req.url))
+      return reply(res, 404, { error: 'NOT_FOUND' });
+    if (req.url === '/enterprise/self-profile' || req.url === '/enterprise/preferences') {
+      const profile = req.url === '/enterprise/self-profile';
+      if (!['GET', 'PUT'].includes(req.method || '')) return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
+      if (profile ? !opts.controlRequest : !opts.profileRoot)
+        return reply(res, 503, { error: profile ? 'PROFILE_UNAVAILABLE' : 'PREFS_UNAVAILABLE' });
+      const actor = auth.session.actor;
+      try {
+        let input: unknown;
+        if (req.method === 'PUT') {
+          try { input = JSON.parse((await body(req, profile ? 1024 : 16384)).toString('utf8')); }
+          catch { return reply(res, 400, { error: profile ? 'PROFILE_INVALID' : 'PREFS_INVALID' }); }
+        }
+        const result = profile
+          ? req.method === 'PUT'
+            ? await saveSelfProfile(opts.controlRequest!, actor, input)
+            : await readSelfProfile(opts.controlRequest!, actor)
+          : req.method === 'PUT'
+            ? await saveEmployeePreferences(opts.profileRoot!, actor, input)
+            : await readEmployeePreferences(opts.profileRoot!, actor);
+        if (sessions.get(auth.id) !== auth.session) return reply(res, 401, { error: 'UNAUTHENTICATED' });
+        return reply(res, 200, result);
+      } catch (error) {
+        if (error instanceof PreferenceError || error instanceof SelfProfileError)
+          return reply(res, error.status, { error: error.message });
+        return reply(res, profile ? 502 : 503, { error: profile ? 'PROFILE_UNAVAILABLE' : 'PREFS_UNAVAILABLE' });
+      }
+    }
+    if (req.url === '/enterprise/self-password') {
+      if (req.method !== 'POST') return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
+      if (!opts.changePassword || !opts.controlRequest) return reply(res, 404, { error: 'NOT_FOUND' });
+      const client = clientMetadata(req, opts.trustedProxyToken);
+      if (!client) return reply(res, 401, { error: 'PASSWORD_CHANGE_FAILED' });
+      if (!consumeLoginAttempt()) return reply(res, 429, { error: 'TOO_MANY_ATTEMPTS' });
+      let input: unknown;
+      try { input = JSON.parse((await body(req, LOGIN_BODY)).toString('utf8')); }
+      catch { return reply(res, 400, { error: 'PASSWORD_CHANGE_INVALID' }); }
+      if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 2)
+        return reply(res, 400, { error: 'PASSWORD_CHANGE_INVALID' });
+      const { oldPassword, newPassword } = input as Record<string, unknown>;
+      if (typeof oldPassword !== 'string' || !oldPassword || typeof newPassword !== 'string' ||
+          !NEW_PASSWORD_PATTERN.test(newPassword))
+        return reply(res, 400, { error: 'PASSWORD_CHANGE_INVALID' });
+      try {
+        const { username } = await readSelfProfile(opts.controlRequest, auth.session.actor);
+        if (sessions.get(auth.id) !== auth.session) return reply(res, 401, { error: 'UNAUTHENTICATED' });
+        await opts.changePassword(username, oldPassword, newPassword, client, auth.session.actor);
+      } catch {
+        return reply(res, 400, { error: 'PASSWORD_CHANGE_FAILED' });
+      }
+      res.setHeader('set-cookie',
+        `${cookieName}=; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict; Max-Age=0`);
+      const backgroundTasksVerified = await revoke(auth.id);
+      return reply(res, 200, { ok: true, backgroundTasksVerified });
     }
     if ((req.url === '/enterprise/logout' || req.url === '/logout') && req.method === 'POST') {
       res.setHeader(
@@ -1486,21 +1557,20 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         for (let page = 1; page <= 100; page++) {
           const response = await opts.controlRequest(
             auth.session.actor,
-            `/ai/resources?scope=available&type=${type}&page=${page}`,
+            `/ai/resources?scope=available&type=${type}&page=${page}&paged=true`,
             { method: 'GET' }
           );
-          const body = (await response.json()) as {
-            code: number;
-            data: Array<{ id: string; name: string; publishedVersion: number; actions: string[] }>;
-          };
-          if (!response.ok || body.code !== 200 || !Array.isArray(body.data))
+          type Resource = { id: string; name: string; publishedVersion: number; actions: string[] };
+          const body = (await response.json()) as { code: number; data: { items: Resource[]; hasMore: boolean } };
+          if (!response.ok || body.code !== 200 || !Array.isArray(body.data?.items) ||
+              typeof body.data.hasMore !== 'boolean')
             throw new Error('BUSINESS_RULE_UNAVAILABLE');
           found.push(
-            ...body.data
+            ...body.data.items
               .filter((r) => r.actions.includes('USE') && Number.isInteger(r.publishedVersion))
               .map((r) => ({ ...r, version: r.publishedVersion }))
           );
-          if (body.data.length < 30) return found;
+          if (!body.data.hasMore) return found;
         }
         throw new Error('BUSINESS_RULE_CATALOG_LIMIT');
       },
@@ -1696,12 +1766,115 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         return reply(res, 400, { error: (error as Error).message.slice(0, 200) });
       }
     }
+    // Native renderer list/search DTOs backed by the same authenticated
+    // employee profile while execution is cold. Reads never enqueue a Core.
+    const historyPath = req.url.split('?')[0];
+    const coldCron = /^\/api\/cron\/jobs(?:\/([A-Za-z0-9_-]{1,100})(\/conversations)?)?$/.exec(historyPath);
+    if (opts.profileRoot && req.method === 'GET' && coldCron && !cores.get(actorKey(auth.session.actor))?.ready) {
+      const conversation = new URL(req.url, origin).searchParams.get('conversation_id') || '';
+      if (conversation && !isConversationId(conversation)) return reply(res, 400, { error: 'BAD_REQUEST' });
+      try {
+        const data = await readProfile(
+          opts.profileRoot,
+          auth.session.actor,
+          coldCron[2] ? 'cronConversations' : 'cronJobs',
+          coldCron[2] ? coldCron[1] : JSON.stringify({ id: coldCron[1], conversation })
+        );
+        if (!(await validateSession(auth.session))) {
+          await revoke(auth.id);
+          return reply(res, 401, { error: 'UNAUTHENTICATED' });
+        }
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        return reply(res, 200, { success: true, data });
+      } catch {
+        return reply(res, 503, { error: 'SCHEDULE_READ_UNAVAILABLE' });
+      }
+    }
+    const coldHistory = historyPath === '/api/conversations' || historyPath === '/api/messages/search';
+    if (
+      opts.profileRoot &&
+      req.method === 'GET' &&
+      coldHistory &&
+      !cores.get(actorKey(auth.session.actor))?.ready
+    ) {
+      const query = new URL(req.url, origin).searchParams;
+      const search = historyPath === '/api/messages/search';
+      const cursor = query.get('cursor') || '';
+      const keyword = query.get('keyword')?.trim() || '';
+      const page = Number(query.get('page') || 1);
+      const limit = Number(query.get(search ? 'page_size' : 'limit') || (search ? 20 : 100));
+      if (
+        !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+        (cursor && !isConversationId(cursor)) ||
+        (search && (!keyword || keyword.length > 200 || !Number.isInteger(page) || page < 1 || page > 1000))
+      ) {
+        return reply(res, 400, { error: 'BAD_REQUEST' });
+      }
+      try {
+        const data = await readProfile(
+          opts.profileRoot,
+          auth.session.actor,
+          search ? 'messageSearch' : 'conversationPage',
+          JSON.stringify({ cursor, keyword, page, limit })
+        );
+        if (!(await validateSession(auth.session))) {
+          await revoke(auth.id);
+          return reply(res, 401, { error: 'UNAUTHENTICATED' });
+        }
+        if (sessions.get(auth.id) !== auth.session || res.destroyed) return;
+        return reply(res, 200, { success: true, data });
+      } catch {
+        return reply(res, 503, { error: 'PROFILE_READ_UNAVAILABLE' });
+      }
+    }
+    if (opts.profileRoot && req.url.startsWith('/api/')) {
+      let route: string;
+      try {
+        route = decodeURIComponent(new URL(req.url, origin).pathname);
+      } catch {
+        return reply(res, 400, { error: 'BAD_REQUEST' });
+      }
+      const nativeShell = /^\/api\/(?:shell\/(?:open-file|show-item-in-folder|open-external|open-folder-with)|fs\/(?:reveal|open-system|copy-absolute-path))\/?$/.test(route);
+      const nativeAgentManagement = /^\/api\/(?:agents\/(?:custom(?:\/.*)?|refresh|[^/]+\/(?:overrides|enabled))|system\/ensure-(?:node-runtime|managed-acp-tool))\/?$/.test(route);
+      const nativeMcpManagement = /^\/api\/mcp\/(?:servers(?:\/.*)?|test-connection|oauth(?:\/.*)?)\/?$/.test(route);
+      if (nativeShell || (!['GET', 'HEAD'].includes(req.method || 'GET') && (nativeAgentManagement || nativeMcpManagement))) {
+        return reply(res, 403, { error: 'HOSTED_CAPABILITY_UNAVAILABLE' });
+      }
+    }
+    if (req.method === 'GET' && /^\/enterprise\/conversations\/archived(?:\?|$)/.test(req.url)) {
+      if (!opts.profileRoot) return reply(res, 503, { error: 'PROFILE_READ_UNAVAILABLE' });
+      const query = new URL(req.url, origin);
+      const cursor = query.searchParams.get('cursor') || '';
+      const limit = Number(query.searchParams.get('limit') || 30);
+      if ((cursor && !isConversationId(cursor)) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+        return reply(res, 400, { error: 'BAD_REQUEST' });
+      }
+      try {
+        const page = await readProfile(opts.profileRoot, auth.session.actor, 'archivedConversations', JSON.stringify({ cursor, limit }));
+        if (!(await validateSession(auth.session))) {
+          await revoke(auth.id);
+          return reply(res, 401, { error: 'UNAUTHENTICATED' });
+        }
+        if (sessions.get(auth.id) === auth.session && !res.destroyed) reply(res, 200, page);
+      } catch {
+        if (!res.destroyed) reply(res, 503, { error: 'PROFILE_READ_UNAVAILABLE' });
+      }
+      return;
+    }
     const conversationView =
-      req.method === 'GET' && /^\/enterprise\/conversations\/([A-Za-z0-9_-]{1,100})\/view$/.exec(req.url || '');
+      req.method === 'GET' && /^\/enterprise\/conversations\/([A-Za-z0-9_-]{1,100})\/view$/.exec(historyPath);
     if (conversationView) {
       if (!opts.profileRoot) return reply(res, 503, { error: 'PROFILE_UNAVAILABLE' });
+      const query = new URL(req.url, origin).searchParams;
+      const before = query.get('before') || '';
+      const target = query.get('target') || '';
+      if ([before, target].some((id) => id && !/^[A-Za-z0-9_-]{1,100}$/.test(id)) || (before && target))
+        return reply(res, 400, { error: 'BAD_REQUEST' });
       try {
-        const view = await readProfile(opts.profileRoot, auth.session.actor, 'conversationView', conversationView[1]);
+        const argument = query.has('page') || before || target
+          ? JSON.stringify({ id: conversationView[1], before, target, paging: true })
+          : conversationView[1];
+        const view = await readProfile(opts.profileRoot, auth.session.actor, 'conversationView', argument);
         if (!(await validateSession(auth.session))) {
           await revoke(auth.id);
           return reply(res, 401, { error: 'UNAUTHENTICATED' });
@@ -2353,7 +2526,10 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       const bootstrap = enterpriseBootstrapShell(req.headers['accept-language'] || '', nonce, brand);
       const content = html
         .replace(/<title>[\s\S]*?<\/title>/i, '')
-        .replace('</head>', `${bootstrap.head}<script>window.__AION_ENTERPRISE_WEB__=true;</script></head>`)
+        .replace(
+          '</head>',
+          `${bootstrap.head}<script>window.__AION_ENTERPRISE_WEB__=true;window.__AION_ENTERPRISE_VERSION__=${JSON.stringify(appVersion)};</script></head>`
+        )
         .replace(
           /(<div\s+id=["']root["'][^>]*>)[\s\S]*?(<\/div>)/i,
           (_match, open: string, close: string) => `${open}${bootstrap.body}${close}`

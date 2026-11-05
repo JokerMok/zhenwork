@@ -76,6 +76,7 @@
     "capacityBusy": "Execution capacity is full. Please retry shortly."
   },
   "errors": {
+    "runtimeUnavailable": "The execution environment is unavailable. Try again shortly.",
     "load": "Unable to load this section ({{code}}).",
     "action": "The action failed ({{code}}).",
     "authentication": "Your session has expired. Returning to sign-in now.",
@@ -183,6 +184,7 @@
     }
   },
   "abilities": {
+    "resourcePageEmpty": "No resources on this page. Continue browsing or refresh.",
     "title": "Abilities",
     "subtitle": "View models and abilities provided by your organization or created personally. Organization defaults are inherited automatically.",
     "create": "Create ability",

@@ -1,4 +1,4 @@
-import type { EnterpriseClientMetadata, EnterpriseGatewayOptions } from './enterprise-gateway.js';
+import type { EnterpriseActor, EnterpriseClientMetadata, EnterpriseGatewayOptions } from './enterprise-gateway.js';
 export type Rc2GatewayClient = {
   me(): Promise<{ userId: string }>;
   availableModels(): Promise<Array<{ id: string; code: string; name: string; streaming: boolean }>>;
@@ -18,4 +18,4 @@ export function createRc2GatewayResume(baseUrl: string, origin: string):
   (cookie: string) => Promise<Rc2GatewayLogin>;
 
 export function createRc2GatewayPasswordChange(baseUrl: string, origin: string, edgeToken: string):
-  (username: string, oldPassword: string, newPassword: string, client: EnterpriseClientMetadata) => Promise<void>;
+  (username: string, oldPassword: string, newPassword: string, client: EnterpriseClientMetadata, expectedActor?: EnterpriseActor) => Promise<void>;

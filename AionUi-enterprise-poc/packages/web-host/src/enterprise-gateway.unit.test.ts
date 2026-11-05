@@ -1873,6 +1873,7 @@ test('Host browsing and file reads do not start a worker; idle invalidation reta
   let stops = 0;
   const gateway = await startEnterpriseGateway({
     staticDir: dir,
+    appVersion: '1.1.0',
     profileRoot: root,
     publicOrigin: 'https://workspace.example',
     port: 0,
@@ -1947,9 +1948,25 @@ test('Host browsing and file reads do not start a worker; idle invalidation reta
       '/api/settings/client',
       '/enterprise/files',
       '/enterprise/conversations',
+      '/enterprise/conversations/archived',
       '/enterprise/resources/status',
     ]) {
       expect((await call(route, first)).status).toBe(200);
+    }
+    expect((await call('/', first)).body).toContain('window.__AION_ENTERPRISE_VERSION__="1.1.0";');
+    expect((await call('/enterprise/conversations/archived?limit=101', first)).status).toBe(400);
+    expect((await call('/enterprise/conversations/archived', undefined)).status).toBe(401);
+    for (const route of [
+      '/api/shell/open-folder-with',
+      '/api/fs/reveal',
+      '/api/agents/custom/try-connect',
+      '/api/system/ensure-managed-acp-tool',
+      '/api/mcp/test-connection',
+      '/api/mcp/servers',
+    ]) {
+      const blocked = await call(route, first, {});
+      expect(blocked.status).toBe(403);
+      expect(JSON.parse(blocked.body).error).toBe('HOSTED_CAPABILITY_UNAVAILABLE');
     }
     const missingView = await call('/enterprise/conversations/11111111/view', first);
     expect(missingView.status).toBe(404);
@@ -1960,6 +1977,9 @@ test('Host browsing and file reads do not start a worker; idle invalidation reta
     expect(starts).toBe(0);
     await call('/enterprise/ready', first);
     await vi.waitFor(() => expect(gateway.capacity().cores).toBe(1));
+    expect((await call('/api/shell/open-file', first, {})).status).toBe(403);
+    expect((await call('/api/fs/content', first, {})).status).toBe(200);
+    expect((await call('/api/excel-preview/stop', first, {})).status).toBe(200);
     await Promise.all([call('/enterprise/ready', second), call('/enterprise/ready', second)]);
     expect(gateway.capacity().queuedStarts).toBe(1);
     await new Promise((resolve) => setTimeout(resolve, 15));

@@ -273,20 +273,23 @@ function inferLegacyAssistantInfo(
  * @param conversation - 会话对象 / Conversation object
  * @returns 预设助手信息或 null / Preset assistant info or null
  */
-export function usePresetAssistantInfo(conversation: TChatConversation | undefined): {
+export function usePresetAssistantInfo(
+  conversation: TChatConversation | undefined,
+  useRuntimeCatalog = true
+): {
   info: PresetAssistantInfo | null;
   isLoading: boolean;
 } {
   const { i18n } = useTranslation();
-  const logos = useAgentLogos();
+  const logos = useAgentLogos(useRuntimeCatalog);
 
   // Merged assistant catalog (builtin + user) from backend
-  const { data: assistantsList, isLoading: isLoadingAssistants } = useSWR('assistants.list', () =>
+  const { data: assistantsList, isLoading: isLoadingAssistants } = useSWR(useRuntimeCatalog ? 'assistants.list' : null, () =>
     ipcBridge.assistants.list.invoke().catch(() => [] as Assistant[])
   );
 
   // Extension-contributed ACP adapters (for ext:{extensionName}:{adapterId} conversations)
-  const { data: extensionAcpAdapters, isLoading: isLoadingExtAdapters } = useSWR('extensions.acpAdapters', () =>
+  const { data: extensionAcpAdapters, isLoading: isLoadingExtAdapters } = useSWR(useRuntimeCatalog ? 'extensions.acpAdapters' : null, () =>
     ipcBridge.extensions.getAcpAdapters.invoke().catch(() => [] as Record<string, unknown>[])
   );
 
@@ -294,7 +297,7 @@ export function usePresetAssistantInfo(conversation: TChatConversation | undefin
   const remoteAgentId =
     conversation?.type === 'remote' ? (conversation.extra as { remoteAgentId?: string })?.remoteAgentId : undefined;
   const { data: remoteAgent, isLoading: isLoadingRemoteAgent } = useSWR(
-    remoteAgentId ? `remote-agent.get.${remoteAgentId}` : null,
+    useRuntimeCatalog && remoteAgentId ? `remote-agent.get.${remoteAgentId}` : null,
     () => (remoteAgentId ? ipcBridge.remoteAgent.get.invoke({ id: remoteAgentId }) : null)
   );
 

@@ -76,6 +76,7 @@
     "capacityBusy": "Нет свободных ресурсов для выполнения. Повторите позже."
   },
   "errors": {
+    "runtimeUnavailable": "Среда выполнения недоступна. Повторите попытку позже.",
     "load": "Unable to load this section ({{code}}).",
     "action": "The action failed ({{code}}).",
     "noModel": "Для этой учётной записи нет доступных моделей. Попросите администратора организации проверить модель по умолчанию и права доступа.",
@@ -180,6 +181,7 @@
     "availableEmpty": "No knowledge base is available. Create a private one, or ask an administrator to grant access."
   },
   "abilities": {
+    "resourcePageEmpty": "На этой странице нет доступных ресурсов. Продолжите просмотр или обновите страницу.",
     "title": "Abilities",
     "subtitle": "Manage personal assistants and inspect assistants shared with you. Runtime and model details stay managed by the workspace.",
     "create": "Create ability",

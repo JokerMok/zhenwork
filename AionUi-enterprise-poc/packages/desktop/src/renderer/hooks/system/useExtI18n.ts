@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { extensions as extensionsIpc, type IExtensionSettingsTab } from '@/common/adapter/ipcBridge';
 
 type NestedRecord = Record<string, unknown>;
@@ -43,6 +44,7 @@ export function useExtI18n(): {
   const [extI18nData, setExtI18nData] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
+    if (isEnterpriseWeb()) return;
     const locale = i18n.language;
     void extensionsIpc.getExtI18nForLocale
       .invoke({ locale })

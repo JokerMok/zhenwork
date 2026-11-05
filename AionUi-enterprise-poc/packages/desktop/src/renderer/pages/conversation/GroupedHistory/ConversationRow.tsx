@@ -50,7 +50,8 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
     dimIcon = false,
     dragHandle,
   } = props;
-  const logos = useAgentLogos();
+  const employeeWeb = isEnterpriseWeb();
+  const logos = useAgentLogos(!employeeWeb);
   const layout = useLayoutContext();
   const isMobile = layout?.isMobile ?? false;
   const {
@@ -68,12 +69,12 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
     getJobStatus,
   } = props;
   const { t } = useTranslation();
-  const executionSource = isEnterpriseWeb()
+  const executionSource = employeeWeb
     ? null
     : (window as Window & { enterpriseContext?: unknown }).enterpriseContext
       ? 'desktop'
       : null;
-  const { info: assistantInfo } = usePresetAssistantInfo(conversation);
+  const { info: assistantInfo } = usePresetAssistantInfo(conversation, !employeeWeb);
   const isPinned = isConversationPinned(conversation);
   // Fork-lineage badge: present only on forked conversations (extra.fork is
   // server-minted by the fork API). Parent name resolves from the loaded
@@ -189,6 +190,14 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
         )}
         onClick={handleRowClick}
         onContextMenu={handleRowContextMenu}
+        aria-current={selected ? 'page' : undefined}
+        role={employeeWeb && !batchMode ? 'link' : undefined}
+        tabIndex={employeeWeb && !batchMode ? 0 : undefined}
+        aria-label={employeeWeb && !batchMode ? conversation.name : undefined}
+        onKeyDown={(event) => {
+          if (!employeeWeb || batchMode || event.target !== event.currentTarget || event.key !== 'Enter') return;
+          handleRowClick();
+        }}
       >
         {batchMode && (
           <span

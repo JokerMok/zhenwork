@@ -93,7 +93,6 @@ import { isRtlLanguage } from './services/i18n/direction';
 import { registerPwa } from './services/registerPwa';
 
 import { ipcBridge } from '@/common';
-import { useLocation } from 'react-router-dom';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { repairAllCronJobTimeZonesOnce } from '@renderer/pages/cron/repairCronJobTimeZone';
 import { bootstrapRendererConfig } from '@renderer/services/bootstrapRenderer';
@@ -342,13 +341,12 @@ const Config: React.FC<PropsWithChildren> = ({ children }) => {
 };
 
 const RoutedLayout = () => {
-  const location = useLocation();
-  const enterprise = isEnterpriseWeb();
-  const browsing = enterprise && ['/', '/workspace'].includes(location.pathname);
-  const content = <Layout sider={<Sider />} />;
-  if (browsing) return content;
-  const execution = <ConversationHistoryProvider>{content}</ConversationHistoryProvider>;
-  return execution;
+  const { user } = useAuth();
+  return (
+    <ConversationHistoryProvider key={isEnterpriseWeb() ? user?.id : undefined}>
+      <Layout sider={<Sider />} />
+    </ConversationHistoryProvider>
+  );
 };
 
 const Main = () => {

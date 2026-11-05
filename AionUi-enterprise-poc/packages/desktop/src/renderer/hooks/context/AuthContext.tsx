@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PREVIEW_SCOPE_KEY_PREFIX } from '@/renderer/pages/conversation/Preview/context/previewScope';
 import { refreshSession } from '@/common/adapter/sessionRefresh';
+import { setConversationListEmployee } from '@/renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync';
 // M6: CSRF removed with legacy webserver — stub functions for compatibility, re-implement in M7
 const withCsrfToken = <T extends Record<string, unknown>>(data: T): T => data;
 const hasValidCsrfToken = (): boolean => true;
@@ -48,6 +49,16 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const AUTH_USER_ENDPOINT = '/api/auth/user';
+const EMPLOYEE_STORAGE_OWNER = 'enterprise:storage-owner';
+const EMPLOYEE_SESSION_CHANGED = 'enterprise:session-changed';
+const EMPLOYEE_HISTORY_KEYS = new Set([
+  'aionui_cron_unread',
+  'aionui_workspace_expansion',
+  'aionui_workspace_update_time',
+  'conversation-manual-unread-ids',
+  'conversation.historySearch.recentKeywords',
+  'team-pinned-ids',
+]);
 
 const isDesktopRuntime = typeof window !== 'undefined' && Boolean(window.electronAPI);
 const isEnterpriseWebRuntime =
@@ -76,12 +87,23 @@ function clearAuthCache(): void {
         (key.includes('auth') ||
           key.includes('csrf') ||
           key.includes('token') ||
-          key.startsWith(PREVIEW_SCOPE_KEY_PREFIX))
+          key.startsWith(PREVIEW_SCOPE_KEY_PREFIX) ||
+          (isEnterpriseWebRuntime && (EMPLOYEE_HISTORY_KEYS.has(key) || key.startsWith('workspace-preference-'))))
       ) {
         keysToRemove.push(key);
       }
     }
     keysToRemove.forEach((key) => localStorage.removeItem(key));
+    if (isEnterpriseWebRuntime) {
+      localStorage.removeItem(EMPLOYEE_STORAGE_OWNER);
+      for (const key of Object.keys(sessionStorage)) {
+        if (
+          key === 'aion:last-non-settings-path' ||
+          key.startsWith('conversation-command-queue/') ||
+          key.startsWith('aionrs_initial_processed_')
+        ) sessionStorage.removeItem(key);
+      }
+    }
   } catch (error) {
     console.error('Failed to clear auth cache:', error);
   }
@@ -100,7 +122,9 @@ async function fetchCurrentUser(signal?: AbortSignal): Promise<AuthUser | null> 
     // the status poll would kick a refreshable session to /login (#4124).
     // refreshSession() single-flights with the httpBridge refresh path.
     if (response.status === 401 && isEnterpriseWebRuntime) {
+      if (signal?.aborted) return null;
       clearAuthCache();
+      setConversationListEmployee(null);
       window.location.replace('/enterprise/login' + window.location.hash);
       return null;
     }
@@ -156,6 +180,18 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     setStatus('checking');
 
     const currentUser = await fetchCurrentUser(controller.signal);
+    if (controller.signal.aborted) return;
+    if (isEnterpriseWebRuntime) {
+      try {
+        if (currentUser && localStorage.getItem(EMPLOYEE_STORAGE_OWNER) !== currentUser.id) {
+          clearAuthCache();
+          localStorage.setItem(EMPLOYEE_STORAGE_OWNER, currentUser.id);
+        }
+      } catch {
+        // Restricted storage does not affect the in-memory session boundary.
+      }
+      setConversationListEmployee(currentUser?.id ?? null);
+    }
     if (currentUser) {
       setUser(currentUser);
       setStatus('authenticated');
@@ -172,6 +208,22 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       abortRef.current?.abort();
     };
   }, [refresh]);
+
+  useEffect(() => {
+    if (!isEnterpriseWebRuntime) return;
+    const onSessionChange = (event: StorageEvent) => {
+      if (event.key !== EMPLOYEE_SESSION_CHANGED) return;
+      abortRef.current?.abort();
+      setConversationListEmployee(null);
+      setUser(null);
+      setStatus('checking');
+      // The cookie is shared across tabs. Reload the whole renderer so no
+      // provider, in-flight fetch, or websocket survives into the next account.
+      window.location.replace('/');
+    };
+    window.addEventListener('storage', onSessionChange);
+    return () => window.removeEventListener('storage', onSessionChange);
+  }, []);
 
   const login = useCallback(async ({ username, password, remember }: LoginParams): Promise<LoginResult> => {
     try {
@@ -288,6 +340,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       return;
     }
 
+    abortRef.current?.abort();
     try {
       await fetch(isEnterpriseWebRuntime ? '/enterprise/logout' : '/logout', {
         method: 'POST',
@@ -305,7 +358,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       setStatus('unauthenticated');
       // Clear cache on logout for security
       clearAuthCache();
-      if (isEnterpriseWebRuntime) window.location.replace('/enterprise/login' + window.location.hash);
+      if (isEnterpriseWebRuntime) {
+        setConversationListEmployee(null);
+        try {
+          localStorage.setItem(EMPLOYEE_SESSION_CHANGED, crypto.randomUUID());
+        } catch {
+          // The local sign-out remains effective when storage is unavailable.
+        }
+        window.location.replace('/enterprise/login');
+      }
     }
   }, []);
 

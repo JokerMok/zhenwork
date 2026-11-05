@@ -12,6 +12,7 @@ import { TaskStore } from "./store.js";
 import { recordTool, checkpoint } from "./protocol.js";
 import { enterpriseManagedResourcePath } from '../enterprise-resource-runtime.js';
 import { currentAttempt } from "./types.js";
+import { saveEmployeePreferences } from "../read-model/preferences.js";
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const fn of cleanups.splice(0).reverse()) await fn();
@@ -239,6 +240,23 @@ test('a genuinely missing pinned file remains partial despite a completed model 
   await expect.poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 5000 }).toBe('partial');
   expect(currentAttempt(await f.store.get('aabbccdd')).reason).toBe('REQUIRED_ARTIFACTS_MISSING');
 }, 12000);
+test('a queued attempt preserves its preference version and never returns its private instructions', async () => {
+  const f = await fixture();
+  f.blockCore();
+  const preferences = { enabled: true, style: 'direct', detail: 'brief', language: 'en-US', instructions: 'private stylistic marker' };
+  await saveEmployeePreferences(f.root, f.actor, { ...preferences, expectedVersion: 0 });
+  const payload = { content: 'Reply with one sentence.', request_id: randomUUID() };
+  const accepted = await f.runner.accept(f.actor, 'aabbccdd', payload);
+  expect(accepted.receipt).toMatchObject({ preference_version: 1 });
+  await saveEmployeePreferences(f.root, f.actor, { ...preferences, enabled: false, expectedVersion: 1 });
+  const repeated = await f.runner.accept(f.actor, 'aabbccdd', payload);
+  expect(repeated.receipt).toMatchObject({ preference_version: 1 });
+  f.releaseCore();
+  await expect.poll(() => f.counts().sends, { timeout: 5000 }).toBe(1);
+  expect(currentAttempt(await f.store.get('aabbccdd')).preferences).toMatchObject({ version: 1, enabled: true });
+  expect(JSON.stringify(await f.runner.detail(f.actor, 'aabbccdd'))).not.toContain(preferences.instructions);
+});
+
 test("accepted execution survives the absence of any browser and duplicates do not dispatch twice", async () => {
   const f = await fixture(),
     request_id = randomUUID();

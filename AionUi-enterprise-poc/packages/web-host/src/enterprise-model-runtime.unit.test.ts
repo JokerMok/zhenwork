@@ -1,5 +1,10 @@
 import { expect, test, vi } from 'vitest';
 import * as resourceRuntime from './enterprise-resource-runtime.js';
+import * as officeTools from './office/office-tools.js';
+import { randomUUID } from 'node:crypto';
+import { readEmployeePreferences, saveEmployeePreferences } from './read-model/preferences.js';
+import { TaskStore } from './tasks/store.js';
+import { currentAttempt } from './tasks/types.js';
 import http from 'node:http';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -354,4 +359,150 @@ test('a Core without a streaming model still probes and records version-bound de
     expect(receipts[0]).toMatchObject({ resourceVersion: 2, packageSha256: digest, runtimeFingerprint: image, state: 'READY' });
     expect(receipts[0]).not.toHaveProperty('actorUserId');
   } finally { await core?.stop();sync.mockRestore();await new Promise<void>((resolve) => server.close(() => resolve()));await rm(root, { recursive: true, force: true }); }
+});
+
+test('the authenticated relay applies one preference snapshot through selected models and background grants', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'zhenwork-preferences-relay-'));
+  const actor = { serverId: 'rc2', userId: '17' };
+  const conversation = 'a1b2c3d4';
+  const cronJob = 'cron_0123456789';
+  const models = [
+    { id: 'model-a', code: 'default-vendor-model', name: 'Default', streaming: true },
+    { id: 'model-b', code: 'chosen-vendor-model', name: 'Selected', streaming: true },
+  ];
+  const cronGrant = { id: randomUUID(), jobId: cronJob, userId: actor.userId, secret: 'a'.repeat(64) };
+  const taskStore = await TaskStore.create(root, actor);
+  const preferences = { expectedVersion: 0, enabled: true, style: 'direct', detail: 'brief', language: 'en-US', instructions: 'Use a clear heading named Controlled Context.' };
+  await saveEmployeePreferences(root, actor, preferences);
+  const accepted = await taskStore.accept(conversation, randomUUID(), { content: 'Reply in Chinese.' }, false, false,
+    () => readEmployeePreferences(root, actor));
+  const attempt = currentAttempt(accepted.task);
+  const taskGrant = { ...cronGrant, id: randomUUID(), jobId: attempt.jobId };
+  const control = path.dirname(await enterpriseManagedResourcePath(root, actor));
+  await writeFile(path.join(control, 'background-grants.json'), JSON.stringify({ actor, grants: [cronGrant] }), { mode: 0o600 });
+  await writeFile(path.join(control, 'task-grants.json'), JSON.stringify({ actor, grants: [taskGrant] }), { mode: 0o600 });
+
+  let provider: { base_url: string; api_key: string } | undefined;
+  let turnId = 'turn_12345678';
+  let cronActive = false;
+  let nativeReadFailure = false;
+  const received: Array<{ model: string; raw: string; via: string }> = [];
+  const stream = () => new Response('data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+  const server = http.createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    const raw = Buffer.concat(chunks).toString();
+    const send = (body: unknown, status = 200) => {
+      res.writeHead(status, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(body));
+    };
+    const route = req.url || '';
+    if (route.startsWith('/internal/rc2/background/grants/')) {
+      const grant = [cronGrant, taskGrant].find((entry) => route.includes(entry.id));
+      if (!grant || req.headers['x-aion-background-secret'] !== grant.secret) return send({}, 403);
+      if (route.endsWith('/models/available')) return send({ code: 200, data: models });
+      if (route.endsWith('/chat/completions')) {
+        const model = route.split('/').at(-3)!;
+        received.push({ model, raw, via: grant.jobId });
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.end('data: [DONE]\n\n');
+        return;
+      }
+      return send({ code: 200, data: { userId: actor.userId, jobId: grant.jobId } });
+    }
+    if (route === '/api/providers' && req.method === 'POST') {
+      provider = JSON.parse(raw);
+      return send({ success: true, data: { id: 'rc2-enterprise-model' } });
+    }
+    if (route === '/api/providers') return send({ success: true, data: [] });
+    if (route === `/api/cron/internal/active-conversation/${conversation}`) {
+      return cronActive ? send({ success: true, data: { job_id: cronJob } }) : send({}, 404);
+    }
+    if (route === `/api/conversations/${conversation}`) {
+      return nativeReadFailure ? send({}, 502) : send({ success: true, data: { runtime: { turn_id: turnId } } });
+    }
+    return send({}, 404);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  const sync = vi.spyOn(resourceRuntime, 'syncEnterpriseWebResources').mockResolvedValue({
+    issues: [], dependencyProbes: {}, invalidated: new Promise(() => {}), stop: async () => {}, trustedConfirmation: async () => false,
+  } as Awaited<ReturnType<typeof resourceRuntime.syncEnterpriseWebResources>>);
+  const office = vi.spyOn(officeTools, 'startOfficeTools').mockResolvedValue({
+    mcpId: 'office-test', stop: async () => {}, trustedConfirmation: async () => false,
+  });
+  const assistant = vi.spyOn(officeTools, 'ensureOfficeAssistant').mockResolvedValue(undefined);
+  const runtime = createEnterpriseModelRuntime(async () => ({
+    actor, validate: async () => true, close: async () => {}, client: {
+      me: async () => ({ userId: actor.userId }), availableModels: async () => models,
+      relayModel: async (model: string, raw: string) => {
+        received.push({ model, raw, via: 'interactive' });
+        return stream();
+      },
+    } as never,
+  }), async () => ({ port, localToken: 'core-token', stop: async () => {} }), {
+    profileRoot: root, background: { rc2Url: `http://127.0.0.1:${port}`, serviceToken: 's'.repeat(40) },
+  });
+  const login = await runtime.login('employee', 'fixture', { ipAddress: '127.0.0.1', userAgent: 'test' });
+  let core: Awaited<ReturnType<typeof runtime.startCore>> | undefined;
+  try {
+    core = await runtime.startCore(actor);
+    const messages = [
+      { role: 'system', content: 'Use only authorized tools and required business formats.' },
+      { role: 'user', content: 'Reply in Chinese.' },
+    ];
+    const relay = async (model: string, expectedStatus = 200) => {
+      const response = await fetch(`${provider!.base_url}/conversations/${conversation}/chat/completions`, {
+        method: 'POST', headers: { authorization: `Bearer ${provider!.api_key}` },
+        body: JSON.stringify({ model, stream: true, messages }),
+      });
+      expect(response.status).toBe(expectedStatus);
+      await response.text();
+      return received.at(-1)!;
+    };
+    const first = await relay('rc2-model-a');
+    const projected = (JSON.parse(first.raw) as { messages: typeof messages }).messages;
+    expect(projected[0].content).toContain('required business formats');
+    expect(projected[0].content).not.toContain('Controlled Context');
+    expect(projected[1].content).toContain('Controlled Context');
+    expect(projected[1].content).toMatch(/Reply in Chinese\.$/);
+
+    await saveEmployeePreferences(root, actor, { ...preferences, expectedVersion: 1, enabled: false });
+    expect((await relay('rc2-model-a')).raw).toBe(first.raw);
+    const callsWithSnapshot = received.length;
+    nativeReadFailure = true;
+    await relay('rc2-model-a', 502);
+    expect(received).toHaveLength(callsWithSnapshot);
+    nativeReadFailure = false;
+    turnId = 'turn_87654321';
+    expect((await relay('rc2-model-a')).raw).not.toContain('Controlled Context');
+    nativeReadFailure = true;
+    expect((await relay('rc2-model-a')).raw).not.toContain('Controlled Context');
+    nativeReadFailure = false;
+
+    await taskStore.mutate(conversation, attempt.id, (record) => { record.state = 'running'; });
+    runtime.bindTask(actor, conversation, attempt.jobId);
+    const selected = await relay('rc2-model-b');
+    expect(selected).toMatchObject({ model: 'model-b', via: attempt.jobId });
+    expect(selected.raw).toContain('Controlled Context');
+
+    runtime.bindTask(actor, conversation, undefined, attempt.jobId);
+    await taskStore.mutate(conversation, attempt.id, (record) => { record.state = 'completed'; });
+    cronActive = true;
+    turnId = 'turn_11223344';
+    await saveEmployeePreferences(root, actor, { ...preferences, expectedVersion: 2 });
+    await login.close();
+    const scheduled = await relay('rc2-model-b');
+    expect(scheduled).toMatchObject({ model: 'model-b', via: cronJob });
+    expect(scheduled.raw).toContain('Controlled Context');
+  } finally {
+    await login.close();
+    await core?.stop();
+    assistant.mockRestore();
+    office.mockRestore();
+    sync.mockRestore();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -1,4 +1,5 @@
 import type { EnterpriseActor } from '../enterprise-gateway.js';
+import type { EmployeePreferences } from '../read-model/preferences.js';
 import { TaskStore } from './store.js';
 import { currentAttempt, digest, type TaskArtifact, TaskError } from './types.js';
 import { randomUUID } from 'node:crypto';
@@ -351,6 +352,7 @@ export async function currentTaskScope(
   attemptId?: string;
   jobId?: string;
   scope?: import('../office/office-store.js').KnowledgeScope;
+  preferences?: EmployeePreferences;
   state?: string;
   waiting?: string;
   question?: string;
@@ -363,6 +365,7 @@ export async function currentTaskScope(
       round: a.round,
       attemptId: a.id,
       jobId: a.jobId,
+      preferences: a.preferences,
       scope: a.scope as import('../office/office-store.js').KnowledgeScope | undefined,
       state: a.state,
       waiting: a.stopReason,

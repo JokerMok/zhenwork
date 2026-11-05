@@ -65,12 +65,14 @@ export function createRc2GatewayResume(baseUrl, origin) {
 
 /** Authenticate the reset credential, then use only the native self-service password API. */
 export function createRc2GatewayPasswordChange(baseUrl, origin, edgeToken) {
-  return async (username, oldPassword, newPassword, clientMetadata) => {
+  return async (username, oldPassword, newPassword, clientMetadata, expectedActor) => {
     if (!/^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/.test(newPassword)) throw new Error('Invalid new password');
     const client = new Rc2Client(baseUrl, origin);
     try {
       await client.bootstrap();
-      await client.login({ username, password: oldPassword, clientMetadata, edgeToken });
+      const actor = await client.login({ username, password: oldPassword, clientMetadata, edgeToken });
+      if (expectedActor && (String(actor.userId) !== expectedActor.userId || String(actor.serverId) !== expectedActor.serverId))
+        throw new Error('Password update identity mismatch');
       const { response, body } = await client.request('/system/user/profile/updatePwd', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPassword, newPassword }),

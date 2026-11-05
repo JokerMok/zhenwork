@@ -2,6 +2,7 @@ import {
   Alert,
   Button,
   Descriptions,
+  Drawer,
   Empty,
   Form,
   Input,
@@ -26,12 +27,20 @@ import {
   workspaceErrorCode,
   workspaceErrorTranslationKey,
 } from './workspaceApi';
-import { availableModelId, catalogOrigin, preferredAvailableModel, type AvailableModel } from './workspaceCatalog';
+import {
+  availableModelId,
+  catalogOrigin,
+  preferredAvailableModel,
+  workspaceAvailableDependencies,
+  workspaceResourcePage,
+  WORKSPACE_RESOURCE_PAGE_LIMIT,
+  type AvailableModel,
+  type CapabilityType,
+} from './workspaceCatalog';
 import type { ResourceScope, WorkspaceResource } from './workspaceTypes';
 import McpConnections from './capabilities/McpConnections';
 import SkillEditor from './capabilities/SkillEditor';
 
-type CapabilityType = 'MODEL' | 'ASSISTANT' | 'SKILL' | 'MCP' | 'TOOL';
 type AssistantConfig = {
   avatar?: string;
   instruction: string;
@@ -54,6 +63,7 @@ type EditorValue = {
   name: string;
   description: string;
   instruction: string;
+  modelId?: string;
   skillIds: string[];
   mcpIds: string[];
   enabled: boolean;
@@ -87,13 +97,19 @@ const frontmatterValue = (source: string, key: string): string => {
   return (match?.[1] || '').replace(/^['"]|['"]$/g, '').trim();
 };
 
-const WorkspaceCapabilities: React.FC = () => {
+type WorkspaceCapabilitiesProps = {
+  capabilityType: CapabilityType;
+  onCapabilityChange: (type: CapabilityType) => void;
+};
+
+const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilityType, onCapabilityChange }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [message, messageContext] = Message.useMessage();
   const [form] = Form.useForm<EditorValue>();
   const [scope, setScope] = useState<ResourceScope>('available');
-  const [capabilityType, setCapabilityType] = useState<CapabilityType>('ASSISTANT');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [items, setItems] = useState<WorkspaceResource[]>([]);
   const [models, setModels] = useState<AvailableModel[]>([]);
   const [organizationDefaultModel, setOrganizationDefaultModel] = useState<AvailableModel | null>(null);
@@ -103,6 +119,8 @@ const WorkspaceCapabilities: React.FC = () => {
   const [editing, setEditing] = useState<AssistantResource | 'new' | null>(null);
   const [skillDetail, setSkillDetail] = useState<SkillResource | null>(null);
   const [mcpResource, setMcpResource] = useState<WorkspaceResource | null>(null);
+  const [toolResource, setToolResource] = useState<WorkspaceResource | null>(null);
+  const [assistantModels, setAssistantModels] = useState<AvailableModel[]>([]);
   const [assistantSkills, setAssistantSkills] = useState<WorkspaceResource[]>([]);
   const [assistantMcps, setAssistantMcps] = useState<WorkspaceResource[]>([]);
   const [readiness, setReadiness] = useState<{
@@ -110,7 +128,6 @@ const WorkspaceCapabilities: React.FC = () => {
     issues?: Array<{ type?: string; id?: string; code?: string }>;
   } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [refreshingResources, setRefreshingResources] = useState(false);
   const [openingResourceId, setOpeningResourceId] = useState<string | null>(null);
   const packageSignature = useRef('');
   const loadGeneration = useRef(0);
@@ -125,11 +142,13 @@ const WorkspaceCapabilities: React.FC = () => {
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
     setLoading(true);
+    setErrorCode(null);
     try {
       if (capabilityType === 'MODEL') {
         const value = await enterpriseControl<AvailableModel[]>('/ai/models/available');
         if (generation !== loadGeneration.current) return;
-        setModels(Array.isArray(value) ? value : []);
+        if (!Array.isArray(value)) throw new Error('INVALID_CATALOG_RESPONSE');
+        setModels(value);
         setOrganizationDefaultModel(value.find((model) => model.source === 'ORGANIZATION' && model.isDefault) || null);
         setItems([]);
         setRuntimeIssues([]);
@@ -137,14 +156,19 @@ const WorkspaceCapabilities: React.FC = () => {
         return;
       }
       const [value, issues, availableModels] = await Promise.all([
-        enterpriseControl<WorkspaceResource[]>(`/ai/resources?type=${capabilityType}&scope=${scope}&page=1`),
+        workspaceResourcePage(capabilityType, scope, page),
         enterpriseControl<RuntimeIssue[]>('/ai/resources/runtime-issues'),
-        capabilityType === 'ASSISTANT' || capabilityType === 'TOOL'
-          ? enterpriseControl<AvailableModel[]>('/ai/models/available').catch((): AvailableModel[] => [])
+        page === 1 && scope === 'available' && (capabilityType === 'ASSISTANT' || capabilityType === 'TOOL')
+          ? enterpriseControl<AvailableModel[]>('/ai/models/available').catch((error: unknown): AvailableModel[] => {
+              if (workspaceErrorTranslationKey(workspaceErrorCode(error), 'load') === 'workspace.errors.forbidden')
+                return [];
+              throw error;
+            })
           : Promise.resolve([] as AvailableModel[]),
       ]);
       if (generation !== loadGeneration.current) return;
-      setItems(Array.isArray(value) ? value : []);
+      setItems(value.items);
+      setHasMore(value.hasMore);
       setModels([]);
       setOrganizationDefaultModel(
         availableModels.find((model) => model.source === 'ORGANIZATION' && model.isDefault) || null
@@ -157,11 +181,12 @@ const WorkspaceCapabilities: React.FC = () => {
       setModels([]);
       setOrganizationDefaultModel(null);
       setRuntimeIssues([]);
+      setHasMore(false);
       setErrorCode(workspaceErrorCode(error));
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
-  }, [capabilityType, scope]);
+  }, [capabilityType, scope, page]);
 
   useEffect(() => {
     void load();
@@ -176,25 +201,6 @@ const WorkspaceCapabilities: React.FC = () => {
     if (result.ok !== true) throw new Error('RESOURCE_REFRESH_FAILED');
     return result;
   }, []);
-
-  const refreshCapabilities = useCallback(async () => {
-    setRefreshingResources(true);
-    try {
-      const result = await refreshRuntimeResources();
-      await load();
-      if (result.state === 'pending') message.info(t('workspace.status.resourceUpdatePending'));
-      else message.success(t('workspace.abilities.resourcesRefreshed'));
-    } catch (error) {
-      const code = workspaceErrorCode(error);
-      message.error(
-        code === 'RESOURCE_REFRESH_TASK_ACTIVE'
-          ? t('workspace.abilities.resourcesRefreshBusy')
-          : t('workspace.abilities.resourcesRefreshFailed', { code })
-      );
-    } finally {
-      setRefreshingResources(false);
-    }
-  }, [load, message, refreshRuntimeResources, t]);
 
   const useCapability = useCallback(
     async (item: WorkspaceResource) => {
@@ -229,24 +235,45 @@ const WorkspaceCapabilities: React.FC = () => {
   );
 
   const openAssistantEditor = async (item?: WorkspaceResource) => {
-    setReadiness(null);
-    const dependencies = await Promise.all([
-      enterpriseControl<WorkspaceResource[]>('/ai/resources?type=SKILL&scope=available&page=1').catch(
-        (): WorkspaceResource[] => []
-      ),
-      enterpriseControl<WorkspaceResource[]>('/ai/resources?type=MCP&scope=available&page=1').catch(
-        (): WorkspaceResource[] => []
-      ),
-    ]);
-    const [skills, mcps] = dependencies;
-    setAssistantSkills(skills.filter((skill) => skill.actions.includes('USE')));
-    setAssistantMcps(mcps.filter((mcp) => mcp.actions.includes('USE')));
-    if (!item) {
-      setEditing('new');
-      form.setFieldsValue({ name: '', description: '', instruction: '', skillIds: [], mcpIds: [], enabled: true });
-      return;
-    }
+    const authorizedDependencies = async (type: 'SKILL' | 'MCP') => {
+      try {
+        return await workspaceAvailableDependencies(type);
+      } catch (error) {
+        if (workspaceErrorTranslationKey(workspaceErrorCode(error), 'load') === 'workspace.errors.forbidden') return [];
+        throw error;
+      }
+    };
     try {
+      setReadiness(null);
+      let allowedModels: AvailableModel[] = [];
+      if (!item || item.actions.includes('EDIT')) {
+        const [skills, mcps, models] = await Promise.all([
+          authorizedDependencies('SKILL'),
+          authorizedDependencies('MCP'),
+          enterpriseControl<AvailableModel[]>('/ai/models/available'),
+        ]);
+        if (!Array.isArray(models)) throw new Error('INVALID_CATALOG_RESPONSE');
+        allowedModels = models;
+        setAssistantSkills(skills);
+        setAssistantMcps(mcps);
+      } else {
+        setAssistantSkills([]);
+        setAssistantMcps([]);
+      }
+      setAssistantModels(allowedModels);
+      if (!item) {
+        setEditing('new');
+        form.setFieldsValue({
+          name: '',
+          description: '',
+          instruction: '',
+          modelId: availableModelId(preferredAvailableModel(allowedModels) || {}),
+          skillIds: [],
+          mcpIds: [],
+          enabled: true,
+        });
+        return;
+      }
       const [detail, state] = await Promise.all([
         enterpriseControl<AssistantResource>(`/ai/resources/${item.id}`),
         enterpriseControl<{ ready: boolean; issues?: Array<{ type?: string; id?: string; code?: string }> }>(
@@ -259,6 +286,11 @@ const WorkspaceCapabilities: React.FC = () => {
         name: detail.name,
         description: detail.description || '',
         instruction: detail.config.instruction || '',
+        modelId: detail.actions.includes('EDIT')
+          ? allowedModels.find((model) => availableModelId(model) === detail.config.modelId)
+            ? detail.config.modelId
+            : undefined
+          : detail.config.modelId,
         skillIds: detail.config.skillIds || [],
         mcpIds: detail.config.mcpIds || [],
         enabled: detail.enabled,
@@ -279,14 +311,12 @@ const WorkspaceCapabilities: React.FC = () => {
   };
 
   const saveAssistant = async () => {
-    const values = await form.validate();
+    const values = await form.validate().catch((): null => null);
+    if (!values || saving) return;
     setSaving(true);
     try {
       let saved: AssistantResource;
       if (editing === 'new') {
-        const models = await enterpriseControl<AvailableModel[]>('/ai/models/available');
-        const modelId = availableModelId(preferredAvailableModel(models) || {});
-        if (!modelId) throw new Error('ModelUnavailable');
         saved = await enterpriseControl<AssistantResource>('/ai/resources', {
           method: 'POST',
           body: JSON.stringify({
@@ -296,7 +326,7 @@ const WorkspaceCapabilities: React.FC = () => {
             enterprise: false,
             config: {
               instruction: values.instruction.trim(),
-              modelId,
+              modelId: values.modelId,
               skillIds: values.skillIds || [],
               mcpIds: values.mcpIds || [],
             },
@@ -312,6 +342,7 @@ const WorkspaceCapabilities: React.FC = () => {
             description: values.description.trim(),
             config: {
               ...editing.config,
+              modelId: values.modelId,
               instruction: values.instruction.trim(),
               skillIds: values.skillIds || [],
               mcpIds: values.mcpIds || [],
@@ -425,21 +456,35 @@ const WorkspaceCapabilities: React.FC = () => {
   };
 
   const canEdit = editing !== null && (editing === 'new' || editing.actions.includes('EDIT'));
+  const changePage = (next: number) => {
+    loadGeneration.current += 1;
+    setLoading(true);
+    setPage(next);
+  };
   const packageBudgetIssues = runtimeIssues.filter((issue) => issue.code === 'PACKAGE_BUDGET_EXCEEDED');
   const otherRuntimeIssues = runtimeIssues.filter((issue) => issue.code !== 'PACKAGE_BUDGET_EXCEEDED');
   const nativeOfficeCapability =
-    scope === 'available' && organizationDefaultModel && (capabilityType === 'ASSISTANT' || capabilityType === 'TOOL');
+    !loading &&
+    !errorCode &&
+    scope === 'available' &&
+    page === 1 &&
+    organizationDefaultModel &&
+    (capabilityType === 'ASSISTANT' || capabilityType === 'TOOL');
 
   return (
     <div className='flex flex-col gap-12px'>
       {messageContext}
       <div className='flex flex-wrap items-start justify-between gap-8px'>
         <div>
-          <div className='text-20px font-semibold text-t-primary'>{t('workspace.abilities.title')}</div>
-          <div className='mt-3px text-13px text-t-secondary'>{t('workspace.abilities.subtitle')}</div>
+          <h1 className='m-0 text-20px font-semibold text-t-primary'>{t('workspace.abilities.title')}</h1>
         </div>
         <Space wrap>
-          <Select value={capabilityType} onChange={setCapabilityType} style={{ width: 145 }}>
+          <Select
+            aria-label={t('workspace.abilities.title')}
+            value={capabilityType}
+            onChange={onCapabilityChange}
+            style={{ width: 145 }}
+          >
             <Select.Option value='MODEL'>{t('workspace.abilities.models')}</Select.Option>
             <Select.Option value='ASSISTANT'>{t('workspace.abilities.assistants')}</Select.Option>
             <Select.Option value='SKILL'>{t('workspace.abilities.skillPackages')}</Select.Option>
@@ -447,7 +492,18 @@ const WorkspaceCapabilities: React.FC = () => {
             <Select.Option value='TOOL'>{t('workspace.abilities.tools')}</Select.Option>
           </Select>
           {capabilityType !== 'MODEL' ? (
-            <Select value={scope} onChange={setScope} style={{ width: 150 }}>
+            <Select
+              aria-label={t('workspace.scope.available')}
+              value={scope}
+              onChange={(value) => {
+                if (value === scope) return;
+                loadGeneration.current += 1;
+                setLoading(true);
+                setScope(value);
+                setPage(1);
+              }}
+              style={{ width: 150 }}
+            >
               <Select.Option value='available'>{t('workspace.scope.available')}</Select.Option>
               <Select.Option value='mine'>{t('workspace.scope.mine')}</Select.Option>
               <Select.Option value='shared'>{t('workspace.scope.shared')}</Select.Option>
@@ -467,8 +523,8 @@ const WorkspaceCapabilities: React.FC = () => {
           ) : null}
           <Button
             icon={<Refresh />}
-            onClick={() => void (capabilityType === 'MODEL' ? load() : refreshCapabilities())}
-            loading={capabilityType === 'MODEL' ? loading : refreshingResources}
+            onClick={() => void load()}
+            loading={loading}
             disabled={Boolean(openingResourceId)}
           >
             {t('common.refresh')}
@@ -525,15 +581,22 @@ const WorkspaceCapabilities: React.FC = () => {
           )}
         />
       ) : null}
-      {errorCode ? (
+      {errorCode && !loading ? (
         <Alert
           type='error'
           showIcon
           content={t(workspaceErrorTranslationKey(errorCode, 'load'), { code: errorCode })}
+          action={
+            <Button size='small' onClick={() => void load()}>
+              {t('common.retry')}
+            </Button>
+          }
         />
       ) : null}
-      <Spin loading={loading} className='w-full'>
-        {capabilityType === 'MODEL' ? (
+      <Spin loading={loading} className='w-full' aria-busy={loading}>
+        {loading || errorCode ? (
+          <div className='min-h-100px' />
+        ) : capabilityType === 'MODEL' ? (
           models.length === 0 && !loading ? (
             <Empty description={t('workspace.abilities.modelsEmpty')} />
           ) : (
@@ -558,9 +621,15 @@ const WorkspaceCapabilities: React.FC = () => {
               )}
             />
           )
-        ) : items.length === 0 && !loading && !nativeOfficeCapability ? (
+        ) : items.length === 0 && !nativeOfficeCapability ? (
           <Empty
-            description={scope === 'mine' ? t('workspace.abilities.personalEmpty') : t('workspace.abilities.empty')}
+            description={
+              page > 1 || hasMore
+                ? t('workspace.abilities.resourcePageEmpty')
+                : scope === 'mine'
+                  ? t('workspace.abilities.personalEmpty')
+                  : t('workspace.abilities.empty')
+            }
           />
         ) : (
           <List
@@ -575,7 +644,8 @@ const WorkspaceCapabilities: React.FC = () => {
                     onClick={() => {
                       if (capabilityType === 'ASSISTANT') void openAssistantEditor(item);
                       else if (capabilityType === 'SKILL') void openSkill(item);
-                      else setMcpResource(item);
+                      else if (capabilityType === 'MCP') setMcpResource(item);
+                      else setToolResource(item);
                     }}
                   >
                     {capabilityType === 'ASSISTANT' && item.actions.includes('EDIT')
@@ -591,9 +661,7 @@ const WorkspaceCapabilities: React.FC = () => {
                           key='use'
                           type='text'
                           loading={openingResourceId === item.id}
-                          disabled={
-                            refreshingResources || (openingResourceId !== null && openingResourceId !== item.id)
-                          }
+                          disabled={openingResourceId !== null}
                           onClick={() => void useCapability(item)}
                         >
                           {t('workspace.abilities.use')}
@@ -632,6 +700,19 @@ const WorkspaceCapabilities: React.FC = () => {
           />
         )}
       </Spin>
+      {capabilityType !== 'MODEL' && (page > 1 || hasMore) && (
+        <Space>
+          <Button disabled={page === 1 || loading} onClick={() => changePage(page - 1)}>
+            {t('workspace.preview.previous')}
+          </Button>
+          <Button
+            disabled={!hasMore || Boolean(errorCode) || page >= WORKSPACE_RESOURCE_PAGE_LIMIT || loading}
+            onClick={() => changePage(page + 1)}
+          >
+            {t('workspace.preview.next')}
+          </Button>
+        </Space>
+      )}
       <Modal
         visible={editing !== null}
         title={editing === 'new' ? t('workspace.abilities.create') : t('workspace.abilities.detail')}
@@ -662,6 +743,9 @@ const WorkspaceCapabilities: React.FC = () => {
             ]}
           />
         ) : null}
+        {canEdit && assistantModels.length === 0 && (
+          <Alert className='mb-12px' type='warning' content={t('workspace.abilities.modelsEmpty')} showIcon />
+        )}
         <Form form={form} layout='vertical' disabled={!canEdit}>
           <Form.Item field='name' label={t('workspace.abilities.name')} rules={[{ required: true }]}>
             <Input maxLength={100} />
@@ -671,6 +755,18 @@ const WorkspaceCapabilities: React.FC = () => {
           </Form.Item>
           <Form.Item field='instruction' label={t('workspace.abilities.instructions')} rules={[{ required: true }]}>
             <Input.TextArea maxLength={4000} autoSize={{ minRows: 5, maxRows: 10 }} />
+          </Form.Item>
+          <Form.Item field='modelId' label={t('common.model')} rules={[{ required: true }]}>
+            <Select>
+              {assistantModels.map((model) => {
+                const id = availableModelId(model);
+                return id ? (
+                  <Select.Option key={id} value={id}>
+                    {model.name || model.code || id}
+                  </Select.Option>
+                ) : null;
+              })}
+            </Select>
           </Form.Item>
           <Form.Item field='skillIds' label={t('workspace.abilities.linkedSkills')}>
             <Select mode='multiple' maxTagCount={3} allowClear>
@@ -705,6 +801,25 @@ const WorkspaceCapabilities: React.FC = () => {
         onUse={useCapability}
       />
       <McpConnections resource={mcpResource} onClose={() => setMcpResource(null)} />
+      <Drawer
+        width={480}
+        visible={Boolean(toolResource)}
+        title={toolResource?.name}
+        footer={null}
+        onCancel={() => setToolResource(null)}
+      >
+        {toolResource && (
+          <Descriptions
+            column={1}
+            border
+            data={[
+              { label: t('workspace.abilities.description'), value: toolResource.description || t('workspace.none') },
+              { label: t('workspace.abilities.versionLabel'), value: `v${toolResource.version}` },
+              { label: t('workspace.abilities.permissionLabel'), value: toolResource.actions.join(', ') || '-' },
+            ]}
+          />
+        )}
+      </Drawer>
     </div>
   );
 };

@@ -76,6 +76,7 @@
     "capacityBusy": "ظرفیت اجرا پر است. کمی بعد دوباره تلاش کنید."
   },
   "errors": {
+    "runtimeUnavailable": "محیط اجرا هنوز آماده نیست. کمی بعد دوباره تلاش کنید.",
     "load": "Unable to load this section ({{code}}).",
     "action": "The action failed ({{code}}).",
     "noModel": "هیچ مدلی برای این حساب در دسترس نیست. از مدیر سازمان بخواهید مدل پیش‌فرض و مجوز دسترسی را بررسی کند.",
@@ -180,6 +181,7 @@
     "availableEmpty": "No knowledge base is available. Create a private one, or ask an administrator to grant access."
   },
   "abilities": {
+    "resourcePageEmpty": "منبعی در این صفحه در دسترس نیست. به مرور ادامه دهید یا صفحه را تازه کنید.",
     "title": "Abilities",
     "subtitle": "Manage personal assistants and inspect assistants shared with you. Runtime and model details stay managed by the workspace.",
     "create": "Create ability",

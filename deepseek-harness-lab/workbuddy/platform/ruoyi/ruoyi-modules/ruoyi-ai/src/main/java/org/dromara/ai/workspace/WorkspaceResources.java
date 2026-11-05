@@ -73,14 +73,14 @@ public class WorkspaceResources {
     public record ResourcePage(List<Map<String,Object>> items,boolean hasMore) {}
 
     public List<Map<String,Object>> list(long actor,String type,String scope,int page){
-        if("available".equals(scope)&&TYPES.contains(type)){
-            permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":view");
-            return available(actor,type,page);
-        }
         return listPage(actor,type,scope,page).items();
     }
 
     public ResourcePage listPage(long actor,String type,String scope,int page){
+        if("available".equals(scope)&&TYPES.contains(type)){
+            permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":view");
+            return availablePage(actor,type,page);
+        }
         if(!TYPES.contains(type)||!Set.of("mine","shared","public","enterprise").contains(scope))
             throw new WorkspaceDenied(400,"InvalidResourceFilter");
         permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":view");
@@ -119,12 +119,12 @@ public class WorkspaceResources {
     }
 
     /** Canonical effective catalog. Execution reuses the same guard and published version checks. */
-    public List<Map<String,Object>> available(long actor,String type,int page){
+    private ResourcePage availablePage(long actor,String type,int page){
         permissions.require(actor,"ai:"+type.toLowerCase(Locale.ROOT)+":use");
-        var ids=jdbc.queryForList("SELECT r.id FROM ai_resource r WHERE r.resource_type=? AND r.enabled AND NOT r.security_disabled AND r.lifecycle_state='ACTIVE' AND r.published_version IS NOT NULL AND (r.owner_user_id=? OR (r.owner_type='ENTERPRISE' AND ?) OR r.visibility='ENTERPRISE_PUBLIC' OR EXISTS(SELECT 1 FROM ai_effective_resource_acl a WHERE a.resource_id=r.id AND a.action='USE' AND ((a.subject_type='USER' AND a.subject_id=?) OR (a.subject_type='ROLE' AND EXISTS(SELECT 1 FROM sys_user_role ur JOIN sys_role s ON s.role_id=ur.role_id WHERE ur.user_id=? AND s.role_id=a.subject_id AND s.status='0' AND s.del_flag='0')) OR (a.subject_type='DEPARTMENT' AND EXISTS(SELECT 1 FROM sys_user u JOIN sys_dept d ON d.dept_id=u.dept_id WHERE u.user_id=? AND u.dept_id=a.subject_id AND d.status='0' AND d.del_flag='0'))))) ORDER BY r.updated_at DESC,r.id LIMIT 30 OFFSET ?",UUID.class,type,actor,permissions.has(actor,"ai:resource:enterprise"),actor,actor,actor,(Math.min(1000,Math.max(1,page))-1)*30);
+        var ids=jdbc.queryForList("SELECT r.id FROM ai_resource r WHERE r.resource_type=? AND r.enabled AND NOT r.security_disabled AND r.lifecycle_state='ACTIVE' AND r.published_version IS NOT NULL AND (r.owner_user_id=? OR (r.owner_type='ENTERPRISE' AND ?) OR r.visibility='ENTERPRISE_PUBLIC' OR EXISTS(SELECT 1 FROM ai_effective_resource_acl a WHERE a.resource_id=r.id AND a.action='USE' AND ((a.subject_type='USER' AND a.subject_id=?) OR (a.subject_type='ROLE' AND EXISTS(SELECT 1 FROM sys_user_role ur JOIN sys_role s ON s.role_id=ur.role_id WHERE ur.user_id=? AND s.role_id=a.subject_id AND s.status='0' AND s.del_flag='0')) OR (a.subject_type='DEPARTMENT' AND EXISTS(SELECT 1 FROM sys_user u JOIN sys_dept d ON d.dept_id=u.dept_id WHERE u.user_id=? AND u.dept_id=a.subject_id AND d.status='0' AND d.del_flag='0'))))) ORDER BY r.updated_at DESC,r.id LIMIT 31 OFFSET ?",UUID.class,type,actor,permissions.has(actor,"ai:resource:enterprise"),actor,actor,actor,(Math.min(1000,Math.max(1,page))-1)*30);
         List<Map<String,Object>> result=new ArrayList<>();
-        for(UUID id:ids)try{var item=active(id,actor);item.remove("config");item.put("source",Long.toString(actor).equals(item.get("ownerUserId"))?"PERSONAL":"ORGANIZATION");result.add(item);}catch(WorkspaceDenied ignored){/* Permission can change after selecting the page. */}
-        return result;
+        for(UUID id:ids.stream().limit(30).toList())try{var item=active(id,actor);item.remove("config");item.put("source",Long.toString(actor).equals(item.get("ownerUserId"))?"PERSONAL":"ORGANIZATION");result.add(item);}catch(WorkspaceDenied ignored){/* Permission can change after selecting the page. */}
+        return new ResourcePage(result,ids.size()>30);
     }
     public Map<String,Object> edit(UUID id,long actor,int expected,String name,String description,Map<String,Object> data){
         return edit(id,actor,expected,name,description,data,null);

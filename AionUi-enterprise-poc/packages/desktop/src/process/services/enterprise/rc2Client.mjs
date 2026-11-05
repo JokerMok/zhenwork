@@ -237,12 +237,22 @@ export class Rc2Client {
   async resources(type) {
     if (!['ASSISTANT', 'SKILL', 'MCP', 'KNOWLEDGE', 'TOOL'].includes(type)) throw new Error('Invalid resource type');
     const items = new Map();
-    // One server-authoritative effective catalog is shared by UI and runtime.
+    // Prefer the authoritative cursor. Older control planes rejected paged
+    // effective catalogs with InvalidResourceFilter and still return arrays.
+    let paged = true;
     for (let page = 1; page <= 100; page++) {
-      const { response, body } = await this.request(`/ai/resources?type=${type}&scope=available&page=${page}`);
-      if (!response.ok || body?.code !== 200 || !Array.isArray(body.data))
+      const path = `/ai/resources?type=${type}&scope=available&page=${page}`;
+      let { response, body } = await this.request(path + (paged ? '&paged=true' : ''));
+      if (page === 1 && (response.status === 400 || body?.code === 400) && body?.msg === 'InvalidResourceFilter') {
+        paged = false;
+        ({ response, body } = await this.request(path));
+      }
+      const legacy = Array.isArray(body?.data);
+      const rows = legacy ? body.data : body?.data?.items;
+      if (!response.ok || body?.code !== 200 || !Array.isArray(rows) ||
+          (!legacy && typeof body.data.hasMore !== 'boolean'))
         throw new Error('RC2 resources unavailable');
-      for (const item of body.data)
+      for (const item of rows)
         if (item?.actions?.includes('USE') && Number.isInteger(item.publishedVersion)) {
           items.set(item.id, {
             id: item.id, name: item.name, description: item.description,
@@ -250,7 +260,7 @@ export class Rc2Client {
             source: item.source === 'ORGANIZATION' ? 'enterprise' : 'personal', type,
           });
         }
-      if (body.data.length < 30) return [...items.values()];
+      if (legacy ? rows.length < 30 : !body.data.hasMore) return [...items.values()];
     }
     throw new Error('Enterprise capability catalog exceeds 3000 resources; narrow the authorized scope');
   }

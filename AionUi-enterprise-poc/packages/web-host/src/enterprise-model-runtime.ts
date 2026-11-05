@@ -1,3 +1,4 @@
+import { applyEmployeePreferences, nativeRelayCanOmitPreferences, nativeRunPreferences } from './read-model/preferences.js';
 import { currentTaskScope } from './tasks/protocol.js';
 import { captureTaskFeedbackProvenance } from './tasks/feedback.js';
 import { createDockerCoreDependencyProbe } from './maintenance/core-dependency-probe.js';
@@ -128,6 +129,21 @@ export function createEnterpriseModelRuntime(
     return response;
   };
   const capturedProvenance = new Set<string>();
+  const readNativeTurn = async (core: EnterpriseCore, conversation: string): Promise<string | null> => {
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(conversation)) throw new Error('PREFS_EXECUTION_INVALID');
+    const response = await fetch(`${enterpriseCoreBase(core)}/api/conversations/${conversation}`, {
+      headers: { 'x-aion-enterprise-local-token': core.localToken },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error('PREFS_EXECUTION_UNAVAILABLE');
+    const body = await response.json() as { success?: boolean; data?: { runtime?: { turn_id?: string | null } } };
+    if (body.success !== true || !body.data) throw new Error('PREFS_EXECUTION_UNAVAILABLE');
+    const turnId = body.data.runtime?.turn_id;
+    if (turnId == null) return null;
+    if (!/^turn_[A-Za-z0-9_-]{8,80}$/.test(turnId)) throw new Error('PREFS_EXECUTION_INVALID');
+    return turnId;
+  };
   const relayClient = async (actor: EnterpriseActor, conversationId?: string): Promise<Rc2GatewayClient> => {
     // Persisted conversation metadata is editable. Only the Core cron
     // executor's in-memory running-turn map may select a job grant.
@@ -435,6 +451,24 @@ export function createEnterpriseModelRuntime(
             }
             if (options.profileRoot && conversationId) {
               const task = await currentTaskScope(options.profileRoot, actor, conversationId);
+              const boundTask = task.active && task.jobId && taskBindings.get(key(actor))?.get(conversationId) === task.jobId;
+              if (boundTask) {
+                if (task.preferences) raw = applyEmployeePreferences(raw, task.preferences);
+              } else {
+                // Native direct and scheduled turns already carry a Core-owned execution ID.
+                const root = options.profileRoot;
+                const activeTurn = (id: string) => readNativeTurn(core, id);
+                const turnId = await activeTurn(conversationId).catch(async (error): Promise<null> => {
+                  if (!(await nativeRelayCanOmitPreferences(root, actor, conversationId))) throw error;
+                  // An auxiliary relay or a failed metadata read must not
+                  // block an otherwise authorized, unpersonalized call.
+                  return null;
+                });
+                if (turnId) {
+                  const preferences = await nativeRunPreferences(root, actor, conversationId, turnId, activeTurn);
+                  raw = applyEmployeePreferences(raw, preferences);
+                }
+              }
               const captureKey = `${key(actor)}:${task.attemptId || ''}`;
               if (task.active && task.attemptId && !capturedProvenance.has(captureKey)) {
                 try {
@@ -457,6 +491,8 @@ export function createEnterpriseModelRuntime(
                 status: 409, headers: { 'X-Aion-Execution-State': 'paused', 'Content-Type': 'application/json' },
               });
             }
+            if (error instanceof Error && /^PREFS_[A-Z_]+$/.test(error.message))
+              return new Response(null, { status: 503 });
             console.warn('[Enterprise model] relay authorization rejected', { code: 'EXECUTION_AUTHORIZATION_DENIED', conversationId, modelId });
             return new Response(null, { status: 403 });
           }

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { EmployeePreferences } from '../read-model/preferences.js';
 export type TaskState =
   | 'queued'
   | 'running'
@@ -44,6 +45,7 @@ export type TaskAttempt = {
   startedAt?: number;
   assistant?: { id: string; name: string };
   payload: Record<string, unknown>;
+  preferences?: EmployeePreferences;
   turnId?: string;
   messageId?: string;
   reason?: string;
@@ -141,8 +143,17 @@ export function publicTask(task: TaskRecord, summary = false): unknown {
   return {
     ...task,
     attempts: (summary ? [currentAttempt(task)] : task.attempts).map(
-      ({ payload: _payload, approval: _approval, resumeContext: _context, confirmation, steps, ...a }) => ({
+      ({
+        payload: _payload,
+        approval: _approval,
+        resumeContext: _context,
+        preferences,
+        confirmation,
+        steps,
+        ...a
+      }) => ({
         ...a,
+        ...(preferences ? { preferenceVersion: preferences.version } : {}),
         requiresExternalReview: !!_approval?.used && !['read', 'info', 'search'].includes(_context?.approvedKind || ''),
         ...(summary
           ? {}

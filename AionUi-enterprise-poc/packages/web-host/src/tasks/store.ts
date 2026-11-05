@@ -2,6 +2,7 @@ import { mkdir, lstat, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { EnterpriseActor } from "../enterprise-gateway.js";
+import type { EmployeePreferences } from "../read-model/preferences.js";
 import { enterpriseManagedResourcePath } from "../enterprise-resource-runtime.js";
 import {
   activeStates,
@@ -126,6 +127,7 @@ export class TaskStore {
     payload: Record<string, unknown>,
     retry = false,
     replaceRequirements = false,
+    loadPreferences?: () => Promise<EmployeePreferences>,
   ): Promise<{ task: TaskRecord; duplicate: boolean }> {
     if (
       !/^[A-Za-z0-9_-]{1,100}$/.test(id) ||
@@ -136,7 +138,7 @@ export class TaskStore {
     )
       throw new TaskError(400, "TASK_INPUT_INVALID");
     const hash = digest(payload);
-    return this.transaction((tasks) => {
+    return this.transaction(async (tasks) => {
       const seen = tasks
         .flatMap((t) => t.attempts.map((a) => ({ t, a })))
         .find((x) => x.a.requestId === requestId);
@@ -182,6 +184,7 @@ export class TaskStore {
         createdAt: now,
         updatedAt: now,
         payload,
+        preferences: await loadPreferences?.(),
         steps: [],
         artifacts: retry && prior && !replaceRequirements ? prior.artifacts.map(f=>({...f})) : retained,
         requiredFormats: formats,

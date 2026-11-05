@@ -32,8 +32,8 @@ test('background resources use the same server-authoritative available catalog a
   const resources = await client.resources('SKILL') as Array<Record<string, unknown>>;
 
   expect(requests).toEqual([
-    '/internal/rc2/background/grants/11111111-1111-4111-8111-111111111111/resources?type=SKILL&scope=available&page=1',
-    '/internal/rc2/background/grants/11111111-1111-4111-8111-111111111111/resources?type=SKILL&scope=available&page=2',
+    '/internal/rc2/background/grants/11111111-1111-4111-8111-111111111111/resources?type=SKILL&scope=available&page=1&paged=true',
+    '/internal/rc2/background/grants/11111111-1111-4111-8111-111111111111/resources?type=SKILL&scope=available&page=2&paged=true',
   ]);
   expect(resources).toHaveLength(31);
   expect(resources[0]).toMatchObject({ id: 'resource-0', source: 'personal', version: 1, type: 'SKILL' });

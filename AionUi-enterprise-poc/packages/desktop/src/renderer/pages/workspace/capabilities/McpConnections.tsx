@@ -13,7 +13,7 @@ import {
   Tag,
 } from '@arco-design/web-react';
 import { Refresh } from '@icon-park/react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { enterpriseControl, workspaceErrorCode, workspaceErrorTranslationKey } from '../workspaceApi';
 import type { WorkspaceResource } from '../workspaceTypes';
@@ -59,42 +59,62 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const requestId = useRef(0);
 
   const personal = useMemo(() => connections.find((item) => item.scope === 'PERSONAL') || null, [connections]);
   const enterprise = useMemo(() => connections.find((item) => item.scope === 'ENTERPRISE') || null, [connections]);
 
   const load = useCallback(async () => {
+    const generation = ++requestId.current;
     if (!resource) return;
     setLoading(true);
+    setErrorCode(null);
     try {
+      const usable = resource.actions.includes('USE');
       const [nextDetail, nextConnections] = await Promise.all([
-        enterpriseControl<McpResource>(`/ai/resources/${resource.id}`),
-        enterpriseControl<McpConnection[]>(`/ai/mcp/connections?resourceId=${resource.id}`),
+        enterpriseControl<McpResource>(`/ai/resources/${resource.id}${usable ? '?active=true' : ''}`),
+        usable ? enterpriseControl<McpConnection[]>(`/ai/mcp/connections?resourceId=${resource.id}`) : [],
       ]);
+      if (generation !== requestId.current) return;
+      if (!Array.isArray(nextConnections)) throw new Error('INVALID_CATALOG_RESPONSE');
       setDetail(nextDetail);
-      setConnections(Array.isArray(nextConnections) ? nextConnections : []);
+      setConnections(nextConnections);
       const existing = nextConnections.find((item) => item.scope === 'PERSONAL');
       form.setFieldsValue({ secret: '', enabled: existing?.enabled ?? true, clearSecret: false });
-      setErrorCode(null);
     } catch (error) {
+      if (generation !== requestId.current) return;
+      setDetail(null);
+      setConnections([]);
       setErrorCode(workspaceErrorCode(error));
     } finally {
-      setLoading(false);
+      if (generation === requestId.current) setLoading(false);
     }
   }, [form, resource]);
 
   useEffect(() => {
+    setDetail(null);
+    setConnections([]);
     void load();
+    return () => {
+      requestId.current += 1;
+    };
   }, [load]);
 
+  const currentDetail = !errorCode && detail && detail.id === resource?.id ? detail : null;
+  const canConnect = Boolean(
+    currentDetail && resource?.actions.includes('USE') && currentDetail.config.managedProfile !== 'external-query'
+  );
+
   const save = async () => {
-    if (!detail) return;
-    const values = await form.validate();
+    if (!currentDetail || !canConnect || loading || saving) return;
+    const generation = requestId.current;
+    const values = await form.validate().catch((): null => null);
+    if (!values || generation !== requestId.current) return;
     setSaving(true);
     try {
-      const templateVersion = detail.publishedVersion ?? detail.version;
+      const templateVersion = currentDetail.publishedVersion ?? currentDetail.version;
       const body = JSON.stringify({
-        resourceId: detail.id,
+        resourceId: currentDetail.id,
         scope: 'PERSONAL',
         templateVersion,
         secret: values.secret.trim() || null,
@@ -107,7 +127,7 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
         body,
       });
       message.success(t('workspace.abilities.mcp.saved'));
-      await load();
+      if (generation === requestId.current) await load();
     } catch (error) {
       const code = workspaceErrorCode(error);
       message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
@@ -117,6 +137,8 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
   };
 
   const test = async (connection: McpConnection) => {
+    if (!canConnect || loading || saving) return;
+    const generation = requestId.current;
     setSaving(true);
     try {
       const result = await enterpriseControl<{ status: string; latencyMs: number; toolCount: number }>(
@@ -128,7 +150,7 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
           t('workspace.abilities.mcp.testPassed', { count: result.toolCount, latency: result.latencyMs })
         );
       } else message.error(t('workspace.abilities.mcp.testFailed'));
-      await load();
+      if (generation === requestId.current) await load();
     } catch (error) {
       const code = workspaceErrorCode(error);
       message.error(t(workspaceErrorTranslationKey(code, 'action'), { code }));
@@ -167,33 +189,38 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
               type='error'
               showIcon
               content={t(workspaceErrorTranslationKey(errorCode, 'load'), { code: errorCode })}
+              action={
+                <Button size='small' onClick={() => void load()}>
+                  {t('common.retry')}
+                </Button>
+              }
             />
           ) : null}
-          {detail ? (
+          {currentDetail && !loading ? (
             <Descriptions
               column={1}
               border
               data={[
                 {
                   label: t('workspace.abilities.mcp.endpoint'),
-                  value: detail.config.endpoint || detail.config.managedProfile || t('workspace.none'),
+                  value: currentDetail.config.endpoint || currentDetail.config.managedProfile || t('workspace.none'),
                 },
-                { label: t('workspace.abilities.mcp.transport'), value: detail.config.transport },
-                { label: t('workspace.abilities.mcp.authorization'), value: detail.config.authType },
-                { label: t('workspace.abilities.mcp.timeout'), value: `${detail.config.timeoutSeconds}s` },
+                { label: t('workspace.abilities.mcp.transport'), value: currentDetail.config.transport },
+                { label: t('workspace.abilities.mcp.authorization'), value: currentDetail.config.authType },
+                { label: t('workspace.abilities.mcp.timeout'), value: `${currentDetail.config.timeoutSeconds}s` },
               ]}
             />
           ) : null}
-          {enterprise ? (
+          {currentDetail && !loading && enterprise ? (
             <Alert
               type='info'
               showIcon
               content={t('workspace.abilities.mcp.enterpriseAvailable', { status: enterprise.status })}
             />
           ) : null}
-          {detail ? (
+          {canConnect && currentDetail && !loading ? (
             <Form form={form} layout='vertical'>
-              {detail.config.authType === 'BEARER' ? (
+              {currentDetail.config.authType === 'BEARER' ? (
                 <>
                   <Form.Item field='secret' label={t('workspace.abilities.mcp.credential')}>
                     <Input.Password
@@ -230,7 +257,7 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
               </Space>
             </Form>
           ) : null}
-          {personal?.tools.length || enterprise?.tools.length ? (
+          {currentDetail && !loading && (personal?.tools.length || enterprise?.tools.length) ? (
             <List
               header={t('workspace.abilities.mcp.discoveredTools')}
               dataSource={personal?.tools.length ? personal.tools : enterprise?.tools || []}
@@ -248,12 +275,14 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
                 </List.Item>
               )}
             />
-          ) : (
+          ) : canConnect && !loading ? (
             <Alert type='info' showIcon content={t('workspace.abilities.mcp.testHint')} />
-          )}
-          {personal ? connectionSummary(personal) : null}
-          {enterprise ? connectionSummary(enterprise) : null}
-          {personal?.last_error ? <Alert type='error' showIcon content={personal.last_error} /> : null}
+          ) : null}
+          {currentDetail && !loading && personal ? connectionSummary(personal) : null}
+          {currentDetail && !loading && enterprise ? connectionSummary(enterprise) : null}
+          {currentDetail && !loading && personal?.last_error ? (
+            <Alert type='error' showIcon content={personal.last_error} />
+          ) : null}
         </div>
       </Spin>
     </Drawer>

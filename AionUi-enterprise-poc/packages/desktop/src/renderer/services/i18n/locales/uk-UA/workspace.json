@@ -76,6 +76,7 @@
     "capacityBusy": "Немає вільних ресурсів для виконання. Повторіть пізніше."
   },
   "errors": {
+    "runtimeUnavailable": "Середовище виконання ще не готове. Повторіть спробу пізніше.",
     "load": "Unable to load this section ({{code}}).",
     "action": "The action failed ({{code}}).",
     "noModel": "Для цього облікового запису немає доступних моделей. Попросіть адміністратора організації перевірити модель за замовчуванням і права доступу.",
@@ -180,6 +181,7 @@
     "availableEmpty": "No knowledge base is available. Create a private one, or ask an administrator to grant access."
   },
   "abilities": {
+    "resourcePageEmpty": "На цій сторінці немає доступних ресурсів. Продовжте перегляд або оновіть сторінку.",
     "title": "Abilities",
     "subtitle": "Manage personal assistants and inspect assistants shared with you. Runtime and model details stay managed by the workspace.",
     "create": "Create ability",

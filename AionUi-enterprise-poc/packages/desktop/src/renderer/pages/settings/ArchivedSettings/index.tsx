@@ -6,21 +6,67 @@
 
 import { ipcBridge } from '@/common';
 import { scopeToToken } from '@/common/adapter/sidebarMapper';
-import type { SidebarItem } from '@/common/types/sidebar';
+import { fromApiConversation } from '@/common/adapter/apiModelMapper';
+import type { TChatConversation } from '@/common/config/storage';
+import type { SidebarGroup, SidebarItem } from '@/common/types/sidebar';
 import { useAgentLogos } from '@/renderer/utils/model/agentLogo';
 import { emitter } from '@/renderer/utils/emitter';
-import { Button, Checkbox, Empty, Message, Modal, Spin } from '@arco-design/web-react';
+import { Alert, Button, Checkbox, Empty, Message, Modal, Spin } from '@arco-design/web-react';
 import { DeleteOne, FolderClose, ListCheckbox, MessageOne, Peoples, Robot } from '@icon-park/react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import useSWR from 'swr';
 
+import { useAuth } from '@/renderer/hooks/context/AuthContext';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import {
+  enterpriseRequest,
+  workspaceErrorCode,
+  workspaceErrorTranslationKey,
+} from '@/renderer/pages/workspace/workspaceApi';
 import SettingsPageHeader from '../components/SettingsPageHeader';
 import SettingsPageWrapper from '../components/SettingsPageWrapper';
 import { resolveConversationLeadingMark } from '@/renderer/pages/conversation/utils/conversationAssistantIdentity';
 import { hasEnterpriseWebConversationSource } from '@/renderer/pages/conversation/GroupedHistory/EnterpriseWebConversations';
 
 const ARCHIVED_SWR_KEY = 'sidebar-archived';
+
+type EnterpriseArchivePage = {
+  items: Array<TChatConversation & { project_name?: string; archived_at?: number }>;
+  has_more: boolean;
+  next_cursor: string | null;
+};
+
+async function readEnterpriseArchive(cursor?: string): Promise<EnterpriseArchivePage> {
+  const page = await enterpriseRequest<EnterpriseArchivePage>(
+    '/enterprise/conversations/archived' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '')
+  );
+  if (!Array.isArray(page?.items) || typeof page.has_more !== 'boolean' || (page.has_more && !page.next_cursor)) {
+    throw new Error('INVALID_ARCHIVE_RESPONSE');
+  }
+  return page;
+}
+
+function archiveGroups(pages: EnterpriseArchivePage[]): SidebarGroup[] {
+  const groups = new Map<string, SidebarGroup>();
+  for (const item of pages.flatMap((page) => page.items)) {
+    const key = item.project_id || '';
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        scope:
+          item.project_id && item.project_name
+            ? { type: 'project', project_id: item.project_id, name: item.project_name }
+            : { type: 'chats' },
+        items: [],
+        has_more: false,
+      };
+      groups.set(key, group);
+    }
+    group.items.push({ type: 'conversation', conversation: fromApiConversation(item) });
+  }
+  return [...groups.values()];
+}
 
 /**
  * Per-group window sizes for the archived page. The first screen shows a small
@@ -78,6 +124,8 @@ type ProjectBlock = {
  */
 const ArchivedSettings: React.FC = () => {
   const { t, i18n } = useTranslation();
+  const hostedWeb = isEnterpriseWeb();
+  const { user } = useAuth();
   const hasWebArchive = hasEnterpriseWebConversationSource();
   const logos = useAgentLogos();
   const [selectionMode, setSelectionMode] = React.useState(false);
@@ -88,16 +136,51 @@ const ArchivedSettings: React.FC = () => {
   const [extraPages, setExtraPages] = React.useState<Record<string, ExtraPage>>({});
   const [loadingTokens, setLoadingTokens] = React.useState<ReadonlySet<string>>(() => new Set<string>());
 
-  const { data, isLoading, mutate } = useSWR(ARCHIVED_SWR_KEY, () =>
+  const [archivePages, setArchivePages] = React.useState<EnterpriseArchivePage[]>([]);
+  const [archiveLoading, setArchiveLoading] = React.useState(false);
+  const { data, error, isLoading, mutate } = useSWR(hostedWeb ? null : ARCHIVED_SWR_KEY, () =>
     ipcBridge.sidebar.get.invoke({ archived: true, limit: FIRST_SCREEN_LIMIT })
   );
+  const archive = useSWR(
+    hostedWeb && user?.id ? ['enterprise-archive', user.id] : null,
+    () => readEnterpriseArchive(),
+    {
+      revalidateOnFocus: false,
+    }
+  );
+  const archiveGeneration = React.useRef(0);
+  const archiveCursor = (archivePages.at(-1) || archive.data)?.next_cursor;
+  const groups = React.useMemo(
+    () => (hostedWeb ? archiveGroups(archive.data ? [archive.data, ...archivePages] : []) : data?.groups || []),
+    [hostedWeb, archive.data, archivePages, data]
+  );
+  const loadError = hostedWeb ? archive.error : error;
+
+  const loadMoreArchive = async () => {
+    if (!archiveCursor || archiveLoading) return;
+    const generation = archiveGeneration.current;
+    setArchiveLoading(true);
+    try {
+      const page = await readEnterpriseArchive(archiveCursor);
+      if (generation === archiveGeneration.current) setArchivePages((current) => [...current, page]);
+    } catch (cause) {
+      const code = workspaceErrorCode(cause);
+      Message.error(t(workspaceErrorTranslationKey(code, 'load'), { code }));
+    } finally {
+      if (generation === archiveGeneration.current) setArchiveLoading(false);
+    }
+  };
 
   // Refetch the first screen and drop appended windows in one step. Used after
   // every mutation so stale paged rows/cursors never linger.
   const refresh = React.useCallback(async () => {
     setExtraPages({});
-    await mutate();
-  }, [mutate]);
+    archiveGeneration.current += 1;
+    setArchiveLoading(false);
+    setArchivePages([]);
+    if (hostedWeb) await archive.mutate();
+    else await mutate();
+  }, [archive.mutate, hostedWeb, mutate]);
 
   // The active (left) sidebar is an event-driven singleton with no route/focus
   // revalidation, so it only reflects a restore once `chat.history.refresh`
@@ -151,7 +234,7 @@ const ArchivedSettings: React.FC = () => {
           item_id: item.conversation.id,
           name: item.conversation.name || t('conversation.welcome.newConversation'),
           icon: renderConversationIcon(item),
-          updatedAt: item.conversation.created_at,
+          updatedAt: hostedWeb ? item.conversation.modified_at : item.conversation.created_at,
         };
       }
       const key = `team:${item.team_id}`;
@@ -172,7 +255,7 @@ const ArchivedSettings: React.FC = () => {
     // Paging metadata for the chats group, carried onto the synthetic no-project
     // block (chats is the only group folded into it).
     let chatsPaging: { token: string; hasMore: boolean; cursor?: string } | null = null;
-    for (const group of data?.groups ?? []) {
+    for (const group of groups) {
       const token = scopeToToken(group.scope);
       const extra = extraPages[token];
       // First-screen window + any appended pages, in keyset order. Cursors are
@@ -190,7 +273,7 @@ const ArchivedSettings: React.FC = () => {
       const scope = group.scope;
       if (scope.type === 'project' || scope.type === 'dir') {
         const key = scope.type === 'project' ? scope.project_id : scope.key;
-        const projectId = scope.type === 'project' ? scope.project_id : undefined;
+        const projectId = !hostedWeb && scope.type === 'project' ? scope.project_id : undefined;
         archivedBlocks.push({ key, name: scope.name, rows, projectId, scopeToken: token, hasMore, cursor });
       } else {
         // Ordinary archived chats are still grouped as a project-like block, named "No project".
@@ -209,7 +292,7 @@ const ArchivedSettings: React.FC = () => {
       });
     }
     return { archivedBlocks, total: seen.size };
-  }, [data, extraPages, logos, t]);
+  }, [groups, extraPages, hostedWeb, logos, t]);
 
   const allRows = React.useMemo(() => archivedBlocks.flatMap((block) => block.rows), [archivedBlocks]);
 
@@ -510,17 +593,37 @@ const ArchivedSettings: React.FC = () => {
       {hasWebArchive && (
         <div className='mt-18px flex items-center justify-between gap-12px rd-12px border border-solid border-[var(--color-border-2)] bg-bg-1 px-14px py-12px'>
           <span className='text-14px text-t-primary'>{t('settings.archived.webArchive')}</span>
-          <Button type='secondary' size='small' onClick={() => {
-            void (window as Window & { enterpriseResources?: { request: (action: string) => Promise<unknown> } })
-              .enterpriseResources?.request('web-open-archive')
-              .catch(() => Message.error(t('settings.archived.webArchiveFailed')));
-          }}>
+          <Button
+            type='secondary'
+            size='small'
+            onClick={() => {
+              void (
+                window as Window & { enterpriseResources?: { request: (action: string) => Promise<unknown> } }
+              ).enterpriseResources
+                ?.request('web-open-archive')
+                .catch(() => Message.error(t('settings.archived.webArchiveFailed')));
+            }}
+          >
             {t('settings.archived.openWebArchive')}
           </Button>
         </div>
       )}
 
-      {isLoading ? (
+      {loadError && hostedWeb ? (
+        <Alert
+          className='mt-18px'
+          type='error'
+          showIcon
+          content={t(workspaceErrorTranslationKey(workspaceErrorCode(loadError), 'load'), {
+            code: workspaceErrorCode(loadError),
+          })}
+          action={
+            <Button size='small' onClick={() => void archive.mutate()}>
+              {t('common.retry')}
+            </Button>
+          }
+        />
+      ) : (hostedWeb ? archive.isLoading : isLoading) ? (
         <div className='flex items-center justify-center py-64px'>
           <Spin />
         </div>
@@ -574,6 +677,11 @@ const ArchivedSettings: React.FC = () => {
             })}
           </div>
         </div>
+      )}
+      {!loadError && archiveCursor && (
+        <Button type='text' loading={archiveLoading} className='mt-12px' onClick={() => void loadMoreArchive()}>
+          {t('settings.archived.loadMore')}
+        </Button>
       )}
     </SettingsPageWrapper>
   );

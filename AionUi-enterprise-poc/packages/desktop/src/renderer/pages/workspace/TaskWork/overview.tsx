@@ -45,7 +45,7 @@ export function TaskOverviewProvider({ children }: React.PropsWithChildren) {
 export function TaskBadge({ id }: { id: string }) {
   const { t } = useTranslation();
   const state = useContext(TaskOverview).get(id);
-  return state && !['completed', 'cancelled', 'unknown'].includes(state) ? (
+  return state && state !== 'unknown' ? (
     <Tag size='small'>{t(`workspace.work.states.${state}`, { defaultValue: t('workspace.work.unknown') })}</Tag>
   ) : null;
 }

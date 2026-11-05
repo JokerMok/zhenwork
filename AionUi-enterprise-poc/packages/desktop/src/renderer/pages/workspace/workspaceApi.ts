@@ -9,6 +9,7 @@ type WorkspaceErrorTranslationKey =
   | 'workspace.errors.noModel'
   | 'workspace.errors.noCapability'
   | 'workspace.errors.prepareFailed'
+  | 'workspace.errors.runtimeUnavailable'
   | `workspace.errors.${WorkspaceErrorFallback}`;
 
 export class WorkspaceApiError extends Error {
@@ -69,9 +70,12 @@ export function workspaceErrorTranslationKey(
     normalized === 'PERMISSION_DENIED' ||
     normalized === 'PERMISSIONDENIED' ||
     normalized === 'ACCESS_DENIED' ||
-    normalized === 'CAPABILITY_FORBIDDEN'
+    normalized === 'CAPABILITY_FORBIDDEN' ||
+    normalized === 'MISSINGPERMISSION' ||
+    normalized === 'PASSWORDCHANGEREQUIRED'
   )
     return 'workspace.errors.forbidden';
+  if (normalized === 'CORE_NOT_RUNNING') return 'workspace.errors.runtimeUnavailable';
   if (normalized === 'CORE_UNAVAILABLE' || normalized === 'CORE_CAPACITY') return 'workspace.errors.prepareFailed';
   if (normalized === 'NO_AVAILABLE_CAPABILITY') return 'workspace.errors.noCapability';
   if (

@@ -7,7 +7,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Message, Switch, Popconfirm, Spin, Empty, Tooltip, Checkbox, Modal } from '@arco-design/web-react';
+import { Alert, Button, Message, Switch, Popconfirm, Spin, Empty, Tooltip, Checkbox, Modal } from '@arco-design/web-react';
 import { Left, Delete, Write, Attention, Robot } from '@icon-park/react';
 import { ipcBridge } from '@/common';
 import type { ICronJob } from '@/common/adapter/ipcBridge';
@@ -25,6 +25,8 @@ import { getActivityTime } from '@/renderer/utils/chat/timeline';
 import { mutate } from 'swr';
 import { getConversationRuntimeWorkspaceErrorMessage } from '@renderer/pages/conversation/utils/conversationCreateError';
 import { emitter } from '@/renderer/utils/emitter';
+import { isBackendHttpError } from '@/common/adapter/httpBridge';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 
 const resolveTeamId = (conversation: TChatConversation): string | undefined => {
   const extra = conversation.extra as { team_id?: unknown; teamId?: unknown } | undefined;
@@ -41,6 +43,7 @@ const TaskDetailPage: React.FC = () => {
   const { job_id } = useParams<{ job_id: string }>();
   const [job, setJob] = useState<ICronJob | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [editDialogVisible, setEditDialogVisible] = useState(false);
   const [runningNow, setRunningNow] = useState(false);
   const [historyBatchMode, setHistoryBatchMode] = useState(false);
@@ -52,9 +55,11 @@ const TaskDetailPage: React.FC = () => {
 
   const isNewConversationMode = job?.target.execution_mode === 'new_conversation';
   const isManualOnly = job?.schedule.kind === 'cron' && !job.schedule.expr;
-  const { conversations, refetch: refetchConversations } = useCronJobConversations(job_id);
-  const { presetAssistants } = useConversationAssistants();
-  const logos = useAgentLogos();
+  const hostedWeb = isEnterpriseWeb();
+  const { conversations, loading: loadingHistory, loadError: historyError, refetch: refetchConversations } =
+    useCronJobConversations(job_id);
+  const { presetAssistants } = useConversationAssistants(!hostedWeb);
+  const logos = useAgentLogos(!hostedWeb);
   const assistantIdentity = job ? getJobAgentMeta(job, presetAssistants, logos) : null;
 
   useEffect(() => {
@@ -72,15 +77,18 @@ const TaskDetailPage: React.FC = () => {
   const fetchJob = useCallback(async () => {
     if (!job_id) return;
     setLoading(true);
+    setLoadError(false);
     try {
       const found = await ipcBridge.cron.getJob.invoke({ job_id });
-      setJob(found ? await repairCronJobTimeZone(found) : null);
+      setJob(found && !hostedWeb ? await repairCronJobTimeZone(found) : found);
     } catch (err) {
+      setJob(null);
+      if (!isBackendHttpError(err) || err.status !== 404) setLoadError(true);
       console.error('[TaskDetailPage] Failed to fetch job:', err);
     } finally {
       setLoading(false);
     }
-  }, [job_id]);
+  }, [hostedWeb, job_id]);
 
   useEffect(() => {
     void fetchJob();
@@ -306,7 +314,13 @@ const TaskDetailPage: React.FC = () => {
             {t('cron.detail.backToAll')}
           </Button>
           <div className='flex min-h-320px items-center justify-center'>
-            <Empty description={t('cron.detail.notFound')} />
+            {loadError ? (
+              <Alert
+                type='error'
+                content={t('workspace.errors.load', { code: 'SCHEDULE_READ_UNAVAILABLE' })}
+                action={<Button onClick={() => void fetchJob()}>{t('common.retry')}</Button>}
+              />
+            ) : <Empty description={t('cron.detail.notFound')} />}
           </div>
         </div>
       </div>
@@ -442,7 +456,15 @@ const TaskDetailPage: React.FC = () => {
                 )}
               </div>
 
-              {conversations.length > 0 ? (
+              {historyError ? (
+                <Alert
+                  type='error'
+                  content={t('workspace.errors.load', { code: 'SCHEDULE_READ_UNAVAILABLE' })}
+                  action={<Button onClick={() => void refetchConversations()}>{t('common.retry')}</Button>}
+                />
+              ) : loadingHistory && conversations.length === 0 ? (
+                <Spin />
+              ) : conversations.length > 0 ? (
                 <div className='flex flex-col'>
                   {historyBatchMode && (
                     <div className='flex items-center justify-between gap-12px py-8px text-12px text-t-secondary'>
@@ -593,13 +615,9 @@ const TaskDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <CreateTaskDialog
-        visible={editDialogVisible}
-        onClose={() => {
-          setEditDialogVisible(false);
-        }}
-        editJob={job ?? undefined}
-      />
+      {(!hostedWeb || editDialogVisible) && (
+        <CreateTaskDialog visible={editDialogVisible} onClose={() => setEditDialogVisible(false)} editJob={job} />
+      )}
     </div>
   );
 };

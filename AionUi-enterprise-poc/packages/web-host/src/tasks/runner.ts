@@ -4,6 +4,7 @@ import type { EnterpriseActor, EnterpriseCore } from "../enterprise-gateway.js";
 import { enterpriseCoreBase } from "../enterprise-core-address.js";
 import { OfficeStore } from "../office/office-store.js";
 import { inspectArtifact } from "../office/artifact.js";
+import { DEFAULT_EMPLOYEE_PREFERENCES, readEmployeePreferences } from "../read-model/preferences.js";
 import { readProfile } from "../read-model/profile.js";
 import { TaskStore } from "./store.js";
 import {
@@ -167,8 +168,15 @@ export class TaskRunner {
           currentAttempt(prior).payloadHash === digest(normalized));
       if (!duplicate && all.reduce((a, b) => a + b, 0) >= this.deps.queueLimit)
         throw new TaskError(429, "TASK_QUEUE_FULL");
-      const accepted = await store.accept(id, requestId, normalized, retry, resumeContext?.replaceRequirements === true),
-        attempt = currentAttempt(accepted.task);
+      const accepted = await store.accept(
+        id,
+        requestId,
+        normalized,
+        retry,
+        resumeContext?.replaceRequirements === true,
+        () => readEmployeePreferences(this.deps.root, actor),
+      );
+      const attempt = currentAttempt(accepted.task);
       if (!accepted.duplicate) {
         try {
           await this.deps.issue(actor, attempt.jobId);
@@ -201,6 +209,7 @@ export class TaskRunner {
           // The gateway accepts either this attempt ID or its later native ID.
           turn_id: a.turnId || a.id,
           execution_id: a.id,
+          preference_version: a.preferences?.version,
           task_id: id,
           runtime: {
             state:
@@ -447,7 +456,10 @@ export class TaskRunner {
         core,
         `/api/conversations/${task.id}`,
       );
+      // Tasks accepted before this Host version have no saved snapshot.
+      const preferences = a.preferences ?? DEFAULT_EMPLOYEE_PREFERENCES;
       await store.mutate(task.id, a.id, (x) => {
+        x.preferences ??= preferences;
         if (context.assistant?.id && context.assistant.name)
           x.assistant = { id: context.assistant.id, name: context.assistant.name };
       });

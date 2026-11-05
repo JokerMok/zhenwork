@@ -6,6 +6,8 @@
 
 import { ipcBridge } from '@/common';
 import type { TChatConversation } from '@/common/config/storage';
+import { isBackendHttpError } from '@/common/adapter/httpBridge';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { addEventListener } from '@/renderer/utils/emitter';
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
@@ -215,6 +217,9 @@ export const shouldReconcileMarkWaiting = (pendingConfirmations: number): boolea
 
 type ConversationListSyncSnapshot = {
   conversations: TChatConversation[];
+  historyLoading: boolean;
+  historyError: string | null;
+  historyHasMore: boolean;
   generatingConversationIds: Set<string>;
   waitingConfirmationConversationIds: Set<string>;
   completionUnreadConversationIds: Set<string>;
@@ -228,6 +233,8 @@ type ConversationListSyncSnapshot = {
  * Stored in localStorage, matching the existing collapsed-sections / workspace
  * expansion / team-pinned persistence pattern.
  */
+const EMPLOYEE_PAGE_SIZE = 100;
+
 const MANUAL_UNREAD_STORAGE_KEY = 'conversation-manual-unread-ids';
 
 const readStoredManualUnread = (): Set<string> => {
@@ -252,6 +259,15 @@ const persistManualUnread = () => {
 const listeners = new Set<() => void>();
 
 let isStoreInitialized = false;
+let employeeId: string | null = null;
+let employeeRequestVersion = 0;
+let employeePagesLoaded = 0;
+let employeeNextCursor: string | undefined;
+let employeeRefreshing = false;
+let employeeNeedsRefresh = false;
+let employeeErrorOnMore = false;
+let historyLoadingState = true;
+let historyErrorState: string | null = null;
 let conversationsState: TChatConversation[] = [];
 let generatingConversationIdsState = new Set<string>();
 // Per-conversation set of pending confirmation ids (permission / acp_permission
@@ -275,6 +291,9 @@ let projectIdByIdState = new Map<string, string | null>();
 let activeConversationIdState: string | null = null;
 let snapshotState: ConversationListSyncSnapshot = {
   conversations: conversationsState,
+  historyLoading: historyLoadingState,
+  historyError: historyErrorState,
+  historyHasMore: Boolean(employeeNextCursor),
   generatingConversationIds: generatingConversationIdsState,
   waitingConfirmationConversationIds: waitingConfirmationConversationIdsState,
   completionUnreadConversationIds: completionUnreadConversationIdsState,
@@ -284,6 +303,9 @@ let snapshotState: ConversationListSyncSnapshot = {
 const emitStoreChange = () => {
   snapshotState = {
     conversations: conversationsState,
+  historyLoading: historyLoadingState,
+  historyError: historyErrorState,
+  historyHasMore: Boolean(employeeNextCursor),
     generatingConversationIds: generatingConversationIdsState,
     waitingConfirmationConversationIds: waitingConfirmationConversationIdsState,
     completionUnreadConversationIds: completionUnreadConversationIdsState,
@@ -332,43 +354,129 @@ export const getSnapshotConversationName = (conversation_id: string): string | u
   return name ? name : undefined;
 };
 
+const publishConversations = (items: TChatConversation[]) => {
+  conversationsState = items.filter((conversation) => {
+    const extra = conversation.extra as { is_health_check?: boolean; team_id?: string; teamId?: string } | undefined;
+    return extra?.is_health_check !== true && !extra?.team_id && !extra?.teamId;
+  });
+  // Keep hidden team/health-check rows in the index for stream and project lookups.
+  conversation_idsState = new Set(items.map((conversation) => conversation.id));
+  projectIdByIdState = new Map(items.map((conversation) => [conversation.id, conversation.project_id ?? null]));
+  emitStoreChange();
+};
+
+let employeeItems: TChatConversation[] = [];
+
+/** Discard all cached history and in-flight requests when the hosted session changes. */
+export function setConversationListEmployee(id: string | null) {
+  if (employeeId === id) return;
+  employeeId = id;
+  ++employeeRequestVersion;
+  employeeItems = [];
+  employeePagesLoaded = 0;
+  employeeNextCursor = undefined;
+  employeeRefreshing = false;
+  employeeNeedsRefresh = false;
+  employeeErrorOnMore = false;
+  historyLoadingState = Boolean(id);
+  historyErrorState = null;
+  generatingConversationIdsState = new Set();
+  waitingConfirmationIdsByConversationState = new Map();
+  waitingConfirmationConversationIdsState = new Set();
+  completionUnreadConversationIdsState = new Set();
+  manualUnreadConversationIdsState = id ? readStoredManualUnread() : new Set();
+  completedConversationIdsState = new Set();
+  completedTurnIdByConversation.clear();
+  activeConversationIdState = null;
+  publishConversations([]);
+  if (id && isStoreInitialized) refreshConversations();
+}
+
+const historyFailureCode = (error: unknown): string => {
+  if (!isBackendHttpError(error)) return 'REQUEST_FAILED';
+  if (error.status === 401) return 'UNAUTHENTICATED';
+  if (error.status === 403) return 'ACCESS_DENIED';
+  const body = error.body as { error?: unknown } | undefined;
+  return typeof body?.error === 'string' && /^[A-Z][A-Z0-9_]{1,80}$/.test(body.error)
+    ? body.error
+    : `HTTP_${error.status}`;
+};
+
+const loadEmployeeConversations = async (append: boolean) => {
+  if (!employeeId || (append && !employeeNextCursor)) return;
+  if (employeeRefreshing) {
+    if (!append) employeeNeedsRefresh = true;
+    return;
+  }
+
+  const version = employeeRequestVersion;
+  employeeRefreshing = true;
+  historyLoadingState = true;
+  historyErrorState = null;
+  emitStoreChange();
+
+  const pageCount = append ? 1 : Math.max(1, employeePagesLoaded);
+  const items = new Map((append ? employeeItems : []).map((item) => [item.id, item]));
+  let cursor = append ? employeeNextCursor : undefined;
+  let loaded = append ? employeePagesLoaded : 0;
+  try {
+    do {
+      const result = await ipcBridge.database.getUserConversations.invoke({ limit: EMPLOYEE_PAGE_SIZE, cursor });
+      if (version !== employeeRequestVersion) return;
+      if (!Array.isArray(result?.items)) throw new Error('Invalid conversation page');
+      const next = result.has_more ? result.items.at(-1)?.id : undefined;
+      if (result.has_more && (!next || next === cursor)) throw new Error('Invalid conversation cursor');
+      result.items.forEach((item) => items.set(item.id, item));
+      cursor = next;
+      loaded++;
+    } while (cursor && loaded < pageCount);
+
+    employeeItems = [...items.values()];
+    employeePagesLoaded = loaded;
+    employeeNextCursor = cursor;
+    employeeErrorOnMore = false;
+    publishConversations(employeeItems);
+  } catch (error) {
+    if (version !== employeeRequestVersion) return;
+    historyErrorState = historyFailureCode(error);
+    employeeErrorOnMore = append;
+    if (historyErrorState === 'UNAUTHENTICATED' || historyErrorState === 'ACCESS_DENIED') {
+      employeeItems = [];
+      employeePagesLoaded = 0;
+      employeeNextCursor = undefined;
+      employeeErrorOnMore = false;
+      publishConversations([]);
+    }
+  } finally {
+    if (version === employeeRequestVersion) {
+      employeeRefreshing = false;
+      historyLoadingState = false;
+      emitStoreChange();
+      if (employeeNeedsRefresh) {
+        employeeNeedsRefresh = false;
+        refreshConversations();
+      }
+    }
+  }
+};
+
 const refreshConversations = () => {
+  if (isEnterpriseWeb()) {
+    void loadEmployeeConversations(false);
+    return;
+  }
+
   void ipcBridge.database.getUserConversations
     .invoke({ limit: 10000 })
-    .then((result) => {
-      const items = result?.items;
-      if (items && Array.isArray(items)) {
-        const filteredData = items.filter((conv) => {
-          // Legacy rows from the pre-provider-probe health check flow are hidden
-          // from normal history. New health checks must not create conversations.
-          const extra = conv.extra as { is_health_check?: boolean; team_id?: string; teamId?: string } | undefined;
-          return extra?.is_health_check !== true && !extra?.team_id && !extra?.teamId;
-        });
-        conversationsState = filteredData;
-        // Use ALL conversation IDs (including team/legacy health-check rows) so the
-        // responseStream listener recognises them as known and doesn't
-        // trigger an infinite refreshConversations loop.
-        conversation_idsState = new Set(items.map((conversation) => conversation.id));
-        // Map ALL rows (unfiltered) so a team member conversation's project_id is
-        // resolvable too — the team route looks up its leader conversation here.
-        projectIdByIdState = new Map(items.map((conversation) => [conversation.id, conversation.project_id ?? null]));
-        emitStoreChange();
-        return;
-      }
-
-      conversationsState = [];
-      conversation_idsState = new Set();
-      projectIdByIdState = new Map();
-      emitStoreChange();
-    })
+    .then((result) => publishConversations(Array.isArray(result?.items) ? result.items : []))
     .catch((error) => {
       console.error('[WorkspaceGroupedHistory] Failed to load conversations:', error);
-      conversationsState = [];
-      conversation_idsState = new Set();
-      projectIdByIdState = new Map();
-      emitStoreChange();
+      publishConversations([]);
     });
 };
+
+const loadMoreHistory = (): void => { void loadEmployeeConversations(true); };
+const retryHistory = (): void => { void loadEmployeeConversations(employeeErrorOnMore); };
 
 /** Source of a generating-state transition, logged for field diagnosis. */
 type GeneratingTransitionSource = 'stream' | 'reconcile' | 'reconnect' | 'terminal' | 'turnCompleted' | 'deleted';
@@ -599,6 +707,7 @@ const initializeConversationListSyncStore = () => {
 
   addEventListener('chat.history.refresh', refreshConversations);
   ipcBridge.conversation.listChanged.on((event) => {
+    if (isEnterpriseWeb() && !employeeId) return;
     if (event.action === 'deleted') {
       clearGenerating(event.conversation_id, 'deleted');
       clearAllWaitingConfirmation(event.conversation_id);
@@ -609,18 +718,20 @@ const initializeConversationListSyncStore = () => {
     refreshConversations();
   });
   ipcBridge.conversation.confirmation.remove.on((event) => {
+    if (isEnterpriseWeb() && !employeeId) return;
     if (!event?.conversation_id || !event.id) {
       return;
     }
     clearWaitingConfirmationById(event.conversation_id, event.id);
   });
   ipcBridge.conversation.responseStream.on((message) => {
+    if (isEnterpriseWeb() && !employeeId) return;
     const conversation_id = message.conversation_id;
     if (!conversation_id) {
       return;
     }
 
-    if (!conversation_idsState.has(conversation_id)) {
+    if (!conversation_idsState.has(conversation_id) && !employeeRefreshing) {
       refreshConversations();
     }
 
@@ -663,6 +774,7 @@ const initializeConversationListSyncStore = () => {
     }
   });
   ipcBridge.conversation.turnCompleted.on((event) => {
+    if (isEnterpriseWeb() && !employeeId) return;
     if (isTerminalTurnState(event.state) && activeConversationIdState !== event.session_id) {
       markCompletionUnread(event.session_id);
     }
@@ -679,6 +791,9 @@ export const useConversationListSync = () => {
 
   const {
     conversations,
+    historyLoading,
+    historyError,
+    historyHasMore,
     generatingConversationIds,
     waitingConfirmationConversationIds,
     completionUnreadConversationIds,
@@ -735,6 +850,11 @@ export const useConversationListSync = () => {
 
   return {
     conversations,
+    historyLoading,
+    historyError,
+    historyHasMore,
+    loadMoreHistory,
+    retryHistory,
     isConversationGenerating,
     isConversationWaitingConfirmation,
     hasCompletionUnread,

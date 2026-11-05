@@ -17,7 +17,7 @@ import { formatFileSize } from '@/renderer/services/FileService';
 import { CONTENT_FREE_TYPES, formatSizeAboveLimit } from '@/renderer/utils/file/previewPayload';
 import { classifyPreviewError, previewErrorToI18nKey } from '@/renderer/utils/previewError';
 import { copyText } from '@/renderer/utils/ui/clipboard';
-import { isElectronDesktop } from '@/renderer/utils/platform';
+import { isElectronDesktop, isEnterpriseWeb } from '@/renderer/utils/platform';
 import { canCopyAbsolutePath, canRevealInFolder, previewTabPaths } from './previewTabPaths';
 import { isRefreshActionable, refreshButtonState, refreshStateToken } from './refreshButtonState';
 import { reloadViaViewer } from '../../context/tabReloaderRegistry';
@@ -671,6 +671,7 @@ const PreviewPanel: React.FC = () => {
   );
 
   const showOpenInSystemButton =
+    !isEnterpriseWeb() &&
     canOpenInSystem(Boolean(metadata?.file_path), metadata?.fileRef) &&
     ((isElectronDesktop() && isMarkdown) ||
       shouldOfferOpenInSystem(content_type, Boolean(metadata?.oversized), FILE_TYPES_WITH_BUILTIN_OPEN));

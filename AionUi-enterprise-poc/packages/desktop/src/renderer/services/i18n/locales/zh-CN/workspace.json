@@ -76,6 +76,7 @@
     "capacityBusy": "当前执行容量已满，请稍后重试"
   },
   "errors": {
+    "runtimeUnavailable": "执行环境暂未就绪，请稍后重试。",
     "load": "无法加载此区域（{{code}}）。",
     "action": "操作失败（{{code}}）。",
     "authentication": "登录状态已失效，正在返回登录页，请重新登录。",
@@ -183,6 +184,7 @@
     }
   },
   "abilities": {
+    "resourcePageEmpty": "本页暂无可用资源，可继续翻页或刷新。",
     "title": "能力",
     "subtitle": "查看组织提供和个人创建的可用模型与能力；组织默认项会自动继承到你的工作台。",
     "create": "新建能力",

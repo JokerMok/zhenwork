@@ -5,6 +5,10 @@
  */
 
 import React from 'react';
+import { Message, Select } from '@arco-design/web-react';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import { DARK_THEME_ID, LIGHT_THEME_ID, SYSTEM_THEME_ID } from '@/common/theme/constants';
+import LanguageSwitcher from '@/renderer/components/settings/LanguageSwitcher';
 import { useTranslation } from 'react-i18next';
 import ScaleControl from '@/renderer/components/settings/ScaleControl';
 import CssThemeSettings from '@renderer/pages/settings/AppearanceSettings/CssThemeSettings';
@@ -61,7 +65,35 @@ const AppearanceModalContent: React.FC = () => {
   const { t } = useTranslation();
   const viewMode = useSettingsViewMode();
   const isPageMode = viewMode === 'page';
-  const { fontSizes, setFontSize, fontFamilies, setFontFamily, fontWeights, setFontWeight } = useThemeContext();
+  const { activeId, selectTheme, fontSizes, setFontSize, fontFamilies, setFontFamily, fontWeights, setFontWeight } =
+    useThemeContext();
+
+  if (isEnterpriseWeb()) {
+    return (
+      <div className='space-y-16px'>
+        <h1 className='m-0 text-20px font-semibold text-t-primary'>{t('settings.appearancePanel')}</h1>
+        <div className='px-16px md:px-24px py-14px bg-2 rd-16px divide-y divide-border-2'>
+          <PreferenceRow label={t('settings.theme')}>
+            <Select
+              aria-label={t('settings.theme')}
+              value={activeId || LIGHT_THEME_ID}
+              style={{ width: 160 }}
+              onChange={(id: string) =>
+                void selectTheme(id).catch(() => Message.error(t('settings.cssTheme.applyFailed')))
+              }
+            >
+              <Select.Option value={LIGHT_THEME_ID}>{t('settings.lightMode')}</Select.Option>
+              <Select.Option value={DARK_THEME_ID}>{t('settings.darkMode')}</Select.Option>
+              <Select.Option value={SYSTEM_THEME_ID}>{t('settings.cssTheme.followSystem')}</Select.Option>
+            </Select>
+          </PreferenceRow>
+          <PreferenceRow label={t('settings.language')}>
+            <LanguageSwitcher />
+          </PreferenceRow>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className='flex flex-col h-full w-full'>

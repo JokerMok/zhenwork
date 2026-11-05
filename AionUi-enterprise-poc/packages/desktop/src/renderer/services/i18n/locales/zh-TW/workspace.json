@@ -76,6 +76,7 @@
     "capacityBusy": "目前執行容量已滿，請稍後重試"
   },
   "errors": {
+    "runtimeUnavailable": "執行環境尚未就緒，請稍後再試。",
     "load": "無法載入此區域（{{code}}）。",
     "action": "操作失敗（{{code}}）。",
     "noModel": "目前帳號沒有可用模型，請聯絡組織管理員檢查預設模型與授權。",
@@ -180,6 +181,7 @@
     "availableEmpty": "No knowledge base is available. Create a private one, or ask an administrator to grant access."
   },
   "abilities": {
+    "resourcePageEmpty": "本頁目前沒有可用資源，可繼續翻頁或重新整理。",
     "title": "能力",
     "subtitle": "管理個人助理，並查看共享給你的助理。執行引擎和模型由工作台統一管理。",
     "create": "新增能力",

@@ -62,6 +62,7 @@ describe('enterprise workspace response handling', () => {
     expect(workspaceErrorTranslationKey('HTTP_403', 'load')).toBe('workspace.errors.forbidden');
     expect(workspaceErrorTranslationKey('PermissionDenied', 'action')).toBe('workspace.errors.forbidden');
     expect(workspaceErrorTranslationKey('ModelUnavailable', 'action')).toBe('workspace.errors.noModel');
+    expect(workspaceErrorTranslationKey('CORE_NOT_RUNNING', 'load')).toBe('workspace.errors.runtimeUnavailable');
     expect(workspaceErrorTranslationKey('REQUEST_FAILED', 'load')).toBe('workspace.errors.load');
   });
 

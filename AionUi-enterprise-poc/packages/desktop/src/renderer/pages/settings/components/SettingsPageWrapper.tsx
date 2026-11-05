@@ -24,7 +24,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useExtI18n } from '@/renderer/hooks/system/useExtI18n';
-import { BUILTIN_TAB_IDS, LEGACY_ANCHOR_REMAP } from './SettingsSider';
+import { BUILTIN_TAB_IDS, getEnterpriseSettingsNavItems, LEGACY_ANCHOR_REMAP } from './SettingsSider';
 import './settings.css';
 
 interface SettingsPageWrapperProps {
@@ -103,7 +103,8 @@ const SettingsPageWrapper: React.FC<SettingsPageWrapperProps> = ({ children, cla
   const { resolveExtTabName } = useExtI18n();
 
   const menuItems = React.useMemo(() => {
-    const builtins = getBuiltinSettingsNavItems(isDesktop, t).filter((item) => !(hostedWeb && item.id === 'webui'));
+    if (hostedWeb) return getEnterpriseSettingsNavItems(t);
+    const builtins = getBuiltinSettingsNavItems(isDesktop, t);
 
     // Insert extension tabs before system (unanchored default) or at anchor position
     const result = [...builtins];
@@ -196,6 +197,7 @@ const SettingsPageWrapper: React.FC<SettingsPageWrapperProps> = ({ children, cla
                   <button
                     key={item.path}
                     type='button'
+                    aria-current={active ? 'page' : undefined}
                     className={classNames('settings-mobile-top-nav__item', {
                       'settings-mobile-top-nav__item--active': active,
                     })}

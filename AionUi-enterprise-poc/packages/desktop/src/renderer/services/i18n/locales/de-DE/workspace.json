@@ -76,6 +76,7 @@
     "capacityBusy": "Die Ausführungskapazität ist ausgelastet. Bitte später erneut versuchen."
   },
   "errors": {
+    "runtimeUnavailable": "Die Ausführungsumgebung ist noch nicht bereit. Versuchen Sie es später erneut.",
     "load": "Unable to load this section ({{code}}).",
     "action": "The action failed ({{code}}).",
     "noModel": "Für dieses Konto ist kein Modell verfügbar. Bitten Sie Ihre Organisationsadministration, das Standardmodell und die Zugriffsrechte zu prüfen.",
@@ -180,6 +181,7 @@
     "availableEmpty": "No knowledge base is available. Create a private one, or ask an administrator to grant access."
   },
   "abilities": {
+    "resourcePageEmpty": "Auf dieser Seite sind keine Ressourcen verfügbar. Blättern Sie weiter oder laden Sie die Seite neu.",
     "title": "Abilities",
     "subtitle": "Manage personal assistants and inspect assistants shared with you. Runtime and model details stay managed by the workspace.",
     "create": "Create ability",

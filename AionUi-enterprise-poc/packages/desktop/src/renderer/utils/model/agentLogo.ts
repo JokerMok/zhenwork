@@ -69,8 +69,8 @@ export async function fetchAgentLogos(): Promise<AgentLogoMap> {
  * single network request warms a shared cache and every consumer re-renders
  * once it hydrates.
  */
-export function useAgentLogos(): AgentLogoMap {
-  const { data } = useSWR(AGENT_LOGOS_SWR_KEY, fetchAgentLogos, {
+export function useAgentLogos(enabled = true): AgentLogoMap {
+  const { data } = useSWR(enabled ? AGENT_LOGOS_SWR_KEY : null, fetchAgentLogos, {
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
   });

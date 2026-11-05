@@ -9,9 +9,10 @@ import { SWRConfig } from 'swr';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-const { getMock, itemsMock } = vi.hoisted(() => ({
+const { getMock, itemsMock, platform } = vi.hoisted(() => ({
   getMock: vi.fn(),
   itemsMock: vi.fn(),
+  platform: { hostedWeb: false },
 }));
 
 // The component reads `ipcBridge` from `@/common`. Only the sidebar surface is
@@ -37,6 +38,12 @@ vi.mock('react-i18next', () => ({
     i18n: { language: 'en-US' },
   }),
 }));
+
+vi.mock('@/renderer/hooks/context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'employee' } }),
+}));
+
+vi.mock('@/renderer/utils/platform', () => ({ isEnterpriseWeb: () => platform.hostedWeb }));
 
 vi.mock('@/renderer/utils/model/agentLogo', () => ({ useAgentLogos: () => ({}) }));
 
@@ -84,7 +91,7 @@ const projectGroup = (
 
 const renderPage = () =>
   render(
-    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+    <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0, shouldRetryOnError: false }}>
       <ArchivedSettings />
     </SWRConfig>
   );
@@ -93,10 +100,12 @@ describe('ArchivedSettings paging', () => {
   beforeEach(() => {
     getMock.mockReset();
     itemsMock.mockReset();
+    platform.hostedWeb = false;
   });
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it('requests the first screen with an explicit page-size limit and the archived flag', async () => {
@@ -162,5 +171,28 @@ describe('ArchivedSettings paging', () => {
     await waitFor(() =>
       expect(itemsMock).toHaveBeenLastCalledWith({ scope: 'project:P1', cursor: 'cursor-2', limit: 10, archived: true })
     );
+  });
+  it('loads the hosted archive through its cold API and shows a retry on failure', async () => {
+    platform.hostedWeb = true;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ error: 'PROFILE_READ_UNAVAILABLE' }, { status: 503 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          items: [{ ...conv('c1', 'Hosted archive').conversation, modified_at: 1_700_000_000_000 }],
+          has_more: false,
+          next_cursor: null,
+        })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    const retry = await screen.findByRole('button', { name: 'common.retry' });
+    expect(screen.queryByText('settings.archived.empty')).toBeNull();
+    fireEvent.click(retry);
+    await screen.findByText('Hosted archive');
+    expect(getMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenLastCalledWith('/enterprise/conversations/archived', expect.any(Object));
   });
 });

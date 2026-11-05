@@ -14,8 +14,9 @@ import { useAgentLogos } from '@/renderer/utils/model/agentLogo';
 import ThemedLogo from '@/renderer/components/agent/ThemedLogo';
 import { resolveConversationLeadingMark } from '@/renderer/pages/conversation/utils/conversationAssistantIdentity';
 import { blockMobileInputFocus, blurActiveElement } from '@/renderer/utils/ui/focus';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { isPrimaryApplicationShortcut } from '@/renderer/utils/ui/keyboardShortcuts';
-import { Empty, Spin, Typography } from '@arco-design/web-react';
+import { Button, Empty, Spin, Typography } from '@arco-design/web-react';
 import { Close, MessageOne, Robot, Search } from '@icon-park/react';
 import classNames from 'classnames';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -107,8 +108,8 @@ interface ConversationSearchPopoverProps {
 }
 
 const ConversationAgentMark: React.FC<{ conversation: IMessageSearchItem['conversation'] }> = ({ conversation }) => {
-  const logos = useAgentLogos();
-  const { info: assistantInfo } = usePresetAssistantInfo(conversation);
+  const logos = useAgentLogos(!isEnterpriseWeb());
+  const { info: assistantInfo } = usePresetAssistantInfo(conversation, !isEnterpriseWeb());
   const leadingMark = resolveConversationLeadingMark(conversation, assistantInfo, logos);
   if (leadingMark.kind === 'emoji') {
     return (
@@ -153,6 +154,7 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [localError, setLocalError] = useState(false);
   const [recentKeywords, setRecentKeywords] = useState<string[]>([]);
   const enterprise = window as EnterpriseSearchWindow;
   const enterpriseDesktop = Boolean(enterprise.enterpriseResources && enterprise.enterpriseContext?.webOrigin?.startsWith('https://'));
@@ -190,7 +192,8 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
   const runSearch = useCallback(
     async (pageToLoad: number, append: boolean) => {
       const seq = ++localSearchSeq.current;
-      if (!debouncedKeyword) {
+      setLocalError(false);
+      if (!visible || !debouncedKeyword) {
         setItems([]);
         setPage(0);
         setHasMore(false);
@@ -227,6 +230,7 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
       } catch (error) {
         if (seq !== localSearchSeq.current) return;
         console.error('[ConversationSearchPopover] Search failed:', error);
+        setLocalError(true);
         if (!append) {
           setItems([]);
           setPage(0);
@@ -239,7 +243,7 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
         }
       }
     },
-    [debouncedKeyword, enterpriseDesktop, sourceFilter]
+    [debouncedKeyword, enterpriseDesktop, sourceFilter, visible]
   );
 
   useEffect(() => {
@@ -326,12 +330,12 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
   }, []);
 
   const handleLoadMore = useCallback(() => {
-    if (!visible || !debouncedKeyword || loading || loadingMore || !hasMore) {
+    if (!visible || !debouncedKeyword || loading || loadingMore || !hasMore || localError) {
       return;
     }
 
     void runSearch(page + 1, true);
-  }, [debouncedKeyword, hasMore, loading, loadingMore, page, runSearch, visible]);
+  }, [debouncedKeyword, hasMore, loading, loadingMore, localError, page, runSearch, visible]);
 
   const handleResultClick = useCallback(
     async (item: IMessageSearchItem) => {
@@ -453,7 +457,17 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
       );
     }
 
+    const failedSearch = localError && (
+      <div role='alert' className='flex items-center justify-center gap-8px py-8px text-12px text-t-secondary'>
+        <span>{t('workspace.errors.load', { code: 'REQUEST_FAILED' })}</span>
+        <Button type='text' size='mini' onClick={() => void runSearch(page + 1, page > 0)}>
+          {t('common.retry')}
+        </Button>
+      </div>
+    );
+
     if (visibleLocalItems.length === 0 && visibleWebItems.length === 0) {
+      if (failedSearch) return failedSearch;
       return (
         <div className='conversation-search-modal__state'>
           <Empty className='py-2px' description={t(webError
@@ -473,6 +487,7 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
         }}
       >
         <div className='conversation-search-modal__results flex flex-col'>
+          {failedSearch}
           {webError && <div role='alert' className='px-12px py-8px text-12px text-t-secondary'>
             {t('conversation.history.webConversationsUnavailable')}
           </div>}
@@ -546,7 +561,7 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
     );
   }, [debouncedKeyword, enterpriseDesktop, handleLoadMore, handleResultClick, handleWebResultClick, i18n.language,
     visibleLocalItems, visibleWebItems, visibleLocalLoading, visibleWebLoading,
-    loadMoreWeb, loadingMore, recentKeywords, t, webError, webHasMore]);
+    loadMoreWeb, loadingMore, localError, page, recentKeywords, runSearch, t, webError, webHasMore]);
 
   const hasSearchResults = visibleLocalItems.length > 0 || visibleWebItems.length > 0;
   const useCompactHeight = !debouncedKeyword || (!visibleLocalLoading && !visibleWebLoading && !hasSearchResults);

@@ -4,7 +4,7 @@ import { Rc2Client } from '../packages/desktop/src/process/services/enterprise/r
 
 test('RC2 resource catalog uses the server-authoritative available scope across pages', async () => {
   const requests = [];
-  const firstPage = Array.from({ length: 30 }, (_, index) => ({
+  const firstPage = Array.from({ length: 2 }, (_, index) => ({
     id: `resource-${index}`,
     name: `Resource ${index}`,
     description: '',
@@ -35,7 +35,8 @@ test('RC2 resource catalog uses the server-authoritative available scope across 
   const client = new Rc2Client('http://127.0.0.1:3580', 'https://workspace.test', async (url) => {
     const parsed = new URL(url);
     requests.push(parsed.pathname + parsed.search);
-    const data = parsed.searchParams.get('page') === '1' ? firstPage : secondPage;
+    const hasMore = parsed.searchParams.get('page') === '1';
+    const data = { items: hasMore ? firstPage : secondPage, hasMore };
     return new Response(JSON.stringify({ code: 200, data }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -45,10 +46,10 @@ test('RC2 resource catalog uses the server-authoritative available scope across 
   const resources = await client.resources('ASSISTANT');
 
   assert.deepEqual(requests, [
-    '/ai/resources?type=ASSISTANT&scope=available&page=1',
-    '/ai/resources?type=ASSISTANT&scope=available&page=2',
+    '/ai/resources?type=ASSISTANT&scope=available&page=1&paged=true',
+    '/ai/resources?type=ASSISTANT&scope=available&page=2&paged=true',
   ]);
-  assert.equal(resources.length, 31);
+  assert.equal(resources.length, 3);
   assert.deepEqual(resources[0], {
     id: 'resource-0',
     name: 'Resource 0',

@@ -30,6 +30,26 @@ class WorkspaceResourcePagingTest {
         verify(permissions).require(7L,"ai:resource:enterprise");
     }
 
+    @Test void availableScopeContinuesAfterReadinessFiltering() {
+        var jdbc = mock(JdbcTemplate.class);
+        var guard = mock(AiResourceGuard.class);
+        var permissions = mock(WorkspacePermissions.class);
+        var resources = new WorkspaceResources(jdbc,null,permissions,guard,null,null,null);
+        var ids = IntStream.range(0,31).mapToObj(i -> UUID.randomUUID()).toList();
+        when(jdbc.queryForList(contains("LIMIT 31"), eq(UUID.class), eq("SKILL"), eq(7L), eq(false),
+            eq(7L), eq(7L), eq(7L), eq(0))).thenReturn(ids);
+        when(guard.require(any(UUID.class), eq(7L), eq(AiResourceGuard.Action.USE)))
+            .thenThrow(new WorkspaceDenied(403,"ResourceUnavailable"));
+
+        var first = resources.listPage(7L,"SKILL","available",1);
+
+        assertTrue(first.items().isEmpty());
+        assertTrue(first.hasMore());
+        verify(guard,never()).require(ids.getLast(),7L,AiResourceGuard.Action.USE);
+        verify(permissions).require(7L,"ai:skill:view");
+        verify(permissions).require(7L,"ai:skill:use");
+    }
+
     @Test void dependencyLookupUsesTheExistingViewGuard() {
         var jdbc = mock(JdbcTemplate.class);
         var guard = mock(AiResourceGuard.class);

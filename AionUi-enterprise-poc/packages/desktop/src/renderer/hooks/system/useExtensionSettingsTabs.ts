@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { extensions as extensionsIpc, type IExtensionSettingsTab } from '@/common/adapter/ipcBridge';
 
 // Module-scope cache: settings tabs rarely change during a session, and multiple
@@ -60,6 +61,7 @@ export function useExtensionSettingsTabs(): IExtensionSettingsTab[] {
   const [tabs, setTabs] = useState<IExtensionSettingsTab[]>(() => cachedTabs ?? []);
 
   useEffect(() => {
+    if (isEnterpriseWeb()) return;
     subscribers.add(setTabs);
     ensureStateListener();
 

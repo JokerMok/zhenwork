@@ -73,7 +73,7 @@ const WorkspaceOpenButton: React.FC<WorkspaceOpenButtonProps> = ({ workspacePath
       setPreferredTool(saved);
     }
 
-    if (isTemporary) return;
+    if (isTemporary || !isElectronDesktop()) return;
 
     const checkTools = async () => {
       try {

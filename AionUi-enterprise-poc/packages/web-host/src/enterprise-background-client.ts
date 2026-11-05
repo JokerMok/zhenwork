@@ -109,9 +109,16 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
     if (!['ASSISTANT', 'SKILL', 'MCP', 'KNOWLEDGE', 'TOOL'].includes(type)) throw new Error('Invalid background resource type');
     const items = new Map<string, Record<string, unknown>>();
     for (let page = 1; page <= 100; page++) {
-      const data = await this.read(`/resources?type=${type}&scope=available&page=${page}`);
-      if (!Array.isArray(data)) throw new Error('Background resources unavailable');
-      for (const item of data) {
+      const data = (await this.read(`/resources?type=${type}&scope=available&page=${page}&paged=true`)) as {
+        items?: unknown;
+        hasMore?: boolean;
+      } | unknown[];
+      const legacy = Array.isArray(data);
+      const rows = legacy ? data : data?.items;
+      if (!Array.isArray(rows) || (!legacy && typeof data.hasMore !== 'boolean')) {
+        throw new Error('Background resources unavailable');
+      }
+      for (const item of rows) {
         if (!item || typeof item.id !== 'string' || !item.actions?.includes('USE') ||
             !Number.isInteger(item.publishedVersion)) continue;
         items.set(item.id, { id: item.id, name: item.name, description: item.description,
@@ -119,7 +126,7 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
           source: item.source === 'ORGANIZATION' ? 'enterprise' : 'personal', type,
         });
       }
-      if (data.length < 30) return [...items.values()];
+      if (legacy ? rows.length < 30 : !data.hasMore) return [...items.values()];
     }
     throw new Error('Enterprise capability catalog exceeds 3000 resources; narrow the authorized scope');
   }

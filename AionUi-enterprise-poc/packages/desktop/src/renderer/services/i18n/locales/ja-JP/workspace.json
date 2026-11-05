@@ -76,6 +76,7 @@
     "capacityBusy": "実行枠が埋まっています。しばらくして再試行してください。"
   },
   "errors": {
+    "runtimeUnavailable": "実行環境はまだ準備できていません。しばらくしてから再試行してください。",
     "load": "Unable to load this section ({{code}}).",
     "action": "The action failed ({{code}}).",
     "noModel": "このアカウントで利用できるモデルがありません。組織の管理者に、既定のモデルとアクセス権の確認を依頼してください。",
@@ -180,6 +181,7 @@
     "availableEmpty": "No knowledge base is available. Create a private one, or ask an administrator to grant access."
   },
   "abilities": {
+    "resourcePageEmpty": "このページに利用できるリソースがありません。次のページに進むか、再読み込みしてください。",
     "title": "Abilities",
     "subtitle": "Manage personal assistants and inspect assistants shared with you. Runtime and model details stay managed by the workspace.",
     "create": "Create ability",

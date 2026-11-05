@@ -76,6 +76,7 @@
     "capacityBusy": "실행 용량이 가득 찼습니다. 잠시 후 다시 시도하세요."
   },
   "errors": {
+    "runtimeUnavailable": "실행 환경이 아직 준비되지 않았습니다. 잠시 후 다시 시도하세요.",
     "load": "Unable to load this section ({{code}}).",
     "action": "The action failed ({{code}}).",
     "noModel": "이 계정에서 사용할 수 있는 모델이 없습니다. 조직 관리자에게 기본 모델과 접근 권한을 확인해 달라고 요청하세요.",
@@ -180,6 +181,7 @@
     "availableEmpty": "No knowledge base is available. Create a private one, or ask an administrator to grant access."
   },
   "abilities": {
+    "resourcePageEmpty": "이 페이지에 사용할 수 있는 리소스가 없습니다. 다음 페이지로 이동하거나 새로고침하세요.",
     "title": "Abilities",
     "subtitle": "Manage personal assistants and inspect assistants shared with you. Runtime and model details stay managed by the workspace.",
     "create": "Create ability",

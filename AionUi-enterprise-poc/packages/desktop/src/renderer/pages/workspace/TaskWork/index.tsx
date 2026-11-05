@@ -23,10 +23,12 @@ export default function TaskWork({
   conversationId,
   composer = false,
   embedded = false,
+  hideOpenAction = false,
 }: {
   conversationId: string;
   composer?: boolean;
   embedded?: boolean;
+  hideOpenAction?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -175,7 +177,7 @@ export default function TaskWork({
               {t('workspace.work.retryRemaining')}
             </Button>
           )}
-          {!embedded && (
+          {!embedded && !hideOpenAction && (
             <Button size='mini' type='text' onClick={() => navigate(`/conversation/${conversationId}`)}>
               {t(composer ? 'workspace.work.continue' : 'workspace.tasks.open')}
             </Button>
