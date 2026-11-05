@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "skill_version": 1,
+  "status": "approved",
+  "recorded_by": "coordinator",
+  "authorization_basis": "initial_request",
+  "authorization_evidence": "2026-11-05用户明确要求：请自主完成任务分派、开发、合并、纠偏、回归、发布及最终验收；本地普通方案无需逐项批准。",
+  "approved_at": "2026-11-05T03:08:48.667943+00:00",
+  "git_common_dir": "621f967e679af645a720a4fcf5eecbb02e4649135b0d9ca2e499021aa20c79a2",
+  "base_sha": "e846b1d57fa1a53130b7abea62c70d4957bba7a7",
+  "target_branch": "feat/enterprise-1.0.1-optimization",
+  "artifacts": {
+    "prd.md": "b7669fa895a050e7a1d8f36c628f36abaf2d12779d2385f09cb3105673dd09c4",
+    "test-plan.md": "ee3ac8d3296b0e2cf559f27d1ed19060c04c532fcc340f2b3267cd5b95cd4e9e",
+    "development-plan.md": "88b2d29fa9ff50bcc5a2898f4edf9c3f16386308b8d19e4e6cd2b4300303ed68",
+    "tasks/T001.md": "d0a4cbfd419f508e61ae4d816263037922c31cba242989a7f0961f7a85683ffa",
+    "tasks/T002.md": "b31d7551810964ecfbe5567d6bba3ea4e6c65ae10f0fb472bffc6a58131e03ac",
+    "tasks/T003.md": "5e5e5615fe0949953e948a6b5f834ca6842c926165b9b15f1291f01fb7489331",
+    "tasks/T004.md": "2a13355751bacbb8d934902f788f164c81da860f20941b951a0ab9b16986842e",
+    "tasks/T005.md": "9c1cc755f7fb80cf598ecdd2c51f0f5ccef45484d15bcf93c500820d2659f69f",
+    "tasks/T006.md": "cc2dc64169d50058aabaea6aac1b3b3c67f459d7338f69c3e3b838839e447db0",
+    "tasks/T001.json": "8386f4d2e4fb26508ea7987bc52aae0e937e8afd72b35e068e6e4b24fbdcc3c8",
+    "tasks/T002.json": "9d923656549674aecf8d111cf217fd0335617db885e4929e2349ba4be3b6027f",
+    "tasks/T003.json": "fbe14c97ecbe315673245f7e66efffaca4e10d84bd4d05ef878d911f4f7ca8c9",
+    "tasks/T004.json": "03ba58a655addc012e66c40752639707e563a35aabdc65279cd0b750116cb2ee",
+    "tasks/T005.json": "0684baa7b0ad2de18e623bad3877c87910ef58c7cf387273f93a2486880fed6e",
+    "tasks/T006.json": "c2dc0721b97cdf710964d0c5f89812959c2390a3ade38fdb6af515c8422e739a"
+  }
+}
