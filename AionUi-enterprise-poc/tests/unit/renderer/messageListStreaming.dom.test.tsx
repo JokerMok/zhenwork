@@ -104,6 +104,7 @@ vi.mock('@/renderer/pages/conversation/Messages/components/MessageSkillSuggest',
 
 vi.mock('@/renderer/pages/conversation/Messages/components/MessageToolGroupSummary', () => ({
   default: () => <div>tool_summary</div>,
+  TaskDeliverySummary: () => null,
 }));
 
 vi.mock('@/renderer/pages/conversation/Messages/MessageFileChanges', () => ({

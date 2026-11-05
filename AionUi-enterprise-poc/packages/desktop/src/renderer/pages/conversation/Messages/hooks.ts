@@ -150,11 +150,8 @@ export function composeMessageWithIndex(
 
   if (!list?.length) {
     const firstMessage = sanitizeMessageForList(message);
-    // Update index when adding first message
-    const msgIndexKey = getMessageIndexKey(firstMessage);
-    if (msgIndexKey) {
-      index.msgIdIndex.set(msgIndexKey, 0);
-    }
+    // The first frame needs every stable identity indexed before the rest of a batch is composed.
+    Object.assign(index, buildMessageIndex([firstMessage]));
     return [firstMessage];
   }
 
@@ -173,6 +170,7 @@ export function composeMessageWithIndex(
       index.call_idIndex = rebuilt.call_idIndex;
       index.tool_call_idIndex = rebuilt.tool_call_idIndex;
       index.permission_call_idIndex = rebuilt.permission_call_idIndex;
+      index.terminal_idIndex = rebuilt.terminal_idIndex;
     }
     return result;
   }
@@ -204,6 +202,9 @@ export function composeMessageWithIndex(
     if (existingIdx !== undefined && existingIdx < list.length) {
       const existingMsg = list[existingIdx];
       if (existingMsg.type === 'tool_call') {
+        // A delayed running frame cannot reopen a tool that has already settled.
+        if (['completed', 'error'].includes(existingMsg.content.status || '') && message.content.status === 'running')
+          return list;
         const newList = list.slice();
         const merged = { ...existingMsg.content, ...message.content };
         newList[existingIdx] = { ...existingMsg, content: merged };

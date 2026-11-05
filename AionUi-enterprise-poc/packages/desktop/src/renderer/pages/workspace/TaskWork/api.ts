@@ -45,24 +45,32 @@ export async function fetchTask(id: string): Promise<WorkTask> {
   pending.set(id, request);
   return request;
 }
+/** A delayed snapshot may never replace a newer persisted state or cross conversations. */
+export function mergeTaskSnapshot(current: WorkTask | undefined, incoming: WorkTask, id: string): WorkTask {
+  if (incoming.id !== id || !Number.isFinite(incoming.updatedAt) || !Array.isArray(incoming.attempts)) {
+    throw Error('TASK_SNAPSHOT_INVALID');
+  }
+  return current?.id === id && current.updatedAt > incoming.updatedAt ? current : incoming;
+}
 export function useTaskWork(id?: string) {
   const [task, setTask] = useState<WorkTask>();
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<{ id: string; code: string }>();
   const generation = useRef(0);
   const reload = useCallback(async () => {
     if (!id || !isEnterpriseWeb()) return;
     const n = ++generation.current;
     try {
       const value = await fetchTask(id);
+      mergeTaskSnapshot(undefined, value, id);
       if (n === generation.current) {
-        setTask(value);
+        setTask((current) => mergeTaskSnapshot(current, value, id));
         setError(undefined);
       }
     } catch (e) {
       const code = workspaceErrorCode(e);
       if (n === generation.current) {
         if (code === 'TASK_NOT_FOUND') setTask(undefined);
-        else setError(code);
+        else setError({ id, code });
       }
     }
   }, [id]);
@@ -84,7 +92,13 @@ export function useTaskWork(id?: string) {
       document.removeEventListener('visibilitychange', tick);
     };
   }, [id, reload]);
-  return { task, attempt: task?.attempts.at(-1), error, reload };
+  const visibleTask = task?.id === id ? task : undefined;
+  return {
+    task: visibleTask,
+    attempt: visibleTask?.attempts.at(-1),
+    error: error && error.id === id ? error.code : undefined,
+    reload,
+  };
 }
 export async function taskRequestId(id: string, payload: unknown): Promise<string> {
   const hash = Array.from(
