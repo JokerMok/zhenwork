@@ -20,7 +20,9 @@
     "AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.mjs",
     "AionUi-enterprise-poc/packages/desktop/src/process/services/enterprise/resourceSync.d.mts",
     "deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/SkillMaintenance.vue",
-    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceResources.java"
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceResources.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceSkillDependencyChecks.java",
+    "deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/test/java/org/dromara/ai/workspace/WorkspaceSkillDependencyChecksTest.java"
   ],
   "excluded_snapshot_paths": [
     "AionUi-enterprise-poc/node_modules/",
