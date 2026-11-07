@@ -7,6 +7,7 @@ import MessageTips from '@/renderer/pages/conversation/Messages/components/Messa
 import type { WorkAttempt } from '@/renderer/pages/workspace/TaskWork/api';
 const fixture = vi.hoisted(() => ({
   attempt: undefined as WorkAttempt | undefined,
+  earlier: [] as WorkAttempt[],
   request: vi.fn(),
   reload: vi.fn(),
 }));
@@ -15,7 +16,7 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock('@/renderer/pages/workspace/TaskWork/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/renderer/pages/workspace/TaskWork/api')>()),
   useTaskWork: () => ({
-    task: fixture.attempt ? { attempts: [fixture.attempt] } : undefined,
+    task: fixture.attempt ? { id: 'abcd1234', attempts: [...fixture.earlier, fixture.attempt] } : undefined,
     attempt: fixture.attempt,
     reload: fixture.reload,
   }),
@@ -30,6 +31,7 @@ vi.mock('@/renderer/components/base/ButlerDiagnoseButton', () => ({ default: () 
 vi.mock('@/renderer/components/base/FeedbackButton', () => ({ default: () => null }));
 vi.mock('@renderer/components/Markdown', () => ({ default: () => null }));
 beforeEach(() => {
+  fixture.earlier = [];
   fixture.request.mockReset();
   fixture.request.mockResolvedValue({});
   fixture.attempt = {
@@ -108,4 +110,56 @@ test('employee model errors retain an actionable message without raw provider di
   );
   expect(screen.getByTestId('employee-chat-error').textContent).toBe('workspace.experience.aiUnavailable');
   expect(document.body.textContent).not.toMatch(/401|AUTH_FAILED|internal transport|secret endpoint/);
+});
+
+test('the pending task card keeps its question beside Continue without posting a task action', () => {
+  Object.assign(fixture.attempt!, { state: 'waiting_input', question: 'Please attach the November workbook.' });
+  const resume = vi.fn();
+  render(
+    <MemoryRouter>
+      <TaskWork conversationId='abcd1234' hideOpenAction onContinue={resume} />
+    </MemoryRouter>
+  );
+  const card = screen.getByTestId('task-work');
+  expect(card.textContent).toContain('Please attach the November workbook.');
+  fireEvent.click(screen.getByRole('button', { name: 'workspace.work.continue' }));
+  expect(resume).toHaveBeenCalledOnce();
+  expect(fixture.request).not.toHaveBeenCalled();
+});
+
+test('session result cards preserve older attempt versions and withhold unavailable links', () => {
+  fixture.earlier = [
+    {
+      ...fixture.attempt!,
+      id: 'older',
+      artifacts: [
+        {
+          path: 'reports/original.xlsx',
+          version: 1,
+          versionId: 'old-version',
+          sha256: 'a'.repeat(64),
+          valid: true,
+          downloadUrl: '/enterprise/files/download?path=original&version=old-version',
+        },
+      ],
+    },
+  ];
+  fixture.attempt!.artifacts = [
+    {
+      path: 'reports/missing.xlsx',
+      version: 2,
+      sha256: 'b'.repeat(64),
+      valid: false,
+      downloadUrl: '/should-not-be-rendered',
+    },
+  ];
+  render(
+    <MemoryRouter>
+      <TaskWork conversationId='abcd1234' hideOpenAction />
+    </MemoryRouter>
+  );
+  expect(screen.getByText('original.xlsx · v1')).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'common.download' }).getAttribute('href')).toContain('version=old-version');
+  expect(screen.getByText('workspace.experience.artifactUnavailable')).toBeTruthy();
+  expect(document.querySelector('[href="/should-not-be-rendered"]')).toBeNull();
 });

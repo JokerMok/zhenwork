@@ -604,12 +604,17 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
                 icon={<Plus theme='outline' size='14' strokeWidth={2} fill={iconColors.primary} />}
                 loading={uploading}
                 disabled={uploading}
+                aria-label={t('common.fileAttach.addFiles')}
                 data-testid='file-upload-btn'
                 onClick={() => setIsSheetOpen(true)}
               />
             </span>
           ) : (
-            <Dropdown trigger='hover' onVisibleChange={handlePlusDropdownVisibleChange} droplist={menuContent}>
+            <Dropdown
+              trigger={['hover', 'click']}
+              onVisibleChange={handlePlusDropdownVisibleChange}
+              droplist={menuContent}
+            >
               <span className='flex items-center gap-4px cursor-pointer lh-[1]'>
                 <Button
                   type='secondary'
@@ -618,6 +623,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
                   icon={<Plus theme='outline' size='14' strokeWidth={2} fill={iconColors.primary} />}
                   loading={uploading}
                   disabled={uploading}
+                  aria-label={t('common.fileAttach.addFiles')}
                   data-testid='file-upload-btn'
                 />
               </span>
@@ -676,6 +682,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
           }}
           icon={<ArrowUp theme='filled' size='14' fill='white' strokeWidth={5} />}
           onClick={onSend}
+          aria-label={t('common.send')}
           data-testid='guid-send-btn'
         />
       </div>

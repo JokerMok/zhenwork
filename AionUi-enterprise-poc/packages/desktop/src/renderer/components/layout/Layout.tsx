@@ -521,7 +521,7 @@ const Layout: React.FC<{
                 per-conversation subtree → persists across same-project switches. */}
             <div ref={mainRowRef} className='flex flex-1 min-h-0 overflow-hidden'>
               <ArcoLayout.Content
-                className={'bg-1 layout-content flex flex-col min-h-0 flex-1'}
+                className={'bg-1 layout-content flex flex-col min-w-0 min-h-0 flex-1'}
                 onClick={() => {
                   if (isMobile && !collapsed) setCollapsed(true);
                 }}

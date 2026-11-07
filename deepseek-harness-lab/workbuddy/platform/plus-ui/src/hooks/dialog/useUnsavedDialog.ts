@@ -11,12 +11,17 @@ export function useUnsavedDialog(visible: Ref<boolean>, state: () => unknown, bu
     if (initial.value !== JSON.stringify(state()))
       try {
         await ElMessageBox.confirm('尚未保存的修改将丢失。', '关闭编辑', {
-          confirmButtonText: '放弃修改',
-          cancelButtonText: '继续编辑',
+          confirmButtonText: '继续编辑',
+          cancelButtonText: '放弃修改',
+          distinguishCancelAndClose: true,
+          closeOnClickModal: false,
+          autofocus: true,
           type: 'warning'
         });
-      } catch {
         return;
+      } catch (action) {
+        // Only the explicit discard button closes the editor; Escape and X retain the draft.
+        if (action !== 'cancel') return;
       }
     visible.value = false;
     done?.();

@@ -458,6 +458,7 @@
     "replaceRequirements": "用本次要求替换未完成交付（保留已成功成果）"
   },
   "experience": {
+    "artifactUnavailable": "成果版本不可用或无权访问。",
     "executionDetails": "执行详情",
     "actionFailed": "操作未完成，请重试。",
     "aiUnavailable": "AI 服务暂时不可用，请重试或联系管理员。",

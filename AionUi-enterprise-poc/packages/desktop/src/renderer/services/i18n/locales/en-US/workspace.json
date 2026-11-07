@@ -458,6 +458,7 @@
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
   },
   "experience": {
+    "artifactUnavailable": "This result version is unavailable or you do not have access.",
     "executionDetails": "Execution details",
     "actionFailed": "The action did not finish. Please retry.",
     "aiUnavailable": "AI service is temporarily unavailable. Retry or contact your administrator.",

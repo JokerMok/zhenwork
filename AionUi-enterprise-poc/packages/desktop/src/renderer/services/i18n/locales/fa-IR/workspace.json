@@ -442,6 +442,7 @@
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
   },
   "experience": {
+    "artifactUnavailable": "این نسخه از نتیجه در دسترس نیست یا اجازهٔ دسترسی ندارید.",
     "executionDetails": "جزئیات اجرا",
     "actionFailed": "عملیات کامل نشد. دوباره تلاش کنید.",
     "aiUnavailable": "سرویس هوش مصنوعی موقتاً در دسترس نیست. دوباره تلاش کنید یا با مدیر تماس بگیرید.",

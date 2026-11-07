@@ -442,6 +442,7 @@
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
   },
   "experience": {
+    "artifactUnavailable": "Esta versão do resultado está indisponível ou você não tem acesso.",
     "executionDetails": "Detalhes da execução",
     "actionFailed": "A ação não foi concluída. Tente novamente.",
     "aiUnavailable": "O serviço de IA está temporariamente indisponível. Tente novamente ou contate o administrador.",

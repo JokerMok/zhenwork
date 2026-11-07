@@ -442,6 +442,7 @@
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
   },
   "experience": {
+    "artifactUnavailable": "이 결과 버전을 사용할 수 없거나 접근 권한이 없습니다.",
     "executionDetails": "실행 세부 정보",
     "actionFailed": "작업을 완료하지 못했습니다. 다시 시도하세요.",
     "aiUnavailable": "AI 서비스를 일시적으로 사용할 수 없습니다. 다시 시도하거나 관리자에게 문의하세요.",

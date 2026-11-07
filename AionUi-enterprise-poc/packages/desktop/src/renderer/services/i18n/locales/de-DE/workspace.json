@@ -442,6 +442,7 @@
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
   },
   "experience": {
+    "artifactUnavailable": "Diese Ergebnisversion ist nicht verfügbar oder Sie haben keinen Zugriff.",
     "executionDetails": "Ausführungsdetails",
     "actionFailed": "Die Aktion wurde nicht abgeschlossen. Bitte erneut versuchen.",
     "aiUnavailable": "Der KI-Dienst ist vorübergehend nicht verfügbar. Erneut versuchen oder die Administration kontaktieren.",

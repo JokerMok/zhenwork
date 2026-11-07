@@ -35,8 +35,8 @@ const WorkspacePage: React.FC = () => {
   };
 
   return (
-    <div className='h-full min-h-0 overflow-y-auto bg-bg-1'>
-      <div className='mx-auto w-full max-w-1180px px-18px py-18px md:px-28px md:py-24px'>
+    <div className='h-full min-h-0 min-w-0 overflow-y-auto bg-bg-1'>
+      <div className='box-border mx-auto w-full min-w-0 max-w-1180px px-18px py-18px md:px-28px md:py-24px'>
         <Tabs activeTab={active} onChange={setActive} type='rounded'>
           <Tabs.TabPane
             key='home'

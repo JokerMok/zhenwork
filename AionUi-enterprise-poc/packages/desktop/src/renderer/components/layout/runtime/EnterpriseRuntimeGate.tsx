@@ -1,7 +1,9 @@
 import { Button, Input, Spin } from '@arco-design/web-react';
-import React, { Suspense, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
+import MarkdownView, { TrustedArtifactContext } from '@/renderer/components/Markdown';
+import type { WorkTask } from '@/renderer/pages/workspace/TaskWork/api';
 import { emitter } from '@/renderer/utils/emitter';
 
 type Preparation = { ready?: boolean; phase?: string; error?: string; traceId?: string };
@@ -20,6 +22,8 @@ export default function EnterpriseRuntimeGate({ children }: React.PropsWithChild
   const targetMessage = (navigationState as { targetMessageId?: string } | null)?.targetMessageId;
   const [state, setState] = useState<Preparation>({ phase: 'queued' });
   const [snapshot, setSnapshot] = useState<Snapshot>();
+  const [task, setTask] = useState<WorkTask>();
+  const onTaskChange = useCallback((value: WorkTask | undefined) => setTask(value), []);
   const [attempt, setAttempt] = useState(0);
   const [snapshotAttempt, setSnapshotAttempt] = useState(0);
   const [snapshotError, setSnapshotError] = useState<number>();
@@ -55,7 +59,9 @@ export default function EnterpriseRuntimeGate({ children }: React.PropsWithChild
         setSnapshotError(503);
         return;
       }
-      setSnapshot((current) => before && current ? { ...view, messages: [...view.messages, ...current.messages] } : view);
+      setSnapshot((current) =>
+        before && current ? { ...view, messages: [...view.messages, ...current.messages] } : view
+      );
     } catch {
       if (!controller.signal.aborted) setSnapshotError(503);
     } finally {
@@ -65,12 +71,14 @@ export default function EnterpriseRuntimeGate({ children }: React.PropsWithChild
 
   useEffect(() => {
     setSnapshot(undefined);
+    setTask(undefined);
     void readSnapshot();
     return () => snapshotController.current?.abort();
   }, [id, targetMessage, snapshotAttempt]);
 
   useEffect(() => {
-    if (snapshot && targetMessage) document.getElementById(`snapshot-${targetMessage}`)?.scrollIntoView?.({ block: 'center' });
+    if (snapshot && targetMessage)
+      document.getElementById(`snapshot-${targetMessage}`)?.scrollIntoView?.({ block: 'center' });
   }, [snapshot, targetMessage]);
   useEffect(() => {
     const controller = new AbortController();
@@ -122,6 +130,10 @@ export default function EnterpriseRuntimeGate({ children }: React.PropsWithChild
     };
   }, [attempt, readOnly]);
   if (state.ready) return children;
+  const visibleTask = task?.id === id ? task : undefined;
+  const waiting = ['waiting_input', 'waiting_confirmation'].includes(visibleTask?.attempts.at(-1)?.state || '');
+  const pendingQuestion = waiting ? visibleTask?.attempts.at(-1)?.question : undefined;
+  const receipts = visibleTask?.attempts.flatMap((item) => item.artifacts) || [];
   const reason =
     state.error === 'CORE_CAPACITY'
       ? t('workspace.status.capacityBusy')
@@ -133,7 +145,7 @@ export default function EnterpriseRuntimeGate({ children }: React.PropsWithChild
             ? t('workspace.status.preparationTimedOut')
             : t('workspace.status.environmentUnavailable');
   return (
-    <section className='h-full min-h-0 flex flex-col bg-bg-1' data-testid='inline-execution-preparation'>
+    <section className='h-full min-h-0 min-w-0 flex flex-col bg-bg-1' data-testid='inline-execution-preparation'>
       <header className='min-h-44px px-20px py-12px border-b border-solid border-border-2 font-medium truncate'>
         {snapshot?.name || t('conversation.welcome.newConversation')}
       </header>
@@ -142,60 +154,91 @@ export default function EnterpriseRuntimeGate({ children }: React.PropsWithChild
           {snapshotError ? (
             <div role='alert' className='flex items-center gap-8px text-13px text-t-secondary'>
               <span>{t('workspace.errors.load', { code: `HTTP_${snapshotError}` })}</span>
-              <Button type='text' onClick={() => snapshot?.nextOlder
-                ? void readSnapshot(snapshot.nextOlder)
-                : setSnapshotAttempt((value) => value + 1)}>
+              <Button
+                type='text'
+                onClick={() =>
+                  snapshot?.nextOlder ? void readSnapshot(snapshot.nextOlder) : setSnapshotAttempt((value) => value + 1)
+                }
+              >
                 {t('common.retry')}
               </Button>
             </div>
           ) : null}
           {snapshot?.nextOlder && !snapshotError && (
-            <Button type='text' loading={loadingOlder} onClick={() => void readSnapshot(snapshot.nextOlder ?? undefined)}>
+            <Button
+              type='text'
+              loading={loadingOlder}
+              onClick={() => void readSnapshot(snapshot.nextOlder ?? undefined)}
+            >
               {t('conversation.historySearch.loadMore')}
             </Button>
           )}
-          {snapshot?.messages.map((message) => (
-            <div
-              key={message.id}
-              id={`snapshot-${message.id}`}
-              className={`whitespace-pre-wrap break-words text-14px leading-7 ${message.position === 'right' ? 'self-end bg-bg-2 rd-12px px-16px py-10px max-w-80%' : 'self-start w-full'}`}
-            >
-              {message.text}
-            </div>
-          ))}
+          <TrustedArtifactContext.Provider value={receipts}>
+            {snapshot?.messages.map((message) => (
+              <div
+                key={message.id}
+                id={`snapshot-${message.id}`}
+                className={`whitespace-pre-wrap break-words text-14px leading-7 ${message.position === 'right' ? 'self-end bg-bg-2 rd-12px px-16px py-10px max-w-80%' : 'self-start w-full'}`}
+              >
+                {message.position === 'left' ? (
+                  message.text === pendingQuestion ? (
+                    <details>
+                      <summary className='cursor-pointer text-t-secondary'>
+                        {t('workspace.work.states.waiting_input')}
+                      </summary>
+                      <MarkdownView>{message.text}</MarkdownView>
+                    </details>
+                  ) : (
+                    <MarkdownView>{message.text}</MarkdownView>
+                  )
+                ) : (
+                  message.text
+                )}
+              </div>
+            ))}
+          </TrustedArtifactContext.Provider>
           {id && snapshot && (
             <Suspense fallback={null}>
-              <TaskWork conversationId={id} hideOpenAction />
+              <TaskWork
+                conversationId={id}
+                hideOpenAction
+                onTaskChange={onTaskChange}
+                onContinue={readOnly ? () => setAttempt(1) : undefined}
+              />
             </Suspense>
           )}
         </div>
       </div>
-      <div className='mx-auto w-full max-w-920px px-20px pb-20px shrink-0'>
+      <div className='box-border mx-auto w-full max-w-920px px-20px pb-20px shrink-0'>
         {readOnly ? (
-          snapshot ? (
-            <Button type='primary' onClick={() => setAttempt(1)}>{t('workspace.work.continue')}</Button>
-          ) : !snapshotError ? (
-            <div role='status' aria-label={t('common.loading')}><Spin size={16} /></div>
+          snapshot && !waiting ? (
+            <Button type='primary' onClick={() => setAttempt(1)}>
+              {t('workspace.work.continue')}
+            </Button>
+          ) : !snapshot && !snapshotError ? (
+            <div role='status' aria-label={t('common.loading')}>
+              <Spin size={16} />
+            </div>
           ) : null
         ) : (
           <>
             <Input.TextArea disabled aria-label={t('common.send')} autoSize={{ minRows: 2, maxRows: 2 }} />
             <div className='mt-8px flex items-center gap-8px text-12px text-t-secondary' role='status'>
-          {!state.error && <Spin size={14} />}
-          <span>
-            {state.error
-              ? reason
-              : t(
-                  state.phase === 'starting'
-                    ? 'workspace.status.preparationStarting'
-                    : 'workspace.status.preparationQueued'
-                )}
-          </span>
-          {state.error && (
-            <Button size='mini' type='text' onClick={() => setAttempt((value) => value + 1)}>
-              {t('common.retry')}
-            </Button>
-          )}
+              {!state.error && <Spin size={14} />}
+              <span>
+                {state.error
+                  ? reason
+                  : t(
+                      state.phase === 'starting'
+                        ? 'workspace.status.preparationStarting'
+                        : 'workspace.status.preparationQueued'
+                    )}
+              </span>
+              {state.error && (
+                <Button size='mini' type='text' onClick={() => setAttempt((value) => value + 1)}>
+                  {t('common.retry')}
+                </Button>
+              )}
             </div>
           </>
         )}

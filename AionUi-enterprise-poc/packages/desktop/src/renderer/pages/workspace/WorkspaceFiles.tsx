@@ -309,7 +309,7 @@ const WorkspaceFiles: React.FC = () => {
   };
 
   return (
-    <div className='flex flex-col gap-12px'>
+    <div className='min-w-0 flex flex-col gap-12px'>
       {dataPath && <DataAnalysisControl key={dataPath} filePath={dataPath} autoOpen />}
       {messageContext}
       <div className='flex flex-wrap items-center justify-between gap-8px'>
@@ -317,7 +317,7 @@ const WorkspaceFiles: React.FC = () => {
           <div className='text-20px font-semibold text-t-primary'>{t('workspace.files.title')}</div>
           <div className='mt-3px text-13px text-t-secondary'>{t('workspace.files.subtitle')}</div>
         </div>
-        <Space wrap>
+        <Space wrap className='max-w-full'>
           <Select value={kind} onChange={setKind} style={{ width: 145 }}>
             {['all', 'task', 'personal', 'shared', 'generated'].map((value) => (
               <Select.Option key={value} value={value}>
@@ -348,6 +348,7 @@ const WorkspaceFiles: React.FC = () => {
             render={(file) => (
               <List.Item
                 key={file.path}
+                className='!flex-wrap gap-y-8px [&_.arco-list-item-main]:min-w-0 [&_.arco-list-item-main]:flex-1 [&_.arco-list-item-action]:flex-wrap [&_.arco-list-item-action]:!ml-0'
                 actions={[
                   /\.(xlsx|csv)$/i.test(file.path) ? <DataAnalysisControl key='data-analysis' filePath={file.path} /> : null,
                   <Button key='preview' type='text' icon={<PreviewOpen />} onClick={() => openPreview(file)}>
@@ -371,8 +372,8 @@ const WorkspaceFiles: React.FC = () => {
               >
                 <List.Item.Meta
                   title={
-                    <div className='flex items-center gap-8px'>
-                      <span>{file.name}</span>
+                    <div className='min-w-0 flex flex-wrap items-center gap-8px'>
+                      <span className='min-w-0 break-all' title={file.name}>{file.name}</span>
                       <Tag>
                         {t(
                           `workspace.fileKind.${file.kind.toLowerCase() === 'result' ? 'generated' : file.kind.toLowerCase()}`,
@@ -484,7 +485,7 @@ const WorkspaceFiles: React.FC = () => {
         ) : preview?.kind === 'pdf' && preview.objectUrl ? (
           <iframe title={preview.file.name} src={preview.objectUrl} className='h-[72vh] w-full border-0' />
         ) : preview ? (
-          <div className='flex flex-col gap-12px'>
+          <div className='min-w-0 flex flex-col gap-12px'>
             <Alert
               type={preview.kind === 'office' ? 'info' : 'warning'}
               showIcon

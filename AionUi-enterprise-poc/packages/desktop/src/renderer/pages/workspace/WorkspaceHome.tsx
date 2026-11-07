@@ -55,13 +55,13 @@ const WorkspaceHome: React.FC<WorkspaceHomeProps> = ({ onOpenSection }) => {
   );
 
   return (
-    <div className='flex flex-col gap-22px'>
+    <div className='min-w-0 flex flex-col gap-22px'>
       <div>
         <div className='text-28px font-semibold text-t-primary'>{t('workspace.home.welcome', { brand: brandName })}</div>
         <div className='mt-6px text-14px text-t-secondary'>{t('workspace.home.subtitle')}</div>
       </div>
       <section>
-        <div className='mb-10px flex items-center justify-between gap-12px'>
+        <div className='mb-10px flex flex-wrap items-center justify-between gap-12px'>
           <div>
             <div className='text-17px font-semibold text-t-primary'>{t('workspace.home.startTitle')}</div>
             <div className='mt-2px text-13px text-t-secondary'>{t('workspace.home.startHint')}</div>
@@ -82,7 +82,7 @@ const WorkspaceHome: React.FC<WorkspaceHomeProps> = ({ onOpenSection }) => {
                   <span className='mt-2px size-34px shrink-0 flex items-center justify-center rd-8px bg-fill-2 text-t-primary'>
                     {example.icon}
                   </span>
-                  <div className='min-w-0'>
+                  <div className='min-w-0 break-words'>
                     <div className='font-medium text-t-primary'>{example.title}</div>
                     <div className='mt-5px text-13px leading-20px text-t-secondary'>{example.prompt}</div>
                   </div>

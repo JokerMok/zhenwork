@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { enterpriseRequest, workspaceErrorCode } from '../workspaceApi';
-import { taskAccepted, taskRequestId, taskStatusVisible, useTaskWork } from './api';
+import { taskAccepted, taskRequestId, taskStatusVisible, useTaskWork, type WorkTask } from './api';
 import TaskFeedback from './Feedback';
 
 /** One business status, one approval; all additional employee input uses the main conversation composer. */
@@ -24,15 +24,22 @@ export default function TaskWork({
   composer = false,
   embedded = false,
   hideOpenAction = false,
+  onContinue,
+  onTaskChange,
 }: {
   conversationId: string;
   composer?: boolean;
   embedded?: boolean;
   hideOpenAction?: boolean;
+  onContinue?: () => void;
+  onTaskChange?: (task: WorkTask | undefined) => void;
 }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { task, attempt: a, error, reload } = useTaskWork(conversationId);
+  useEffect(() => {
+    onTaskChange?.(task);
+  }, [task, onTaskChange]);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState(false);
   const [reviewed, setReviewed] = useState(false);
@@ -109,6 +116,18 @@ export default function TaskWork({
           {question}
         </Typography.Paragraph>
       )}
+      {waiting && a.reason && (
+        <span className='text-12px text-t-secondary'>
+          {t(`workspace.work.reasons.${a.reason}`, {
+            defaultValue: t('workspace.work.reasons.TASK_EXECUTION_UNAVAILABLE'),
+          })}
+        </span>
+      )}
+      {waiting && onContinue && (
+        <Button type='primary' onClick={onContinue}>
+          {t('workspace.work.continue')}
+        </Button>
+      )}
       {canApprove && (
         <div
           className='flex flex-col gap-8px border-l-2 border-solid border-warning pl-12px'
@@ -161,11 +180,11 @@ export default function TaskWork({
       data-testid='task-work'
       className={`${embedded ? 'py-6px' : 'p-12px border border-solid border-border-2 rd-8px'} min-w-0 shrink-0 flex flex-col gap-6px`}
     >
-      <div className='flex items-center justify-between gap-8px min-w-0'>
+      <div className='flex flex-wrap items-center justify-between gap-8px min-w-0'>
         <span role='status' className='text-12px text-t-secondary'>
           {status}
         </span>
-        <Space size='mini'>
+        <Space size='mini' wrap>
           {['partial', 'failed', 'interrupted'].includes(a.state) && (
             <Button
               size='mini'
@@ -202,7 +221,7 @@ export default function TaskWork({
                   <span>{step.tool}</span>
                 </div>
               ))}
-              {a.reason && (
+              {a.reason && !waiting && (
                 <p>
                   {t(`workspace.work.reasons.${a.reason}`, {
                     defaultValue: t('workspace.work.reasons.TASK_EXECUTION_UNAVAILABLE'),
@@ -219,21 +238,29 @@ export default function TaskWork({
         </Collapse>
       )}
       {!embedded &&
-        a.artifacts.map((file) => (
-          <Space key={file.path} wrap>
-            <span className='break-words text-13px'>{file.path}</span>
-            {file.valid && file.previewUrl && (
-              <Button size='mini' type='text' onClick={() => navigate(file.previewUrl!.replace(/^\/#/, ''))}>
-                {t('workspace.files.preview')}
-              </Button>
-            )}
-            {file.valid && file.downloadUrl && (
-              <Link href={file.downloadUrl} download>
-                {t('common.download')}
-              </Link>
-            )}
-          </Space>
-        ))}
+        task.attempts.flatMap((attempt) =>
+          attempt.artifacts.map((file) => (
+            <Space key={`${attempt.id}:${file.path}:${file.versionId || file.sha256}`} wrap className='min-w-0'>
+              <span className='break-all text-13px' title={file.path}>
+                {file.path.split('/').pop() || file.path}
+                {file.version !== undefined ? ` · v${file.version}` : ''}
+              </span>
+              {file.valid && file.previewUrl && (
+                <Button size='mini' type='text' onClick={() => navigate(file.previewUrl!.replace(/^\/#/, ''))}>
+                  {t('workspace.files.preview')}
+                </Button>
+              )}
+              {file.valid && file.downloadUrl && (
+                <Link href={file.downloadUrl} download>
+                  {t('common.download')}
+                </Link>
+              )}
+              {!file.valid && (
+                <span className='text-12px text-t-secondary'>{t('workspace.experience.artifactUnavailable')}</span>
+              )}
+            </Space>
+          ))
+        )}
       {feedbackVisible && <TaskFeedback taskId={conversationId} attemptId={a.id} />}
     </section>
   );

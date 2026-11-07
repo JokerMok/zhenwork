@@ -442,6 +442,7 @@
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
   },
   "experience": {
+    "artifactUnavailable": "Эта версия результата недоступна или у вас нет прав доступа.",
     "executionDetails": "Подробности выполнения",
     "actionFailed": "Действие не завершено. Повторите попытку.",
     "aiUnavailable": "Сервис ИИ временно недоступен. Повторите попытку или обратитесь к администратору.",

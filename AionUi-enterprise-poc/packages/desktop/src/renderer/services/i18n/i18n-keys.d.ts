@@ -3379,6 +3379,7 @@ export type I18nKey =
   | 'workspace.examples.requirements.title'
   | 'workspace.experience.actionFailed'
   | 'workspace.experience.aiUnavailable'
+  | 'workspace.experience.artifactUnavailable'
   | 'workspace.experience.assistant'
   | 'workspace.experience.confirmScope'
   | 'workspace.experience.executionDetails'

@@ -442,6 +442,7 @@
     "replaceRequirements": "Replace unfinished deliverables with this request (keep successful outputs)"
   },
   "experience": {
+    "artifactUnavailable": "この成果物のバージョンは利用できないか、アクセス権がありません。",
     "executionDetails": "実行の詳細",
     "actionFailed": "操作を完了できませんでした。再試行してください。",
     "aiUnavailable": "AIサービスを一時的に利用できません。再試行するか管理者に連絡してください。",

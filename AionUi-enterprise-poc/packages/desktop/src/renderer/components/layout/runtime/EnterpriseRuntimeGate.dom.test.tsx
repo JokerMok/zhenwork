@@ -12,9 +12,29 @@ vi.mock('@/renderer/hooks/context/LayoutContext', () => ({ useLayoutContext: ():
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 const route = vi.hoisted(() => ({ pathname: '/guid' }));
+const taskFixture = vi.hoisted(() => ({
+  task: undefined as import('@/renderer/pages/workspace/TaskWork/api').WorkTask | undefined,
+}));
+vi.mock('@/renderer/utils/platform', () => ({ isEnterpriseWeb: () => true, openExternalUrl: vi.fn() }));
+vi.mock('@/renderer/components/Markdown/ShadowView', () => ({
+  default: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+}));
+vi.mock('@/renderer/components/Markdown/CodeBlock', () => ({
+  default: ({ children }: React.PropsWithChildren) => <code>{children}</code>,
+}));
+vi.mock('@/renderer/components/media/LocalImageView', () => ({ default: () => null }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useLocation: () => route }));
-vi.mock('@/renderer/pages/workspace/TaskWork', () => ({ default: (): null => null }));
+vi.mock('@/renderer/pages/workspace/TaskWork', () => ({
+  default: ({ onTaskChange }: { onTaskChange?: (task: typeof taskFixture.task) => void }) => {
+    React.useEffect(() => {
+      onTaskChange?.(taskFixture.task);
+    }, [onTaskChange]);
+    return null;
+  },
+}));
 vi.mock('@arco-design/web-react', () => ({
+  Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children}</a>,
+  Tooltip: ({ children }: React.PropsWithChildren) => <>{children}</>,
   Alert: ({ content }: { content: string }) => <span>{content}</span>,
   Spin: () => <span>spinner</span>,
   Input: { TextArea: () => <textarea disabled aria-label='common.send' /> },
@@ -30,6 +50,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
   route.pathname = '/guid';
+  taskFixture.task = undefined;
 });
 
 test('keeps execution unavailable while queued and automatically mounts it only after readiness', async () => {
@@ -109,21 +130,28 @@ test('preparation timeout ends polling and exposes a local retry without raw tec
   expect(document.body.textContent).not.toContain('PREPARATION_TIMEOUT');
 });
 
-
 test('opens a saved conversation while cold and prepares execution only after Continue', async () => {
   route.pathname = '/conversation/aabbccdd';
   const fetcher = vi.fn().mockImplementation(async (url: string) => {
-    if (url.includes('/view')) return {
-      ok: true,
-      json: async () => ({ name: 'Saved conversation', messages: [{ id: 'm1', position: 'left', text: 'Saved answer' }] }),
-    };
+    if (url.includes('/view'))
+      return {
+        ok: true,
+        json: async () => ({
+          name: 'Saved conversation',
+          messages: [{ id: 'm1', position: 'left', text: 'Saved answer' }],
+        }),
+      };
     return {
       status: 200,
       json: async () => ({ ready: !url.includes('inspect=1') }),
     };
   });
   vi.stubGlobal('fetch', fetcher);
-  render(<EnterpriseRuntimeGate><span>execution</span></EnterpriseRuntimeGate>);
+  render(
+    <EnterpriseRuntimeGate>
+      <span>execution</span>
+    </EnterpriseRuntimeGate>
+  );
   expect(await screen.findByText('Saved answer')).toBeTruthy();
   expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
     '/enterprise/conversations/aabbccdd/view?page=1',
@@ -132,4 +160,66 @@ test('opens a saved conversation while cold and prepares execution only after Co
   await act(async () => screen.getByText('workspace.work.continue').click());
   expect(await screen.findByText('execution')).toBeTruthy();
   expect(fetcher.mock.calls.at(-1)?.[0]).toBe('/enterprise/ready?retry=1');
+});
+
+test('saved assistant Markdown uses the real reader while user text stays literal and file links require exact receipts', async () => {
+  route.pathname = '/conversation/markdown1';
+  taskFixture.task = {
+    id: 'markdown1',
+    title: 'saved',
+    updatedAt: 1,
+    attempts: [
+      {
+        id: 'a1',
+        round: 1,
+        attempt: 1,
+        updatedAt: 1,
+        state: 'completed',
+        phase: 'settled',
+        steps: [],
+        artifacts: [
+          {
+            path: 'reports/a.xlsx',
+            sha256: 'a'.repeat(64),
+            versionId: 'version-old',
+            version: 1,
+            valid: true,
+            downloadUrl: '/enterprise/files/download?path=reports%2Fa.xlsx&version=version-old',
+          },
+        ],
+      },
+    ],
+  };
+  const text =
+    '**Summary**\n\n| Item | Count |\n| --- | --- |\n| A | 2 |\n\n[Recorded](/enterprise/files/download?path=reports%2Fa.xlsx&version=version-old)\n\n[Wrong version](/enterprise/files/download?path=reports%2Fa.xlsx&version=version-new)';
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation(async (url: string) =>
+      url.includes('/view')
+        ? {
+            ok: true,
+            json: async () => ({
+              name: 'saved',
+              messages: [
+                { id: 'u', position: 'right', text: '**Literal user**' },
+                { id: 'a', position: 'left', text },
+              ],
+            }),
+          }
+        : { status: 200, json: async () => ({ ready: false }) }
+    )
+  );
+  const { container } = render(
+    <EnterpriseRuntimeGate>
+      <span>execution</span>
+    </EnterpriseRuntimeGate>
+  );
+  await screen.findByRole('link', { name: 'Recorded' });
+  expect(container.querySelector('strong')?.textContent).toBe('Summary');
+  expect(screen.getByRole('table')).toBeTruthy();
+  expect(screen.getByText('**Literal user**')).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'Recorded' }).getAttribute('href')).toBe(
+    '/enterprise/files/download?path=reports%2Fa.xlsx&version=version-old'
+  );
+  expect(screen.queryByRole('link', { name: 'Wrong version' })).toBeNull();
 });

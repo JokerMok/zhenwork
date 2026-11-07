@@ -56,6 +56,7 @@ vi.mock('@/renderer/services/FileService', () => ({
 
 vi.mock('@/renderer/utils/platform', () => ({
   isElectronDesktop: () => environment.isDesktop,
+  isEnterpriseWeb: () => false,
 }));
 
 vi.mock('@icon-park/react', () => {
@@ -319,4 +320,10 @@ describe('GuidActionRow skill/MCP submenu search', () => {
 
     expect(onToggleSkill).toHaveBeenCalledWith('skill-3', false);
   });
+});
+
+it('names the attachment and send controls for keyboard and assistive access', () => {
+  renderActionRow({ allSkills: [], mcpServers: [] });
+  expect(screen.getByRole('button', { name: 'common.fileAttach.addFiles' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'common.send' })).toBeTruthy();
 });
