@@ -252,7 +252,21 @@ export default function TaskWork({
               {file.version !== undefined ? ` · v${file.version}` : ''}
             </span>
             {file.valid && file.previewUrl && (
-              <Button size='mini' type='text' onClick={() => navigate(file.previewUrl!.replace(/^\/#/, ''))}>
+              <Button
+                size='mini'
+                type='text'
+                onClick={() => {
+                  try {
+                    const target = new URL(file.previewUrl!, window.location.origin);
+                    if (target.origin !== window.location.origin || !target.hash.startsWith('#/workspace?')) {
+                      throw new Error('Invalid artifact preview route');
+                    }
+                    navigate(target.hash.slice(1));
+                  } catch {
+                    setFailure(true);
+                  }
+                }}
+              >
                 {t('workspace.files.preview')}
               </Button>
             )}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import TaskWork from '@/renderer/pages/workspace/TaskWork';
 import MessageTips from '@/renderer/pages/conversation/Messages/components/MessageTips';
 import type { WorkAttempt } from '@/renderer/pages/workspace/TaskWork/api';
@@ -194,4 +194,51 @@ test('repeated receipts show one card per file version across attempts', () => {
   expect(screen.getAllByText('report.xlsx · v1')).toHaveLength(1);
   expect(screen.getAllByText('report.xlsx · v2')).toHaveLength(1);
   expect(screen.getAllByRole('link', { name: 'common.download' })).toHaveLength(2);
+});
+
+function PreviewRoute() {
+  const location = useLocation();
+  return <output data-testid='preview-route'>{location.pathname + location.search}</output>;
+}
+
+test.each(['relative', 'absolute'])('opens a fixed artifact version from a %s historical preview URL', (format) => {
+  const route = '/workspace?section=files&previewPath=report.xlsx&fileVersion=v1';
+  fixture.attempt!.artifacts = [
+    {
+      path: 'report.xlsx',
+      valid: true,
+      sha256: 'a'.repeat(64),
+      versionId: 'v1',
+      previewUrl: (format === 'absolute' ? window.location.origin : '') + '/#' + route,
+    },
+  ];
+  render(
+    <MemoryRouter>
+      <TaskWork conversationId='abcd1234' />
+      <PreviewRoute />
+    </MemoryRouter>
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'workspace.files.preview' }));
+  expect(screen.getByTestId('preview-route').textContent).toBe(route);
+});
+
+test('a foreign preview URL cannot navigate away from the authorized workspace', () => {
+  fixture.attempt!.artifacts = [
+    {
+      path: 'report.xlsx',
+      valid: true,
+      sha256: 'a'.repeat(64),
+      versionId: 'v1',
+      previewUrl: 'https://foreign.invalid/#/workspace?section=files&previewPath=report.xlsx&fileVersion=v1',
+    },
+  ];
+  render(
+    <MemoryRouter>
+      <TaskWork conversationId='abcd1234' />
+      <PreviewRoute />
+    </MemoryRouter>
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'workspace.files.preview' }));
+  expect(screen.getByTestId('preview-route').textContent).toBe('/');
+  expect(screen.getByRole('alert').textContent).toBe('workspace.experience.actionFailed');
 });
