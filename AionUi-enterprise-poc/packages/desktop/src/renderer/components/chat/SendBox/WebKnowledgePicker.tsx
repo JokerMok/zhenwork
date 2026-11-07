@@ -212,7 +212,7 @@ export default function WebKnowledgePicker({ conversationId }: { conversationId?
                       documents: editing.documents.length,
                     })}
             </div>
-            <div>{t('workspace.knowledge.scopeHint')}</div>
+            <div>{t(inherited ? 'workspace.knowledge.scopeDefault' : 'workspace.knowledge.scopeHint')}</div>
             <Button
               disabled={loading || saving}
               type={inherited ? 'primary' : 'secondary'}

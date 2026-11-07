@@ -140,6 +140,8 @@ test('inherited defaults remain unset instead of becoming explicit empty selecti
   await screen.findByText('workspace.knowledge.inheritedLabel');
   fireEvent.click(screen.getByRole('button', { name: /workspace.knowledge.taskScope/ }));
   await screen.findAllByText(/Organization products/);
+  expect(screen.queryByText('workspace.knowledge.scopeHint')).toBeNull();
+  expect(screen.getByText('workspace.knowledge.scopeDefault')).toBeTruthy();
   fireEvent.click(screen.getByText('Apply'));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(request.mock.calls.every((call) => !call[1])).toBe(true);
