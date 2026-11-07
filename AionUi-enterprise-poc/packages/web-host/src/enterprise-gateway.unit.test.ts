@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, expect, test, vi } from 'vitest';
 import http from 'node:http';
+import { execFileSync } from 'node:child_process';
+import { prepareEnterpriseProfile } from './enterprise-core.js';
+import { OfficeStore } from './office/office-store.js';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -2149,4 +2152,99 @@ test('real Host login remembers only successful accounts and preserves the conve
   expect(values.get('rememberedAccount')).toBe('new-account');
   expect(JSON.stringify([...values])).not.toContain('synthetic-test-password');
   expect(replace).toHaveBeenCalledWith('/#/conversation/abcd1234');
+});
+
+
+test('knowledge default reset requires the owning actor and same origin without starting execution', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'knowledge-default-reset-'));
+  const root = path.join(dir, 'profiles');
+  const actor = { serverId: 'rc2', userId: '91' };
+  const other = { ...actor, userId: '92' };
+  const { profile } = await prepareEnterpriseProfile(root, actor);
+  await writeFile(path.join(dir, 'index.html'), '<html></html>');
+  execFileSync('python3', [
+    '-c',
+    "import sqlite3,sys;c=sqlite3.connect(sys.argv[1]);c.executescript(\"CREATE TABLE conversations(id,user_id,archived_at);INSERT INTO conversations VALUES('owned123','system_default_user',NULL);\");c.close()",
+    path.join(profile, 'aionui-backend.db'),
+  ]);
+  const first = await OfficeStore.create(root, actor),
+    second = await OfficeStore.create(root, other);
+  const explicit = { baseIds: [], documents: [] };
+  await first.selectKnowledge('owned123', explicit);
+  await first.selectKnowledge('another123', explicit);
+  await second.selectKnowledge('owned123', explicit);
+  const start = vi.fn(async () => {
+    throw new Error('Reset must never start execution');
+  });
+  const gateway = await startEnterpriseGateway({
+    staticDir: dir,
+    profileRoot: root,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    login: async (username) => ({
+      actor: { ...actor, userId: username },
+      validate: async () => true,
+      close: async () => {},
+    }),
+    startCore: start,
+  });
+  const call = (
+    method: string,
+    route: string,
+    cookie?: string,
+    payload?: unknown,
+    origin = 'https://workspace.example'
+  ) =>
+    new Promise<{ status: number; body: string; cookie?: string }>((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: gateway.port,
+          path: route,
+          method,
+          headers: {
+            host: 'workspace.example',
+            origin,
+            ...(cookie ? { cookie } : {}),
+            ...(payload ? { 'content-type': 'application/json' } : {}),
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode || 0,
+              body: Buffer.concat(chunks).toString(),
+              cookie: res.headers['set-cookie']?.[0].split(';')[0],
+            })
+          );
+        }
+      );
+      req.once('error', reject);
+      req.end(payload ? JSON.stringify(payload) : undefined);
+    });
+  try {
+    const firstCookie = (await call('POST', '/enterprise/login', undefined, { username: '91', password: 'test' }))
+      .cookie;
+    const otherCookie = (await call('POST', '/enterprise/login', undefined, { username: '92', password: 'test' }))
+      .cookie;
+    expect((await call('DELETE', '/enterprise/knowledge-scope/owned123')).status).toBe(401);
+    expect((await call('DELETE', '/enterprise/knowledge-scope/owned123', otherCookie)).status).toBe(404);
+    expect(
+      (await call('DELETE', '/enterprise/knowledge-scope/owned123', firstCookie, undefined, 'https://wrong.example'))
+        .status
+    ).toBe(403);
+    expect(await first.knowledgeScope('owned123')).toEqual(explicit);
+    expect((await call('DELETE', '/enterprise/knowledge-scope/owned123', firstCookie)).status).toBe(200);
+    expect(JSON.parse((await call('GET', '/enterprise/knowledge-scope/owned123', firstCookie)).body)).toEqual({
+      scope: null,
+    });
+    expect(await first.knowledgeScope('another123')).toEqual(explicit);
+    expect(await second.knowledgeScope('owned123')).toEqual(explicit);
+    expect(start).not.toHaveBeenCalled();
+  } finally {
+    await gateway.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
 });

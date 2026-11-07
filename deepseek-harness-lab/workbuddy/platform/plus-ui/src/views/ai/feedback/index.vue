@@ -1,19 +1,20 @@
 <template>
   <div class="app-container p-4">
     <div class="toolbar">
-      <h2>反馈与 Badcase</h2>
+      <h2>结果反馈</h2>
       <div class="filters">
-        <el-select v-model="status" clearable placeholder="处理状态" @change="reset">
+        <el-select v-model="status" aria-label="处理状态筛选" clearable placeholder="处理状态" @change="reset">
           <el-option v-for="value in statuses" :key="value" :label="label(value)" :value="value" />
         </el-select>
-        <el-select v-model="category" clearable placeholder="反馈分类" @change="reset">
+        <el-select v-model="category" aria-label="反馈分类筛选" clearable placeholder="反馈分类" @change="reset">
           <el-option v-for="value in categories" :key="value" :label="label(value)" :value="value" />
         </el-select>
+        <el-button v-if="status||category" @click="clearFilters">清空筛选</el-button>
         <el-button :loading="loading" @click="load">刷新</el-button>
       </div>
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-table v-loading="loading" :data="rows" empty-text="当前没有反馈记录">
+    <el-table v-loading="loading" :data="rows" :empty-text="status||category?'没有符合筛选条件的反馈':'暂无结果反馈'">
       <el-table-column prop="created_at" label="提交时间" min-width="170" />
       <el-table-column prop="owner_user_id" label="员工 ID" min-width="110" />
       <el-table-column prop="task_id" label="任务 ID" min-width="180" />
@@ -65,7 +66,7 @@
 
         <el-form v-hasPermi="['ai:resource:enterprise']" label-position="top" class="case-form">
           <el-form-item label="处理状态"><el-select v-model="form.status"><el-option v-for="value in statuses" :key="value" :label="label(value)" :value="value" /></el-select></el-form-item>
-          <el-form-item label="Badcase 描述"><el-input v-model="form.badcaseDescription" type="textarea" :rows="2" maxlength="2000" show-word-limit /></el-form-item>
+          <el-form-item label="问题描述"><el-input v-model="form.badcaseDescription" type="textarea" :rows="2" maxlength="2000" show-word-limit /></el-form-item>
           <el-form-item label="人工确认原因"><el-input v-model="form.rootCause" type="textarea" :rows="2" maxlength="2000" show-word-limit /></el-form-item>
           <el-form-item label="原因证据引用"><el-input v-model="form.causeEvidence" maxlength="1000" placeholder="测试记录、工单或日志标识；不要粘贴敏感原文" /></el-form-item>
           <el-form-item label="预期结果"><el-input v-model="form.expectedResult" type="textarea" :rows="2" maxlength="2000" show-word-limit /></el-form-item>
@@ -177,6 +178,7 @@ async function load() {
   }
 }
 
+function clearFilters(){status.value='';category.value='';reset();}
 function reset() { page.value = 1; void load(); }
 
 function setDetail(value: Detail) {

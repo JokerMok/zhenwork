@@ -3,7 +3,7 @@ import { watch } from 'node:fs';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { enterpriseManagedResourcePath } from '../enterprise-resource-runtime.js';
 import { OfficeStore, validateKnowledgeScope } from './office-store.js';
 
@@ -162,6 +162,13 @@ test('task knowledge selection is persistent metadata isolated by actor and conv
   expect(await first.knowledgeScope('c2')).toBeUndefined();
   await first.selectKnowledge('c1', { baseIds: [], documents: [] });
   expect(await first.knowledgeScope('c1')).toEqual({ baseIds: [], documents: [] });
+  await second.selectKnowledge('c1', scope);
+  await first.selectKnowledge('c2', scope);
+  await first.clearKnowledge('c1');
+  expect(await first.knowledgeScope('c1')).toBeUndefined();
+  expect(await first.knowledgeScope('c2')).toEqual(scope);
+  expect(await second.knowledgeScope('c1')).toEqual(scope);
+  await expect(first.clearKnowledge('../c1')).rejects.toThrow('INVALID_CONVERSATION');
 });
 
 test('invalid knowledge selectors cannot become persisted runtime scope', () => {
@@ -194,4 +201,38 @@ test('read snapshots reuse identical bytes, retain old versions and deny other a
   expect((await first.download(workspace, original.path, original.versionId)).toString()).toBe('original source');
   expect((await first.fileReceipt(original.path))?.version).toBe(1);
   await expect(second.download(workspace, original.path, original.versionId)).rejects.toThrow('VERSION_NOT_FOUND');
+});
+
+test('file listing marks only the latest snapshot matching current bytes, including a restored old value', async () => {
+  const { root, workspace } = await fixture();
+  await writeFile(path.join(workspace, 'report.txt'), 'placeholder');
+  const store = await OfficeStore.create(root, actor('80'));
+  const reader = vi.spyOn(store as unknown as { readWorkspace: () => Promise<Buffer> }, 'readWorkspace');
+  reader.mockResolvedValue(Buffer.from('first'));
+  const first = (await store.files(workspace)).files[0];
+  reader.mockResolvedValue(Buffer.from('second'));
+  await store.files(workspace);
+  reader.mockResolvedValue(Buffer.from('first'));
+  const restored = (await store.files(workspace)).files[0];
+  expect(restored.currentVersionId).not.toBe(first.currentVersionId);
+  expect(
+    (restored.versions as Array<{ id: string; sha256: string }>).find((v) => v.id === restored.currentVersionId)?.sha256
+  ).toBe(sha256('first'));
+});
+
+test('failed snapshot preserves older history without marking it as current', async () => {
+  const { root, workspace } = await fixture();
+  await writeFile(path.join(workspace, 'report.txt'), 'placeholder');
+  const store = await OfficeStore.create(root, actor('81'));
+  const reader = vi.spyOn(store as unknown as { readWorkspace: () => Promise<Buffer> }, 'readWorkspace');
+  reader.mockResolvedValue(Buffer.from('first'));
+  const first = (await store.files(workspace)).files[0];
+  reader.mockResolvedValue(Buffer.from('changed'));
+  vi.spyOn(store as unknown as { snapshot: () => Promise<void> }, 'snapshot').mockRejectedValueOnce(
+    new Error('VERSION_STORAGE_LIMIT_256MB')
+  );
+  const failed = await store.files(workspace);
+  expect(failed.files[0].currentVersionId).toBeUndefined();
+  expect(failed.files[0].versions).toEqual(first.versions);
+  expect(failed.warnings).toContain('VERSION_STORAGE_LIMIT_256MB');
 });

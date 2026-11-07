@@ -204,6 +204,11 @@ export class OfficeStore {
     return (await this.state()).knowledgeScopes?.[conversation];
   }
 
+  async clearKnowledge(conversation: string): Promise<void> {
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(conversation)) throw new Error('INVALID_CONVERSATION');
+    await this.transaction(async (state) => { delete state.knowledgeScopes?.[conversation]; });
+  }
+
   async selectKnowledge(conversation: string, value: unknown): Promise<void> {
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(conversation)) throw new Error('INVALID_CONVERSATION');
     const scope = validateKnowledgeScope(value);
@@ -328,8 +333,11 @@ export class OfficeStore {
             warnings.push((error as Error).message);
           }
           const info = await stat(path.join(base, name));
+          const latestSnapshot = state.files[name]?.at(-1);
+          const currentVersionId = latestSnapshot?.sha256 === digest(bytes) ? latestSnapshot.id : undefined;
           files.push({
             path: name,
+            ...(currentVersionId ? { currentVersionId } : {}),
             name: path.basename(name),
             byteSize: bytes.length,
             modifiedAt: info.mtime.toISOString(),

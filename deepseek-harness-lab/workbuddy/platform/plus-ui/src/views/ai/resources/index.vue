@@ -15,28 +15,33 @@
       <el-button type="primary" @click="edit()">新建企业{{ types[type] }}</el-button>
     </div>
     <el-table v-loading="loading" :data="rows">
-      <el-table-column v-if="scope === 'enterprise'" prop="name" label="名称" />
+      <el-table-column v-if="scope === 'enterprise'" prop="name" label="名称" min-width="220" show-overflow-tooltip />
       <el-table-column v-else prop="id" label="资源 ID" />
-      <el-table-column label="类型"><template #default="{row}">{{ types[row.resourceType] }}</template></el-table-column>
+      <el-table-column label="类型" width="90"><template #default="{row}">{{ types[row.resourceType] }}</template></el-table-column>
       <el-table-column label="归属" min-width="100"><template #default="{row}">{{workspaceLabel(row.ownerType)}}</template></el-table-column>
-      <el-table-column v-if="scope === 'enterprise'" label="版本">
+      <el-table-column v-if="scope === 'enterprise'" label="版本" min-width="170">
         <template #default="{row}">草稿 v{{ row.version }}<span v-if="row.publishedVersion"> · 已激活 v{{ row.publishedVersion }}</span></template>
       </el-table-column>
       <el-table-column v-if="scope === 'enterprise'" label="范围" min-width="100"><template #default="{row}">{{workspaceLabel(row.visibility)}}</template></el-table-column>
-      <el-table-column label="状态"><template #default="{row}">{{ row.securityDisabled ? '安全停用' : row.enabled ? '已启用' : '已停用' }}</template></el-table-column>
-      <el-table-column label="操作" min-width="430">
+      <el-table-column label="状态" min-width="110"><template #default="{row}">{{ row.securityDisabled ? '安全停用' : row.enabled ? '已启用' : '已停用' }}</template></el-table-column>
+      <el-table-column label="操作" min-width="230">
         <template #default="{row}">
           <template v-if="scope === 'enterprise'">
             <el-button link @click="edit(row.id)">编辑</el-button>
             <el-button link @click="openVersions(row)">版本</el-button>
-            <el-button link :disabled="row.visibility === 'ENTERPRISE_PUBLIC'" @click="activate(row,row.version)">激活最新版</el-button>
-            <el-button link @click="publish(row)">提交审核</el-button>
-            <el-button link @click="openShares(row)">共享授权</el-button>
             <el-button v-if="row.resourceType === 'KNOWLEDGE'" link @click="openDocuments(row)">文档</el-button>
-            <el-button v-if="row.resourceType === 'MCP'" link :disabled="!row.publishedVersion" @click="openConnection(row)">企业连接</el-button>
-            <el-button link @click="act(()=>api('/ai/resources/'+row.id+'/enabled',{enabled:!row.enabled},'put'))">{{ row.enabled ? '停用' : '启用' }}</el-button>
-            <el-button v-if="type==='SKILL'" link @click="openSkillMaintenance(row)">维护来源</el-button>
-            <el-button v-if="row.visibility === 'ENTERPRISE_PUBLIC'" link @click="withdraw(row)">撤回发布</el-button>
+            <el-dropdown trigger="click">
+              <el-button link aria-label="更多资源操作">更多</el-button>
+              <template #dropdown><el-dropdown-menu>
+                <el-dropdown-item :disabled="!!activationReason(row)" :title="activationReason(row)" @click="activate(row,row.version)">{{ activationReason(row) === '当前已激活此版本' ? '当前已激活此版本' : '激活最新草稿' }}<span v-if="activationReason(row) && activationReason(row)!=='当前已激活此版本'"> · {{ activationReason(row) }}</span></el-dropdown-item>
+                <el-dropdown-item :disabled="!!publicationReason(row)" :title="publicationReason(row)" @click="publish(row)">{{ row.reviewState==='PENDING' ? '审核中' : '提交审核' }}<span v-if="publicationReason(row) && row.reviewState!=='PENDING'"> · {{ publicationReason(row) }}</span></el-dropdown-item>
+                <el-dropdown-item @click="openShares(row)">共享授权</el-dropdown-item>
+                <el-dropdown-item v-if="row.resourceType === 'MCP'" :disabled="!row.publishedVersion" :title="!row.publishedVersion?'请先激活版本':''" @click="openConnection(row)">企业连接{{ !row.publishedVersion?' · 请先激活版本':'' }}</el-dropdown-item>
+                <el-dropdown-item @click="act(()=>api('/ai/resources/'+row.id+'/enabled',{enabled:!row.enabled},'put'))">{{ row.enabled ? '停用' : '启用' }}</el-dropdown-item>
+                <el-dropdown-item v-if="row.resourceType==='SKILL'" @click="openSkillMaintenance(row)">维护来源</el-dropdown-item>
+                <el-dropdown-item v-if="row.visibility === 'ENTERPRISE_PUBLIC'" @click="withdraw(row)">撤回发布</el-dropdown-item>
+              </el-dropdown-menu></template>
+            </el-dropdown>
           </template>
           <el-button v-else link @click="govern(row)">{{ row.securityDisabled ? '解除安全停用' : '安全停用' }}</el-button>
         </template>
@@ -60,7 +65,7 @@
           <el-alert title="知识问答使用所选知识；查询专家通过所选工具/MCP使用已配置的外部连接。员工仍需各项依赖的使用授权，保存专家不会扩大资料范围或复制凭据。" type="info" :closable="false" class="mb-3" />
           <div v-if="editing" class="expert-actions">
             <el-button :disabled="busy||editorChanged" @click="checkExpert(editing)">检查发布依赖</el-button>
-            <el-button :disabled="busy||editorChanged||missingAssistantDependencies.length>0" @click="activate(editing,editing.version)">激活已保存版本</el-button>
+            <el-button :disabled="busy||editorChanged||missingAssistantDependencies.length>0||!!activationReason(editing)" :title="activationReason(editing)" @click="activate(editing,editing.version)">{{ editing.publishedVersion===editing.version?'当前已激活此版本':'激活已保存版本' }}</el-button>
             <el-button :disabled="busy||!editing.publishedVersion" @click="openShares(editing)">设置授权对象</el-button>
           </div>
           <el-alert v-if="expertCheck" :title="expertCheck" :type="expertCheckReady?'success':'warning'" :closable="false" class="mt-3" />
@@ -159,6 +164,7 @@
 </template>
 
 <script setup lang="ts">
+import {activationReason,publicationReason} from './resourceActions';
 import BusinessRuleEditor from './BusinessRuleEditor.vue';
 import SkillMaintenance from './SkillMaintenance.vue';
 import KnowledgeDocuments from './KnowledgeDocuments.vue';

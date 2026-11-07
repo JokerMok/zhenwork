@@ -423,7 +423,14 @@ const WorkspaceFiles: React.FC = () => {
                 ]}
               >
                 <List.Item.Meta
-                  title={formatDate(version.createdAt)}
+                  title={
+                    <Space wrap>
+                      <span>{formatDate(version.createdAt)}</span>
+                      {version.id === versionFile.currentVersionId && (
+                        <Tag color='green'>{t('workspace.files.currentVersion')}</Tag>
+                      )}
+                    </Space>
+                  }
                   description={`${formatFileSize(version.byteSize)} · ${version.sha256.slice(0, 12)}`}
                 />
               </List.Item>

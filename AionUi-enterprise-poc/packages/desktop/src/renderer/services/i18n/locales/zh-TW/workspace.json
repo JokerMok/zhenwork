@@ -91,6 +91,7 @@
     "generated": "產生檔案"
   },
   "files": {
+    "currentVersion": "目前版本",
     "title": "檔案",
     "subtitle": "查看任務、個人、共享和產生檔案，以及已儲存的歷史版本。",
     "upload": "上傳檔案",
@@ -121,6 +122,12 @@
     "shared": "共享給我的"
   },
   "knowledge": {
+    "inheritedLabel": "依專家預設",
+    "selectionLabel": "已選 {{count}} 項",
+    "scopeNone": "本次不檢索",
+    "scopeUnknown": "範圍待確認",
+    "documentBase": "檔案所屬知識庫",
+
     "title": "知識庫",
     "subtitle": "上傳原始資料、查看索引結果、搜尋原文並核對準確版本。",
     "selectBase": "選擇知識庫",

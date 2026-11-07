@@ -91,6 +91,7 @@
     "generated": "Generated files"
   },
   "files": {
+    "currentVersion": "Version actuelle",
     "title": "Files",
     "subtitle": "Browse task, personal, shared, and generated files with their saved versions.",
     "upload": "Upload file",
@@ -121,6 +122,12 @@
     "shared": "Shared with me"
   },
   "knowledge": {
+    "inheritedLabel": "Défaut de l’expert",
+    "selectionLabel": "{{count}} sélectionnés",
+    "scopeNone": "Sans connaissances",
+    "scopeUnknown": "Périmètre à confirmer",
+    "documentBase": "Base du fichier",
+
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
     "selectBase": "Select knowledge base",

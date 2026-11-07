@@ -27,6 +27,7 @@ export type EnterpriseFile = {
   modifiedAt: string;
   kind: 'task' | 'personal' | 'shared' | 'generated' | string;
   versions: EnterpriseFileVersion[];
+  currentVersionId?: string;
 };
 
 export type ResourceScope = 'available' | 'mine' | 'shared';

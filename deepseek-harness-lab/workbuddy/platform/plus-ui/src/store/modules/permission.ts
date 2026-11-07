@@ -89,6 +89,9 @@ export const usePermissionStore = defineStore('permission', () => {
       if (type && route.children) {
         route.children = filterChildren(route.children, undefined);
       }
+      if (route.component?.toString() === 'ai/feedback/index') {
+        route.meta = { ...route.meta, title: '结果反馈' };
+      }
       // Layout ParentView 组件特殊处理
       if (route.component?.toString() === 'Layout') {
         route.component = Layout;

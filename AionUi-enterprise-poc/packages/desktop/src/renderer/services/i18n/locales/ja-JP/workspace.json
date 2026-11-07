@@ -91,6 +91,7 @@
     "generated": "Generated files"
   },
   "files": {
+    "currentVersion": "現在のバージョン",
     "title": "Files",
     "subtitle": "Browse task, personal, shared, and generated files with their saved versions.",
     "upload": "Upload file",
@@ -121,6 +122,12 @@
     "shared": "Shared with me"
   },
   "knowledge": {
+    "inheritedLabel": "専門家の既定値",
+    "selectionLabel": "{{count}} 件選択",
+    "scopeNone": "知識を使わない",
+    "scopeUnknown": "範囲未確認",
+    "documentBase": "ファイルの知識ベース",
+
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
     "selectBase": "Select knowledge base",

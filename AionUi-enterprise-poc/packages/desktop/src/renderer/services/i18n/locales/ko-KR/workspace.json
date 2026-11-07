@@ -91,6 +91,7 @@
     "generated": "Generated files"
   },
   "files": {
+    "currentVersion": "현재 버전",
     "title": "Files",
     "subtitle": "Browse task, personal, shared, and generated files with their saved versions.",
     "upload": "Upload file",
@@ -121,6 +122,12 @@
     "shared": "Shared with me"
   },
   "knowledge": {
+    "inheritedLabel": "전문가 기본값",
+    "selectionLabel": "{{count}}개 선택",
+    "scopeNone": "지식 사용 안 함",
+    "scopeUnknown": "범위 미확인",
+    "documentBase": "파일의 지식 베이스",
+
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
     "selectBase": "Select knowledge base",

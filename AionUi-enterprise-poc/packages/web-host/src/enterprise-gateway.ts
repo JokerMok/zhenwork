@@ -1490,6 +1490,10 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         const store = await OfficeStore.create(opts.profileRoot, auth.session.actor);
         if (req.method === 'GET')
           return reply(res, 200, { scope: (await store.knowledgeScope(scopeRoute[1])) || null });
+        if (req.method === 'DELETE') {
+          await store.clearKnowledge(scopeRoute[1]);
+          return reply(res, 200, { scope: null });
+        }
         if (req.method !== 'PUT') return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
         const scope = validateKnowledgeScope(JSON.parse((await body(req, 8000)).toString('utf8')));
         await checkKnowledge(scope);

@@ -91,6 +91,7 @@
     "generated": "Generated files"
   },
   "files": {
+    "currentVersion": "Geçerli sürüm",
     "title": "Files",
     "subtitle": "Browse task, personal, shared, and generated files with their saved versions.",
     "upload": "Upload file",
@@ -121,6 +122,12 @@
     "shared": "Shared with me"
   },
   "knowledge": {
+    "inheritedLabel": "Uzman varsayılanı",
+    "selectionLabel": "{{count}} seçildi",
+    "scopeNone": "Bilgi kullanma",
+    "scopeUnknown": "Kapsam doğrulanmadı",
+    "documentBase": "Dosyanın bilgi tabanı",
+
     "title": "Knowledge",
     "subtitle": "Upload source material, follow indexing results, search original passages, and inspect exact versions.",
     "selectBase": "Select knowledge base",

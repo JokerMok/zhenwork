@@ -46,6 +46,7 @@
             collapse-tags
             collapse-tags-tooltip
             :max-collapse-tags="4"
+            aria-label="搜索共享对象"
             placeholder="搜索姓名、账号、部门或角色"
             class="target-picker"
             @change="clearPlan"
