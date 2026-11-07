@@ -30,7 +30,7 @@
     <el-button :disabled="page===1||loading||mutating" @click="loadDocuments(page-1)">上一页文档</el-button>
     <span>第 {{ page }} 页</span>
     <el-button :disabled="documents.length<30||loading||mutating" @click="loadDocuments(page+1)">下一页文档</el-button>
-    <div v-if="source"><el-button link @click="resetPreview">关闭预览</el-button><pre class="source">{{ source }}</pre></div>
+    <div v-if="source || previewLoading" :aria-busy="previewLoading"><el-button link @click="resetPreview">关闭预览</el-button><el-skeleton v-if="previewLoading" :rows="2" animated /><pre v-else class="source">{{ source }}</pre></div>
     <KnowledgeDiagnostics :base-id="base.id" />
   </el-dialog>
 </template>
@@ -54,6 +54,7 @@ const newDocumentInput=ref<HTMLInputElement>();
 const versionInputs=new Map<string,HTMLInputElement>();
 function setVersionInput(id:string,el:unknown){if(el instanceof HTMLInputElement)versionInputs.set(id,el);else versionInputs.delete(id);}
 const source = ref('');
+const previewLoading = ref(false);
 const error = ref('');
 const loading = ref(false);
 const mutating = ref(false);
@@ -67,6 +68,7 @@ async function api(url: string, data?: unknown, method = data ? 'post' : 'get', 
 
 function resetPreview() {
   previewRequest?.abort();
+  previewLoading.value = false;
   source.value = '';
 }
 
@@ -123,6 +125,7 @@ async function previewDocument(row: DocumentRow) {
   resetPreview();
   const controller = new AbortController();
   previewRequest = controller;
+  previewLoading.value = true;
   error.value = '';
   try {
     const version = await api(documentUrl(row) + '/versions/' + row.latest_version, undefined, 'get', controller.signal);
@@ -130,6 +133,8 @@ async function previewDocument(row: DocumentRow) {
   } catch (e) {
     const message = await extractErrorMessage(e);
     if (open && !controller.signal.aborted) error.value = message || '文档预览失败。';
+  } finally {
+    if (open && previewRequest === controller && !controller.signal.aborted) previewLoading.value = false;
   }
 }
 
