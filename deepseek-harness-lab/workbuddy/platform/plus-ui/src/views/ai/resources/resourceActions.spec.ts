@@ -1,7 +1,12 @@
 import {describe,expect,it} from 'vitest';
 import {activationReason,publicationReason} from './resourceActions';
-const draft={version:2,publishedVersion:1,visibility:'PRIVATE',enabled:true,reviewState:'DRAFT'};
+const draft={version:2,publishedVersion:1,visibility:'PRIVATE',enabled:true,reviewState:'DRAFT',lifecycleState:'ACTIVE'};
 describe('resource next actions',()=>{
+  it('requires activation before the first draft can be submitted for review',()=>{
+    const firstDraft={...draft,version:1,publishedVersion:null,lifecycleState:'DRAFT'};
+    expect(activationReason(firstDraft)).toBe('');
+    expect(publicationReason(firstDraft)).toBe('请先激活资源');
+  });
   it('allows activating a new draft but explains an already active draft',()=>{
     expect(activationReason(draft)).toBe('');
     expect(activationReason({...draft,publishedVersion:2})).toBe('当前已激活此版本');
