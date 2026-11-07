@@ -60,6 +60,13 @@ export default function TaskWork({
       />
     ) : null;
   const feedbackVisible = ['completed', 'partial'].includes(a.state);
+  const artifacts = Array.from(
+    new Map(
+      task.attempts
+        .flatMap((attempt) => attempt.artifacts)
+        .map((file) => [JSON.stringify([file.path, file.versionId || file.sha256]), file] as const)
+    ).values()
+  );
   const statusVisible = taskStatusVisible(a);
   if (embedded && !statusVisible && !feedbackVisible) return null;
   const action = async (kind: string): Promise<void> => {
@@ -238,29 +245,27 @@ export default function TaskWork({
         </Collapse>
       )}
       {!embedded &&
-        task.attempts.flatMap((attempt) =>
-          attempt.artifacts.map((file) => (
-            <Space key={`${attempt.id}:${file.path}:${file.versionId || file.sha256}`} wrap className='min-w-0'>
-              <span className='break-all text-13px' title={file.path}>
-                {file.path.split('/').pop() || file.path}
-                {file.version !== undefined ? ` · v${file.version}` : ''}
-              </span>
-              {file.valid && file.previewUrl && (
-                <Button size='mini' type='text' onClick={() => navigate(file.previewUrl!.replace(/^\/#/, ''))}>
-                  {t('workspace.files.preview')}
-                </Button>
-              )}
-              {file.valid && file.downloadUrl && (
-                <Link href={file.downloadUrl} download>
-                  {t('common.download')}
-                </Link>
-              )}
-              {!file.valid && (
-                <span className='text-12px text-t-secondary'>{t('workspace.experience.artifactUnavailable')}</span>
-              )}
-            </Space>
-          ))
-        )}
+        artifacts.map((file) => (
+          <Space key={JSON.stringify([file.path, file.versionId || file.sha256])} wrap className='min-w-0'>
+            <span className='break-all text-13px' title={file.path}>
+              {file.path.split('/').pop() || file.path}
+              {file.version !== undefined ? ` · v${file.version}` : ''}
+            </span>
+            {file.valid && file.previewUrl && (
+              <Button size='mini' type='text' onClick={() => navigate(file.previewUrl!.replace(/^\/#/, ''))}>
+                {t('workspace.files.preview')}
+              </Button>
+            )}
+            {file.valid && file.downloadUrl && (
+              <Link href={file.downloadUrl} download>
+                {t('common.download')}
+              </Link>
+            )}
+            {!file.valid && (
+              <span className='text-12px text-t-secondary'>{t('workspace.experience.artifactUnavailable')}</span>
+            )}
+          </Space>
+        ))}
       {feedbackVisible && <TaskFeedback taskId={conversationId} attemptId={a.id} />}
     </section>
   );

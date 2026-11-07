@@ -163,3 +163,35 @@ test('session result cards preserve older attempt versions and withhold unavaila
   expect(screen.getByText('workspace.experience.artifactUnavailable')).toBeTruthy();
   expect(document.querySelector('[href="/should-not-be-rendered"]')).toBeNull();
 });
+
+test('repeated receipts show one card per file version across attempts', () => {
+  const original = {
+    path: 'report.xlsx',
+    version: 1,
+    versionId: 'v1',
+    sha256: 'a'.repeat(64),
+    valid: true,
+    downloadUrl: '/enterprise/files/download?path=report.xlsx&version=v1',
+  };
+  fixture.earlier = [
+    { ...fixture.attempt!, id: 'first', artifacts: [original] },
+    { ...fixture.attempt!, id: 'retry', artifacts: [original] },
+  ];
+  fixture.attempt!.artifacts = [
+    {
+      ...original,
+      version: 2,
+      versionId: 'v2',
+      sha256: 'b'.repeat(64),
+      downloadUrl: '/enterprise/files/download?path=report.xlsx&version=v2',
+    },
+  ];
+  render(
+    <MemoryRouter>
+      <TaskWork conversationId='abcd1234' hideOpenAction />
+    </MemoryRouter>
+  );
+  expect(screen.getAllByText('report.xlsx · v1')).toHaveLength(1);
+  expect(screen.getAllByText('report.xlsx · v2')).toHaveLength(1);
+  expect(screen.getAllByRole('link', { name: 'common.download' })).toHaveLength(2);
+});
