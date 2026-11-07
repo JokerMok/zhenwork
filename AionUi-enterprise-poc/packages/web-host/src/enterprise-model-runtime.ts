@@ -40,6 +40,8 @@ export function createEnterpriseModelRuntime(
   reconcileCronJobs: (actor: EnterpriseActor) => Promise<void>;
 } {
   const taskBindings = new Map<string, Map<string, string>>();
+  const taskModelVersions = new Map<string, { versions: Map<string, string>; used: Set<string> }>();
+  const taskKey = (actor: EnterpriseActor, jobId: string) => `${key(actor)}:${jobId}`;
   const officeTrust = new Map<string, (c: Record<string, unknown>) => Promise<boolean>>();
   const grantStore = async (actor: EnterpriseActor) => {
     let store = taskGrants.get(key(actor));
@@ -238,12 +240,26 @@ export function createEnterpriseModelRuntime(
       const store = await grantStore(actor),
         issuer = await interactiveClient(actor);
       if (!('request' in issuer) || typeof issuer.request !== 'function') throw new Error('Grant issuer unavailable');
+      const snapshotKey = taskKey(actor, jobId);
+      const catalog = taskModelVersions.has(snapshotKey) ? undefined : await issuer.availableModels();
       if (!store.jobIds().includes(jobId))
         await store.issue(issuer as Parameters<EnterpriseBackgroundGrants['issue']>[0], jobId);
+      if (catalog) taskModelVersions.set(snapshotKey, {
+        versions: new Map(catalog.filter((item) => typeof item.configurationVersion === 'string')
+          .map((item) => [item.id, item.configurationVersion!])), used: new Set(),
+      });
     },
     checkTaskGrant: async (actor, jobId) => {
       try {
-        await (await grantStore(actor)).clientFor(jobId);
+        const client = await (await grantStore(actor)).clientFor(jobId);
+        const snapshot = taskModelVersions.get(taskKey(actor, jobId));
+        if (snapshot?.versions.size && snapshot.used.size) {
+          const available = await client.availableModels();
+          return [...snapshot.used].every((modelId) => {
+            const expected = snapshot.versions.get(modelId);
+            return !!expected && available.find((item) => item.id === modelId)?.configurationVersion === expected;
+          });
+        }
         return true;
       } catch {
         return false;
@@ -251,6 +267,7 @@ export function createEnterpriseModelRuntime(
     },
     revokeTaskGrant: async (actor, jobId) => {
       await (await grantStore(actor)).revokeStored(jobId);
+      taskModelVersions.delete(taskKey(actor, jobId));
     },
     bindTask: (actor, conversation, jobId, expectedJobId) => {
       let bindings = taskBindings.get(key(actor));
@@ -258,8 +275,14 @@ export function createEnterpriseModelRuntime(
         bindings = new Map();
         taskBindings.set(key(actor), bindings);
       }
-      if (jobId) bindings.set(conversation, jobId);
-      else if(!expectedJobId || bindings.get(conversation)===expectedJobId) bindings.delete(conversation);
+      const prior = bindings.get(conversation);
+      if (jobId) {
+        if (prior && prior !== jobId) taskModelVersions.delete(taskKey(actor, prior));
+        bindings.set(conversation, jobId);
+      } else if (!expectedJobId || prior === expectedJobId) {
+        bindings.delete(conversation);
+        if (prior) taskModelVersions.delete(taskKey(actor, prior));
+      }
     },
     trustedTaskConfirmation: async (actor, c) => officeTrust.get(key(actor))?.(c) || false,
     taskActors: async () => {
@@ -446,13 +469,20 @@ export function createEnterpriseModelRuntime(
         relayModel: async (modelId, raw, signal, conversationId) => {
           try {
             const current = await relayClient(actor, conversationId);
-            if (!(await current.availableModels()).some((item) => item.id === modelId)) {
-              return new Response(null, { status: 403 });
-            }
+            const selectedModel = (await current.availableModels()).find((item) => item.id === modelId);
+            if (!selectedModel) return new Response(null, { status: 403 });
             if (options.profileRoot && conversationId) {
               const task = await currentTaskScope(options.profileRoot, actor, conversationId);
               const boundTask = task.active && task.jobId && taskBindings.get(key(actor))?.get(conversationId) === task.jobId;
               if (boundTask) {
+                const snapshot = taskModelVersions.get(taskKey(actor, task.jobId!));
+                if (snapshot?.versions.size) {
+                  snapshot.used.add(modelId);
+                  if (snapshot.versions.get(modelId) !== selectedModel.configurationVersion)
+                    return new Response(null, { status: 403 });
+                }
+                // A new admitted attempt uses current authorized configuration, even if the Core catalog is older.
+                raw = JSON.stringify({ ...JSON.parse(raw), model: selectedModel.code });
                 if (task.preferences) raw = applyEmployeePreferences(raw, task.preferences);
               } else {
                 // Native direct and scheduled turns already carry a Core-owned execution ID.

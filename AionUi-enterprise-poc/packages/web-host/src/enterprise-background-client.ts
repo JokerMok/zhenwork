@@ -90,10 +90,10 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
     return { userId: result.userId };
   }
 
-  async availableModels(): Promise<Array<{ id: string; code: string; name: string; streaming: boolean }>> {
+  async availableModels(): Promise<Array<{ id: string; code: string; name: string; streaming: boolean; configurationVersion?: string }>> {
     const data = await this.read('/models/available');
     if (!Array.isArray(data)) throw new Error('Background models unavailable');
-    return data.filter((model): model is { id: string; code: string; name: string; streaming: boolean } =>
+    return data.filter((model): model is { id: string; code: string; name: string; streaming: boolean; configurationVersion?: string } =>
       !!model && typeof model.id === 'string' && typeof model.code === 'string' &&
       typeof model.name === 'string' && model.streaming === true);
   }

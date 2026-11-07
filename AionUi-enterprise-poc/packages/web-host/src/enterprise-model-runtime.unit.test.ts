@@ -361,14 +361,14 @@ test('a Core without a streaming model still probes and records version-bound de
   } finally { await core?.stop();sync.mockRestore();await new Promise<void>((resolve) => server.close(() => resolve()));await rm(root, { recursive: true, force: true }); }
 });
 
-test('the authenticated relay applies one preference snapshot through selected models and background grants', async () => {
+test('the authenticated relay pins preferences and used model configurations to each admitted task', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'zhenwork-preferences-relay-'));
   const actor = { serverId: 'rc2', userId: '17' };
   const conversation = 'a1b2c3d4';
   const cronJob = 'cron_0123456789';
   const models = [
-    { id: 'model-a', code: 'default-vendor-model', name: 'Default', streaming: true },
-    { id: 'model-b', code: 'chosen-vendor-model', name: 'Selected', streaming: true },
+    { id: 'model-a', code: 'default-vendor-model', name: 'Default', streaming: true, configurationVersion: '1:1' },
+    { id: 'model-b', code: 'chosen-vendor-model', name: 'Selected', streaming: true, configurationVersion: '1:1' },
   ];
   const cronGrant = { id: randomUUID(), jobId: cronJob, userId: actor.userId, secret: 'a'.repeat(64) };
   const taskStore = await TaskStore.create(root, actor);
@@ -435,6 +435,7 @@ test('the authenticated relay applies one preference snapshot through selected m
   const runtime = createEnterpriseModelRuntime(async () => ({
     actor, validate: async () => true, close: async () => {}, client: {
       me: async () => ({ userId: actor.userId }), availableModels: async () => models,
+      request: async () => { throw new Error('Existing grant must be reused'); },
       relayModel: async (model: string, raw: string) => {
         received.push({ model, raw, via: 'interactive' });
         return stream();
@@ -481,12 +482,24 @@ test('the authenticated relay applies one preference snapshot through selected m
     nativeReadFailure = false;
 
     await taskStore.mutate(conversation, attempt.id, (record) => { record.state = 'running'; });
+    await runtime.issueTaskGrant(actor, attempt.jobId);
     runtime.bindTask(actor, conversation, attempt.jobId);
     const selected = await relay('rc2-model-b');
     expect(selected).toMatchObject({ model: 'model-b', via: attempt.jobId });
     expect(selected.raw).toContain('Controlled Context');
+    expect(await runtime.checkTaskGrant(actor, attempt.jobId)).toBe(true);
+    models[0].configurationVersion = '2:1';
+    expect(await runtime.checkTaskGrant(actor, attempt.jobId)).toBe(true);
+    models[1].configurationVersion = '2:1';
+    expect(await runtime.checkTaskGrant(actor, attempt.jobId)).toBe(false);
+    await runtime.issueTaskGrant(actor, attempt.jobId);
+    expect(await runtime.checkTaskGrant(actor, attempt.jobId)).toBe(false);
+    const beforeChangedRetry = received.length;
+    await relay('rc2-model-b', 403);
+    expect(received).toHaveLength(beforeChangedRetry);
 
     runtime.bindTask(actor, conversation, undefined, attempt.jobId);
+    expect(await runtime.checkTaskGrant(actor, attempt.jobId)).toBe(true);
     await taskStore.mutate(conversation, attempt.id, (record) => { record.state = 'completed'; });
     cronActive = true;
     turnId = 'turn_11223344';
