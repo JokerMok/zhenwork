@@ -3,6 +3,9 @@
 import hashlib
 import json
 import pathlib
+import subprocess
+import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEPLOY = ROOT / "deploy/tencent"
@@ -123,6 +126,24 @@ for allowed in ['packages/desktop/src/common/chat/normalizeToolCall.ts',
     assert allowed in web_restage, allowed
 assert 'full reviewed stage' in web_restage and '*)' in web_restage
 assert 'systemctl' not in web_restage and 'current.next' not in web_restage
+
+# Exercise the real manifest transform with an older source-release version.
+metadata = web_restage.split("<<'PY'\n", 1)[1].split('\nPY', 1)[0]
+with tempfile.TemporaryDirectory(prefix='zhenwork-version-') as temporary:
+    directory = pathlib.Path(temporary)
+    version_file = directory / 'VERSION'
+    output = directory / 'IMAGE_IDS.json'
+    version_file.write_text('1.1.1\n')
+    source = {'release': 'old-release', 'appVersion': '1.1.0', 'images': {'core': 'retained-image'}}
+    command = [sys.executable, '-c', metadata, str(output), json.dumps(source),
+               'new-release', 'old-release', 'old-release', 'a' * 40, '0', str(version_file)]
+    subprocess.run(command, check=True)
+    result = json.loads(output.read_text())
+    assert result['appVersion'] == '1.1.1' and result['images'] == source['images']
+    assert result['artifactReusedFrom']['sourceSha'] == 'a' * 40
+    assert not result['coreSourceChanged'] and not result['gatewaySourceChanged']
+    version_file.write_text('invalid-version\n')
+    assert subprocess.run(command, capture_output=True).returncode != 0
 
 assert 'git diff --quiet "$base_sha" "$sha" -- AionUi-enterprise-poc deploy/tencent/build-web.mjs' in stage
 assert "['employee','web-host.cjs']" in prepare and 'artifact_hash(after)==hashes[name]' in prepare

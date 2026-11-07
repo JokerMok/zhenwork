@@ -45,9 +45,19 @@ while IFS= read -r -d '' path; do
       # Managed Skill source, distributed separately through RC2; not imported
       # by the renderer, native Core, or reused Java/Admin artifacts.
       ;;
-    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/index.vue|deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/BusinessRuleEditor.vue|deepseek-harness-lab/workbuddy/platform/plus-ui/src/components/ResourceShareDialog/index.vue)
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/index.vue|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/BusinessRuleEditor.vue|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/components/ResourceShareDialog/index.vue|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/KnowledgeDocuments.vue|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/resourceActions.ts|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/resourceActions.spec.ts|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/models/index.vue|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/feedback/index.vue|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/hooks/dialog/useUnsavedDialog.ts|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/hooks/dialog/useUnsavedDialog.spec.ts|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/store/modules/permission.ts)
       host_change=1 ;;
-    AionUi-enterprise-poc/vitest.config.ts|AionUi-enterprise-poc/tests/*|AionUi-enterprise-poc/docs/*|deploy/tencent/*|docs/*|PROJECT.md|README.md|justfile)
+    AionUi-enterprise-poc/vitest.config.ts|AionUi-enterprise-poc/tests/*|AionUi-enterprise-poc/docs/*|deploy/tencent/*|docs/*|PROJECT.md|README.md|justfile|VERSION|RELEASE_NOTES.md)
       ;;
     *)
       echo "Web/Host restage refused changed path: $path" >&2
@@ -56,6 +66,13 @@ while IFS= read -r -d '' path; do
   esac
 done < <(git diff --name-only --no-renames -z "$from_sha" "$sha")
 [[ $changed == 1 && $host_change == 1 ]] || { echo 'No Host/CLI source change found.' >&2; exit 1; }
+
+# These files are reused byte-for-byte in deploy-assets, not rebuilt here.
+git diff --quiet "$from_sha" "$sha" -- deploy/tencent/backup.sh deploy/tencent/prepare-monitor.py \
+  deploy/tencent/zhenwork-monitor.service deploy/tencent/zhenwork-caddy-edge.conf \
+  deploy/tencent/zhenwork-web.service deploy/tencent/zhenwork.caddy || {
+  echo 'Reused deployment assets changed; a reviewed full stage is required.' >&2; exit 1;
+}
 
 # The helper may be newer than the product ref, but the executed maintenance
 # files themselves must be committed and clean in the current checkout.
@@ -118,13 +135,18 @@ printf '%s\n' "$sha" > "$work/stage/SOURCE_SHA"
 from_images=$(ssh tencent-main "sudo cat '$remote_root/releases/$from/IMAGE_IDS.json'")
 current_release=$(ssh tencent-main "basename \"\$(readlink -f '$remote_root/current')\"")
 [[ $current_release =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{5,100}$ ]] || exit 1
-python3 - "$work/stage/IMAGE_IDS.json" "$from_images" "$release" "$current_release" "$from" "$from_sha" "$employee_only" <<'PY'
-import json,pathlib,sys
-out,raw,release,current,source_release,source_sha,employee_only=sys.argv[1:]
+python3 - "$work/stage/IMAGE_IDS.json" "$from_images" "$release" "$current_release" "$from" "$from_sha" "$employee_only" "$work/source/VERSION" <<'PY'
+import json,pathlib,re,sys
+out,raw,release,current,source_release,source_sha,employee_only,version_file=sys.argv[1:]
+version=pathlib.Path(version_file).read_text().strip()
+assert re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?',version),'Invalid application version'
 m=json.loads(raw)
 assert m['release']==source_release
 m['release']=release
 m['baseRelease']=current
+m['appVersion']=version
+m['coreSourceChanged']=False
+m['gatewaySourceChanged']=False
 m['artifactReusedFrom']={
     'release':source_release,
     'sourceSha':source_sha,
