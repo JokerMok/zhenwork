@@ -1,4 +1,4 @@
-import { Button, Input, Spin } from '@arco-design/web-react';
+import { Button, Collapse, Input, Spin } from '@arco-design/web-react';
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
@@ -182,12 +182,11 @@ export default function EnterpriseRuntimeGate({ children }: React.PropsWithChild
               >
                 {message.position === 'left' ? (
                   message.text === pendingQuestion ? (
-                    <details>
-                      <summary className='cursor-pointer text-t-secondary'>
-                        {t('workspace.work.states.waiting_input')}
-                      </summary>
-                      <MarkdownView>{message.text}</MarkdownView>
-                    </details>
+                    <Collapse bordered={false}>
+                      <Collapse.Item name={message.id} header={t('workspace.work.states.waiting_input')}>
+                        <MarkdownView>{message.text}</MarkdownView>
+                      </Collapse.Item>
+                    </Collapse>
                   ) : (
                     <MarkdownView>{message.text}</MarkdownView>
                   )
