@@ -19,6 +19,9 @@ target="$root/releases/$release"
 
 exec 9>/run/lock/zhenwork-deploy.lock
 flock -n 9 || { echo 'Another ZhenWork deployment is running' >&2; exit 1; }
+[[ ! -L "$root/.release-operation.lock" ]] || exit 1
+exec 8>"$root/.release-operation.lock"
+flock -n 8 || { echo 'Release staging or retention is running' >&2; exit 1; }
 (cd "$target" && sha256sum -c SHA256SUMS >/dev/null)
 # WorkspaceFileStore derives config/uploads from secret-key-file. Keep config
 # root-owned/read-only to the app and expose only the dedicated persistent path.

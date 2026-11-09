@@ -76,7 +76,7 @@ git diff --quiet "$from_sha" "$sha" -- deploy/tencent/backup.sh deploy/tencent/p
 
 # The helper may be newer than the product ref, but the executed maintenance
 # files themselves must be committed and clean in the current checkout.
-for maintenance in deploy/tencent/restage-web.sh deploy/tencent/build-linux.sh; do
+for maintenance in deploy/tencent/restage-web.sh deploy/tencent/build-linux.sh deploy/tencent/maintenance/workspace.sh deploy/tencent/maintenance/workspace.py; do
   git ls-files --error-unmatch "$maintenance" >/dev/null 2>&1 || { echo "$maintenance is not committed." >&2; exit 1; }
   git diff --quiet HEAD -- "$maintenance" || { echo "$maintenance has uncommitted changes." >&2; exit 1; }
 done
@@ -88,10 +88,10 @@ if [[ -n $existing_sha ]]; then
   exit 0
 fi
 
-work="$repo/.codex/tencent-web-restage/$release"
-rm -rf "$work"
-mkdir -p "$work/source" "$work/stage"
-git archive "$sha" | tar -x -C "$work/source"
+source "$repo/deploy/tencent/maintenance/workspace.sh"
+build_kind=web
+[[ $employee_only != 1 ]] || build_kind=employee
+zw_build_begin "$build_kind"
 app="$work/source/AionUi-enterprise-poc"
 git show "$from_sha:AionUi-enterprise-poc/bun.lock" > "$work/from.bun.lock"
 cmp -s "$work/from.bun.lock" "$app/bun.lock" || { echo 'bun.lock changed; Web/Host dependency reuse is unsafe.' >&2; exit 1; }
@@ -180,3 +180,5 @@ done
 ssh tencent-main "sudo bash '$remote_root/deploy/build-linux.sh' '$release' '$remote_root/incoming/$release'"
 echo "Staged Web/Host release $release / $sha; reused immutable artifacts from $from."
 echo "No current/shared/service change was performed. Review RELEASE.json before finalize."
+
+zw_build_complete

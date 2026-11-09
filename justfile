@@ -7,7 +7,9 @@ default:
 verify:
     git diff --check
     @for file in deploy/tencent/*.sh; do bash -n "$file"; done
+    bash -n deploy/tencent/maintenance/workspace.sh
     python3 deploy/tencent/verify-maintenance.py
+    python3 -B deploy/tencent/maintenance/test_release_maintenance.py
 
 # Push only an already-reviewed clean commit after the scoped checks.
 push *args: verify

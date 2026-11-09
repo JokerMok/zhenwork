@@ -54,7 +54,7 @@ assert 'ZHENWORK_MONITOR_UI_PUBLIC_URL=https://zhenwork-admin.shizibandu.icu/mon
 assert 'ZHENWORK_MONITOR_PUBLIC_URL=http://127.0.0.1:18909/monitor' in prepare_monitor
 assert "--index-url https://pypi.org/simple python-pptx==1.0.2" in office_dependencies
 assert "--system-site-packages /opt/zhenwork-office" in office_dependencies
-assert "git archive" in stage and "cmp -s" in stage
+assert "zw_build_begin full" in stage and "cmp -s" in stage
 assert "coreSourceTreeSha256" in stage and "coreBinarySha256" in prepare
 assert "cargo build" not in stage.lower() + prepare.lower()
 assert "docker build" not in stage.lower() + prepare.lower()
@@ -115,7 +115,7 @@ for name, digest in expected.items():
 print("ZhenWork scoped deployment maintenance checks passed.")
 
 web_restage = text("restage-web.sh")
-assert "git archive" in web_restage and "build-web.mjs" in web_restage
+assert "zw_build_begin" in web_restage and "build-web.mjs" in web_restage
 assert "['control-source','deploy-assets','monitor.jar','rc2.jar']" in web_restage
 assert 'packages/desktop/src/renderer/*' in web_restage
 assert 'plus-ui/src/views/ai/resources/BusinessRuleEditor.vue' in web_restage
@@ -159,3 +159,14 @@ assert caddy.index("handle_response @monitorAuthorized") < caddy.index("request_
 assert "app_version.read_text().strip()" in stage
 assert "m['appVersion']=version" in prepare
 assert "'AION_ENTERPRISE_WEB_APP_VERSION='+m['appVersion']" in activate
+
+for script in (stage, restage, web_restage):
+    assert "zw_build_complete" in script and "maintenance/workspace.sh" in script
+    assert "git archive" not in script
+
+# Build temporaries are owned and discarded; retention is an explicitly reviewed operation.
+for name in ("workspace.py", "retention.py", "test_release_maintenance.py"):
+    compile((DEPLOY / "maintenance" / name).read_text(), name, "exec")
+json.loads((DEPLOY / "maintenance/retention.example.json").read_text())
+for script in (activate, prepare):
+    assert '.release-operation.lock' in script and 'flock -n 8' in script

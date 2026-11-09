@@ -1,0 +1,7 @@
+{
+  "keepVerified": 3,
+  "maxAgeDays": 30,
+  "protectedReleases": ["20261105-enterprise-1.1.0-employee", "20261107-enterprise-1.1.1-ux4"],
+  "protectedAppVersions": ["1.0.0-rc.1", "1.0.1"],
+  "verifiedReleases": {}
+}

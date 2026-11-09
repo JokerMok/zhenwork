@@ -1,5 +1,7 @@
 # 腾讯云网页试点维护
 
+构建临时目录、最终制品与历史版本留存已分离，见 [构建目录与版本留存](maintenance/README.md)。Host／网页增量构建只冻结所需组件；历史清理默认仅输出计划，正式版、当前／回退及待验收候选受保护。新机制尚未在生产执行历史清理。
+
 ## 2026-10-29 可编辑PPT与三格式交付
 
 当前 `20261029-presentation-delivery-v4` / `aba95a435c1b4fa3b3e1dc80f4310f823c393e56`，第四轮定向验收收口。实现与限制见[三格式交付](../../docs/presentation-delivery.md)。最终Host-only修复回执协议，精确复用Web/Admin/Java/监控及native镜像、24迁移；初始第四轮只按实际修改构建Web/Host/Java。现有Office venv增加受控LibreOffice/CJK按需渲染，无常驻转换服务或新端口。

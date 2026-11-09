@@ -39,10 +39,8 @@ if [[ -n $existing_sha ]]; then
   echo "Review it, then run: ssh tencent-main \"sudo bash /srv/apps/zhenwork/deploy/finalize-release.sh '$release'\""
   exit 0
 fi
-work="$repo/.codex/tencent-build/$release"
-rm -rf "$work"
-mkdir -p "$work/source"
-git archive "$sha" | tar -x -C "$work/source"
+source "$repo/deploy/tencent/maintenance/workspace.sh"
+zw_build_begin full
 app="$work/source/AionUi-enterprise-poc"
 control="$work/source/deepseek-harness-lab/workbuddy"
 ops="$work/source/deploy/tencent"
@@ -51,7 +49,7 @@ if [[ $legacy == 1 && ! -f "$ops/build-linux.sh" ]]; then ops="$repo/deploy/tenc
   echo 'The committed tree is missing application locks or deploy/tencent scripts.' >&2; exit 1;
 }
 if [[ $legacy == 0 ]]; then
-  for committed_file in deploy.sh restage-host.sh activate.sh backup.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh verify-maintenance.py prepare-office-host.sh prepare-monitor.py zhenwork-monitor.service zhenwork-caddy-edge.conf zhenwork-web.service zhenwork.caddy README.md rollback-compatibility.example.json; do
+  for committed_file in maintenance/workspace.sh maintenance/workspace.py deploy.sh restage-host.sh activate.sh backup.sh bootstrap.py build-linux.sh finalize-release.sh manage.sh verify-maintenance.py prepare-office-host.sh prepare-monitor.py zhenwork-monitor.service zhenwork-caddy-edge.conf zhenwork-web.service zhenwork.caddy README.md rollback-compatibility.example.json; do
     cmp -s "$repo/deploy/tencent/$committed_file" "$ops/$committed_file" || {
       echo "deploy/tencent/$committed_file differs from $sha; commit the maintenance flow before staging." >&2; exit 1;
     }
@@ -196,7 +194,7 @@ java_targets=ruoyi-admin
 [[ $reuse_monitor == 0 ]] && java_targets+=,ruoyi-extend/ruoyi-monitor-admin
 (cd "$control/platform/ruoyi" && MAVEN_OPTS='-Xms128m -Xmx1536m' sh mvnw "${maven_network[@]}" -s "$ops/config/maven-settings.xml" -Dmaven.repo.local="$maven_cache" -pl "$java_targets" -am package -Dmaven.test.skip=true)
 
-stage="$work/release"
+stage="$work/stage"
 mkdir -p "$stage/employee" "$stage/admin" "$stage/control-source/platform/ruoyi/script/sql/postgres" "$stage/control-source/migrations" "$stage/deploy-assets"
 if [[ $reuse_employee == 0 ]]; then cp -R "$app/out/renderer/." "$stage/employee/"; fi
 if [[ $reuse_admin == 0 ]]; then cp -R "$control/platform/plus-ui/dist/." "$stage/admin/"; fi
@@ -265,3 +263,5 @@ done
 ssh tencent-main "sudo bash '$remote_root/deploy/build-linux.sh' '$release' '$remote_root/incoming/$release'"
 echo "Staged immutable release: $release / $sha"
 echo "Review it, then run: ssh tencent-main \"sudo bash $remote_root/deploy/finalize-release.sh '$release'\""
+
+zw_build_complete

@@ -6,6 +6,9 @@ root=/srv/apps/zhenwork
 release=${1:?release required}
 incoming=${2:-$root/incoming/$release}
 [[ $release =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{5,100}$ ]] || exit 2
+[[ ! -L "$root/.release-operation.lock" ]] || exit 1
+exec 8>"$root/.release-operation.lock"
+flock -n 8 || { echo 'Release activation or retention is running' >&2; exit 1; }
 [[ $incoming == "$root/incoming/$release" ]] || { echo 'Unexpected incoming path' >&2; exit 2; }
 [[ -f "$incoming/SOURCE_SHA" && -f "$incoming/IMAGE_IDS.json" && -f "$incoming/rc2.jar" && -f "$incoming/monitor.jar" && -f "$incoming/web-host.cjs" ]] || { echo 'Incomplete staged release' >&2; exit 1; }
 for asset in backup.sh prepare-monitor.py zhenwork-monitor.service zhenwork-caddy-edge.conf zhenwork-web.service zhenwork.caddy; do
