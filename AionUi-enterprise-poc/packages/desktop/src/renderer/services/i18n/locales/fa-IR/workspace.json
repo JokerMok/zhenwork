@@ -1,4 +1,9 @@
 {
+  "modelAvailability": {
+    "single": "حساب شما فقط مجاز به استفاده از این مدل است.",
+    "pending": "فهرست مدل‌های در دسترس هنوز آماده نیست.",
+    "failed": "بارگیری مدل‌های مجاز برای حساب شما ممکن نشد."
+  },
   "title": "Office workspace",
   "view": "View",
   "none": "None",

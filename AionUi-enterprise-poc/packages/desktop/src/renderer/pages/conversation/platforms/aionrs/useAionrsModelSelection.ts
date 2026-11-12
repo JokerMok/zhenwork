@@ -18,6 +18,7 @@ export type AionrsModelSelection = {
   getAvailableModels: (provider: IProvider) => string[];
   handleSelectModel: (provider: IProvider, modelName: string) => Promise<void>;
   getDisplayModelName: (modelName?: string) => string;
+  enterpriseCatalog?: { authorizedCount?: number; failed: boolean };
 };
 
 export type UseAionrsModelSelectionOptions = {
@@ -30,7 +31,7 @@ export const useAionrsModelSelection = ({
   onSelectModel,
 }: UseAionrsModelSelectionOptions): AionrsModelSelection => {
   const { t } = useTranslation();
-  const { data: enterpriseModels } = useSWR(
+  const { data: enterpriseModels, error: enterpriseModelsError } = useSWR(
     isEnterpriseWeb() ? 'organization-models-available' : null,
     () => enterpriseControl<Array<{ id: string; name: string }>>('/ai/models/available'),
     { revalidateOnFocus: true, shouldRetryOnError: false }
@@ -92,5 +93,8 @@ export const useAionrsModelSelection = ({
     getAvailableModels,
     handleSelectModel,
     getDisplayModelName,
+    enterpriseCatalog: isEnterpriseWeb()
+      ? { authorizedCount: enterpriseModels?.length, failed: Boolean(enterpriseModelsError) }
+      : undefined,
   };
 };

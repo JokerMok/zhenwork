@@ -210,20 +210,14 @@ const AionrsConversationPanel: React.FC<{ conversation: AionrsConversation; slid
     headerExtra: (
       <div className='flex items-center gap-8px'>
         {!isEnterpriseWeb() && <CronJobManager conversation_id={conversation.id} cron_job_id={cronJobId} />}
-        {!isMobile &&
-          (isEnterpriseWeb() &&
-          modelSelection.providers.flatMap((provider) => modelSelection.getAvailableModels(provider)).length < 2 ? (
-            <span className='text-12px text-t-secondary truncate max-w-220px'>
-              {modelSelection.getDisplayModelName(modelSelection.current_model?.use_model)}
-            </span>
-          ) : (
-            <AionrsModelSelector
-              selection={modelSelection}
-              thoughtLevel={isEnterpriseWeb() ? null : runtimeConfig.thoughtLevel}
-              setStatus={runtimeConfig.setStatus}
-              onSetThoughtLevel={isEnterpriseWeb() ? undefined : handleThoughtLevelSetOption}
-            />
-          ))}
+        {!isMobile && (
+          <AionrsModelSelector
+            selection={modelSelection}
+            thoughtLevel={isEnterpriseWeb() ? null : runtimeConfig.thoughtLevel}
+            setStatus={runtimeConfig.setStatus}
+            onSetThoughtLevel={isEnterpriseWeb() ? undefined : handleThoughtLevelSetOption}
+          />
+        )}
       </div>
     ),
     workspaceEnabled,

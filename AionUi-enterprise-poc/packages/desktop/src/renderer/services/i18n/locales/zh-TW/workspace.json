@@ -1,4 +1,9 @@
 {
+  "modelAvailability": {
+    "single": "目前帳號只獲授權使用此模型。",
+    "pending": "可用模型清單尚未就緒。",
+    "failed": "無法載入模型授權清單。"
+  },
   "title": "辦公工作台",
   "view": "查看",
   "none": "無",

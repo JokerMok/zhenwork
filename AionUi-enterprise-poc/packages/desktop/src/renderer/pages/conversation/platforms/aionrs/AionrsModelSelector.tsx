@@ -69,7 +69,7 @@ const AionrsModelSelector: React.FC<{
     );
   }
 
-  const { providers, getAvailableModels, handleSelectModel } = selection;
+  const { providers, getAvailableModels, handleSelectModel, enterpriseCatalog } = selection;
 
   const label = getModelDisplayLabel({
     selected_value: selection.getDisplayModelName(current_model?.use_model),
@@ -102,12 +102,45 @@ const AionrsModelSelector: React.FC<{
   }
   const currentCompositeId = current_model ? compositeId(current_model.id, current_model.use_model || '') : null;
   const handleModelSelect = (id: string) => {
+    if (enterpriseCatalog && id === currentCompositeId) return;
     const entry = modelLookup.get(id);
     if (entry) void handleSelectModel(entry.provider, entry.modelName);
   };
 
+  let availabilityMessage: string | undefined;
+  if (enterpriseCatalog) {
+    if (modelLookup.size === 0) {
+      if (enterpriseCatalog.failed) availabilityMessage = t('workspace.modelAvailability.failed');
+      else if (enterpriseCatalog.authorizedCount === undefined) availabilityMessage = t('common.loading');
+      else if (enterpriseCatalog.authorizedCount === 0) availabilityMessage = t('workspace.errors.noModel');
+      else availabilityMessage = t('workspace.modelAvailability.pending');
+    } else if (
+      !enterpriseCatalog.failed &&
+      enterpriseCatalog.authorizedCount === 1 &&
+      modelLookup.size === 1 &&
+      modelGroups[0].models[0].id.startsWith('rc2-enterprise-model::')
+    ) {
+      availabilityMessage = t('workspace.modelAvailability.single');
+    }
+  }
+
   const modelListNode = (
-    <RuntimeSelectorModelList groups={modelGroups} currentModelId={currentCompositeId} onSelect={handleModelSelect} />
+    <>
+      {(!enterpriseCatalog || modelLookup.size > 0) && (
+        <RuntimeSelectorModelList
+          {...(enterpriseCatalog && modelGroups.length === 1
+            ? { models: modelGroups[0].models }
+            : { groups: modelGroups })}
+          currentModelId={currentCompositeId}
+          onSelect={handleModelSelect}
+        />
+      )}
+      {availabilityMessage && (
+        <Menu.Item key='model-availability' disabled className='max-w-280px !h-auto !whitespace-normal !leading-5 py-6px'>
+          {availabilityMessage}
+        </Menu.Item>
+      )}
+    </>
   );
 
   return (

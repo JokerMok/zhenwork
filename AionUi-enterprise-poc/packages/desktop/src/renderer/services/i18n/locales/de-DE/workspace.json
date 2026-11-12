@@ -1,4 +1,9 @@
 {
+  "modelAvailability": {
+    "single": "Ihr Konto ist nur für dieses Modell berechtigt.",
+    "pending": "Die verfügbaren Modelle sind noch nicht bereit.",
+    "failed": "Die für Ihr Konto freigegebenen Modelle konnten nicht geladen werden."
+  },
   "title": "Office workspace",
   "view": "View",
   "none": "None",

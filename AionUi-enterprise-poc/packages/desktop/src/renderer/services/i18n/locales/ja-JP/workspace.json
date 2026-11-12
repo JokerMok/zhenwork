@@ -1,4 +1,9 @@
 {
+  "modelAvailability": {
+    "single": "このアカウントで利用を許可されているモデルはこれだけです。",
+    "pending": "利用可能なモデルの一覧はまだ準備中です。",
+    "failed": "利用を許可されたモデルの一覧を読み込めませんでした。"
+  },
   "title": "Office workspace",
   "view": "View",
   "none": "None",

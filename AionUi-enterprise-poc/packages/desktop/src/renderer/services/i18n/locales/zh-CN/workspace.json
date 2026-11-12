@@ -1,4 +1,9 @@
 {
+  "modelAvailability": {
+    "single": "当前账号仅获授权使用此模型。",
+    "pending": "可用模型列表尚未就绪。",
+    "failed": "无法加载模型授权列表。"
+  },
   "title": "办公工作台",
   "view": "查看",
   "none": "无",

@@ -1,4 +1,9 @@
 {
+  "modelAvailability": {
+    "single": "Hesabınız yalnızca bu modeli kullanmaya yetkilidir.",
+    "pending": "Kullanılabilir modeller henüz hazır değil.",
+    "failed": "Yetkili modelleriniz yüklenemedi."
+  },
   "title": "Office workspace",
   "view": "View",
   "none": "None",

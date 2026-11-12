@@ -191,7 +191,10 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
       : undefined;
 
   return (
-    <section className='mx-auto max-w-720px px-20px py-24px md:px-32px' aria-labelledby='enterprise-personal-title'>
+    <section
+      className='box-border w-full max-w-720px min-w-0 min-h-0 flex-1 overflow-y-auto px-20px py-24px md:px-32px'
+      aria-labelledby='enterprise-personal-title'
+    >
       <h1 id='enterprise-personal-title' className='text-24px font-600 mt-0 mb-20px'>
         {t(section === 'profile' ? 'settings.enterpriseAccount.profile' : 'settings.enterpriseAccount.personalization')}
       </h1>
@@ -220,15 +223,15 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
       )}
       {active?.section === 'profile' && (
         <>
-          <div className='flex items-center gap-12px mb-20px'>
+          <div className='flex items-center gap-12px mb-16px'>
             <Avatar size={44}>
               {avatar ? <img src={avatar} alt='' referrerPolicy='no-referrer' /> : [...displayName][0]?.toUpperCase()}
             </Avatar>
             <span className='text-16px font-600'>{displayName}</span>
           </div>
-          <dl className='grid grid-cols-[auto_1fr] gap-x-24px gap-y-10px mb-20px'>
+          <dl className='grid grid-cols-[auto_minmax(0,1fr)] gap-x-24px gap-y-10px pb-20px mb-20px border-b border-solid border-border-2'>
             <dt>{t('login.enterpriseAccountLabel')}</dt>
-            <dd className='m-0'>{active.profile.username}</dd>
+            <dd className='m-0 break-all'>{active.profile.username}</dd>
             {active.profile.department && (
               <>
                 <dt>{t('settings.enterpriseAccount.department')}</dt>
@@ -247,6 +250,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
           </label>
           <Input
             id='enterprise-nickname'
+            className='max-w-360px'
             value={active.nickname}
             maxLength={30}
             disabled={saving}
@@ -259,7 +263,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
       )}
       {active?.section === 'personalization' && (
         <div className='flex flex-col gap-16px'>
-          <div className='flex items-center justify-between gap-12px'>
+          <div className='flex items-center gap-12px pb-16px border-b border-solid border-border-2'>
             <span id='enterprise-preferences-enable'>{t('settings.enterpriseAccount.enable')}</span>
             <Switch
               aria-labelledby='enterprise-preferences-enable'
@@ -268,7 +272,10 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
               onChange={(enabled) => editPreferences({ enabled })}
             />
           </div>
-          <div className='grid grid-cols-1 sm:grid-cols-3 gap-12px'>
+          <div
+            className='grid gap-12px'
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 144px), 1fr))' }}
+          >
             <div>
               <label className='block mb-6px' id='enterprise-reply-style'>
                 {label('style')}
@@ -359,7 +366,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
         </div>
       )}
       {active?.section === 'profile' && (
-        <div className='mt-28px'>
+        <div className='mt-24px pt-16px border-t border-solid border-border-2'>
           <Button onClick={() => setPasswordOpen(true)}>{t('settings.enterpriseAccount.changePassword')}</Button>
         </div>
       )}

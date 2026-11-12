@@ -148,6 +148,35 @@ describe('AionrsModelSelector runtime options', () => {
     vi.clearAllMocks();
   });
 
+  it('shows the only authorized model without switching when it is selected again', () => {
+    const managedProvider = { ...provider, id: 'rc2-enterprise-model' };
+    const selection = makeSelection({
+      providers: [managedProvider],
+      current_model: { ...managedProvider, use_model: 'rc2-terra' } as TProviderWithModel,
+      getAvailableModels: () => ['rc2-terra'],
+      getDisplayModelName: () => 'GPT-6.1-Terra',
+      enterpriseCatalog: { authorizedCount: 1, failed: false },
+    });
+    render(<AionrsModelSelector selection={selection} />);
+    expect(screen.getByRole('button', { name: /GPT-6.1-Terra/ })).toBeInTheDocument();
+    expect(screen.getByText('workspace.modelAvailability.single')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: /GPT-6.1-Terra/ }));
+    expect(selection.handleSelectModel).not.toHaveBeenCalled();
+  });
+
+  it('shows a catalog failure separately from the absence of authorization', () => {
+    const { rerender } = render(
+      <AionrsModelSelector selection={makeSelection({ providers: [], enterpriseCatalog: { failed: true } })} />
+    );
+    expect(screen.getByText('workspace.modelAvailability.failed')).toBeInTheDocument();
+    rerender(
+      <AionrsModelSelector
+        selection={makeSelection({ providers: [], enterpriseCatalog: { authorizedCount: 0, failed: false } })}
+      />
+    );
+    expect(screen.getByText('workspace.errors.noModel')).toBeInTheDocument();
+  });
+
   it('shows the current model and thought level in the header pill', () => {
     render(
       <AionrsModelSelector

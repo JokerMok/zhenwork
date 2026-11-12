@@ -1,4 +1,9 @@
 {
+  "modelAvailability": {
+    "single": "이 계정에서 사용 권한이 있는 모델은 이 모델뿐입니다.",
+    "pending": "사용 가능한 모델 목록이 아직 준비되지 않았습니다.",
+    "failed": "사용 권한이 있는 모델 목록을 불러오지 못했습니다."
+  },
   "title": "Office workspace",
   "view": "View",
   "none": "None",
