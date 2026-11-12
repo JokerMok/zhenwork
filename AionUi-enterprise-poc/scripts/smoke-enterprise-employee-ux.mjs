@@ -91,7 +91,8 @@ async function stubApi(route) {
   if (url.pathname === '/api/assistants/' + officeAssistant.id) return json({ success: true, data: {
     ...officeAssistant,
     prompts: { recommended: [], recommended_i18n: {} },
-    defaults: { model: { mode: 'auto' }, skills: { mode: 'auto' }, mcps: { mode: 'auto' } },
+    defaults: { model: { mode: 'auto' }, permission: { mode: 'auto' }, skills: { mode: 'auto' }, mcps: { mode: 'auto' } },
+    preferences: {}, capabilities: {},
   } });
   if (url.pathname === '/api/providers') return json({ success: true, data: [{
     id: 'rc2-enterprise-model', name: '企业模型', platform: 'openai', enabled: true,
@@ -173,6 +174,7 @@ const clickTab = (page, name) => page.getByRole('tab', { name, exact: true }).cl
 
 let browser;
 let page;
+const pageErrors = [];
 try {
   await new Promise((resolve) => staticServer.listen(0, '127.0.0.1', resolve));
   const origin = 'http://127.0.0.1:' + staticServer.address().port;
@@ -184,6 +186,7 @@ try {
   });
   await context.route('**/*', stubApi);
   page = await context.newPage();
+  page.on('pageerror', (error) => pageErrors.push(error.message));
   page.setDefaultTimeout(9000);
   const url = (fragment) => origin + fragment;
 
@@ -306,7 +309,7 @@ try {
   const officeExample = page.getByRole('button', { name: /^整理我添加的发票和凭证/ });
   await officeExample.waitFor();
   const expand = page.getByRole('button', { name: '高级设置', exact: true });
-  const collapse = page.getByRole('button', { name: '收起', exact: true });
+  const collapse = page.getByRole('button', { name: '收起', exact: true }).and(page.locator('[aria-expanded=true]'));
   await expand.click();
   await page.getByText('通用办公助手', { exact: true }).waitFor();
   assert.equal(await page.getByText('Aion CLI', { exact: true }).count(), 0);
@@ -331,6 +334,7 @@ try {
 } catch (error) {
   console.error(JSON.stringify({
     url: page?.url(),
+    pageErrors: pageErrors.slice(-5),
     body: await page?.locator('body').innerText({ timeout: 2000 }).then(text => text.slice(-900)).catch(() => undefined),
   }));
   throw error;
