@@ -186,13 +186,15 @@ const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
             render={(task) => {
               const execution = workById.get(task.id);
               const attempt = execution?.attempts.at(-1);
-              const description =
-                attempt?.question ||
-                (attempt?.progress
-                  ? t(`workspace.work.progress.${attempt.progress}`, { defaultValue: attempt.progress })
-                  : task.modified_at
-                    ? dateFormatter.format(new Date(task.modified_at))
-                    : t('workspace.tasks.timeUnknown'));
+              const updated = execution?.updatedAt ?? task.modified_at;
+              const date = new Date(updated ?? '');
+              const time = Number.isNaN(date.getTime()) ? t('workspace.tasks.timeUnknown') : dateFormatter.format(date);
+              const progress = attempt?.progress
+                ? t(`workspace.work.progress.${attempt.progress}`, { defaultValue: '' })
+                : '';
+              const result = ['waiting_input', 'waiting_confirmation'].includes(attempt?.state || '') &&
+                !attempt?.question?.startsWith('[') ? attempt?.question || progress : progress;
+              const title = execution?.title || task.name;
               return (
                 <List.Item
                   key={task.id}
@@ -200,7 +202,13 @@ const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
                     <Button
                       key='open'
                       type='text'
-                      onClick={(event) => (execution ? selectTask(task.id, event.currentTarget) : navigate(`/conversation/${task.id}`))}
+                      onClick={(event) => {
+                        if (execution) {
+                          selectTask(task.id, event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined);
+                        } else {
+                          navigate(`/conversation/${task.id}`);
+                        }
+                      }}
                     >
                       {t(execution ? 'workspace.work.details' : 'workspace.tasks.open')} <Right />
                     </Button>,
@@ -209,7 +217,7 @@ const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
                   <List.Item.Meta
                     title={
                       <div className='flex flex-wrap items-center gap-8px'>
-                        <span className='min-w-0 break-all'>{task.name}</span>
+                        <span className='min-w-0 max-w-full truncate' title={title}>{title}</span>
                         {attempt ? (
                           <Tag>
                             {t(`workspace.work.states.${attempt.state}`, { defaultValue: t('workspace.work.unknown') })}
@@ -219,7 +227,12 @@ const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
                         )}
                       </div>
                     }
-                    description={description}
+                    description={
+                      <div className='flex min-w-0 flex-wrap items-center gap-x-8px'>
+                        {result && <span className='max-w-full truncate' title={result}>{result}</span>}
+                        <span>{time}</span>
+                      </div>
+                    }
                   />
                 </List.Item>
               );

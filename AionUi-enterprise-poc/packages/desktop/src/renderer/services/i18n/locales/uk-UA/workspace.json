@@ -92,6 +92,7 @@
     "prepareFailed": "The work environment could not be prepared ({{code}}). Retry, or contact an administrator if it persists."
   },
   "fileKind": {
+    "result": "Файли робочої області",
     "all": "All files",
     "task": "Task files",
     "personal": "Personal files",
@@ -99,6 +100,9 @@
     "generated": "Generated files"
   },
   "files": {
+    "continueInNewTask": "Почати завдання з цим файлом",
+    "continueSnapshotPrompt": "Використайте прикріплену копію «{{path}}» від {{time}}. Виконайте наступні вказівки та збережіть оригінал.",
+    "workDirectory": "Вибрати робочу папку",
     "currentVersion": "Поточна версія",
     "title": "Files",
     "subtitle": "Browse task, personal, shared, and generated files with their saved versions.",

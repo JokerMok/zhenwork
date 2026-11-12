@@ -3,7 +3,7 @@
     "single": "当前账号仅获授权使用此模型。",
     "pending": "可用模型列表尚未就绪。",
     "failed": "无法加载模型授权列表。",
-    "invalid": "当前模型已不可用，请重新选择模型。",
+    "invalid": "当前模型不可用，请从模型菜单选择已授权的模型。",
     "busy": "当前回复结束后即可切换模型。",
     "switching": "正在切换模型…"
   },
@@ -94,6 +94,7 @@
     "prepareFailed": "工作环境准备失败（{{code}}）。请重试；若仍失败，请联系管理员。"
   },
   "fileKind": {
+    "result": "工作区文件",
     "all": "全部文件",
     "task": "任务文件",
     "personal": "个人文件",
@@ -101,6 +102,9 @@
     "generated": "生成文件"
   },
   "files": {
+    "continueInNewTask": "基于文件新建任务",
+    "continueSnapshotPrompt": "已附上「{{path}}」（{{time}} 的版本）。请基于附件按我的下一步要求修改，输出新文件或新版本，保留原件。",
+    "workDirectory": "选择工作目录",
     "currentVersion": "当前版本",
     "title": "文件",
     "subtitle": "查看任务、个人、共享和生成文件，以及已保存的历史版本。",

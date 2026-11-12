@@ -92,6 +92,7 @@
     "prepareFailed": "The work environment could not be prepared ({{code}}). Retry, or contact an administrator if it persists."
   },
   "fileKind": {
+    "result": "فایل‌های فضای کاری",
     "all": "All files",
     "task": "Task files",
     "personal": "Personal files",
@@ -99,6 +100,9 @@
     "generated": "Generated files"
   },
   "files": {
+    "continueInNewTask": "شروع وظیفه با این فایل",
+    "continueSnapshotPrompt": "از نسخهٔ پیوست «{{path}}» مربوط به {{time}} استفاده کن. طبق دستور بعدی من عمل کن و نسخهٔ اصلی را نگه دار.",
+    "workDirectory": "انتخاب پوشهٔ کاری",
     "currentVersion": "نسخهٔ فعلی",
     "title": "Files",
     "subtitle": "Browse task, personal, shared, and generated files with their saved versions.",

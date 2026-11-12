@@ -92,6 +92,7 @@
     "prepareFailed": "The work environment could not be prepared ({{code}}). Retry, or contact an administrator if it persists."
   },
   "fileKind": {
+    "result": "ワークスペースのファイル",
     "all": "All files",
     "task": "Task files",
     "personal": "Personal files",
@@ -99,6 +100,9 @@
     "generated": "Generated files"
   },
   "files": {
+    "continueInNewTask": "このファイルでタスクを開始",
+    "continueSnapshotPrompt": "「{{path}}」の {{time}} 時点のコピーを添付しました。次の指示に従い、元のファイルは残してください。",
+    "workDirectory": "作業フォルダーを選択",
     "currentVersion": "現在のバージョン",
     "title": "Files",
     "subtitle": "Browse task, personal, shared, and generated files with their saved versions.",

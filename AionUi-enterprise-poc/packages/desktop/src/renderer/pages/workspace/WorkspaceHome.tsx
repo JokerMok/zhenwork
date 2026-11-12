@@ -5,9 +5,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-type WorkspaceHomeProps = { onOpenSection: (section: string) => void };
-
-const WorkspaceHome: React.FC<WorkspaceHomeProps> = ({ onOpenSection }) => {
+const WorkspaceHome: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [brandName, setBrandName] = useState('ZhenWork');
@@ -96,15 +94,6 @@ const WorkspaceHome: React.FC<WorkspaceHomeProps> = ({ onOpenSection }) => {
           ))}
         </Grid.Row>
       </section>
-      <Card title={t('workspace.home.manageTitle')}>
-        <div className='flex flex-wrap gap-8px'>
-          <Button onClick={() => onOpenSection('tasks')}>{t('workspace.tabs.tasks')}</Button>
-          <Button onClick={() => onOpenSection('files')}>{t('workspace.tabs.files')}</Button>
-          <Button onClick={() => onOpenSection('knowledge')}>{t('workspace.tabs.knowledge')}</Button>
-          <Button onClick={() => onOpenSection('abilities')}>{t('workspace.tabs.abilities')}</Button>
-          <Button onClick={() => onOpenSection('memory')}>{t('workspace.tabs.memory')}</Button>
-        </div>
-      </Card>
     </div>
   );
 };

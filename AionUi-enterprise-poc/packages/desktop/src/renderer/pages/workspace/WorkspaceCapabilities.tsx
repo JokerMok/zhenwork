@@ -621,16 +621,18 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
               )}
             />
           )
-        ) : items.length === 0 && !nativeOfficeCapability ? (
-          <Empty
-            description={
-              page > 1 || hasMore
-                ? t('workspace.abilities.resourcePageEmpty')
-                : scope === 'mine'
-                  ? t('workspace.abilities.personalEmpty')
-                  : t('workspace.abilities.empty')
-            }
-          />
+        ) : items.length === 0 ? (
+          nativeOfficeCapability ? null : (
+            <Empty
+              description={
+                page > 1 || hasMore
+                  ? t('workspace.abilities.resourcePageEmpty')
+                  : scope === 'mine'
+                    ? t('workspace.abilities.personalEmpty')
+                    : t('workspace.abilities.empty')
+              }
+            />
+          )
         ) : (
           <List
             dataSource={items}

@@ -47,6 +47,7 @@ const tasks = Array.from({ length: 20 }, (_, i) => {
       state: 'partial',
       phase: 'finished',
       steps: [],
+      ...(number === 1 ? { progress: 'query_enterprise_data' } : {}),
       artifacts: number === 20 ? artifacts : number === 19 ? [{
         path: 'outputs/other.txt', valid: true, sha256: '3'.repeat(64), version: 1,
       }] : [],
@@ -59,10 +60,15 @@ const files = [...Array.from({ length: 20 }, (_, i) => ({
 })), {
   path: filePath, name: 'stock-weekly.xlsx', byteSize: 320, modifiedAt: date, kind: 'generated',
   currentVersionId: 'stock-v2',
-  versions: artifacts.map(({ versionId, sha256 }) => ({ id: versionId, sha256, createdAt: date, byteSize: 320 })),
+  versions: artifacts.map(({ versionId, sha256, version }) => ({
+    id: versionId, sha256, createdAt: version === 1 ? '2026-11-10T00:00:00Z' : date, byteSize: 320,
+  })),
+}, {
+  path: 'outputs/calculation-notes.json', name: 'calculation-notes.json',
+  byteSize: 30, modifiedAt: date, kind: 'result', versions: [],
 }];
 const models = [
-  { id: 'fixture-model-a', name: 'GPT-6.1-Terra', code: 'terra', isDefault: true, streaming: true },
+  { id: 'fixture-model-a', name: 'GPT-6.1-Terra', code: 'terra', isDefault: true, streaming: true, source: 'ORGANIZATION' },
   { id: 'fixture-model-b', name: '测试模型 B', code: 'fixture-b', streaming: true },
 ];
 const officeAssistant = {
@@ -71,6 +77,8 @@ const officeAssistant = {
   source: 'custom', models: [], prompts: [], sort_order: 1, team_selectable: false,
 };
 const previews = [];
+const downloaded = [];
+const temporaryUploads = [];
 let account = 'employee-a';
 const preferences = new Map();
 const saved = [];
@@ -100,6 +108,24 @@ async function stubApi(route) {
   }] });
   if (url.pathname === '/enterprise/control/ai/models/available') return json(models);
   if (url.pathname === '/enterprise/resources/status') return json({ state: 'ready' });
+  if (url.pathname === '/api/system/info') return json({ success: true, data: { work_dir: '/fixture/workspace' } });
+  if (url.pathname === '/api/fs/dir') return json({ success: true, data:
+    ['资料', '.versions', 'conversations'].map((name) => ({ name, is_dir: true, full_path: '/fixture/workspace/' + name })),
+  });
+  if (url.pathname === '/enterprise/control/ai/resources') return json({ items: [], hasMore: false });
+  if (url.pathname === '/enterprise/control/ai/resources/runtime-issues') return json([]);
+  if (url.pathname === '/enterprise/files/download') {
+    const name = url.searchParams.get('path');
+    const version = url.searchParams.get('version');
+    if (name !== filePath || !artifacts.some((item) => item.versionId === version)) return json({ error: 'FORBIDDEN' }, 403);
+    downloaded.push({ name, version });
+    return route.fulfill({ status: 200, body: 'snapshot-bytes:' + version });
+  }
+  if (url.pathname === '/api/fs/upload' && method === 'POST') {
+    const body = request.postDataBuffer().toString();
+    temporaryUploads.push(body);
+    return json({ success: true, data: '/fixture/temp/stock-weekly.xlsx' });
+  }
   if (url.pathname === '/enterprise/brand') return json({ productName: 'ZhenWork' });
   if (url.pathname === '/enterprise/conversations') return json({ items: [] });
   if (url.pathname === '/enterprise/tasks') {
@@ -331,6 +357,42 @@ try {
   assert.equal(await draft.inputValue(), '展开设置前的任务草稿');
   console.log(JSON.stringify({ scenario: 'UX-04', examplesAndDraftStable: true,
     governedAssistantVisible: true, internalPresetsHidden: true, namedModelSelectionRestored: true }));
+
+  await page.goto(url('/#/workspace'));
+  await page.getByRole('button', { name: '新建空白任务' }).waitFor();
+  assert.equal(await page.getByText('管理我的工作', { exact: true }).count(), 0);
+  await page.goto(url(taskUrl));
+  await page.getByText('库存周报 1', { exact: true }).waitFor();
+  assert.equal(await page.getByText('query_enterprise_data', { exact: true }).count(), 0);
+  await page.goto(url('/#/workspace?section=abilities&capability=ASSISTANT'));
+  await page.getByText('通用办公助手', { exact: true }).waitFor();
+  assert.equal(await page.getByText('暂无数据', { exact: true }).count(), 0);
+
+  await page.goto(url('/#/workspace?section=files'));
+  const unknownFile = page.locator('.arco-list-item').filter({ has: page.getByText('calculation-notes.json', { exact: true }) });
+  await unknownFile.getByText('工作区文件', { exact: true }).waitFor();
+  await page.goto(url('/#/workspace?section=files&previewPath=' + encodeURIComponent(filePath) + '&fileVersion=stock-v1'));
+  await drawer.getByText('固定历史版本一', { exact: true }).waitFor();
+  await drawer.getByRole('button', { name: '基于文件新建任务', exact: true }).click();
+  await page.waitForURL(/#\/guid/);
+  await draft.waitFor();
+  assert.match(await draft.inputValue(), /stock-weekly\.xlsx.*11月10日/);
+  assert.deepEqual(downloaded, [{ name: filePath, version: 'stock-v1' }]);
+  assert.equal(temporaryUploads.length, 1);
+  assert.ok(temporaryUploads[0].includes('snapshot-bytes:stock-v1'));
+  await page.getByText('stock-weekly.xlsx', { exact: true }).waitFor();
+  const chooseFolder = page.getByRole('button', { name: '选择工作目录', exact: true });
+  if (await chooseFolder.count()) await chooseFolder.click();
+  else await page.getByRole('button', { name: 'workspace', exact: true }).click();
+  const directory = page.getByRole('dialog').filter({ hasText: '选择工作目录' });
+  await directory.getByText('资料', { exact: true }).waitFor();
+  assert.equal(await directory.getByText('.versions', { exact: true }).count(), 0);
+  assert.equal(await directory.getByText('conversations', { exact: true }).count(), 0);
+  assert.ok(!(await directory.innerText()).includes('/fixture/workspace'));
+  await directory.getByRole('button', { name: '取消', exact: true }).click();
+  console.log(JSON.stringify({ scenario: 'P2', duplicateNavigationRemoved: true, rawToolCodeHidden: true,
+    availableAssistantHasNoContradictoryEmptyState: true, neutralWorkspaceFileLabel: true,
+    exactSnapshotAttachedToNewDraft: true, physicalDirectoryHidden: true }));
 } catch (error) {
   console.error(JSON.stringify({
     url: page?.url(),

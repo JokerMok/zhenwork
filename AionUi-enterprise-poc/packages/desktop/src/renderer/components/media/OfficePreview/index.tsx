@@ -6,7 +6,9 @@ import { useTranslation } from 'react-i18next';
 import { previewErrorKey, type OfficePreviewData } from './types';
 import styles from './OfficePreview.module.css';
 
-export type OfficePreviewProps = { path: string; version?: string; revision?: string; onContinue?: () => void };
+export type OfficePreviewProps = {
+  path: string; version?: string; revision?: string; onContinue?: () => void; continueBusy?: boolean;
+};
 const table = (rows: unknown[][], key: string) => (
   <Table
     key={key}
@@ -24,7 +26,7 @@ const table = (rows: unknown[][], key: string) => (
     }))}
   />
 );
-const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, onContinue }) => {
+const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, onContinue, continueBusy }) => {
   const { t } = useTranslation();
   const [data, setData] = useState<OfficePreviewData>();
   const [error, setError] = useState<string>();
@@ -116,7 +118,7 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
         <Button icon={<Download />} onClick={download}>
           {t('workspace.files.download')}
         </Button>
-        {onContinue ? <Button onClick={onContinue}>{t('workspace.files.continue')}</Button> : null}
+        {onContinue ? <Button onClick={onContinue} loading={continueBusy}>{t('workspace.files.continueInNewTask')}</Button> : null}
         {data ? <Tag>{data.sourceSha256.slice(0, 12)}</Tag> : null}
       </Space>
       {!path.toLowerCase().endsWith('.pptx') && data?.visualMode !== 'libreoffice' ? (

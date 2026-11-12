@@ -7,6 +7,7 @@
 import { ipcBridge } from '@/common';
 import { addRecentWorkspace, getRecentWorkspaces } from '@/renderer/components/workspace';
 import { AionInlineSearchInput } from '@/renderer/components/base';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { Tooltip } from '@arco-design/web-react';
 import { Close, Down } from '@icon-park/react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -54,7 +55,8 @@ const GuidWorkspaceFootnote: React.FC<GuidWorkspaceFootnoteProps> = ({
   onClearWorkspace,
 }) => {
   const { t } = useTranslation();
-  const recentWorkspaces = getRecentWorkspaces();
+  const enterprise = isEnterpriseWeb();
+  const recentWorkspaces = enterprise ? [] : getRecentWorkspaces();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
@@ -65,17 +67,17 @@ const GuidWorkspaceFootnote: React.FC<GuidWorkspaceFootnoteProps> = ({
   const handleBrowseWorkspace = useCallback(() => {
     setOpen(false);
     ipcBridge.dialog.showOpen
-      .invoke({ properties: ['openDirectory', 'createDirectory'] })
+      .invoke({ properties: ['openDirectory', 'createDirectory'], defaultPath: enterprise ? workspaceDir || undefined : undefined })
       .then((dirs) => {
         if (dirs && dirs[0]) {
-          addRecentWorkspace(dirs[0]);
+          if (!enterprise) addRecentWorkspace(dirs[0]);
           onSelectWorkspace(dirs[0]);
         }
       })
       .catch((error) => {
         console.error('Failed to open directory dialog:', error);
       });
-  }, [onSelectWorkspace]);
+  }, [enterprise, onSelectWorkspace, workspaceDir]);
 
   const handleSelectPath = useCallback(
     (path: string) => {
@@ -222,21 +224,21 @@ const GuidWorkspaceFootnote: React.FC<GuidWorkspaceFootnoteProps> = ({
     <div className={styles.workspaceFootnote}>
       {workspaceDir ? (
         <>
-          <Tooltip content={workspaceDir} position='top'>
+          <Tooltip content={enterprise ? workspaceName : workspaceDir} position='top'>
             <div className={styles.workspacePill}>
               <button
                 ref={triggerRef as React.RefObject<HTMLButtonElement>}
                 className={styles.workspacePillMain}
-                onClick={toggleOpen}
+                onClick={enterprise ? handleBrowseWorkspace : toggleOpen}
               >
                 <FolderIcon size={14} />
                 <span className={styles.workspacePillName}>{workspaceName}</span>
-                <Down
+                {!enterprise && <Down
                   theme='outline'
                   size='12'
                   fill='currentColor'
                   style={{ flexShrink: 0, transform: 'translateY(1px)' }}
-                />
+                />}
               </button>
               <span
                 role='button'
@@ -262,7 +264,7 @@ const GuidWorkspaceFootnote: React.FC<GuidWorkspaceFootnoteProps> = ({
             onClick={recentWorkspaces.length > 0 ? toggleOpen : handleBrowseWorkspace}
           >
             <FolderIcon size={14} />
-            <span>{t('guid.workspace.workInProject')}</span>
+            <span>{t(enterprise ? 'workspace.files.workDirectory' : 'guid.workspace.workInProject')}</span>
             {recentWorkspaces.length > 0 && (
               <Down
                 theme='outline'

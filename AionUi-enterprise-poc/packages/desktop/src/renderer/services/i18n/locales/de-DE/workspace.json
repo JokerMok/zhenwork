@@ -92,6 +92,7 @@
     "prepareFailed": "The work environment could not be prepared ({{code}}). Retry, or contact an administrator if it persists."
   },
   "fileKind": {
+    "result": "Arbeitsbereichsdateien",
     "all": "All files",
     "task": "Task files",
     "personal": "Personal files",
@@ -99,6 +100,9 @@
     "generated": "Generated files"
   },
   "files": {
+    "continueInNewTask": "Aufgabe mit dieser Datei starten",
+    "continueSnapshotPrompt": "Verwende die angehängte Kopie von „{{path}}“ vom {{time}}. Setze meine nächsten Anweisungen um und behalte das Original.",
+    "workDirectory": "Arbeitsordner wählen",
     "currentVersion": "Aktuelle Version",
     "title": "Files",
     "subtitle": "Browse task, personal, shared, and generated files with their saved versions.",

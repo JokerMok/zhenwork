@@ -3,7 +3,7 @@
     "single": "This is the only model authorized for your account.",
     "pending": "The available models are not ready yet.",
     "failed": "Could not load your authorized models.",
-    "invalid": "The selected model is no longer available. Choose another model.",
+    "invalid": "The selected model is unavailable. Choose an authorized model from the model menu.",
     "busy": "Wait for the current response to finish before switching models.",
     "switching": "Switching model…"
   },
@@ -94,6 +94,7 @@
     "prepareFailed": "The work environment could not be prepared ({{code}}). Retry, or contact an administrator if it persists."
   },
   "fileKind": {
+    "result": "Workspace files",
     "all": "All files",
     "task": "Task files",
     "personal": "Personal files",
@@ -101,6 +102,9 @@
     "generated": "Generated files"
   },
   "files": {
+    "continueInNewTask": "Start a task with this file",
+    "continueSnapshotPrompt": "Use the attached copy of “{{path}}” from {{time}}. Apply my next instructions and save a new file or version while preserving the original.",
+    "workDirectory": "Choose working folder",
     "currentVersion": "Current version",
     "title": "Files",
     "subtitle": "Browse task, personal, shared, and generated files with their saved versions.",

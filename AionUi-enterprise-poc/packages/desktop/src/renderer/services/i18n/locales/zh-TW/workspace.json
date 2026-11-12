@@ -92,6 +92,7 @@
     "prepareFailed": "工作環境準備失敗（{{code}}）。請重試；若仍失敗，請聯絡管理員。"
   },
   "fileKind": {
+    "result": "工作區檔案",
     "all": "全部檔案",
     "task": "任務檔案",
     "personal": "個人檔案",
@@ -99,6 +100,9 @@
     "generated": "產生檔案"
   },
   "files": {
+    "continueInNewTask": "以檔案建立新任務",
+    "continueSnapshotPrompt": "已附上「{{path}}」（{{time}} 的版本）。請依附件和接下來的要求修改，輸出新檔案或版本並保留原件。",
+    "workDirectory": "選擇工作目錄",
     "currentVersion": "目前版本",
     "title": "檔案",
     "subtitle": "查看任務、個人、共享和產生檔案，以及已儲存的歷史版本。",

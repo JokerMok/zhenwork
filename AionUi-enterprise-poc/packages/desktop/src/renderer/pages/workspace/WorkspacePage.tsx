@@ -52,7 +52,7 @@ const WorkspacePage: React.FC = () => {
               </span>
             }
           >
-            <WorkspaceHome onOpenSection={setActive} />
+            <WorkspaceHome />
           </Tabs.TabPane>
           <Tabs.TabPane
             key='tasks'

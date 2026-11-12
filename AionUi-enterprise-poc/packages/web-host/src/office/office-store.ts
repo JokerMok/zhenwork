@@ -324,6 +324,11 @@ export class OfficeStore {
     await visit(base);
     return this.transaction(async (state) => {
       const files: Array<Record<string, unknown>> = [];
+      const deliveryKeys = new Set(
+        Object.values(state.deliveries ?? {}).flatMap((group) =>
+          Object.entries(group).map(([file, sha256]) => file + '\0' + sha256)
+        )
+      );
       for (const name of names) {
         try {
           const bytes = await this.readWorkspace(base, name, true);
@@ -334,14 +339,16 @@ export class OfficeStore {
           }
           const info = await stat(path.join(base, name));
           const latestSnapshot = state.files[name]?.at(-1);
-          const currentVersionId = latestSnapshot?.sha256 === digest(bytes) ? latestSnapshot.id : undefined;
+          const sha256 = digest(bytes);
+          const currentVersionId = latestSnapshot?.sha256 === sha256 ? latestSnapshot.id : undefined;
+          const recordedDelivery = deliveryKeys.has(name + '\0' + sha256);
           files.push({
             path: name,
             ...(currentVersionId ? { currentVersionId } : {}),
             name: path.basename(name),
             byteSize: bytes.length,
             modifiedAt: info.mtime.toISOString(),
-            kind: name.startsWith('资料/') ? 'personal' : 'result',
+            kind: recordedDelivery ? 'generated' : name.startsWith('资料/') ? 'personal' : 'result',
             versions: [...(state.files[name] || [])].reverse(),
           });
         } catch (error) {

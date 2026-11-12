@@ -1,6 +1,6 @@
 import DataAnalysisControl from './TaskWork/DataAnalysis';
 import OfficePreview from '@/renderer/components/media/OfficePreview';
-import { formatFileSize } from '@/renderer/services/FileService';
+import { formatFileSize, uploadFileViaHttp } from '@/renderer/services/FileService';
 import {
   Alert,
   Button,
@@ -119,6 +119,9 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
   const [workspaceRoot, setWorkspaceRoot] = useState('');
   const [dataPath, setDataPath] = useState<string>();
   const [preview, setPreview] = useState<FilePreview | null>(null);
+  const [continuingPath, setContinuingPath] = useState<string>();
+  const continuation = useRef<AbortController | null>(null);
+  useEffect(() => () => continuation.current?.abort(), [location.key]);
   const params = new URLSearchParams(location.search);
   const requestedPath = active
     ? params.get('previewPath') || (location.state as { previewPath?: string } | null)?.previewPath
@@ -169,8 +172,7 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
   const visibleFiles = useMemo(
     () =>
       files.filter((file) => {
-        const normalizedKind = file.kind.toLowerCase() === 'result' ? 'generated' : file.kind.toLowerCase();
-        return kind === 'all' || normalizedKind === kind;
+        return kind === 'all' || file.kind.toLowerCase() === kind;
       }),
     [files, kind]
   );
@@ -213,18 +215,46 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
     }
   };
 
-  const continueWithFile = (file: EnterpriseFile) => {
+  const continueWithFile = async (file: EnterpriseFile, version?: EnterpriseFileVersion) => {
+    if (continuation.current) return;
     if (!workspaceRoot) {
       message.error(t('workspace.errors.action', { code: 'WORKSPACE_UNAVAILABLE' }));
       return;
     }
-    navigate('/guid', {
-      state: {
-        workspace: workspaceRoot,
-        prefillPrompt: t('workspace.files.continuePrompt', { path: file.path }),
-        focusPrefill: true,
-      },
-    });
+    const selectedVersion = version ?? file.versions?.find((item) => item.id === file.currentVersionId);
+    const query = new URLSearchParams({ path: file.path });
+    const versionId = selectedVersion?.id || file.currentVersionId;
+    if (versionId) query.set('version', versionId);
+    const controller = new AbortController();
+    continuation.current = controller;
+    setContinuingPath(file.path);
+    try {
+      const response = await fetch(`/enterprise/files/download?${query}`, {
+        credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`HTTP_${response.status}`);
+      const bytes = await response.blob();
+      if (controller.signal.aborted) return;
+      const attachment = await uploadFileViaHttp(new File([bytes], file.name, { type: bytes.type }),
+        undefined, undefined, undefined, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      navigate('/guid', {
+        state: {
+          workspace: workspaceRoot,
+          prefillFiles: [attachment],
+          prefillPrompt: t('workspace.files.continueSnapshotPrompt', {
+            path: file.path,
+            time: formatDate(selectedVersion?.createdAt ?? file.modifiedAt),
+          }),
+          focusPrefill: true,
+        },
+      });
+    } catch (error) {
+      if (!controller.signal.aborted) message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
+    } finally {
+      continuation.current = null;
+      setContinuingPath(undefined);
+    }
   };
 
   const openPreview = (file: EnterpriseFile, version?: EnterpriseFileVersion) => {
@@ -335,6 +365,9 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
   };
 
   const visiblePreview = matchesPreview ? preview : null;
+  const previewDialogAttributes: React.AriaAttributes & { role?: React.AriaRole } = requestedPath
+    ? { role: 'dialog', 'aria-modal': true, 'aria-label': visiblePreview?.file.name || t('workspace.files.preview') }
+    : {};
   const previewDrawer = (
       <Drawer
         width='min(900px, 100vw)'
@@ -343,9 +376,7 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
         autoFocus
         mountOnEnter
         unmountOnExit
-        role={requestedPath ? 'dialog' : undefined}
-        aria-modal={requestedPath ? true : undefined}
-        aria-label={requestedPath ? visiblePreview?.file.name || t('workspace.files.preview') : undefined}
+        {...previewDialogAttributes}
         title={visiblePreview
           ? visiblePreview.file.name + (visiblePreview.version ? ' · ' + formatDate(visiblePreview.version.createdAt) : '')
           : t('workspace.files.preview')}
@@ -372,8 +403,8 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
             path={visiblePreview.file.path}
             version={visiblePreview.version?.id}
             revision={visiblePreview.version?.sha256 || visiblePreview.file.modifiedAt}
-            onContinue={previewOnly || (visiblePreview.version && visiblePreview.version.id !== visiblePreview.file.currentVersionId)
-              ? undefined : () => continueWithFile(visiblePreview.file)}
+            onContinue={previewOnly ? undefined : () => void continueWithFile(visiblePreview.file, visiblePreview.version)}
+            continueBusy={continuingPath === visiblePreview.file.path}
           />
         ) : visiblePreview.loading ? (
           <div className='flex min-h-240px items-center justify-center'>
@@ -417,8 +448,9 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
             />
             <Space wrap>
               {visiblePreview.kind === 'office' && !previewOnly ? (
-                <Button type='primary' onClick={() => continueWithFile(visiblePreview.file)}>
-                  {t('workspace.files.openInTask')}
+                <Button type='primary' loading={continuingPath === visiblePreview.file.path}
+                  onClick={() => void continueWithFile(visiblePreview.file, visiblePreview.version)}>
+                  {t('workspace.files.continueInNewTask')}
                 </Button>
               ) : null}
               <Button icon={<Download />} onClick={() => downloadWorkspaceFile(visiblePreview.file, visiblePreview.version)}>
@@ -442,7 +474,9 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
         </div>
         <Space wrap className='max-w-full'>
           <Select aria-label={t('workspace.files.title')} value={kind} onChange={setKind} style={{ width: 145 }}>
-            {['all', 'task', 'personal', 'shared', 'generated'].map((value) => (
+            {['all', 'task', 'personal', 'shared', 'generated', 'result']
+              .filter((value) => value !== 'result' || files.some((file) => file.kind.toLowerCase() === value))
+              .map((value) => (
               <Select.Option key={value} value={value}>
                 {t(`workspace.fileKind.${value}`)}
               </Select.Option>
@@ -491,8 +525,10 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
                   <Button key='download' type='text' icon={<Download />} onClick={() => downloadWorkspaceFile(file)}>
                     {t('workspace.files.download')}
                   </Button>,
-                  <Button key='continue' type='text' onClick={() => continueWithFile(file)}>
-                    {t('workspace.files.continue')}
+                  <Button key='continue' type='text' loading={continuingPath === file.path}
+                    disabled={Boolean(continuingPath) && continuingPath !== file.path}
+                    onClick={() => void continueWithFile(file)}>
+                    {t('workspace.files.continueInNewTask')}
                   </Button>,
                   <Button
                     key='versions'
@@ -510,7 +546,7 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
                       <span className='min-w-0 break-all' title={file.name}>{file.name}</span>
                       <Tag>
                         {t(
-                          `workspace.fileKind.${file.kind.toLowerCase() === 'result' ? 'generated' : file.kind.toLowerCase()}`,
+                          `workspace.fileKind.${file.kind.toLowerCase()}`,
                           { defaultValue: file.kind }
                         )}
                       </Tag>

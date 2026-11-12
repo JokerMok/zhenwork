@@ -140,9 +140,12 @@ export const WebFsPicker: React.FC<PickerProps> = ({ options, onDone }) => {
   }, []);
 
   const visibleEntries = useMemo(() => {
-    if (!fileMode) return entries.filter((e) => e.isDir);
-    return entries.filter((e) => e.isDir || matchesFilters(e.name, options?.filters));
-  }, [entries, fileMode, options?.filters]);
+    const visible = enterprise ? entries.filter((entry) =>
+      !entry.name.startsWith('.') && (currentDir !== enterpriseRootRef.current ||
+        !['conversations', 'node_modules'].includes(entry.name))
+    ) : entries;
+    return visible.filter((entry) => entry.isDir || (fileMode && matchesFilters(entry.name, options?.filters)));
+  }, [currentDir, enterprise, entries, fileMode, options?.filters]);
 
   const toggleSelect = useCallback(
     (entry: Entry) => {
@@ -166,8 +169,12 @@ export const WebFsPicker: React.FC<PickerProps> = ({ options, onDone }) => {
   }, [fileMode, selected, currentDir, settle]);
 
   const title = wantsDirectory
-    ? t('fileSelection.webFsPicker.titleDirectory', { defaultValue: 'Select a folder on the server' })
+    ? t(enterprise ? 'workspace.files.workDirectory' : 'fileSelection.webFsPicker.titleDirectory')
     : t('fileSelection.webFsPicker.titleFile', { defaultValue: 'Select a file on the server' });
+  const relativeDirectory = currentDir && enterpriseRootRef.current
+    ? currentDir.slice(enterpriseRootRef.current.length).replace(/^\//, '')
+    : '';
+  const displayDirectory = enterprise ? relativeDirectory || t('workspace.title') : currentDir;
 
   return (
     <Modal
@@ -181,14 +188,14 @@ export const WebFsPicker: React.FC<PickerProps> = ({ options, onDone }) => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <span
             style={{ fontSize: 12, color: 'var(--color-text-3)', overflow: 'hidden', textOverflow: 'ellipsis' }}
-            title={fileMode && selected.length > 0 ? selected.join('\n') : currentDir}
+            title={!enterprise && fileMode && selected.length > 0 ? selected.join('\n') : displayDirectory}
           >
             {fileMode && selected.length > 0
               ? t('fileSelection.webFsPicker.selectedCount', {
                   defaultValue: '{{count}} selected',
                   count: selected.length,
                 })
-              : currentDir}
+              : displayDirectory}
           </span>
           <span style={{ flexShrink: 0 }}>
             <Button onClick={() => settle(undefined)} style={{ marginInlineEnd: 8 }}>
@@ -207,15 +214,21 @@ export const WebFsPicker: React.FC<PickerProps> = ({ options, onDone }) => {
             (enterprise && !isWithinPosixRoot(parentOf(currentDir), enterpriseRootRef.current))}>
           {t('fileSelection.webFsPicker.up', { defaultValue: 'Up' })}
         </Button>
-        <Input
-          value={pathDraft}
-          onChange={setPathDraft}
-          onPressEnter={() => void load(pathDraft.trim() || '/')}
-          placeholder='/path/to/folder'
-        />
-        <Button onClick={() => void load(pathDraft.trim() || '/')} disabled={loading}>
-          {t('fileSelection.webFsPicker.go', { defaultValue: 'Go' })}
-        </Button>
+        {enterprise ? (
+          <span className='min-w-0 self-center truncate' title={displayDirectory}>{displayDirectory}</span>
+        ) : (
+          <>
+            <Input
+              value={pathDraft}
+              onChange={setPathDraft}
+              onPressEnter={() => void load(pathDraft.trim() || '/')}
+              placeholder='/path/to/folder'
+            />
+            <Button onClick={() => void load(pathDraft.trim() || '/')} disabled={loading}>
+              {t('fileSelection.webFsPicker.go', { defaultValue: 'Go' })}
+            </Button>
+          </>
+        )}
       </div>
 
       <div

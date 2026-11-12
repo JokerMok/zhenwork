@@ -42,7 +42,7 @@ test('home examples are named buttons and open the new task with a draft', async
   render(
     <MemoryRouter>
       <Routes>
-        <Route path='/' element={<WorkspaceHome onOpenSection={vi.fn()} />} />
+        <Route path='/' element={<WorkspaceHome />} />
         <Route path='/guid' element={<Draft />} />
       </Routes>
     </MemoryRouter>

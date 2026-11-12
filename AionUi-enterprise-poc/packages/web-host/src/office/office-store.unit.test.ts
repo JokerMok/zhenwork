@@ -139,6 +139,21 @@ test('delivery receipts persist by actor and dataset without exposing another em
   await expect(first.rememberDelivery('not-a-hash', 'report.docx', 'b'.repeat(64))).rejects.toThrow('INVALID_DELIVERY_RECEIPT');
 });
 
+test.runIf(process.platform === 'linux')('only the bytes of a recorded delivery are listed as generated', async () => {
+  const { root, workspace } = await fixture();
+  const store = await OfficeStore.create(root, actor('19'));
+  const original = Buffer.from('{"approved":true}');
+  await writeFile(path.join(workspace, 'report.json'), original);
+  await writeFile(path.join(workspace, 'intermediate.json'), original);
+  await store.rememberDelivery('a'.repeat(64), 'report.json', createHash('sha256').update(original).digest('hex'));
+  expect((await store.files(workspace)).files).toEqual(expect.arrayContaining([
+    expect.objectContaining({ path: 'report.json', kind: 'generated' }),
+    expect.objectContaining({ path: 'intermediate.json', kind: 'result' }),
+  ]));
+  await writeFile(path.join(workspace, 'report.json'), '{"approved":false}');
+  expect((await store.files(workspace)).files.find((file) => file.path === 'report.json')?.kind).toBe('result');
+});
+
 test.runIf(process.platform === 'linux')('invalid Office originals remain listed and downloadable without weakening tool validation or path isolation', async () => {
   const { root, workspace } = await fixture();
   const store = await OfficeStore.create(root, actor('29'));

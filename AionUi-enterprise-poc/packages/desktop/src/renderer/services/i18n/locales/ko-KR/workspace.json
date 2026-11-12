@@ -92,6 +92,7 @@
     "prepareFailed": "The work environment could not be prepared ({{code}}). Retry, or contact an administrator if it persists."
   },
   "fileKind": {
+    "result": "작업 공간 파일",
     "all": "All files",
     "task": "Task files",
     "personal": "Personal files",
@@ -99,6 +100,9 @@
     "generated": "Generated files"
   },
   "files": {
+    "continueInNewTask": "이 파일로 작업 시작",
+    "continueSnapshotPrompt": "{{time}} 버전의 ‘{{path}}’ 사본을 첨부했습니다. 다음 요청에 따라 작업하고 원본은 보존해 주세요.",
+    "workDirectory": "작업 폴더 선택",
     "currentVersion": "현재 버전",
     "title": "Files",
     "subtitle": "Browse task, personal, shared, and generated files with their saved versions.",
