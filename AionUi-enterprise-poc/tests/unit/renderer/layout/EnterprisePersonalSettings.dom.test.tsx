@@ -4,7 +4,8 @@ import { afterEach, expect, test, vi } from 'vitest';
 import EnterprisePersonalSettings from '@/renderer/pages/EnterprisePersonalSettings';
 import { enterpriseRequest, WorkspaceApiError } from '@/renderer/pages/workspace/workspaceApi';
 
-vi.mock('@/renderer/hooks/context/AuthContext', () => ({ useAuth: () => ({ clearAuthCache: vi.fn() }) }));
+const auth = vi.hoisted(() => ({ user: { id: 'employee-1' } }));
+vi.mock('@/renderer/hooks/context/AuthContext', () => ({ useAuth: () => ({ user: auth.user, clearAuthCache: vi.fn() }) }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { resolvedLanguage: 'en-US' } }),
 }));
@@ -13,7 +14,12 @@ vi.mock('@/renderer/pages/workspace/workspaceApi', async (importOriginal) => ({
   enterpriseRequest: vi.fn(),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  sessionStorage.clear();
+  auth.user = { id: 'employee-1' };
+  vi.mocked(enterpriseRequest).mockReset();
+});
 
 test('keeps unsaved changes on conflict and uses the newer version and untouched fields on explicit save', async () => {
   const original = { version: 1, enabled: true, style: '', detail: '', language: '', instructions: '' };
@@ -46,4 +52,29 @@ test('keeps unsaved changes on conflict and uses the newer version and untouched
     style: 'direct',
     instructions: 'Keep replies concise.',
   });
+});
+
+
+test('restores an unsaved draft for the same account and never shows it to another account', async () => {
+  const original = { version: 1, enabled: true, style: '', detail: '', language: '', instructions: '' };
+  const request = vi.mocked(enterpriseRequest).mockResolvedValue(original);
+  const input = async () => (await screen.findByRole('textbox', { name: 'settings.enterpriseAccount.instructions' })) as HTMLTextAreaElement;
+  const renderSettings = () => render(<EnterprisePersonalSettings section='personalization' />);
+  const first = renderSettings();
+  fireEvent.change(await input(), { target: { value: 'Employee one draft' } });
+  first.unmount();
+
+  auth.user = { id: 'employee-2' };
+  const second = renderSettings();
+  expect((await input()).value).toBe('');
+  second.unmount();
+
+  auth.user = { id: 'employee-1' };
+  const third = renderSettings();
+  expect((await input()).value).toBe('Employee one draft');
+  fireEvent.click(screen.getByRole('button', { name: 'settings.enterpriseAccount.discard' }));
+  third.unmount();
+  renderSettings();
+  expect((await input()).value).toBe('');
+  expect(request.mock.calls.every(([, options]) => !options?.method)).toBe(true);
 });

@@ -19,6 +19,7 @@
     "balanced": "适中",
     "detailed": "详细",
     "reset": "恢复默认",
+    "discard": "放弃更改",
     "unsaved": "有未保存的修改",
     "saved": "已保存",
     "conflict": "偏好已在其他会话更新，请重新加载后编辑。",

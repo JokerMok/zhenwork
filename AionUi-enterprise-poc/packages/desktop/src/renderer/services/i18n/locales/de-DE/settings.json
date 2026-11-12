@@ -19,6 +19,7 @@
     "balanced": "Ausgewogen",
     "detailed": "Ausführlich",
     "reset": "Standardeinstellungen wiederherstellen",
+    "discard": "Änderungen verwerfen",
     "unsaved": "Ungespeicherte Änderungen",
     "saved": "Gespeichert",
     "conflict": "Die Einstellungen wurden in einer anderen Sitzung geändert. Laden Sie die Seite vor dem Bearbeiten neu.",

@@ -19,6 +19,7 @@
     "balanced": "適中",
     "detailed": "詳細",
     "reset": "還原預設",
+    "discard": "捨棄變更",
     "unsaved": "有未儲存的變更",
     "saved": "已儲存",
     "conflict": "其他工作階段已更新偏好，請重新載入後再編輯。",

@@ -2129,6 +2129,7 @@ export type I18nKey =
   | 'settings.enterpriseAccount.detail'
   | 'settings.enterpriseAccount.detailed'
   | 'settings.enterpriseAccount.direct'
+  | 'settings.enterpriseAccount.discard'
   | 'settings.enterpriseAccount.enable'
   | 'settings.enterpriseAccount.friendly'
   | 'settings.enterpriseAccount.instructions'

@@ -19,6 +19,7 @@
     "balanced": "Balanced",
     "detailed": "Detailed",
     "reset": "Restore defaults",
+    "discard": "Discard Changes",
     "unsaved": "Unsaved changes",
     "saved": "Saved",
     "conflict": "Your preferences changed in another session. Reload before editing again.",

@@ -21,15 +21,61 @@ type Preferences = {
   language: string;
   instructions: string;
 };
-type PersonalData =
+type PersonalData = { draftKey?: string } & (
   | { section: 'profile'; profile: Profile; nickname: string }
-  | { section: 'personalization'; original: Preferences; draft: Preferences };
+  | { section: 'personalization'; original: Preferences; draft: Preferences }
+);
 
 const profileRoute = '/enterprise/self-profile';
 const preferencesRoute = '/enterprise/preferences';
 const passwordRoute = '/enterprise/self-password';
 const defaultPreferences = { enabled: false, style: '', detail: '', language: '', instructions: '' };
 const preferenceFields = Object.keys(defaultPreferences) as Array<keyof typeof defaultPreferences>;
+const memoryDrafts = new Map<string, string>();
+
+function readDraft(key?: string): string | null {
+  if (!key) return null;
+  try {
+    return memoryDrafts.get(key) ?? sessionStorage.getItem(key);
+  } catch {
+    return memoryDrafts.get(key) ?? null;
+  }
+}
+
+function storeDraft(key: string | undefined, value: string | null): void {
+  if (!key) return;
+  if (value !== null) memoryDrafts.set(key, value);
+  else memoryDrafts.delete(key);
+  try {
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
+    memoryDrafts.delete(key);
+  } catch {
+    // Keep edits through in-app navigation when the browser blocks storage.
+  }
+}
+
+function preferenceChanges(original: Preferences, draft: Preferences): Partial<Preferences> {
+  return Object.fromEntries(
+    preferenceFields.filter((field) => original[field] !== draft[field]).map((field) => [field, draft[field]])
+  );
+}
+
+function restorePreferences(draftKey: string | undefined): Partial<Preferences> {
+  try {
+    const value: unknown = JSON.parse(readDraft(draftKey) || '{}');
+    if (!value || typeof value !== 'object') return {};
+    const fields = value as Record<string, unknown>;
+    return Object.fromEntries(
+      preferenceFields
+        .filter((field) => typeof fields[field] === typeof defaultPreferences[field])
+        .map((field) => [field, fields[field]])
+    );
+  } catch {
+    return {};
+  }
+}
+
 const emptyPasswords = { oldPassword: '', newPassword: '', confirmation: '' };
 const passwordPolicy = /^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/;
 const replyLanguages = ['zh-CN', 'en-US', 'zh-TW', 'ja-JP', 'ko-KR'];
@@ -44,7 +90,8 @@ const send = <T,>(route: string, method: 'PUT' | 'POST', payload: object) =>
 
 export default function EnterprisePersonalSettings({ section }: { section: Section }) {
   const { t, i18n } = useTranslation();
-  const { clearAuthCache } = useAuth();
+  const { user, clearAuthCache } = useAuth();
+  const draftKey = user?.id ? `enterprise:settings-draft:${user.id}:${section}` : undefined;
   const [data, setData] = useState<PersonalData>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,7 +121,9 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
           const profile = await enterpriseRequest<Profile>(profileRoute, { signal: controller.signal });
           if (!profile?.id || !profile.username || typeof profile.nickname !== 'string')
             throw new Error('INVALID_PROFILE');
-          if (current === generation.current) setData({ section, profile, nickname: profile.nickname });
+          if (current === generation.current) {
+            setData({ section, draftKey, profile, nickname: readDraft(draftKey)?.slice(0, 30) ?? profile.nickname });
+          }
         } else {
           const original = await enterpriseRequest<Preferences>(preferencesRoute, { signal: controller.signal });
           if (
@@ -87,13 +136,8 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
             throw new Error('INVALID_PREFERENCES');
           }
           if (current === generation.current) {
-            const changedFields = retained
-              ? preferenceFields.filter((field) => retained.original[field] !== retained.draft[field])
-              : [];
-            const changes = retained
-              ? Object.fromEntries(changedFields.map((field) => [field, retained.draft[field]]))
-              : {};
-            setData({ section, original, draft: { ...original, ...changes } });
+            const changes = retained ? preferenceChanges(retained.original, retained.draft) : restorePreferences(draftKey);
+            setData({ section, draftKey, original, draft: { ...original, ...changes } });
           }
         }
       } catch (cause) {
@@ -102,7 +146,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
         if (current === generation.current) setLoading(false);
       }
     },
-    [section]
+    [section, draftKey]
   );
 
   useEffect(() => {
@@ -113,7 +157,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
     };
   }, [load]);
 
-  const active = data?.section === section ? data : undefined;
+  const active = data?.section === section && data.draftKey === draftKey ? data : undefined;
   const dirty =
     active?.section === 'profile'
       ? active.nickname !== active.profile.nickname
@@ -121,24 +165,39 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
         preferenceFields.some((key) => active.original[key] !== active.draft[key]);
 
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty || (draftKey && !memoryDrafts.has(draftKey))) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
+  }, [dirty, draftKey]);
+
+  const update = (next: PersonalData) => {
+    const changes = next.section === 'personalization' ? preferenceChanges(next.original, next.draft) : null;
+    const value = next.section === 'profile'
+      ? (next.nickname === next.profile.nickname ? null : next.nickname)
+      : changes && Object.keys(changes).length ? JSON.stringify(changes) : null;
+    storeDraft(draftKey, value);
+    setData(next);
+    setSaved(false);
+  };
 
   const editPreferences = (next: Partial<Preferences>) => {
-    setData((current) =>
-      current?.section === 'personalization' ? { ...current, draft: { ...current.draft, ...next } } : current
-    );
-    setSaved(false);
+    if (active?.section === 'personalization') update({ ...active, draft: { ...active.draft, ...next } });
+  };
+
+  const discardDraft = () => {
+    if (!active) return;
+    if (active.section === 'profile') update({ ...active, nickname: active.profile.nickname });
+    else update({ ...active, draft: active.original });
+    setError('');
   };
 
   const save = async () => {
     if (!active || !dirty || loading || conflict || submitting.current) return;
     const current = generation.current;
+    const submittedDraft = readDraft(draftKey);
     submitting.current = true;
     setSaving(true);
     setError('');
@@ -147,12 +206,13 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
       if (active.section === 'profile') {
         const profile = await send<Profile>(profileRoute, 'PUT', { nickname: active.nickname.trim() });
         window.dispatchEvent(new CustomEvent('enterprise-profile-updated'));
-        if (current === generation.current) setData({ section: 'profile', profile, nickname: profile.nickname });
+        if (current === generation.current) setData({ section: 'profile', draftKey, profile, nickname: profile.nickname });
       } else {
         const { version: expectedVersion, ...draft } = active.draft;
         const original = await send<Preferences>(preferencesRoute, 'PUT', { ...draft, expectedVersion });
-        if (current === generation.current) setData({ section: 'personalization', original, draft: original });
+        if (current === generation.current) setData({ section: 'personalization', draftKey, original, draft: original });
       }
+      if (readDraft(draftKey) === submittedDraft) storeDraft(draftKey, null);
       if (current === generation.current) setSaved(true);
     } catch (cause) {
       if (current === generation.current) setError(errorCode(cause));
@@ -268,10 +328,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
             value={active.nickname}
             maxLength={30}
             disabled={loading || saving}
-            onChange={(nickname) => {
-              setData({ ...active, nickname });
-              setSaved(false);
-            }}
+            onChange={(nickname) => update({ ...active, nickname })}
           />
         </>
       )}
@@ -371,9 +428,12 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
             </Button>
           )}
           {dirty && (
-            <span role='status' className='text-t-secondary'>
-              {t('settings.enterpriseAccount.unsaved')}
-            </span>
+            <>
+              <Button disabled={loading || saving} onClick={discardDraft}>
+                {t('settings.enterpriseAccount.discard')}
+              </Button>
+              <span role='status' className='text-t-secondary'>{t('settings.enterpriseAccount.unsaved')}</span>
+            </>
           )}
           {saved && (
             <span role='status' className='text-t-secondary'>

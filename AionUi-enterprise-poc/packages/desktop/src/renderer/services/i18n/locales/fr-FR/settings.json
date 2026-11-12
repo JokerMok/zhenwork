@@ -19,6 +19,7 @@
     "balanced": "Équilibré",
     "detailed": "Détaillé",
     "reset": "Rétablir les valeurs par défaut",
+    "discard": "Ignorer les modifications",
     "unsaved": "Modifications non enregistrées",
     "saved": "Enregistré",
     "conflict": "Vos préférences ont changé dans une autre session. Rechargez la page avant de les modifier.",

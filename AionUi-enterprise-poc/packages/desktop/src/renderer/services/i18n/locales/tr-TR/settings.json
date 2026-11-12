@@ -19,6 +19,7 @@
     "balanced": "Dengeli",
     "detailed": "Ayrıntılı",
     "reset": "Varsayılanları geri yükle",
+    "discard": "Değişiklikleri Sil",
     "unsaved": "Kaydedilmemiş değişiklikler",
     "saved": "Kaydedildi",
     "conflict": "Tercihleriniz başka bir oturumda değişti. Düzenlemeden önce yeniden yükleyin.",
