@@ -1,6 +1,6 @@
 import { Button, Tabs, Spin } from '@arco-design/web-react';
 import { AlarmClock, Book, FileCabinet, Home, ListCheckbox, Memory, Robot } from '@icon-park/react';
-import React, { Suspense } from 'react';
+import React, { Suspense, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { workspaceCapabilityType, type CapabilityType } from './workspaceCatalog';
@@ -21,6 +21,7 @@ const WorkspacePage: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const scrollContainer = useRef<HTMLDivElement>(null);
   const requested = params.get('section') || 'home';
   const active = SECTIONS.has(requested) ? requested : 'home';
   const capability = workspaceCapabilityType(params.get('capability'));
@@ -35,7 +36,7 @@ const WorkspacePage: React.FC = () => {
   };
 
   return (
-    <div className='h-full min-h-0 min-w-0 overflow-y-auto bg-bg-1'>
+    <div ref={scrollContainer} className='h-full min-h-0 min-w-0 overflow-y-auto bg-bg-1'>
       <div className='box-border mx-auto w-full min-w-0 max-w-1180px px-18px py-18px md:px-28px md:py-24px'>
         <Tabs activeTab={active} onChange={setActive} type='rounded'>
           <Tabs.TabPane
@@ -58,7 +59,7 @@ const WorkspacePage: React.FC = () => {
               </span>
             }
           >
-            {deferred(<WorkspaceTasks />)}
+            {deferred(<WorkspaceTasks scrollContainer={scrollContainer} />)}
           </Tabs.TabPane>
           <Tabs.TabPane
             key='files'
