@@ -35,9 +35,10 @@ public class WorkspaceAuthResponse implements ResponseBodyAdvice<Object> {
         if(!login){response.getHeaders().set(HttpHeaders.SET_COOKIE,cookie("",0));return body;}
         var actor=principals.bindLogin();
         var value=new BeanWrapperImpl(result.getData());
-        response.getHeaders().set(HttpHeaders.SET_COOKIE,cookie(StpUtil.getTokenValue(),43200));
+        long expiresIn=Math.max(0,StpUtil.getTokenTimeout());
+        response.getHeaders().set(HttpHeaders.SET_COOKIE,cookie(StpUtil.getTokenValue(),expiresIn));
         // The marker is deliberately not a credential; native Vue guards only need login state.
-        return R.ok(Map.of("access_token","cookie-session","expire_in",43200,"client_id",value.getPropertyValue("clientId"),
+        return R.ok(Map.of("access_token","cookie-session","expire_in",expiresIn,"client_id",value.getPropertyValue("clientId"),
             "mustChangePassword",actor.mustChangePassword()));
     }
     private String cookie(String value,long seconds) {

@@ -4,6 +4,7 @@ export type { AppMetadata, BackendBinaryResolver, WebHostOptions, WebHostHandle 
 export { startStaticServer, stopStaticServer } from './static-server.js';
 export type { StaticServerOptions, StaticServerHandle } from './static-server.js';
 export { startEnterpriseGateway } from './enterprise-gateway.js';
+export { EnterpriseWebSessions } from './enterprise-web-sessions.js';
 export type { EnterpriseActor, EnterpriseCore, EnterpriseLogin, EnterpriseGatewayOptions } from './enterprise-gateway.js';
 export { createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPasswordChange, createRc2GatewayPublicBrand } from './enterprise-rc2-login.mjs';
 export { createEnterpriseCoreStarter, enterpriseProfilePath } from './enterprise-core.js';

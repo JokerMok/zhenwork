@@ -10,6 +10,7 @@ import vm from 'node:vm';
 import { brotliCompressSync, brotliDecompressSync, gzipSync, gunzipSync } from 'node:zlib';
 import WebSocket, { WebSocketServer } from 'ws';
 import { startEnterpriseGateway } from './enterprise-gateway.js';
+import { EnterpriseWebSessions } from './enterprise-web-sessions.js';
 
 let tempDir = '';
 let port = 0;
@@ -524,6 +525,88 @@ test('enterprise brand is available only to its authenticated session and expose
   expect(brand.body).not.toContain('never-expose');
   expect((await request('POST', '/enterprise/logout', cookie)).status).toBe(200);
   expect((await request('GET', '/enterprise/brand', cookie)).status).toBe(401);
+});
+
+test('employee Web cookie survives a Host restart, expires after 30 days and cannot be replayed after logout', async () => {
+  const initialPort = port;
+  const root = await mkdtemp(path.join(tmpdir(), 'enterprise-web-sessions-'));
+  const current = vi.spyOn(Date, 'now');
+  const issuedAt = Date.now();
+  const month = 30 * 24 * 60 * 60;
+  let counter = 0;
+  const active = new Set<string>();
+  const loginSession = (credential: string, username?: string) => ({
+    actor: { serverId: 'rc2', userId: '1' },
+    sessionCredential: credential,
+    username,
+    validate: async () => active.has(credential),
+    close: async () => { active.delete(credential); },
+  });
+  const start = async () => {
+    const gateway = await startEnterpriseGateway({
+      staticDir: tempDir,
+      publicOrigin: 'https://workspace.example',
+      trustedProxyToken: edgeToken,
+      port: 0,
+      maxSessions: 1,
+      webSessions: await EnterpriseWebSessions.open(root, 'test-only-session-store-key'),
+      login: async (username) => {
+        const credential = '__Host-workspace-rc2=test-credential-' + ++counter;
+        active.add(credential);
+        return loginSession(credential, username);
+      },
+      resume: async (credential, owned) => {
+        expect(owned).toBe(true);
+        if (!active.has(credential)) throw new Error('RC2 session revoked');
+        return loginSession(credential);
+      },
+      startCore: async () => { throw new Error('Login must not start a Core'); },
+    });
+    port = gateway.port;
+    return gateway;
+  };
+  let gateway: Awaited<ReturnType<typeof start>> | undefined;
+  const login = async () => {
+    const result = await request('POST', '/enterprise/login', undefined, { username: '1', password: 'test' });
+    expect(result.status).toBe(200);
+    const cookie = result.headers['set-cookie']?.[0];
+    expect(cookie).toContain('HttpOnly; Secure; SameSite=Strict; Max-Age=2592000');
+    return cookie!.split(';')[0];
+  };
+  try {
+    current.mockReturnValue(issuedAt);
+    gateway = await start();
+    const first = await login();
+    await gateway.stop();
+    gateway = undefined;
+    expect(active.size).toBe(1);
+    current.mockReturnValue(issuedAt + 20 * 24 * 60 * 60 * 1000);
+    gateway = await start();
+    const restored = await request('GET', '/api/auth/user', first);
+    expect(restored.status).toBe(200);
+    expect(JSON.parse(restored.body).user.username).toBe('1');
+
+    // A cold persisted session can yield its only memory slot without being logged out.
+    current.mockReturnValue(issuedAt + (month - 1) * 1000);
+    const second = await login();
+    expect(active.size).toBe(2);
+    expect((await request('POST', '/enterprise/logout', second)).status).toBe(200);
+    expect((await request('GET', '/api/auth/user', second)).status).toBe(401);
+    expect((await request('GET', '/api/auth/user', first)).status).toBe(200);
+
+    current.mockReturnValue(issuedAt + month * 1000);
+    expect((await request('GET', '/api/auth/user', first)).status).toBe(401);
+    expect(active.size).toBe(0);
+    await gateway.stop();
+    gateway = undefined;
+    gateway = await start();
+    expect((await request('GET', '/api/auth/user', second)).status).toBe(401);
+  } finally {
+    current.mockRestore();
+    await gateway?.stop();
+    port = initialPort;
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('hosted directory picker stays inside the actor workspace and hides symlinks leaving it', async () => {

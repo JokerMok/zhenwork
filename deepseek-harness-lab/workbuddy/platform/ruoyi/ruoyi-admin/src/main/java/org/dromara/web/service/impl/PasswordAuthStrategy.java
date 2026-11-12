@@ -29,7 +29,10 @@ import org.dromara.system.mapper.SysUserMapper;
 import org.dromara.web.domain.vo.LoginVo;
 import org.dromara.web.service.IAuthStrategy;
 import org.dromara.web.service.SysLoginService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import java.time.Duration;
 
 /**
  * 密码认证策略
@@ -40,6 +43,9 @@ import org.springframework.stereotype.Service;
 @Service("password" + IAuthStrategy.BASE_NAME)
 @RequiredArgsConstructor
 public class PasswordAuthStrategy implements IAuthStrategy {
+
+    @Value("${workspace.browser-client-id:}")
+    private String workspaceClientId;
 
     private final CaptchaProperties captchaProperties;
     private final SysLoginService loginService;
@@ -73,6 +79,10 @@ public class PasswordAuthStrategy implements IAuthStrategy {
         loginUser.setClientKey(client.getClientKey());
         loginUser.setDeviceType(client.getDeviceType());
         SaLoginParameter model = IAuthStrategy.buildLoginParameter(client);
+        if (!workspaceClientId.isBlank() && workspaceClientId.equals(client.getClientId())) {
+            model.setTimeout(Duration.ofDays(30).toSeconds());
+            model.setActiveTimeout(-1L);
+        }
         // 生成token
         LoginHelper.login(loginUser, model);
 

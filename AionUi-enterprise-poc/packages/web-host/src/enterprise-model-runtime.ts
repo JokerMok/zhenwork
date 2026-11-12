@@ -27,7 +27,7 @@ function key(actor: EnterpriseActor): string {
 export function createEnterpriseModelRuntime(
   rc2Login: (username: string, password: string, client: EnterpriseClientMetadata) => Promise<Rc2GatewayLogin>,
   startIsolatedCore: (actor: EnterpriseActor) => Promise<EnterpriseCore>,
-  options: { profileRoot?: string; publicOrigin?: string; rc2Resume?: (cookie: string) => Promise<Rc2GatewayLogin>;
+  options: { profileRoot?: string; publicOrigin?: string; rc2Resume?: (cookie: string, owned?: boolean) => Promise<Rc2GatewayLogin>;
     background?: { rc2Url: string; serviceToken: string };
   } = {}
 ): Pick<EnterpriseGatewayOptions,
@@ -223,11 +223,14 @@ export function createEnterpriseModelRuntime(
     let group = clients.get(actorKey);
     if (!group) { group = new Set(); clients.set(actorKey, group); }
     group.add(session.client);
+    const detach = () => {
+      group.delete(session.client);
+      if (group.size === 0 && clients.get(actorKey) === group) clients.delete(actorKey);
+    };
     return { actor: session.actor, username: session.username, validate: session.validate,
-      brand: session.brand,
+      sessionCredential: session.sessionCredential, brand: session.brand, detach,
       close: async () => {
-        group!.delete(session.client);
-        if (group!.size === 0 && clients.get(actorKey) === group) clients.delete(actorKey);
+        detach();
         await session.close();
       },
     };
@@ -309,7 +312,7 @@ export function createEnterpriseModelRuntime(
       return response;
     },
     login: async (username, password, client) => register(await rc2Login(username, password, client)),
-    resume: options.rc2Resume ? async (cookie) => register(await options.rc2Resume!(cookie)) : undefined,
+    resume: options.rc2Resume ? async (cookie, owned) => register(await options.rc2Resume!(cookie, owned)) : undefined,
     hasBackgroundJobs: (actor) => grants.get(key(actor))?.hasJobs() === true || taskGrants.get(key(actor))?.hasJobs() === true,
     authorizeCronJob: async (actor, jobId) => {
       const store = grants.get(key(actor));

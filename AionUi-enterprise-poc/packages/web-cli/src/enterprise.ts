@@ -2,7 +2,7 @@ import { lstat, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { acquireEnterpriseDockerSupervisor, createEnterpriseDockerCoreStarter, createEnterpriseModelRuntime,
   createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPasswordChange, createRc2GatewayPublicBrand,
-  startEnterpriseGateway,
+  EnterpriseWebSessions, startEnterpriseGateway,
 } from '@aionui/web-host';
 
 const required = (name: string): string => {
@@ -70,6 +70,7 @@ export async function startEnterpriseWebFromEnvironment() {
     publicBrand: createRc2GatewayPublicBrand(rc2Url, publicOrigin),
     changePassword: createRc2GatewayPasswordChange(rc2Url, publicOrigin, edgeToken),
     login: runtime.login, resume: runtime.resume, startCore: runtime.startCore,
+    webSessions: await EnterpriseWebSessions.open(profileRoot, serviceToken),
     trustedProxyToken: edgeToken,
     profileRoot,
       taskRuntime: runtime,

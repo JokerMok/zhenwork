@@ -22,6 +22,7 @@ export function createRc2GatewayLogin(baseUrl, origin, edgeToken) {
     return {
       actor: { serverId, userId },
       username,
+      sessionCredential: client.cookie,
       // Server-side only. Gateway never serializes this object to the browser.
       client,
       brand: () => client.branding(),
@@ -39,7 +40,7 @@ export function createRc2GatewayLogin(baseUrl, origin, edgeToken) {
 
 /** Reuse a desktop supervisor's existing RC2 session without asking it to send a password. */
 export function createRc2GatewayResume(baseUrl, origin) {
-  return async (cookie) => {
+  return async (cookie, owned = false) => {
     if (typeof cookie !== 'string' || !/^__Host-workspace-rc2=[^;\s]{20,2048}$/.test(cookie)) {
       throw new Error('Invalid RC2 session');
     }
@@ -58,7 +59,7 @@ export function createRc2GatewayResume(baseUrl, origin) {
       },
       // This borrowed cookie belongs to the desktop supervisor. Closing the
       // hosted-web session must not log out the desktop app.
-      close: async () => {},
+      close: owned ? () => client.logout() : async () => {},
     };
   };
 }

@@ -15,7 +15,7 @@ export function createRc2GatewayPublicBrand(baseUrl: string, origin: string): ()
 export function createRc2GatewayLogin(baseUrl: string, origin: string, edgeToken: string):
   (username: string, password: string, client: EnterpriseClientMetadata) => Promise<Rc2GatewayLogin>;
 export function createRc2GatewayResume(baseUrl: string, origin: string):
-  (cookie: string) => Promise<Rc2GatewayLogin>;
+  (cookie: string, owned?: boolean) => Promise<Rc2GatewayLogin>;
 
 export function createRc2GatewayPasswordChange(baseUrl: string, origin: string, edgeToken: string):
   (username: string, oldPassword: string, newPassword: string, client: EnterpriseClientMetadata, expectedActor?: EnterpriseActor) => Promise<void>;

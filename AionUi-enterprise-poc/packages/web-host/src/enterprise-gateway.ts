@@ -21,6 +21,7 @@ import { readProfile } from './read-model/profile.js';
 import { PreferenceError, readEmployeePreferences, saveEmployeePreferences } from './read-model/preferences.js';
 import { readSelfProfile, saveSelfProfile, SelfProfileError } from './read-model/selfProfile.js';
 import { enterpriseBootstrapShell, enterpriseLoginLocale } from './enterprise-readiness-page.js';
+import { WEB_SESSION_SECONDS, type EnterpriseWebSessions } from './enterprise-web-sessions.js';
 
 // Only content-addressed, release-owned code/assets may use the browser cache.
 // Authentication still runs before this handler; user data never enters it.
@@ -138,6 +139,9 @@ export type EnterpriseCore = {
 export type EnterpriseLogin = {
   actor: EnterpriseActor;
   username?: string;
+  /** Underlying credential is available only for employee Web sign-ins. */
+  sessionCredential?: string;
+  detach?: () => void;
   validate: () => Promise<boolean>;
   brand?: () => Promise<unknown>;
   close: () => Promise<void>;
@@ -170,7 +174,8 @@ export type EnterpriseGatewayOptions = {
   refreshResources?: (actor: EnterpriseActor) => Promise<EnterpriseResourceState | void>;
   resourceStatus?: (actor: EnterpriseActor) => EnterpriseResourceState;
   /** Validate a desktop supervisor's existing RC2 cookie on the server. */
-  resume?: (rc2Cookie: string) => Promise<EnterpriseLogin>;
+  resume?: (rc2Cookie: string, owned?: boolean) => Promise<EnterpriseLogin>;
+  webSessions?: EnterpriseWebSessions;
   startCore: (actor: EnterpriseActor) => Promise<EnterpriseCore>;
   /** Issue or revoke one job-scoped RC2 grant after Core accepts a cron mutation. */
   syncCronGrant?: (actor: EnterpriseActor, jobId: string, enabled: boolean) => Promise<void>;
@@ -199,6 +204,8 @@ type Session = EnterpriseLogin & {
   requests: Set<http.ClientRequest>;
   responses: Set<ServerResponse>;
   expiresAt: number;
+  persisted: boolean;
+  lastUsed: number;
   validating?: Promise<boolean>;
 };
 class CoreCapacityError extends Error {}
@@ -223,7 +230,8 @@ const DEV_COOKIE_NAME = 'aion-enterprise-web-dev';
 const isConversationId = (value: unknown): value is string =>
   typeof value === 'string' &&
   (/^[0-9a-f]{8}$/i.test(value) || /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value));
-const SESSION_MS = 8 * 60 * 60 * 1000;
+const BRIDGE_SESSION_MS = 8 * 60 * 60 * 1000;
+const WEB_SESSION_IDLE_CACHE_MS = 5 * 60 * 1000;
 // Private WebSocket close code: the browser waits for the next user action
 // before reconnecting, so an idle Core does not restart immediately.
 const IDLE_CORE_WS_CLOSE = Buffer.from([0x88, 0x02, 0x0f, 0xa1]); // 4001
@@ -604,6 +612,8 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
     throw new Error('Enterprise web requires a fixed HTTPS origin');
   }
   const sessions = new Map<string, Session>();
+  const restoring = new Map<string, Promise<Session | undefined>>();
+  const revoking = new Set<string>();
   type CoreEntry = {
     actor: EnterpriseActor;
     started: Promise<EnterpriseCore>;
@@ -635,6 +645,35 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
   let starting = 0;
   let occupied = 0;
   let pendingSessions = 0;
+  let nextSessionSweep = Date.now() + 60 * 60_000;
+  const createSession = (login: EnterpriseLogin, expiresAt: number, persisted: boolean): Session => ({
+    ...login,
+    sockets: new Set(),
+    requests: new Set(),
+    responses: new Set(),
+    expiresAt,
+    persisted,
+    lastUsed: Date.now(),
+  });
+  const detachSession = (id: string, session: Session): void => {
+    sessions.delete(id);
+    session.detach?.();
+  };
+  // A cold Web session can be restored on demand. Keep active workers and
+  // open requests attached, even when the browser has been idle.
+  const isColdWebSession = (session: Session): boolean =>
+    session.persisted && session.lastUsed < Date.now() - WEB_SESSION_IDLE_CACHE_MS && !session.validating &&
+    !session.sockets.size && !session.requests.size && !session.responses.size && !cores.has(actorKey(session.actor));
+  const admitSession = (): boolean => {
+    if (sessions.size + pendingSessions < maxSessions) return true;
+    for (const [id, session] of sessions) {
+      if (isColdWebSession(session)) {
+        detachSession(id, session);
+        return true;
+      }
+    }
+    return false;
+  };
   type StartWaiter = {
     resolve: () => void;
     reject: (error: Error) => void;
@@ -894,8 +933,18 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
   const revoke = async (id: string): Promise<boolean> => {
     const session = sessions.get(id);
     if (!session) return true;
+    revoking.add(id);
     sessions.delete(id);
     closeSessionConnections(session);
+    let storedSessionRemoved = true;
+    if (session.persisted) {
+      try {
+        await opts.webSessions!.remove(id);
+      } catch {
+        // Close the authoritative RC2 token even when local storage is unavailable.
+        storedSessionRemoved = false;
+      }
+    }
     const key = actorKey(session.actor);
     const last = ![...sessions.values()].some((other) => actorKey(other.actor) === key);
     let backgroundReady = true;
@@ -907,6 +956,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       }
     }
     await session.close().catch(() => {});
+    revoking.delete(id);
     if (last) {
       preparationAttempts.delete(key);
       preparationFailures.delete(key);
@@ -918,7 +968,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         backgroundReady = false;
       }
     }
-    return backgroundReady;
+    return storedSessionRemoved && backgroundReady;
   };
   const validateSession = (session: Session): Promise<boolean> => {
     if (session.validating) return session.validating;
@@ -931,11 +981,38 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
     session.validating = pending;
     return pending;
   };
+  const restoreSession = async (id: string): Promise<Session | undefined> => {
+    const { webSessions, resume } = opts;
+    if (!webSessions || !resume || shuttingDown) return undefined;
+    const pending = restoring.get(id);
+    if (pending) return pending;
+    const restore = (async () => {
+      const saved = await webSessions.get(id);
+      if (!saved || shuttingDown || !admitSession()) return undefined;
+      pendingSessions += 1;
+      try {
+        const login = await resume(saved.credential, true);
+        if (shuttingDown) {
+          login.detach?.();
+          return undefined;
+        }
+        const session = createSession({ ...login, username: saved.username }, saved.expiresAt, true);
+        sessions.set(id, session);
+        return session;
+      } finally {
+        pendingSessions -= 1;
+      }
+    })().catch(() => undefined).finally(() => restoring.delete(id));
+    restoring.set(id, restore);
+    return restore;
+  };
   const authenticate = async (req: IncomingMessage): Promise<{ id: string; session: Session } | null> => {
     const id = sessionId(req, cookieName);
-    const session = id && sessions.get(id);
-    if (!id || !session) return null;
-    if (session.expiresAt < Date.now() || !(await validateSession(session))) {
+    if (!id || revoking.has(id) || shuttingDown) return null;
+    const session = sessions.get(id) ?? await restoreSession(id);
+    if (!session) return null;
+    session.lastUsed = Date.now();
+    if (session.expiresAt <= session.lastUsed || !(await validateSession(session))) {
       await revoke(id);
       return null;
     }
@@ -1036,11 +1113,17 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
   const reconcileAuthorization = async (): Promise<void> => {
     await Promise.all(
       [...sessions].map(async ([id, session]) => {
-        if (session.expiresAt < Date.now() || !(await validateSession(session))) {
+        if (session.expiresAt <= Date.now() || !(await validateSession(session))) {
           if (sessions.get(id) === session) await revoke(id);
+        } else if (sessions.get(id) === session && isColdWebSession(session)) {
+          detachSession(id, session);
         }
       })
     );
+    if (opts.webSessions && Date.now() >= nextSessionSweep) {
+      nextSessionSweep = Date.now() + 60 * 60_000;
+      await opts.webSessions.pruneExpired();
+    }
     for (const [key, entry] of cores) {
       const backgroundReady = await authorizedBackground(entry.actor);
       const actorSessions = [...sessions].filter(([, session]) => actorKey(session.actor) === key);
@@ -1118,6 +1201,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
   const server = http.createServer(async (req, res) => {
     const requestStarted = performance.now();
     res.setHeader('x-aion-enterprise-web', '1');
+    if (shuttingDown) return reply(res, 503, { error: 'SERVICE_UNAVAILABLE' });
     const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(req.method || '');
     if (!validOrigin(req, unsafe)) return reply(res, 403, { error: 'ORIGIN_DENIED' });
     if (!req.url || !req.url.startsWith('/')) return reply(res, 400, { error: 'BAD_REQUEST' });
@@ -1140,7 +1224,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
     if ((req.url === '/enterprise/login' || req.url === '/enterprise/password') && req.method === 'POST') {
       const client = clientMetadata(req, opts.trustedProxyToken);
       if (!client) return reply(res, 401, { error: 'LOGIN_FAILED' });
-      if (sessions.size + pendingSessions >= maxSessions) return reply(res, 503, { error: 'SESSION_CAPACITY' });
+      if (!admitSession()) return reply(res, 503, { error: 'SESSION_CAPACITY' });
       if (!consumeLoginAttempt()) return reply(res, 429, { error: 'TOO_MANY_ATTEMPTS' });
       pendingSessions += 1;
       try {
@@ -1165,16 +1249,21 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         res.setHeader('server-timing', `login;dur=${(performance.now() - requestStarted).toFixed(1)}`);
         actorKey(login.actor);
         const id = randomBytes(32).toString('hex');
-        sessions.set(id, {
-          ...login,
-          sockets: new Set(),
-          requests: new Set(),
-          responses: new Set(),
-          expiresAt: Date.now() + SESSION_MS,
-        });
+        const persisted = Boolean(opts.webSessions);
+        const expiresAt = Date.now() + (persisted ? WEB_SESSION_SECONDS * 1000 : BRIDGE_SESSION_MS);
+        if (opts.webSessions) {
+          try {
+            if (!login.sessionCredential || !opts.resume) throw new Error('Missing restorable RC2 session');
+            await opts.webSessions.put(id, { credential: login.sessionCredential, username: login.username, expiresAt });
+          } catch {
+            await login.close().catch(() => {});
+            return reply(res, 503, { error: 'SESSION_STORAGE_UNAVAILABLE' });
+          }
+        }
+        sessions.set(id, createSession(login, expiresAt, persisted));
         res.setHeader(
           'set-cookie',
-          `${cookieName}=${id}; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict`
+          `${cookieName}=${id}; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict${persisted ? `; Max-Age=${WEB_SESSION_SECONDS}` : ''}`
         );
         return reply(res, 200, { ok: true });
       } catch (error) {
@@ -1187,7 +1276,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       }
     }
     if (req.url === '/enterprise/desktop-session' && req.method === 'POST' && opts.resume) {
-      if (sessions.size + pendingSessions >= maxSessions) return reply(res, 503, { error: 'SESSION_CAPACITY' });
+      if (!admitSession()) return reply(res, 503, { error: 'SESSION_CAPACITY' });
       const borrowedCookie = req.headers['x-aion-rc2-session'];
       if (typeof borrowedCookie !== 'string' || borrowedCookie.length > 2100) {
         return reply(res, 401, { error: 'UNAUTHENTICATED' });
@@ -1197,13 +1286,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         const resumed = await opts.resume(borrowedCookie);
         actorKey(resumed.actor);
         const id = randomBytes(32).toString('hex');
-        sessions.set(id, {
-          ...resumed,
-          sockets: new Set(),
-          requests: new Set(),
-          responses: new Set(),
-          expiresAt: Date.now() + SESSION_MS,
-        });
+        sessions.set(id, createSession(resumed, Date.now() + BRIDGE_SESSION_MS, false));
         res.setHeader(
           'set-cookie',
           `${cookieName}=${id}; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict`
@@ -2667,8 +2750,15 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       }
       await tasks?.stop();
       clearInterval(reap);
-      const sessionResults = await Promise.all([...sessions.keys()].map(revoke));
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      const serverClosed = new Promise<void>((resolve) => server.close(() => resolve()));
+      await Promise.allSettled(restoring.values());
+      const sessionResults = await Promise.all([...sessions].map(([id, session]) => {
+        if (!session.persisted) return revoke(id);
+        closeSessionConnections(session);
+        detachSession(id, session);
+        return true;
+      }));
+      await serverClosed;
       const coreResults = await Promise.allSettled(
         [...cores.values()].map(async (entry) => (await entry.started).stop())
       );
