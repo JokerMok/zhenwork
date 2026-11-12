@@ -6,6 +6,8 @@
 
 import type { IProvider, TProviderWithModel } from '@/common/config/storage';
 import { iconColors } from '@/renderer/styles/colors';
+import { EnterpriseModelSelector } from '@/renderer/pages/conversation/platforms/aionrs/AionrsModelSelector';
+import { useAionrsModelSelection } from '@/renderer/pages/conversation/platforms/aionrs/useAionrsModelSelection';
 import { getModelDisplayLabel } from '@/renderer/utils/model/agentLogo';
 import type { AgentRuntimeDerivedOption } from '@/renderer/utils/model/agentRuntimeCatalog';
 import type { AcpModelInfo } from '../types';
@@ -24,6 +26,25 @@ import {
   type RuntimeSelectorModelGroup,
   RuntimeSelectorSubMenuTitle,
 } from '@/renderer/components/agent/runtimeSelectorOptions';
+
+export function GuidEnterpriseModelSelector({
+  model, setModel, busy,
+}: {
+  model?: TProviderWithModel;
+  setModel: (next: TProviderWithModel) => Promise<void>;
+  busy: boolean;
+}) {
+  const onSelect = React.useCallback<Parameters<typeof useAionrsModelSelection>[0]['onSelectModel']>(
+    async (provider, code) => {
+      await setModel({ ...provider, use_model: code });
+      return true;
+    },
+    [setModel]
+  );
+  const selection = useAionrsModelSelection({ initialModel: model, onSelectModel: onSelect });
+  const catalog = selection.enterpriseCatalog;
+  return catalog ? <EnterpriseModelSelector selection={selection} catalog={catalog} busy={busy} /> : null;
+}
 
 type GuidModelSelectorProps = {
   // Gemini model state

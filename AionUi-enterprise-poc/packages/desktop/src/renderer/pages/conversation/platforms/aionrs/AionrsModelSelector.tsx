@@ -28,7 +28,7 @@ import classNames from 'classnames';
 /** Composite id for a provider+model pair, so the shared flat model list can track selection. */
 const compositeId = (providerId: string, modelName: string) => `${providerId}::${modelName}`;
 
-const EnterpriseModelSelector: React.FC<{
+export const EnterpriseModelSelector: React.FC<{
   selection: AionrsModelSelection;
   catalog: NonNullable<AionrsModelSelection['enterpriseCatalog']>;
   busy: boolean;

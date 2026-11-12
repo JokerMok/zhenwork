@@ -20,7 +20,7 @@ import SlashCommandMenu, { type SlashCommandMenuItem } from '@/renderer/componen
 import AssistantSelectionArea from './components/AssistantSelectionArea';
 import GuidActionRow from './components/GuidActionRow';
 import GuidInputCard from './components/GuidInputCard';
-import GuidModelSelector from './components/GuidModelSelector';
+import GuidModelSelector, { GuidEnterpriseModelSelector } from './components/GuidModelSelector';
 import QuickActionButtons from './components/QuickActionButtons';
 import FeedbackReportModal from '@/renderer/components/settings/SettingsModal/contents/FeedbackReportModal';
 import { isGuidNavigationSelectionReady, useGuidAssistantSelection } from './hooks/useGuidAssistantSelection';
@@ -412,7 +412,7 @@ const GuidPage: React.FC = () => {
       return resolvedPrompts;
     }
 
-    if (simplifiedEnterpriseExperience) {
+    if (hostedEnterpriseWeb) {
       return [
         t('workspace.examples.reimbursement.prompt'),
         t('workspace.examples.requirements.prompt'),
@@ -427,7 +427,7 @@ const GuidPage: React.FC = () => {
     selectedAssistantDetail,
     selectedAssistantRecord,
     selectedAssistantId,
-    simplifiedEnterpriseExperience,
+    hostedEnterpriseWeb,
     t,
   ]);
 
@@ -697,7 +697,15 @@ const GuidPage: React.FC = () => {
 
   // Build the mention dropdown node
   // Build the model selector node
-  const modelSelectorNode = simplifiedEnterpriseExperience ? null : (
+  const modelSelectorNode = hostedEnterpriseWeb ? (
+    showAdvancedConfiguration ? (
+      <GuidEnterpriseModelSelector
+        model={modelSelection.current_model}
+        setModel={setGuidCurrentModel}
+        busy={guidInput.loading}
+      />
+    ) : null
+  ) : (
     <GuidModelSelector
       isGeminiMode={isGeminiMode}
       modelList={modelSelection.modelList}
@@ -726,11 +734,12 @@ const GuidPage: React.FC = () => {
       onUploadingChange={setUploadingFiles}
       onFilesPicked={guidInput.handleFilesPicked}
       modelSelectorNode={modelSelectorNode}
+      inlineModelOnMobile={hostedEnterpriseWeb}
       isGeminiMode={isGeminiMode}
-      modelList={simplifiedEnterpriseExperience ? [] : modelSelection.modelList}
+      modelList={hostedEnterpriseWeb ? [] : modelSelection.modelList}
       current_model={modelSelection.current_model}
       setCurrentModel={setGuidCurrentModel}
-      currentAcpCachedModelInfo={simplifiedEnterpriseExperience ? null : agentSelection.currentAcpCachedModelInfo}
+      currentAcpCachedModelInfo={hostedEnterpriseWeb ? null : agentSelection.currentAcpCachedModelInfo}
       selectedAcpModel={agentSelection.selectedAcpModel}
       setSelectedAcpModel={setGuidSelectedAcpModel}
       thoughtLevelOption={
@@ -806,6 +815,7 @@ const GuidPage: React.FC = () => {
               type='text'
               size='small'
               className='self-center text-t-secondary'
+              aria-expanded={showAdvancedConfiguration}
               onClick={() => setShowAdvancedConfiguration((visible) => !visible)}
             >
               {showAdvancedConfiguration ? t('common.collapse') : t('settings.advancedSettings')}

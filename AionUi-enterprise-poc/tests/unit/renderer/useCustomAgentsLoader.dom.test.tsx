@@ -82,3 +82,14 @@ test('an empty authorized catalog reports missing capability without suggesting 
   await waitFor(() => expect(hook.result.current.catalogError).toBe('NO_AVAILABLE_CAPABILITY'));
   hook.unmount();
 });
+
+
+test('the employee chooser includes enterprise assistants and excludes underlying runtime presets', async () => {
+  vi.stubGlobal('fetch', ready());
+  const managed = { id: 'rc2-12345678-1234-1234-1234-123456789012' };
+  const office = { id: 'zhenwork-general-office' };
+  list.mockResolvedValue([{ id: 'builtin-aion-cli' }, office, managed, { id: 'builtin-aionui' }]);
+  const hook = renderHook(() => useCustomAgentsLoader(), { wrapper: setup() });
+  await waitFor(() => expect(hook.result.current.assistants).toEqual([office, managed]));
+  hook.unmount();
+});

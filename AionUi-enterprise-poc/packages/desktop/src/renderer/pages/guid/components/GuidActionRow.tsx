@@ -84,6 +84,7 @@ type GuidActionRowProps = {
 
   // Model selector node (rendered by parent for the desktop layout)
   modelSelectorNode: React.ReactNode;
+  inlineModelOnMobile?: boolean;
 
   // Flat model data for the mobile action sheet (desktop uses modelSelectorNode).
   isGeminiMode: boolean;
@@ -126,6 +127,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
   onFilesUploaded,
   onUploadingChange,
   modelSelectorNode,
+  inlineModelOnMobile = false,
   isGeminiMode,
   modelList,
   current_model,
@@ -669,6 +671,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
           </div>
         )}
 
+        {isMobile && inlineModelOnMobile && modelSelectorNode}
         {speechInputNode}
         <Button
           shape='circle'

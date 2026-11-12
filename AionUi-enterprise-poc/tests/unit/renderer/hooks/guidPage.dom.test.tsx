@@ -168,10 +168,9 @@ vi.mock('@/renderer/pages/guid/hooks/useGuidModelSelection', () => ({
 
 const useGuidAssistantSelectionMock = vi.fn(() => agentSelectionMock);
 
-vi.mock('@/renderer/pages/guid/hooks/useGuidAssistantSelection', () => ({
+vi.mock('@/renderer/pages/guid/hooks/useGuidAssistantSelection', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/renderer/pages/guid/hooks/useGuidAssistantSelection')>()),
   useGuidAssistantSelection: (...args: unknown[]) => useGuidAssistantSelectionMock(...args),
-  resolveAssistantSelectionKey: vi.fn(),
-  pickDefaultAssistantSelectionKey: vi.fn(),
 }));
 
 vi.mock('@/renderer/pages/guid/hooks/useGuidInput', () => ({
@@ -211,6 +210,7 @@ vi.mock('@/renderer/pages/guid/components/GuidInputCard', () => ({
 }));
 
 vi.mock('@/renderer/pages/guid/components/GuidModelSelector', () => ({
+  GuidEnterpriseModelSelector: () => <div data-testid='guid-enterprise-model-selector' />,
   default: () => <div data-testid='guid-model-selector' />,
 }));
 
@@ -797,6 +797,19 @@ describe('GuidPage', () => {
 
     // Restore shared mock state for later tests.
     sendMock.isButtonDisabled = false;
+  });
+
+  it('keeps employee office examples and model selection when advanced settings are toggled', () => {
+    platformMock.enterpriseWeb = true;
+    render(<GuidPage />);
+    const prompt = 'workspace.examples.reimbursement.prompt';
+    expect(screen.getByText(prompt)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'settings.advancedSettings' }));
+    expect(screen.getByText(prompt)).toBeInTheDocument();
+    expect(screen.queryByText('guid.defaultPrompts.understand')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'common.collapse' }));
+    expect(screen.getByText(prompt)).toBeInTheDocument();
+    expect(modelSelectionMock.setCurrentModel).not.toHaveBeenCalled();
   });
 
   it('keeps catalog failures in the employee workspace instead of linking the admin console', () => {

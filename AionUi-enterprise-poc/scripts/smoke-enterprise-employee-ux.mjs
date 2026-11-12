@@ -61,6 +61,15 @@ const files = [...Array.from({ length: 20 }, (_, i) => ({
   currentVersionId: 'stock-v2',
   versions: artifacts.map(({ versionId, sha256 }) => ({ id: versionId, sha256, createdAt: date, byteSize: 320 })),
 }];
+const models = [
+  { id: 'fixture-model-a', name: 'GPT-6.1-Terra', code: 'terra', isDefault: true, streaming: true },
+  { id: 'fixture-model-b', name: '测试模型 B', code: 'fixture-b', streaming: true },
+];
+const officeAssistant = {
+  id: 'zhenwork-general-office', name: '通用办公助手', enabled: true, agent_id: 'agent-office',
+  agent: { type: 'aionrs' }, preset_agent_type: 'aionrs', agent_status: 'online',
+  source: 'custom', models: [], prompts: [], sort_order: 1, team_selectable: false,
+};
 const previews = [];
 let account = 'employee-a';
 const preferences = new Map();
@@ -74,6 +83,22 @@ async function stubApi(route) {
   const json = (value, status = 200) => route.fulfill({ status, json: value });
   const method = request.method();
   if (url.pathname === '/api/auth/user') return json({ success: true, user: { id: account, username: account } });
+  if (url.pathname === '/api/settings/client') return json({ success: true, data: {} });
+  if (url.pathname === '/api/assistants') return json({ success: true, data: [
+    officeAssistant, { ...officeAssistant, id: 'builtin-aion-cli', name: 'Aion CLI' },
+    { ...officeAssistant, id: 'builtin-aionui', name: 'AionUi 管家' },
+  ] });
+  if (url.pathname === '/api/assistants/' + officeAssistant.id) return json({ success: true, data: {
+    ...officeAssistant,
+    prompts: { recommended: [], recommended_i18n: {} },
+    defaults: { model: { mode: 'auto' }, skills: { mode: 'auto' }, mcps: { mode: 'auto' } },
+  } });
+  if (url.pathname === '/api/providers') return json({ success: true, data: [{
+    id: 'rc2-enterprise-model', name: '企业模型', platform: 'openai', enabled: true,
+    models: models.map((model) => 'rc2-' + model.id),
+  }] });
+  if (url.pathname === '/enterprise/control/ai/models/available') return json(models);
+  if (url.pathname === '/enterprise/resources/status') return json({ state: 'ready' });
   if (url.pathname === '/enterprise/brand') return json({ productName: 'ZhenWork' });
   if (url.pathname === '/enterprise/conversations') return json({ items: [] });
   if (url.pathname === '/enterprise/tasks') {
@@ -274,6 +299,35 @@ try {
   assert.equal(saved.length, 1);
   console.log(JSON.stringify({ scenario: 'UX-03', navigationAndReloadRestored: true, discardDidNotWrite: true,
     explicitSaveCount: saved.length, secondAccountIsolated: true }));
+
+  await page.goto(url('/#/guid'));
+  const draft = page.getByTestId('guid-input');
+  await draft.fill('展开设置前的任务草稿');
+  const officeExample = page.getByRole('button', { name: /^整理我添加的发票和凭证/ });
+  await officeExample.waitFor();
+  const expand = page.getByRole('button', { name: '高级设置', exact: true });
+  const collapse = page.getByRole('button', { name: '收起', exact: true });
+  await expand.click();
+  await page.getByText('通用办公助手', { exact: true }).waitFor();
+  assert.equal(await page.getByText('Aion CLI', { exact: true }).count(), 0);
+  assert.equal(await page.getByText('AionUi 管家', { exact: true }).count(), 0);
+  await officeExample.waitFor();
+  assert.equal(await draft.inputValue(), '展开设置前的任务草稿');
+  const model = page.getByTestId('aionrs-model-selector');
+  await model.getByText('GPT-6.1-Terra', { exact: true }).waitFor();
+  await model.click();
+  const defaultOption = page.getByRole('menuitemradio').filter({ hasText: 'GPT-6.1-Terra' });
+  await defaultOption.getByText('组织默认', { exact: true }).waitFor();
+  assert.equal(await page.getByText('rc2-fixture-model-a', { exact: true }).count(), 0);
+  await page.getByRole('menuitemradio').filter({ hasText: '测试模型 B' }).click();
+  await model.getByText('测试模型 B', { exact: true }).waitFor();
+  await collapse.click();
+  await officeExample.waitFor();
+  await expand.click();
+  await model.getByText('测试模型 B', { exact: true }).waitFor();
+  assert.equal(await draft.inputValue(), '展开设置前的任务草稿');
+  console.log(JSON.stringify({ scenario: 'UX-04', examplesAndDraftStable: true,
+    governedAssistantVisible: true, internalPresetsHidden: true, namedModelSelectionRestored: true }));
 } catch (error) {
   console.error(JSON.stringify({
     url: page?.url(),

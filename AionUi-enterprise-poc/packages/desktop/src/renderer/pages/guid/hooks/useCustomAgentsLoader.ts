@@ -61,8 +61,11 @@ export const useCustomAgentsLoader = (): UseCustomAgentsLoaderResult => {
               { signal: AbortSignal.timeout(45000) }
             )
           : { state: 'ready' as const };
-        const assistants = await ipcBridge.assistants.list.invoke();
-        if (!enterprise) return assistants;
+        const available = await ipcBridge.assistants.list.invoke();
+        if (!enterprise) return available;
+        const assistants = available.filter(
+          (assistant) => assistant.id === 'zhenwork-general-office' || /^rc2-[0-9a-f-]{36}$/i.test(assistant.id)
+        );
         if (!assistants.some((assistant) => assistant.enabled !== false)) throw new Error('NO_AVAILABLE_CAPABILITY');
         const signature = JSON.stringify(assistants);
         if (freshness.current?.signature !== signature) freshness.current = { signature, revision: Date.now() };
