@@ -12,10 +12,9 @@ import {
   Spin,
   Tag,
 } from '@arco-design/web-react';
-import { AlarmClock, Delete, Edit, Plus, Refresh } from '@icon-park/react';
-import React, { useCallback, useEffect, useState } from 'react';
+import { Delete, Edit, Plus, Refresh } from '@icon-park/react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { enterpriseRequest, workspaceErrorCode } from './workspaceApi';
 import type { WorkspaceMemory as WorkspaceMemoryItem } from './workspaceTypes';
 
@@ -23,7 +22,6 @@ type MemoryFormValue = { scope: 'personal' | 'project'; projectId?: string; cont
 
 const WorkspaceMemory: React.FC = () => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [message, messageContext] = Message.useMessage();
   const [form] = Form.useForm<MemoryFormValue>();
   const [items, setItems] = useState<WorkspaceMemoryItem[]>([]);
@@ -31,23 +29,30 @@ const WorkspaceMemory: React.FC = () => {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [editing, setEditing] = useState<WorkspaceMemoryItem | 'new' | null>(null);
   const [saving, setSaving] = useState(false);
+  const submitting = useRef(false);
+  const loadRequest = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
+    loadRequest.current?.abort();
+    const controller = new AbortController();
+    loadRequest.current = controller;
     setLoading(true);
+    setErrorCode(null);
     try {
-      const value = await enterpriseRequest<{ items: WorkspaceMemoryItem[] }>('/enterprise/memories');
-      setItems(Array.isArray(value.items) ? value.items : []);
-      setErrorCode(null);
+      const value = await enterpriseRequest<{ items: WorkspaceMemoryItem[] }>('/enterprise/memories', {
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) setItems(Array.isArray(value.items) ? value.items : []);
     } catch (error) {
-      setItems([]);
-      setErrorCode(workspaceErrorCode(error));
+      if (!controller.signal.aborted) setErrorCode(workspaceErrorCode(error));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
+    return () => loadRequest.current?.abort();
   }, [load]);
 
   const openEditor = (item?: WorkspaceMemoryItem) => {
@@ -61,9 +66,12 @@ const WorkspaceMemory: React.FC = () => {
   };
 
   const save = async () => {
-    const values = await form.validate();
+    if (!editing || submitting.current) return;
+    submitting.current = true;
     setSaving(true);
     try {
+      const values = await form.validate().catch((): null => null);
+      if (!values) return;
       await enterpriseRequest('/enterprise/memories', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
@@ -80,6 +88,7 @@ const WorkspaceMemory: React.FC = () => {
     } catch (error) {
       message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   };
@@ -90,7 +99,9 @@ const WorkspaceMemory: React.FC = () => {
       content: t('workspace.memory.deleteConfirm'),
       okButtonProps: { status: 'danger' },
       onOk: async () => {
-        await enterpriseRequest(`/enterprise/memories?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+        await enterpriseRequest(`/enterprise/memories?id=${encodeURIComponent(item.id)}`, {
+          method: 'DELETE',
+        });
         message.success(t('workspace.memory.deleted'));
         await load();
       },
@@ -101,41 +112,76 @@ const WorkspaceMemory: React.FC = () => {
     <div className='flex flex-col gap-12px'>
       {messageContext}
       <div className='flex flex-wrap items-start justify-between gap-8px'>
-        <div>
-          <div className='text-20px font-semibold text-t-primary'>{t('workspace.memory.title')}</div>
-          <div className='mt-3px text-13px text-t-secondary'>{t('workspace.memory.subtitle')}</div>
-        </div>
+        <h2 className='m-0 text-20px font-semibold text-t-primary'>{t('workspace.tabs.memory')}</h2>
         <Space wrap>
-          <Button icon={<AlarmClock />} onClick={() => navigate('/scheduled')}>{t('workspace.memory.scheduled')}</Button>
-          <Button type='primary' icon={<Plus />} onClick={() => openEditor()}>{t('workspace.memory.create')}</Button>
-          <Button icon={<Refresh />} onClick={() => void load()}>{t('common.refresh')}</Button>
+          <Button type='primary' icon={<Plus />} onClick={() => openEditor()}>
+            {t('workspace.memory.create')}
+          </Button>
+          <Button icon={<Refresh />} loading={loading} onClick={() => void load()}>
+            {t('common.refresh')}
+          </Button>
         </Space>
       </div>
       <Alert type='info' showIcon content={t('workspace.memory.scopeHint')} />
-      {errorCode ? <Alert type='error' showIcon content={t('workspace.errors.load', { code: errorCode })} /> : null}
+      {errorCode && (
+        <Alert
+          type='error'
+          showIcon
+          content={t('workspace.errors.load', { code: errorCode })}
+          action={
+            <Button size='small' onClick={() => void load()}>
+              {t('common.retry')}
+            </Button>
+          }
+        />
+      )}
       <Spin loading={loading} className='w-full'>
-        {items.length === 0 && !loading ? <Empty description={t('workspace.memory.empty')} /> : (
+        {items.length === 0 ? (
+          !loading && !errorCode && <Empty description={t('workspace.memory.empty')} />
+        ) : (
           <List
             dataSource={items}
             render={(item) => (
               <List.Item
                 key={item.id}
                 actions={[
-                  <Button key='edit' type='text' icon={<Edit />} onClick={() => openEditor(item)}>{t('common.edit')}</Button>,
-                  <Button key='delete' type='text' status='danger' icon={<Delete />} onClick={() => remove(item)}>{t('common.delete')}</Button>,
+                  <Button key='edit' type='text' icon={<Edit />} onClick={() => openEditor(item)}>
+                    {t('common.edit')}
+                  </Button>,
+                  <Button key='delete' type='text' status='danger' icon={<Delete />} onClick={() => remove(item)}>
+                    {t('common.delete')}
+                  </Button>,
                 ]}
               >
                 <List.Item.Meta
-                  title={<div className='flex items-center gap-8px'><Tag>{t(`workspace.memory.scope.${item.scope}`)}</Tag><span className='line-clamp-1'>{item.content}</span></div>}
-                  description={item.scope === 'project' && item.projectId ? t('workspace.memory.project', { id: item.projectId }) : t('workspace.memory.personal')}
+                  title={
+                    <div className='flex items-center gap-8px'>
+                      <Tag>{t(`workspace.memory.scope.${item.scope}`)}</Tag>
+                      <span className='line-clamp-1'>{item.content}</span>
+                    </div>
+                  }
+                  description={
+                    item.scope === 'project' && item.projectId
+                      ? t('workspace.memory.project', { id: item.projectId })
+                      : t('workspace.memory.personal')
+                  }
                 />
               </List.Item>
             )}
           />
         )}
       </Spin>
-      <Modal visible={editing !== null} title={editing === 'new' ? t('workspace.memory.create') : t('workspace.memory.edit')} onCancel={() => setEditing(null)} onOk={() => void save()} okButtonProps={{ loading: saving }} autoFocus={false} focusLock>
-        <Form form={form} layout='vertical'>
+      <Modal
+        visible={editing !== null}
+        title={editing === 'new' ? t('workspace.memory.create') : t('workspace.memory.edit')}
+        onCancel={() => !submitting.current && setEditing(null)}
+        onOk={() => void save()}
+        okButtonProps={{ loading: saving }}
+        cancelButtonProps={{ disabled: saving }}
+        maskClosable={false}
+        focusLock
+      >
+        <Form form={form} layout='vertical' disabled={saving}>
           <Form.Item field='scope' label={t('workspace.memory.scopeLabel')} rules={[{ required: true }]}>
             <Select>
               <Select.Option value='personal'>{t('workspace.memory.scope.personal')}</Select.Option>
@@ -143,11 +189,17 @@ const WorkspaceMemory: React.FC = () => {
             </Select>
           </Form.Item>
           <Form.Item shouldUpdate noStyle>
-            {(values) => values.scope === 'project' ? (
-              <Form.Item field='projectId' label={t('workspace.memory.projectId')} rules={[{ required: true }]}><Input /></Form.Item>
-            ) : null}
+            {(values) =>
+              values.scope === 'project' ? (
+                <Form.Item field='projectId' label={t('workspace.memory.projectId')} rules={[{ required: true }]}>
+                  <Input />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
-          <Form.Item field='content' label={t('workspace.memory.content')} rules={[{ required: true }]}><Input.TextArea maxLength={4000} autoSize={{ minRows: 5, maxRows: 12 }} /></Form.Item>
+          <Form.Item field='content' label={t('workspace.memory.content')} rules={[{ required: true }]}>
+            <Input.TextArea maxLength={4000} autoSize={{ minRows: 5, maxRows: 12 }} />
+          </Form.Item>
         </Form>
       </Modal>
     </div>

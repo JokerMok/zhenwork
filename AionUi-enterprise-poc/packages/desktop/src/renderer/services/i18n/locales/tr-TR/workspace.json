@@ -2,7 +2,10 @@
   "modelAvailability": {
     "single": "Hesabınız yalnızca bu modeli kullanmaya yetkilidir.",
     "pending": "Kullanılabilir modeller henüz hazır değil.",
-    "failed": "Yetkili modelleriniz yüklenemedi."
+    "failed": "Yetkili modelleriniz yüklenemedi.",
+    "invalid": "Seçili model artık kullanılamıyor. Başka bir model seçin.",
+    "busy": "Modeli değiştirmek için mevcut yanıtın tamamlanmasını bekleyin.",
+    "switching": "Model değiştiriliyor…"
   },
   "title": "Office workspace",
   "view": "View",

@@ -29,6 +29,7 @@ const profileRoute = '/enterprise/self-profile';
 const preferencesRoute = '/enterprise/preferences';
 const passwordRoute = '/enterprise/self-password';
 const defaultPreferences = { enabled: false, style: '', detail: '', language: '', instructions: '' };
+const preferenceFields = Object.keys(defaultPreferences) as Array<keyof typeof defaultPreferences>;
 const emptyPasswords = { oldPassword: '', newPassword: '', confirmation: '' };
 const passwordPolicy = /^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]{8,16}$/;
 const replyLanguages = ['zh-CN', 'en-US', 'zh-TW', 'ja-JP', 'ko-KR'];
@@ -58,40 +59,51 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
   const submitting = useRef(false);
   const passwordSubmitting = useRef(false);
 
-  const load = useCallback(async () => {
-    loadRequest.current?.abort();
-    const controller = new AbortController();
-    loadRequest.current = controller;
-    const current = ++generation.current;
-    setData(undefined);
-    setLoading(true);
-    setError('');
-    setSaved(false);
-    try {
-      if (section === 'profile') {
-        const profile = await enterpriseRequest<Profile>(profileRoute, { signal: controller.signal });
-        if (!profile?.id || !profile.username || typeof profile.nickname !== 'string')
-          throw new Error('INVALID_PROFILE');
-        if (current === generation.current) setData({ section, profile, nickname: profile.nickname });
-      } else {
-        const original = await enterpriseRequest<Preferences>(preferencesRoute, { signal: controller.signal });
-        if (
-          !Number.isInteger(original?.version) ||
-          typeof original.enabled !== 'boolean' ||
-          [original.style, original.detail, original.language, original.instructions].some(
-            (value) => typeof value !== 'string'
-          )
-        ) {
-          throw new Error('INVALID_PREFERENCES');
+  const load = useCallback(
+    async (retained?: Extract<PersonalData, { section: 'personalization' }>) => {
+      loadRequest.current?.abort();
+      const controller = new AbortController();
+      loadRequest.current = controller;
+      const current = ++generation.current;
+      if (!retained) setData(undefined);
+      setLoading(true);
+      setError('');
+      setSaved(false);
+      try {
+        if (section === 'profile') {
+          const profile = await enterpriseRequest<Profile>(profileRoute, { signal: controller.signal });
+          if (!profile?.id || !profile.username || typeof profile.nickname !== 'string')
+            throw new Error('INVALID_PROFILE');
+          if (current === generation.current) setData({ section, profile, nickname: profile.nickname });
+        } else {
+          const original = await enterpriseRequest<Preferences>(preferencesRoute, { signal: controller.signal });
+          if (
+            !Number.isInteger(original?.version) ||
+            typeof original.enabled !== 'boolean' ||
+            [original.style, original.detail, original.language, original.instructions].some(
+              (value) => typeof value !== 'string'
+            )
+          ) {
+            throw new Error('INVALID_PREFERENCES');
+          }
+          if (current === generation.current) {
+            const changedFields = retained
+              ? preferenceFields.filter((field) => retained.original[field] !== retained.draft[field])
+              : [];
+            const changes = retained
+              ? Object.fromEntries(changedFields.map((field) => [field, retained.draft[field]]))
+              : {};
+            setData({ section, original, draft: { ...original, ...changes } });
+          }
         }
-        if (current === generation.current) setData({ section, original, draft: original });
+      } catch (cause) {
+        if (current === generation.current) setError(retained ? 'PREFS_VERSION_CONFLICT' : errorCode(cause));
+      } finally {
+        if (current === generation.current) setLoading(false);
       }
-    } catch (cause) {
-      if (current === generation.current) setError(errorCode(cause));
-    } finally {
-      if (current === generation.current) setLoading(false);
-    }
-  }, [section]);
+    },
+    [section]
+  );
 
   useEffect(() => {
     void load();
@@ -106,9 +118,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
     active?.section === 'profile'
       ? active.nickname !== active.profile.nickname
       : active?.section === 'personalization' &&
-        (Object.keys(defaultPreferences) as Array<keyof typeof defaultPreferences>).some(
-          (key) => active.original[key] !== active.draft[key]
-        );
+        preferenceFields.some((key) => active.original[key] !== active.draft[key]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -127,7 +137,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
   };
 
   const save = async () => {
-    if (!active || !dirty || submitting.current) return;
+    if (!active || !dirty || loading || conflict || submitting.current) return;
     const current = generation.current;
     submitting.current = true;
     setSaving(true);
@@ -214,8 +224,12 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
           }
           action={
             !active || conflict ? (
-              <Button size='small' onClick={() => void load()}>
-                {t('common.retry')}
+              <Button
+                size='small'
+                disabled={loading || saving}
+                onClick={() => void load(conflict && active?.section === 'personalization' ? active : undefined)}
+              >
+                {t(conflict ? 'settings.enterpriseAccount.reloadPreferences' : 'common.retry')}
               </Button>
             ) : undefined
           }
@@ -253,7 +267,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
             className='max-w-360px'
             value={active.nickname}
             maxLength={30}
-            disabled={saving}
+            disabled={loading || saving}
             onChange={(nickname) => {
               setData({ ...active, nickname });
               setSaved(false);
@@ -268,10 +282,13 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
             <Switch
               aria-labelledby='enterprise-preferences-enable'
               checked={active.draft.enabled}
-              disabled={saving}
+              disabled={loading || saving}
               onChange={(enabled) => editPreferences({ enabled })}
             />
           </div>
+          {active.draft.enabled && (
+            <p className='m-0 text-13px text-t-secondary'>{t('settings.enterpriseAccount.preferenceTiming')}</p>
+          )}
           <div
             className='grid gap-12px'
             style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 144px), 1fr))' }}
@@ -282,7 +299,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
               </label>
               <Select
                 value={active.draft.style}
-                disabled={saving}
+                disabled={loading || saving}
                 aria-labelledby='enterprise-reply-style'
                 onChange={(style: string) => editPreferences({ style })}
               >
@@ -298,7 +315,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
               </label>
               <Select
                 value={active.draft.detail}
-                disabled={saving}
+                disabled={loading || saving}
                 aria-labelledby='enterprise-reply-detail'
                 onChange={(detail: string) => editPreferences({ detail })}
               >
@@ -314,7 +331,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
               </label>
               <Select
                 value={active.draft.language}
-                disabled={saving}
+                disabled={loading || saving}
                 aria-labelledby='enterprise-reply-language'
                 onChange={(language: string) => editPreferences({ language })}
               >
@@ -334,7 +351,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
             <Input.TextArea
               id='enterprise-instructions'
               value={active.draft.instructions}
-              disabled={saving}
+              disabled={loading || saving}
               maxLength={2000}
               showWordLimit
               autoSize={{ minRows: 4, maxRows: 10 }}
@@ -345,11 +362,11 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
       )}
       {active && (
         <div className='flex flex-wrap items-center gap-10px mt-16px'>
-          <Button type='primary' loading={saving} disabled={!dirty} onClick={() => void save()}>
+          <Button type='primary' loading={saving} disabled={!dirty || loading || conflict} onClick={() => void save()}>
             {t('common.save')}
           </Button>
           {active.section === 'personalization' && (
-            <Button disabled={saving} onClick={() => editPreferences(defaultPreferences)}>
+            <Button disabled={loading || saving} onClick={() => editPreferences(defaultPreferences)}>
               {t('settings.enterpriseAccount.reset')}
             </Button>
           )}

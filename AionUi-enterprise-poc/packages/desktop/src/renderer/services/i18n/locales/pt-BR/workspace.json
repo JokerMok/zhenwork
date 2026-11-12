@@ -2,7 +2,10 @@
   "modelAvailability": {
     "single": "Sua conta tem autorização para usar apenas este modelo.",
     "pending": "A lista de modelos disponíveis ainda não está pronta.",
-    "failed": "Não foi possível carregar os modelos autorizados para sua conta."
+    "failed": "Não foi possível carregar os modelos autorizados para sua conta.",
+    "invalid": "O modelo selecionado não está mais disponível. Escolha outro modelo.",
+    "busy": "Aguarde a resposta atual terminar para trocar de modelo.",
+    "switching": "Trocando de modelo…"
   },
   "title": "Office workspace",
   "view": "View",

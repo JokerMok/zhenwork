@@ -33,6 +33,7 @@ import GoogleModelSelector from '../platforms/gemini/GoogleModelSelector';
 import AionrsChat from '../platforms/aionrs/AionrsChat';
 import AionrsModelSelector from '../platforms/aionrs/AionrsModelSelector';
 import { useAionrsModelSelection } from '../platforms/aionrs/useAionrsModelSelection';
+import { getConversationRuntimeViewSnapshot } from '../runtime/conversationRuntimeViewStore';
 import { useConversationRuntimeView } from '../runtime/useConversationRuntimeView';
 import { isLegacyReadOnlyConversationType } from '../utils/conversationRuntime';
 import { resolveConversationBackend } from '../utils/conversationAssistantIdentity';
@@ -155,8 +156,10 @@ const AionrsConversationPanel: React.FC<{ conversation: AionrsConversation; slid
   const onSelectModel = useCallback(
     async (_provider: IProvider, modelName: string) => {
       const selected = { ..._provider, use_model: modelName } as TProviderWithModel;
-      // Kill running agent on model switch — will be rebuilt with new model on next message
-      if (runtimeView.activeTurnId) {
+      if (isEnterpriseWeb()) {
+        const latest = getConversationRuntimeViewSnapshot(conversation.id);
+        if (latest.activeTurnId || latest.isProcessing || !latest.canSendMessage) return false;
+      } else if (runtimeView.activeTurnId) {
         const result = await ipcBridge.conversation.stop.invoke({
           conversation_id: conversation.id,
           turn_id: runtimeView.activeTurnId,
@@ -210,12 +213,12 @@ const AionrsConversationPanel: React.FC<{ conversation: AionrsConversation; slid
     headerExtra: (
       <div className='flex items-center gap-8px'>
         {!isEnterpriseWeb() && <CronJobManager conversation_id={conversation.id} cron_job_id={cronJobId} />}
-        {!isMobile && (
+        {!isEnterpriseWeb() && !isMobile && (
           <AionrsModelSelector
             selection={modelSelection}
-            thoughtLevel={isEnterpriseWeb() ? null : runtimeConfig.thoughtLevel}
+            thoughtLevel={runtimeConfig.thoughtLevel}
             setStatus={runtimeConfig.setStatus}
-            onSetThoughtLevel={isEnterpriseWeb() ? undefined : handleThoughtLevelSetOption}
+            onSetThoughtLevel={handleThoughtLevelSetOption}
           />
         )}
       </div>

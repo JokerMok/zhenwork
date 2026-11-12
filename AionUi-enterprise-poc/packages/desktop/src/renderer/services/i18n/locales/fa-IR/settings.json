@@ -1,5 +1,7 @@
 {
   "enterpriseAccount": {
+    "reloadPreferences": "بارگیری دوباره و نگه‌داشتن تغییرات",
+    "preferenceTiming": "ترجیحات ذخیره‌شده از وظیفه یا پاسخ بعدی اعمال می‌شوند.",
     "profile": "نمایه شخصی",
     "personalization": "شخصی‌سازی",
     "department": "بخش",

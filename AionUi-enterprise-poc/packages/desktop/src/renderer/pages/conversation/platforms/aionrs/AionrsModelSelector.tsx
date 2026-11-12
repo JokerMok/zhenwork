@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { AionrsModelSelection } from './useAionrsModelSelection';
+import { enterpriseModelBlockKey, type AionrsModelSelection } from './useAionrsModelSelection';
 import type { AcpConfigSetStatus, AcpDerivedOption } from '@/renderer/hooks/agent/useAcpConfigOptions';
 import {
   composeRuntimeSelectorLabel,
@@ -21,21 +21,178 @@ import { getModelDisplayLabel } from '@/renderer/utils/model/agentLogo';
 import { iconColors } from '@/renderer/styles/colors';
 import { Button, Dropdown, Menu, Tooltip } from '@arco-design/web-react';
 import { Brain, Down } from '@icon-park/react';
-import React from 'react';
+import React, { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import classNames from 'classnames';
 
 /** Composite id for a provider+model pair, so the shared flat model list can track selection. */
 const compositeId = (providerId: string, modelName: string) => `${providerId}::${modelName}`;
 
+const EnterpriseModelSelector: React.FC<{
+  selection: AionrsModelSelection;
+  catalog: NonNullable<AionrsModelSelection['enterpriseCatalog']>;
+  busy: boolean;
+}> = ({ selection, catalog, busy }) => {
+  const { t } = useTranslation();
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const { current_model, providers, getAvailableModels, handleSelectModel } = selection;
+  const currentCode = current_model?.use_model;
+  const currentLabel = selection.getDisplayModelName(currentCode) || t('conversation.welcome.selectModel');
+  const provider = providers[0];
+  const codes = provider ? getAvailableModels(provider) : [];
+  const counts = new Map<string, number>();
+  for (const code of codes) {
+    const name = selection.getDisplayModelName(code);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const missingModels = (catalog.authorizedCount ?? 0) > codes.length;
+  const switchDisabled = busy || catalog.refreshing || catalog.failed || catalog.switching;
+  const statusClass = 'w-320px max-w-[calc(100vw-32px)] !h-auto !whitespace-normal !leading-5 py-6px';
+  const getTrigger = () => document.getElementById(`${id}-trigger`);
+  const refresh = (): void => {
+    void catalog.refresh(!busy && !catalog.isSwitching());
+  };
+
+  const handleVisibilityChange = (visible: boolean) => {
+    setOpen(visible);
+    if (visible) {
+      refresh();
+      requestAnimationFrame(() => document.getElementById(`${id}-refresh`)?.focus());
+    }
+  };
+
+  return (
+    <Dropdown
+      trigger='click'
+      position='tl'
+      popupVisible={open}
+      onVisibleChange={handleVisibilityChange}
+      getPopupContainer={() => document.body}
+      droplist={
+        <Menu
+          id={id}
+          className='max-h-[min(60vh,420px)] overflow-y-auto'
+          onClickMenuItem={() => false}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            event.stopPropagation();
+            setOpen(false);
+            getTrigger()?.focus();
+          }}
+        >
+          <Menu.Item key='refresh' id={`${id}-refresh`} onClick={refresh} disabled={catalog.refreshing}>
+            {catalog.failed || catalog.refreshFailed ? t('common.retry') : t('common.refresh')}
+          </Menu.Item>
+          {catalog.sendBlock && (
+            <Menu.Item key='availability' disabled className={statusClass}>
+              <span role='status'>{t(enterpriseModelBlockKey[catalog.sendBlock])}</span>
+            </Menu.Item>
+          )}
+          {catalog.refreshFailed && !catalog.failed && (
+            <Menu.Item key='refresh-failed' disabled className={statusClass}>
+              <span role='status'>{t('workspace.modelAvailability.pending')}</span>
+            </Menu.Item>
+          )}
+          {missingModels &&
+            !catalog.failed &&
+            !catalog.refreshFailed &&
+            !catalog.refreshing &&
+            catalog.sendBlock !== 'pending' && (
+              <Menu.Item key='pending-models' disabled className={statusClass}>
+                {t('workspace.modelAvailability.pending')}
+              </Menu.Item>
+            )}
+          {busy && (
+            <Menu.Item key='busy' disabled className={statusClass}>
+              {t('workspace.modelAvailability.busy')}
+            </Menu.Item>
+          )}
+          {catalog.switchFailed && (
+            <Menu.Item key='switch-failed' disabled className={statusClass}>
+              <span role='status'>{t('agent.model.switchFailed')}</span>
+            </Menu.Item>
+          )}
+          {provider &&
+            codes.map((code) => {
+              const model = catalog.models.get(code);
+              const name = selection.getDisplayModelName(code);
+              const selected = current_model?.id === provider.id && currentCode === code;
+              const duplicate = (counts.get(name) ?? 0) > 1;
+              const duplicateCode =
+                duplicate &&
+                codes.some(
+                  (other) =>
+                    other !== code &&
+                    selection.getDisplayModelName(other) === name &&
+                    catalog.models.get(other)?.code === model?.code
+                );
+              const description = duplicate ? (duplicateCode ? model?.id : model?.code || model?.id) : undefined;
+              return (
+                <Menu.Item
+                  key={code}
+                  disabled={switchDisabled}
+                  role='menuitemradio'
+                  aria-checked={selected}
+                  className={statusClass}
+                  onClick={() => {
+                    if (!switchDisabled && !selected) void handleSelectModel(provider, code);
+                  }}
+                >
+                  <div className='flex gap-8px'>
+                    <span aria-hidden='true' className='w-16px shrink-0 text-primary'>
+                      {selected ? '✓' : ''}
+                    </span>
+                    <div className='min-w-0 break-words'>
+                      <div>{name}</div>
+                      {description && <div className='text-12px text-t-secondary'>{description}</div>}
+                      {model?.isDefault && (
+                        <div className='text-12px text-t-secondary'>{t('workspace.abilities.default')}</div>
+                      )}
+                    </div>
+                  </div>
+                </Menu.Item>
+              );
+            })}
+          {!catalog.sendBlock && !catalog.failed && codes.length === 1 && catalog.authorizedCount === 1 && (
+            <Menu.Item key='single' disabled className={statusClass}>
+              {t('workspace.modelAvailability.single')}
+            </Menu.Item>
+          )}
+        </Menu>
+      }
+    >
+      <Button
+        id={`${id}-trigger`}
+        data-testid='aionrs-model-selector'
+        aria-label={`${t('common.model')}: ${currentLabel}`}
+        aria-haspopup='menu'
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        title={currentLabel}
+        className='sendbox-model-btn !max-w-[min(35vw,208px)] shrink-0'
+        shape='round'
+        size='small'
+      >
+        <span className='flex items-center gap-6px min-w-0'>
+          <Brain theme='outline' size='14' fill={iconColors.secondary} className='shrink-0' />
+          <span className='block truncate'>{currentLabel}</span>
+          <Down theme='outline' size={12} fill={iconColors.secondary} className='shrink-0' />
+        </span>
+      </Button>
+    </Dropdown>
+  );
+};
+
 const AionrsModelSelector: React.FC<{
   selection?: AionrsModelSelection;
   disabled?: boolean;
+  busy?: boolean;
   thoughtLevel?: AcpDerivedOption | null;
   /** Kept for call-site compatibility; the two-level submenu no longer gates on set status here. */
   setStatus?: AcpConfigSetStatus;
   onSetThoughtLevel?: (optionId: string, value: string) => Promise<unknown>;
-}> = ({ selection, disabled = false, thoughtLevel = null, onSetThoughtLevel }) => {
+}> = ({ selection, disabled = false, busy = false, thoughtLevel = null, onSetThoughtLevel }) => {
   const { t } = useTranslation();
   const { isOpen: isPreviewOpen } = usePreviewContext();
   const layout = useLayoutContext();
@@ -46,6 +203,10 @@ const AionrsModelSelector: React.FC<{
   const current_model = selection?.current_model;
 
   const renderLogo = () => <Brain theme='outline' size='14' fill={iconColors.secondary} className='shrink-0' />;
+
+  if (!disabled && selection?.enterpriseCatalog) {
+    return <EnterpriseModelSelector selection={selection} catalog={selection.enterpriseCatalog} busy={busy} />;
+  }
 
   if (disabled || !selection) {
     return (
@@ -69,7 +230,7 @@ const AionrsModelSelector: React.FC<{
     );
   }
 
-  const { providers, getAvailableModels, handleSelectModel, enterpriseCatalog } = selection;
+  const { providers, getAvailableModels, handleSelectModel } = selection;
 
   const label = getModelDisplayLabel({
     selected_value: selection.getDisplayModelName(current_model?.use_model),
@@ -102,45 +263,12 @@ const AionrsModelSelector: React.FC<{
   }
   const currentCompositeId = current_model ? compositeId(current_model.id, current_model.use_model || '') : null;
   const handleModelSelect = (id: string) => {
-    if (enterpriseCatalog && id === currentCompositeId) return;
     const entry = modelLookup.get(id);
     if (entry) void handleSelectModel(entry.provider, entry.modelName);
   };
 
-  let availabilityMessage: string | undefined;
-  if (enterpriseCatalog) {
-    if (modelLookup.size === 0) {
-      if (enterpriseCatalog.failed) availabilityMessage = t('workspace.modelAvailability.failed');
-      else if (enterpriseCatalog.authorizedCount === undefined) availabilityMessage = t('common.loading');
-      else if (enterpriseCatalog.authorizedCount === 0) availabilityMessage = t('workspace.errors.noModel');
-      else availabilityMessage = t('workspace.modelAvailability.pending');
-    } else if (
-      !enterpriseCatalog.failed &&
-      enterpriseCatalog.authorizedCount === 1 &&
-      modelLookup.size === 1 &&
-      modelGroups[0].models[0].id.startsWith('rc2-enterprise-model::')
-    ) {
-      availabilityMessage = t('workspace.modelAvailability.single');
-    }
-  }
-
   const modelListNode = (
-    <>
-      {(!enterpriseCatalog || modelLookup.size > 0) && (
-        <RuntimeSelectorModelList
-          {...(enterpriseCatalog && modelGroups.length === 1
-            ? { models: modelGroups[0].models }
-            : { groups: modelGroups })}
-          currentModelId={currentCompositeId}
-          onSelect={handleModelSelect}
-        />
-      )}
-      {availabilityMessage && (
-        <Menu.Item key='model-availability' disabled className='max-w-280px !h-auto !whitespace-normal !leading-5 py-6px'>
-          {availabilityMessage}
-        </Menu.Item>
-      )}
-    </>
+    <RuntimeSelectorModelList groups={modelGroups} currentModelId={currentCompositeId} onSelect={handleModelSelect} />
   );
 
   return (

@@ -250,9 +250,17 @@ const ScheduledTasksPage: React.FC = () => {
                       </Tooltip>
                       <div className='min-w-0 flex-1'>
                         <div className='flex min-w-0 items-center gap-8px'>
-                          <span className='min-w-0 truncate text-14px leading-19px font-medium text-t-primary'>
-                            {job.name}
-                          </span>
+                          <Button
+                            type='text'
+                            className='min-w-0 !h-auto !px-0 !text-t-primary'
+                            title={job.name}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleGoToDetail(job);
+                            }}
+                          >
+                            <span className='block truncate text-14px leading-19px font-medium'>{job.name}</span>
+                          </Button>
                           <span className='shrink-0 rounded-4px bg-fill-2 px-5px py-1px text-11px leading-15px text-t-secondary'>
                             {executionModeLabel}
                           </span>
@@ -281,7 +289,12 @@ const ScheduledTasksPage: React.FC = () => {
                         </Tooltip>
                       )}
                       {!isManualOnly && (
-                        <Switch size='small' checked={job.enabled} onChange={() => handleToggleEnabled(job)} />
+                        <Switch
+                          size='small'
+                          aria-label={job.name + ' · ' + t(job.enabled ? 'cron.actions.pause' : 'cron.actions.resume')}
+                          checked={job.enabled}
+                          onChange={() => handleToggleEnabled(job)}
+                        />
                       )}
                     </div>
                   </div>

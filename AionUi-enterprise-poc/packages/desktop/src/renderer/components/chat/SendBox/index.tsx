@@ -251,6 +251,8 @@ const SendBox: React.FC<{
   className?: string;
   tools?: React.ReactNode;
   rightTools?: React.ReactNode;
+  /** Keep the right-hand controls visible in the mobile composer toolbar. */
+  showRightToolsOnMobile?: boolean;
   prefix?: React.ReactNode;
   placeholder?: string;
   onFilesAdded?: (files: FileMetadata[]) => void;
@@ -285,7 +287,7 @@ const SendBox: React.FC<{
   /**
    * Mobile-only: open a parent-supplied action sheet via the `+` button.
    * When provided, mobile renders a single `+` button (left) and send/stop button (right);
-   * `tools` and `rightTools` are not rendered inline on mobile.
+   * `tools` are moved to the launcher, and `rightTools` are hidden by default.
    */
   onMobilePlusClick?: () => void;
   /** Team multi-column focus coordination: whether this box owns focus (default true). */
@@ -309,6 +311,7 @@ const SendBox: React.FC<{
   loading,
   tools,
   rightTools,
+  showRightToolsOnMobile = false,
   disabled,
   sendDisabled = false,
   placeholder,
@@ -350,8 +353,9 @@ const SendBox: React.FC<{
   // Mobile compact mode: parent supplies the `+` action sheet, which collapses
   // tools/rightTools into a single launcher and lets the textarea start as a single line.
   const isMobileCompact = isMobile && Boolean(onMobilePlusClick);
-  const effectiveLockMultiLine = lockMultiLine && !isMobileCompact;
-  const effectiveDefaultMultiLine = defaultMultiLine && !isMobileCompact;
+  const collapseMobileToolbar = isMobileCompact && !showRightToolsOnMobile;
+  const effectiveLockMultiLine = lockMultiLine && !collapseMobileToolbar;
+  const effectiveDefaultMultiLine = defaultMultiLine && !collapseMobileToolbar;
   const conversationContext = useConversationContextSafe();
   const { t, i18n } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
@@ -1880,7 +1884,7 @@ const SendBox: React.FC<{
   // On mobile compact mode, the parent supplies the action sheet — collapse
   // tools/rightTools into the `+` launcher while keeping voice input accessible.
   const renderedTools = isMobileCompact ? mobilePlusButton : tools;
-  const renderedRightTools = isMobileCompact ? null : rightTools;
+  const renderedRightTools = collapseMobileToolbar ? null : rightTools;
   const renderedSpeechButton = (
     <SpeechInputButton onLiveTranscript={handleLiveTranscript} onTranscript={handleSpeechTranscript} />
   );

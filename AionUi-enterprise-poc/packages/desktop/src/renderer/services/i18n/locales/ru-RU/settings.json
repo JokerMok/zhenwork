@@ -1,5 +1,7 @@
 {
   "enterpriseAccount": {
+    "reloadPreferences": "Обновить и сохранить правки",
+    "preferenceTiming": "Сохранённые настройки применяются со следующей задачи или ответа.",
     "profile": "Личный профиль",
     "personalization": "Персонализация",
     "department": "Отдел",

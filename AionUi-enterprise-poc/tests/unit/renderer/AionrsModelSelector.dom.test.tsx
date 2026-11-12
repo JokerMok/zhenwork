@@ -4,13 +4,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import AionrsModelSelector from '@/renderer/pages/conversation/platforms/aionrs/AionrsModelSelector';
 import type { IProvider, TProviderWithModel } from '@/common/config/storage';
 import type { AcpDerivedOption } from '@/renderer/hooks/agent/useAcpConfigOptions';
-import type { AionrsModelSelection } from '@/renderer/pages/conversation/platforms/aionrs/useAionrsModelSelection';
+import {
+  useAionrsModelSelection,
+  type AionrsModelSelection,
+} from '@/renderer/pages/conversation/platforms/aionrs/useAionrsModelSelection';
+import { SWRConfig } from 'swr';
 
 const provider: IProvider = {
   id: 'openai',
@@ -19,6 +23,30 @@ const provider: IProvider = {
   use_model: 'gpt-5.2',
   models: ['gpt-5.2', 'gpt-5.2-mini'],
 } as IProvider;
+
+const managedProvider = { ...provider, id: 'rc2-enterprise-model', models: ['rc2-terra', 'rc2-astra'] };
+const catalogModels = [
+  { id: 'terra', code: 'terra', name: 'GPT-6.1-Terra', isDefault: true, streaming: true },
+  { id: 'astra', code: 'astra', name: 'GPT-6-Astra', streaming: true },
+];
+
+const { readModels, refreshResources, enterpriseWeb } = vi.hoisted(() => ({
+  readModels: vi.fn(),
+  refreshResources: vi.fn(),
+  enterpriseWeb: vi.fn(() => false),
+}));
+vi.mock('@/renderer/utils/platform', () => ({ isEnterpriseWeb: enterpriseWeb }));
+vi.mock('@/renderer/pages/workspace/workspaceApi', () => ({
+  enterpriseControl: readModels,
+  enterpriseRequest: refreshResources,
+}));
+vi.mock('@/renderer/hooks/agent/useModelProviderList', () => ({
+  PROVIDERS_SWR_KEY: 'providers',
+  useModelProviderList: () => ({
+    providers: [managedProvider],
+    getAvailableModels: (value: IProvider) => value.models ?? [],
+  }),
+}));
 
 const thoughtLevel: AcpDerivedOption = {
   id: 'reasoning_effort',
@@ -39,6 +67,22 @@ const makeSelection = (overrides: Partial<AionrsModelSelection> = {}): AionrsMod
   getAvailableModels: () => ['gpt-5.2', 'gpt-5.2-mini'],
   handleSelectModel: vi.fn().mockResolvedValue(undefined),
   getDisplayModelName: (modelName?: string) => modelName ?? '',
+  ...overrides,
+});
+
+const makeEnterpriseCatalog = (
+  overrides: Partial<NonNullable<AionrsModelSelection['enterpriseCatalog']>> = {}
+): NonNullable<AionrsModelSelection['enterpriseCatalog']> => ({
+  models: new Map(catalogModels.map((model) => [`rc2-${model.id}`, model])),
+  authorizedCount: 1,
+  failed: false,
+  refreshFailed: false,
+  refreshing: false,
+  switching: false,
+  switchFailed: false,
+  sendBlock: undefined,
+  refresh: vi.fn().mockResolvedValue(undefined),
+  isSwitching: () => false,
   ...overrides,
 });
 
@@ -94,12 +138,16 @@ vi.mock('@arco-design/web-react', () => {
         children,
         className,
         onClick,
+        role = 'menuitem',
+        disabled,
       }: {
         children?: React.ReactNode;
         className?: string;
         onClick?: () => void;
+        role?: string;
+        disabled?: boolean;
       }) => (
-        <div role='menuitem' className={className} onClick={onClick}>
+        <div role={role} className={className} onClick={disabled ? undefined : onClick} aria-disabled={disabled}>
           {children}
         </div>
       ),
@@ -132,9 +180,17 @@ vi.mock('@arco-design/web-react', () => {
         {children}
       </button>
     ),
-    Dropdown: ({ children, droplist }: { children?: React.ReactNode; droplist?: React.ReactNode }) => (
+    Dropdown: ({
+      children,
+      droplist,
+      onVisibleChange,
+    }: {
+      children: React.ReactElement<{ onClick?: () => void }>;
+      droplist?: React.ReactNode;
+      onVisibleChange?: (visible: boolean) => void;
+    }) => (
       <div>
-        {children}
+        {React.cloneElement(children, { onClick: () => onVisibleChange?.(true) })}
         {droplist}
       </div>
     ),
@@ -149,32 +205,65 @@ describe('AionrsModelSelector runtime options', () => {
   });
 
   it('shows the only authorized model without switching when it is selected again', () => {
-    const managedProvider = { ...provider, id: 'rc2-enterprise-model' };
     const selection = makeSelection({
       providers: [managedProvider],
       current_model: { ...managedProvider, use_model: 'rc2-terra' } as TProviderWithModel,
       getAvailableModels: () => ['rc2-terra'],
       getDisplayModelName: () => 'GPT-6.1-Terra',
-      enterpriseCatalog: { authorizedCount: 1, failed: false },
+      enterpriseCatalog: makeEnterpriseCatalog(),
     });
     render(<AionrsModelSelector selection={selection} />);
     expect(screen.getByRole('button', { name: /GPT-6.1-Terra/ })).toBeInTheDocument();
     expect(screen.getByText('workspace.modelAvailability.single')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('menuitem', { name: /GPT-6.1-Terra/ }));
+    expect(screen.getByText('workspace.abilities.default')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /GPT-6.1-Terra/ }));
     expect(selection.handleSelectModel).not.toHaveBeenCalled();
   });
 
   it('shows a catalog failure separately from the absence of authorization', () => {
     const { rerender } = render(
-      <AionrsModelSelector selection={makeSelection({ providers: [], enterpriseCatalog: { failed: true } })} />
+      <AionrsModelSelector
+        selection={makeSelection({
+          providers: [],
+          enterpriseCatalog: makeEnterpriseCatalog({ failed: true, sendBlock: 'failed' }),
+        })}
+      />
     );
     expect(screen.getByText('workspace.modelAvailability.failed')).toBeInTheDocument();
     rerender(
       <AionrsModelSelector
-        selection={makeSelection({ providers: [], enterpriseCatalog: { authorizedCount: 0, failed: false } })}
+        selection={makeSelection({
+          providers: [],
+          enterpriseCatalog: makeEnterpriseCatalog({ authorizedCount: 0, sendBlock: 'empty' }),
+        })}
       />
     );
     expect(screen.getByText('workspace.errors.noModel')).toBeInTheDocument();
+  });
+
+  it('refreshes on open and provides a retry action after a read failure', () => {
+    const catalog = makeEnterpriseCatalog({ failed: true, sendBlock: 'failed' });
+    render(<AionrsModelSelector selection={makeSelection({ providers: [], enterpriseCatalog: catalog })} />);
+    fireEvent.click(screen.getByRole('button', { name: /Model/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'common.retry' }));
+    expect(catalog.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows a catalog read while busy and blocks selecting another model', () => {
+    const catalog = makeEnterpriseCatalog({ authorizedCount: 2 });
+    const selection = makeSelection({
+      providers: [managedProvider],
+      current_model: { ...managedProvider, use_model: 'rc2-terra' },
+      getAvailableModels: () => ['rc2-terra', 'rc2-astra'],
+      getDisplayModelName: (code) => catalog.models.get(code ?? '')?.name ?? '',
+      enterpriseCatalog: catalog,
+    });
+    render(<AionrsModelSelector selection={selection} busy />);
+    fireEvent.click(screen.getByRole('button', { name: /GPT-6.1-Terra/ }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /GPT-6-Astra/ }));
+    expect(catalog.refresh).toHaveBeenCalledWith(false);
+    expect(screen.getByText('workspace.modelAvailability.busy')).toBeInTheDocument();
+    expect(selection.handleSelectModel).not.toHaveBeenCalled();
   });
 
   it('shows the current model and thought level in the header pill', () => {
@@ -281,5 +370,46 @@ describe('AionrsModelSelector runtime options', () => {
     await waitFor(() => {
       expect(onSetThoughtLevel).toHaveBeenCalledWith('reasoning_effort', 'low');
     });
+  });
+});
+
+describe('Enterprise conversation model selection', () => {
+  const initialModel = { ...managedProvider, use_model: 'rc2-terra' };
+  const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <SWRConfig value={{ provider: () => new Map() }}>{children}</SWRConfig>
+  );
+
+  beforeEach(() => {
+    enterpriseWeb.mockReturnValue(true);
+    readModels.mockReset().mockResolvedValue(catalogModels);
+  });
+
+  it('keeps the previous selection when persistence fails', async () => {
+    const onSelectModel = vi.fn().mockRejectedValue(new Error('update failed'));
+    const { result } = renderHook(() => useAionrsModelSelection({ initialModel, onSelectModel }), { wrapper });
+    await waitFor(() => expect(result.current.enterpriseCatalog?.sendBlock).toBeUndefined());
+    await act(() => result.current.handleSelectModel(managedProvider, 'rc2-astra'));
+    expect(result.current.current_model?.use_model).toBe('rc2-terra');
+    expect(result.current.enterpriseCatalog?.switchFailed).toBe(true);
+  });
+
+  it('selects the authorized model by its stable code after persistence succeeds', async () => {
+    const onSelectModel = vi.fn().mockResolvedValue(true);
+    const { result } = renderHook(() => useAionrsModelSelection({ initialModel, onSelectModel }), { wrapper });
+    await waitFor(() => expect(result.current.enterpriseCatalog?.sendBlock).toBeUndefined());
+    await act(() => result.current.handleSelectModel(managedProvider, 'rc2-astra'));
+    expect(onSelectModel).toHaveBeenCalledWith(managedProvider, 'rc2-astra');
+    expect(result.current.current_model?.use_model).toBe('rc2-astra');
+  });
+
+  it('requires a new selection after access is revoked, even if another model is available', async () => {
+    const onSelectModel = vi.fn().mockResolvedValue(true);
+    const { result } = renderHook(() => useAionrsModelSelection({ initialModel, onSelectModel }), { wrapper });
+    await waitFor(() => expect(result.current.enterpriseCatalog?.sendBlock).toBeUndefined());
+    readModels.mockResolvedValue([catalogModels[1]]);
+    await act(async () => result.current.enterpriseCatalog?.refresh(false));
+    expect(result.current.enterpriseCatalog?.sendBlock).toBe('invalid');
+    expect(result.current.current_model?.use_model).toBe('rc2-terra');
+    expect(onSelectModel).not.toHaveBeenCalled();
   });
 });

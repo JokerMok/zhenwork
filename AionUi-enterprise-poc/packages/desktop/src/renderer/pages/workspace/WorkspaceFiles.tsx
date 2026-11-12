@@ -18,7 +18,7 @@ import {
 } from '@arco-design/web-react';
 import type { UploadRequest } from '@arco-design/web-react/es/Upload/interface';
 import { Download, PreviewOpen, Refresh, Undo, UploadOne } from '@icon-park/react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { enterpriseRequest, uploadWorkspaceFiles, workspaceErrorCode } from './workspaceApi';
@@ -117,12 +117,19 @@ const WorkspaceFiles: React.FC = () => {
   const [dataPath, setDataPath] = useState<string>();
   const [preview, setPreview] = useState<FilePreview | null>(null);
 
+  const fileListRequest = useRef<AbortController | null>(null);
   const loadFiles = useCallback(async () => {
+    fileListRequest.current?.abort();
+    const controller = new AbortController();
+    fileListRequest.current = controller;
     setLoading(true);
+    setErrorCode(null);
     try {
       const result = await enterpriseRequest<{ files: EnterpriseFile[]; workspaceRoot?: string; warnings?: string[] }>(
-        '/enterprise/files'
+        '/enterprise/files',
+        { signal: controller.signal }
       );
+      if (controller.signal.aborted) return;
       const currentFiles = Array.isArray(result.files) ? result.files : [];
       setFiles(currentFiles);
       setVersionFile((current) => (current ? currentFiles.find((file) => file.path === current.path) || null : null));
@@ -135,17 +142,19 @@ const WorkspaceFiles: React.FC = () => {
       setWorkspaceRoot(typeof result.workspaceRoot === 'string' ? result.workspaceRoot : '');
       setErrorCode(null);
     } catch (error) {
+      if (controller.signal.aborted) return;
       setFiles([]);
       setWarnings([]);
       setWorkspaceRoot('');
       setErrorCode(workspaceErrorCode(error));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void loadFiles();
+    return () => fileListRequest.current?.abort();
   }, [loadFiles]);
 
   const visibleFiles = useMemo(
@@ -318,7 +327,7 @@ const WorkspaceFiles: React.FC = () => {
           <div className='mt-3px text-13px text-t-secondary'>{t('workspace.files.subtitle')}</div>
         </div>
         <Space wrap className='max-w-full'>
-          <Select value={kind} onChange={setKind} style={{ width: 145 }}>
+          <Select aria-label={t('workspace.files.title')} value={kind} onChange={setKind} style={{ width: 145 }}>
             {['all', 'task', 'personal', 'shared', 'generated'].map((value) => (
               <Select.Option key={value} value={value}>
                 {t(`workspace.fileKind.${value}`)}
@@ -335,13 +344,24 @@ const WorkspaceFiles: React.FC = () => {
           </Button>
         </Space>
       </div>
-      {errorCode ? <Alert type='error' showIcon content={t('workspace.errors.load', { code: errorCode })} /> : null}
+      {errorCode && (
+        <Alert
+          type='error'
+          showIcon
+          content={t('workspace.errors.load', { code: errorCode })}
+          action={<Button size='small' onClick={() => void loadFiles()}>{t('common.retry')}</Button>}
+        />
+      )}
       {warnings.length > 0 ? (
         <Alert type='warning' showIcon content={t('workspace.files.warnings', { count: warnings.length })} />
       ) : null}
       <Spin loading={loading} className='w-full'>
-        {visibleFiles.length === 0 && !loading ? (
-          <Empty description={t('workspace.files.empty')} />
+        {visibleFiles.length === 0 ? (
+          !loading && !errorCode && (
+            <Empty description={kind === 'all' ? t('workspace.files.empty') : (
+              <Button type='text' onClick={() => setKind('all')}>{t('workspace.fileKind.all')}</Button>
+            )} />
+          )
         ) : (
           <List
             dataSource={visibleFiles}

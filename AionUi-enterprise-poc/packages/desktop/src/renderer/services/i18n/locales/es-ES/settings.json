@@ -1,5 +1,7 @@
 {
   "enterpriseAccount": {
+    "reloadPreferences": "Recargar y conservar cambios",
+    "preferenceTiming": "Las preferencias guardadas se aplican a partir de la siguiente tarea o respuesta.",
     "profile": "Perfil personal",
     "personalization": "Personalización",
     "department": "Departamento",

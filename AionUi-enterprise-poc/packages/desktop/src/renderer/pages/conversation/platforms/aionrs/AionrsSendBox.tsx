@@ -58,7 +58,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { classifyConversationBusyError } from '../conversationBusyError';
 import { useAionrsMessage } from './useAionrsMessage';
-import type { AionrsModelSelection } from './useAionrsModelSelection';
+import AionrsModelSelector from './AionrsModelSelector';
+import { enterpriseModelBlockKey, type AionrsModelSelection } from './useAionrsModelSelection';
 
 const configErrorMessageKey = (error: unknown) => {
   const errorKind = classifyConfigSetError(error);
@@ -144,7 +145,10 @@ const AionrsSendBox: React.FC<{
     }));
   const { t } = useTranslation();
   const { checkAndUpdateTitle } = useAutoTitle();
-  const { current_model } = modelSelection;
+  const { current_model, enterpriseCatalog } = modelSelection;
+  const modelBlock = enterpriseCatalog?.sendBlock;
+  const modelBlockMessage = modelBlock ? t(enterpriseModelBlockKey[modelBlock]) : undefined;
+  const isModelSwitching = enterpriseCatalog?.isSwitching;
   const teamPermission = useTeamPermission();
   const propagateMode = teamPermission?.propagateMode;
 
@@ -291,6 +295,9 @@ const AionrsSendBox: React.FC<{
 
   const executeCommand = useCallback(
     async ({ input, files, sessions }: Pick<ConversationCommandQueueItem, 'input' | 'files' | 'sessions'>) => {
+      if (modelBlockMessage || isModelSwitching?.()) {
+        throw new Error(modelBlockMessage ?? t('workspace.modelAvailability.switching'));
+      }
       if (teamPermission) await teamPermission.warmupSession();
       if (!current_model?.use_model) {
         Message.warning(t('conversation.chat.noModelSelected'));
@@ -358,6 +365,8 @@ const AionrsSendBox: React.FC<{
       checkAndUpdateTitle,
       conversation_id,
       current_model?.use_model,
+      modelBlockMessage,
+      isModelSwitching,
       markSendAccepted,
       markSendFailed,
       markSendStarted,
@@ -387,13 +396,13 @@ const AionrsSendBox: React.FC<{
     conversation_id: conversation_id,
     enabled: true,
     isBusy,
-    runtimeGate: commandQueueRuntimeGate,
+    runtimeGate: modelBlock ? { ...commandQueueRuntimeGate, canSendMessage: false } : commandQueueRuntimeGate,
     onExecute: executeCommand,
   });
 
   // Handle initial message from Guid page — wait until model is ready
   useEffect(() => {
-    if (!conversation_id || !current_model?.use_model) return;
+    if (!conversation_id || !current_model?.use_model || modelBlock) return;
 
     const storageKey = `aionrs_initial_message_${conversation_id}`;
     const processedKey = `aionrs_initial_processed_${conversation_id}`;
@@ -422,7 +431,7 @@ const AionrsSendBox: React.FC<{
     };
 
     void processInitialMessage();
-  }, [conversation_id, current_model?.use_model, executeCommand]);
+  }, [conversation_id, current_model?.use_model, executeCommand, modelBlock]);
 
   // `@@` session references the user picked. Declared before the handlers that
   // read it — every send path has to both forward and release it.
@@ -434,6 +443,11 @@ const AionrsSendBox: React.FC<{
   // enqueuing. The only way to queue a message while busy is the explicit
   // "add to queue" entry (handleAddToQueue below).
   const onSendHandler = async (message: string): Promise<void | false> => {
+    if (modelBlockMessage || isModelSwitching?.()) {
+      Message.warning(modelBlockMessage ?? t('workspace.modelAvailability.switching'));
+      return false;
+    }
+    if (enterpriseCatalog && !agentWarmed) return false;
     if (isBusy) {
       Message.warning(
         t('conversation.commandQueue.midturnBlocked', {
@@ -630,6 +644,8 @@ const AionrsSendBox: React.FC<{
       ...attachEntries,
     ];
 
+    if (enterpriseCatalog) entries.shift();
+
     if (runtimeThoughtLevel) {
       entries.splice(1, 0, {
         key: 'thought-level',
@@ -714,6 +730,7 @@ const AionrsSendBox: React.FC<{
     loadedMcpStatuses,
     loadedSkills,
     modelSelection,
+    enterpriseCatalog,
     runtimeConfig,
     runtimeMode,
     runtimeThoughtLevel,
@@ -845,15 +862,16 @@ const AionrsSendBox: React.FC<{
         loading={teamRuntime?.loading ?? isBusy}
         active={teamRuntime?.isActive}
         onFocused={teamRuntime?.onFocus}
-        disabled={!current_model?.use_model || !agentWarmed}
-        sendDisabled={isBusy}
+        disabled={!enterpriseCatalog && (!current_model?.use_model || !agentWarmed)}
+        sendDisabled={isBusy || Boolean(enterpriseCatalog && (!agentWarmed || modelBlock))}
         sendDisabledTooltip={
-          isBusy
+          modelBlockMessage ??
+          (isBusy
             ? t('conversation.commandQueue.midturnBlockedSendHint', {
                 defaultValue:
                   'The current agent is still working and cannot receive another message yet. Add it to Draft box instead.',
               })
-            : undefined
+            : undefined)
         }
         placeholder={
           current_model?.use_model
@@ -869,8 +887,9 @@ const AionrsSendBox: React.FC<{
         onFoldersAdded={appendSelectedFolders}
         hasPendingAttachments={uploadFile.length > 0 || atPath.length > 0}
         supportedExts={allSupportedExts}
-        defaultMultiLine={!isMobile}
-        lockMultiLine={!isMobile}
+        defaultMultiLine={!isMobile || Boolean(enterpriseCatalog)}
+        lockMultiLine={!isMobile || Boolean(enterpriseCatalog)}
+        showRightToolsOnMobile={Boolean(enterpriseCatalog)}
         tools={
           <FileAttachButton
             openFileSelector={openFileSelector}
@@ -880,25 +899,32 @@ const AionrsSendBox: React.FC<{
           />
         }
         rightTools={
-          <div className='flex items-center gap-8px min-w-0'>
-            {!isEnterpriseWeb() && (
-              <AgentModeSelector
-                backend='aionrs'
-                conversation_id={conversation_id}
-                compact
-                initialMode={session_mode}
-                dynamicModes={dynamicModes}
-                compactLeadingIcon={<Shield theme='outline' size='14' fill={iconColors.secondary} />}
-                modeLabelFormatter={(mode) => t(`agentMode.${mode.value}`, { defaultValue: mode.label })}
-                compactLabelPrefix={t('agentMode.permission')}
-                hideCompactLabelPrefixOnMobile
-                onModeChanged={propagateMode}
-                beforeRuntimeSync={prepareRuntimeConfig}
-                beforeRuntimeSet={teamPermission?.warmupSession}
-                configOptionsPort={teamPermission?.configOptionsPort}
-              />
-            )}
-          </div>
+          enterpriseCatalog ? (
+            <AionrsModelSelector
+              selection={modelSelection}
+              busy={isBusy || running || Boolean(runtimeView.activeTurnId)}
+            />
+          ) : (
+            <div className='flex items-center gap-8px min-w-0'>
+              {!isEnterpriseWeb() && (
+                <AgentModeSelector
+                  backend='aionrs'
+                  conversation_id={conversation_id}
+                  compact
+                  initialMode={session_mode}
+                  dynamicModes={dynamicModes}
+                  compactLeadingIcon={<Shield theme='outline' size='14' fill={iconColors.secondary} />}
+                  modeLabelFormatter={(mode) => t(`agentMode.${mode.value}`, { defaultValue: mode.label })}
+                  compactLabelPrefix={t('agentMode.permission')}
+                  hideCompactLabelPrefixOnMobile
+                  onModeChanged={propagateMode}
+                  beforeRuntimeSync={prepareRuntimeConfig}
+                  beforeRuntimeSet={teamPermission?.warmupSession}
+                  configOptionsPort={teamPermission?.configOptionsPort}
+                />
+              )}
+            </div>
+          )
         }
         prefix={
           <>
@@ -943,6 +969,11 @@ const AionrsSendBox: React.FC<{
           ) : undefined
         }
       />
+      {modelBlockMessage && modelBlock !== 'loading' && modelBlock !== 'switching' && (
+        <div role='status' className='mt-6px px-4px text-12px text-t-secondary'>
+          {modelBlockMessage}
+        </div>
+      )}
       {isMobile && (
         <>
           <MobileActionSheet

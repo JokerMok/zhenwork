@@ -122,6 +122,9 @@ vi.mock('@/renderer/components/chat/SendBox', () => ({
   },
 }));
 
+vi.mock('@/renderer/pages/conversation/platforms/aionrs/AionrsModelSelector', () => ({
+  default: () => null,
+}));
 vi.mock('@/renderer/components/agent/AgentModeSelector', () => ({ default: () => null }));
 vi.mock('@/renderer/components/chat/CommandQueuePanel', () => ({ default: () => null }));
 vi.mock('@/renderer/components/chat/MobileActionSheet', () => ({
@@ -310,6 +313,33 @@ describe('AionrsSendBox', () => {
     useTeamPermissionMock.mockReturnValue(null);
     draftContentRef.current = '';
     runtimeViewIsProcessingRef.current = false;
+  });
+
+  it('keeps the composer editable and blocks keyboard submission when the selected model is revoked', async () => {
+    render(
+      <AionrsSendBox
+        conversation_id='conv-1'
+        modelSelection={{
+          ...modelSelection,
+          enterpriseCatalog: {
+            models: new Map(),
+            authorizedCount: 1,
+            failed: false,
+            refreshFailed: false,
+            refreshing: false,
+            switching: false,
+            switchFailed: false,
+            sendBlock: 'invalid',
+            refresh: vi.fn().mockResolvedValue(undefined),
+            isSwitching: () => false,
+          },
+        }}
+      />
+    );
+    await act(async () => screen.getByRole('button', { name: 'send' }).click());
+    expect(sendBoxPropsSpy).toHaveBeenLastCalledWith(expect.objectContaining({ disabled: false, sendDisabled: true }));
+    expect(clearFilesMock).not.toHaveBeenCalled();
+    expect(sendMessageInvokeMock).not.toHaveBeenCalled();
   });
 
   it('does not warm up team session when draft content changes', async () => {

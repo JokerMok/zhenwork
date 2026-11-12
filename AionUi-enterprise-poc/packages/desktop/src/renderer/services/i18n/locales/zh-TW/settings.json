@@ -1,5 +1,7 @@
 {
   "enterpriseAccount": {
+    "reloadPreferences": "重新載入並保留修改",
+    "preferenceTiming": "儲存後，從下一次任務或回覆開始套用。",
     "profile": "個人資料",
     "personalization": "個人化",
     "department": "部門",

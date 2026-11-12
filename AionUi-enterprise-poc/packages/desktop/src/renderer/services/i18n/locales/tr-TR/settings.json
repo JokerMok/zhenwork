@@ -1,5 +1,7 @@
 {
   "enterpriseAccount": {
+    "reloadPreferences": "Değişiklikleri koruyarak yeniden yükle",
+    "preferenceTiming": "Kaydedilen tercihler sonraki görev veya yanıttan itibaren uygulanır.",
     "profile": "Kişisel profil",
     "personalization": "Kişiselleştirme",
     "department": "Departman",

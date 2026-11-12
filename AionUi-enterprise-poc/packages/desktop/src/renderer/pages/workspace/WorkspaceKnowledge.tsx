@@ -135,6 +135,7 @@ const WorkspaceKnowledge: React.FC = () => {
     const generation = ++basesLoadGeneration.current;
     documentsLoadGeneration.current += 1;
     setLoading(true);
+    setErrorCode(null);
     setBaseId(null);
     setDocuments([]);
     setJobs([]);
@@ -168,9 +169,11 @@ const WorkspaceKnowledge: React.FC = () => {
     if (!baseId) {
       setDocuments([]);
       setJobs([]);
+      setDocumentsLoading(false);
       return;
     }
     setDocumentsLoading(true);
+    setErrorCode(null);
     try {
       const [value, jobValue] = await Promise.allSettled([
         enterpriseControl<KnowledgeDocument[]>(`/ai/knowledge/${baseId}/documents?page=${documentPage}`),
@@ -401,6 +404,7 @@ const WorkspaceKnowledge: React.FC = () => {
             </Tag>
           ) : null}
           <Select
+            aria-label={t('workspace.knowledge.selectBase')}
             value={baseId || undefined}
             onChange={setBaseId}
             placeholder={t('workspace.knowledge.selectBase')}
@@ -426,7 +430,7 @@ const WorkspaceKnowledge: React.FC = () => {
           ) : null}
           <Button
             icon={<Refresh />}
-            loading={documentsLoading}
+            loading={loading || documentsLoading}
             onClick={() => void (baseId ? loadDocuments() : loadBases())}
           >
             {t('common.refresh')}
@@ -438,6 +442,11 @@ const WorkspaceKnowledge: React.FC = () => {
           type='error'
           showIcon
           content={t(workspaceErrorTranslationKey(errorCode, 'load'), { code: errorCode })}
+          action={
+            <Button size='small' onClick={() => void (baseId ? loadDocuments() : loadBases())}>
+              {t('common.retry')}
+            </Button>
+          }
         />
       ) : null}
       {selectedBase ? (
@@ -488,12 +497,14 @@ const WorkspaceKnowledge: React.FC = () => {
         {searched && !results.length ? <Empty description={t('workspace.knowledge.noMatches')} /> : null}
       </Card>
       <Spin loading={loading || documentsLoading} className='w-full'>
-        {!baseId || (documents.length === 0 && !loading) ? (
-          <Empty
-            description={
-              scope === 'available' ? t('workspace.knowledge.availableEmpty') : t('workspace.knowledge.empty')
-            }
-          />
+        {documents.length === 0 ? (
+          !loading && !documentsLoading && !errorCode && (
+            <Empty
+              description={
+                !baseId && scope === 'available' ? t('workspace.knowledge.availableEmpty') : t('workspace.knowledge.empty')
+              }
+            />
+          )
         ) : (
           <List
             dataSource={documents}

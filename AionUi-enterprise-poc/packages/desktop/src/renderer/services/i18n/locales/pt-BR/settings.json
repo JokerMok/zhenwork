@@ -1,5 +1,7 @@
 {
   "enterpriseAccount": {
+    "reloadPreferences": "Recarregar e manter alterações",
+    "preferenceTiming": "As preferências salvas são aplicadas a partir da próxima tarefa ou resposta.",
     "profile": "Perfil pessoal",
     "personalization": "Personalização",
     "department": "Departamento",

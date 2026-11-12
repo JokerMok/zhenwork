@@ -1,5 +1,7 @@
 {
   "enterpriseAccount": {
+    "reloadPreferences": "変更を保持して再読み込み",
+    "preferenceTiming": "保存した設定は、次のタスクまたは返信から適用されます。",
     "profile": "プロフィール",
     "personalization": "パーソナライズ",
     "department": "部署",

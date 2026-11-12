@@ -57,36 +57,40 @@ const WorkspaceHome: React.FC<WorkspaceHomeProps> = ({ onOpenSection }) => {
   return (
     <div className='min-w-0 flex flex-col gap-22px'>
       <div>
-        <div className='text-28px font-semibold text-t-primary'>{t('workspace.home.welcome', { brand: brandName })}</div>
-        <div className='mt-6px text-14px text-t-secondary'>{t('workspace.home.subtitle')}</div>
+        <h1 className='m-0 text-28px font-semibold text-t-primary'>
+          {t('workspace.home.welcome', { brand: brandName })}
+        </h1>
       </div>
       <section>
         <div className='mb-10px flex flex-wrap items-center justify-between gap-12px'>
-          <div>
-            <div className='text-17px font-semibold text-t-primary'>{t('workspace.home.startTitle')}</div>
-            <div className='mt-2px text-13px text-t-secondary'>{t('workspace.home.startHint')}</div>
-          </div>
-          <Button type='text' onClick={() => navigate('/guid')}>
+          <h2 className='m-0 text-17px font-semibold text-t-primary'>{t('workspace.home.startTitle')}</h2>
+          <Button type='primary' onClick={() => navigate('/guid')}>
             {t('workspace.home.blankTask')} <Right theme='outline' />
           </Button>
         </div>
         <Grid.Row gutter={[12, 12]}>
           {examples.map((example) => (
             <Grid.Col key={example.key} xs={24} md={12}>
-              <Card
-                hoverable
-                className='h-full cursor-pointer'
-                onClick={() => navigate('/guid', { state: { prefillPrompt: example.prompt, focusPrefill: true } })}
-              >
-                <div className='flex items-start gap-12px'>
-                  <span className='mt-2px size-34px shrink-0 flex items-center justify-center rd-8px bg-fill-2 text-t-primary'>
-                    {example.icon}
+              <Card className='h-full' bodyStyle={{ padding: 0 }}>
+                <Button
+                  type='text'
+                  className='w-full min-w-0'
+                  style={{ height: 'auto', padding: 16, textAlign: 'start', whiteSpace: 'normal' }}
+                  onClick={() => navigate('/guid', { state: { prefillPrompt: example.prompt, focusPrefill: true } })}
+                >
+                  <span className='flex items-start gap-12px'>
+                    <span
+                      aria-hidden='true'
+                      className='mt-2px size-34px shrink-0 flex items-center justify-center rd-8px bg-fill-2 text-t-primary'
+                    >
+                      {example.icon}
+                    </span>
+                    <span className='block min-w-0 break-words'>
+                      <span className='block font-medium text-t-primary'>{example.title}</span>
+                      <span className='mt-5px block text-13px leading-20px text-t-secondary'>{example.prompt}</span>
+                    </span>
                   </span>
-                  <div className='min-w-0 break-words'>
-                    <div className='font-medium text-t-primary'>{example.title}</div>
-                    <div className='mt-5px text-13px leading-20px text-t-secondary'>{example.prompt}</div>
-                  </div>
-                </div>
+                </Button>
               </Card>
             </Grid.Col>
           ))}

@@ -1,5 +1,7 @@
 {
   "enterpriseAccount": {
+    "reloadPreferences": "Reload and keep changes",
+    "preferenceTiming": "Saved preferences apply starting with the next task or reply.",
     "profile": "Personal profile",
     "personalization": "Personalization",
     "department": "Department",

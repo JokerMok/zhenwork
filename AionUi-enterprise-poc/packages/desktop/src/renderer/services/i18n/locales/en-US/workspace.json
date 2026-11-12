@@ -2,7 +2,10 @@
   "modelAvailability": {
     "single": "This is the only model authorized for your account.",
     "pending": "The available models are not ready yet.",
-    "failed": "Could not load your authorized models."
+    "failed": "Could not load your authorized models.",
+    "invalid": "The selected model is no longer available. Choose another model.",
+    "busy": "Wait for the current response to finish before switching models.",
+    "switching": "Switching model…"
   },
   "title": "Office workspace",
   "view": "View",

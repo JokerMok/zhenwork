@@ -1,5 +1,7 @@
 {
   "enterpriseAccount": {
+    "reloadPreferences": "Neu laden und Änderungen behalten",
+    "preferenceTiming": "Gespeicherte Einstellungen gelten ab der nächsten Aufgabe oder Antwort.",
     "profile": "Persönliches Profil",
     "personalization": "Personalisierung",
     "department": "Abteilung",

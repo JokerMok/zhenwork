@@ -2,7 +2,10 @@
   "modelAvailability": {
     "single": "Votre compte est autorisé à utiliser uniquement ce modèle.",
     "pending": "La liste des modèles disponibles est en cours de préparation.",
-    "failed": "Impossible de charger les modèles autorisés pour votre compte."
+    "failed": "Impossible de charger les modèles autorisés pour votre compte.",
+    "invalid": "Le modèle sélectionné est indisponible. Choisissez un autre modèle.",
+    "busy": "Attendez la fin de la réponse en cours pour changer de modèle.",
+    "switching": "Changement de modèle…"
   },
   "title": "Office workspace",
   "view": "View",

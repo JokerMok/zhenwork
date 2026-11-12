@@ -2,7 +2,10 @@
   "modelAvailability": {
     "single": "Ihr Konto ist nur für dieses Modell berechtigt.",
     "pending": "Die verfügbaren Modelle sind noch nicht bereit.",
-    "failed": "Die für Ihr Konto freigegebenen Modelle konnten nicht geladen werden."
+    "failed": "Die für Ihr Konto freigegebenen Modelle konnten nicht geladen werden.",
+    "invalid": "Das ausgewählte Modell ist nicht mehr verfügbar. Wähle ein anderes Modell.",
+    "busy": "Warte auf das Ende der aktuellen Antwort, bevor du das Modell wechselst.",
+    "switching": "Modell wird gewechselt…"
   },
   "title": "Office workspace",
   "view": "View",
