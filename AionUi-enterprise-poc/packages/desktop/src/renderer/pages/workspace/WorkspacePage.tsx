@@ -30,6 +30,10 @@ const WorkspacePage: React.FC = () => {
   };
   const setActive = (section: string) => {
     const next = new URLSearchParams(params);
+    if (section !== active) {
+      next.delete('previewPath');
+      next.delete('fileVersion');
+    }
     if (section === 'home') next.delete('section');
     else next.set('section', section);
     setParams(next, { replace: true });
@@ -70,7 +74,7 @@ const WorkspacePage: React.FC = () => {
               </span>
             }
           >
-            {deferred(<WorkspaceFiles />)}
+            {deferred(<WorkspaceFiles active={active === 'files'} />)}
           </Tabs.TabPane>
           <Tabs.TabPane
             key='knowledge'
@@ -108,6 +112,7 @@ const WorkspacePage: React.FC = () => {
             {deferred(<WorkspaceMemory />)}
           </Tabs.TabPane>
         </Tabs>
+        {active === 'tasks' && params.has('previewPath') && deferred(<WorkspaceFiles previewOnly />)}
         <Button type='text' className='mt-16px' icon={<AlarmClock />} onClick={() => navigate('/scheduled')}>
           {t('workspace.openScheduled')}
         </Button>

@@ -12,7 +12,7 @@ import {
 } from '@arco-design/web-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { enterpriseRequest, workspaceErrorCode } from '../workspaceApi';
 import { taskAccepted, taskRequestId, taskStatusVisible, useTaskWork, type WorkTask } from './api';
@@ -36,6 +36,7 @@ export default function TaskWork({
 }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { task, attempt: a, error, reload } = useTaskWork(conversationId);
   useEffect(() => {
     onTaskChange?.(task);
@@ -264,7 +265,18 @@ export default function TaskWork({
                       if (target.origin !== window.location.origin || !target.hash.startsWith('#/workspace?')) {
                         throw new Error('Invalid artifact preview route');
                       }
-                      navigate(target.hash.slice(1));
+                      const preview = new URLSearchParams(target.hash.slice('#/workspace?'.length));
+                      const previewPath = preview.get('previewPath');
+                      if (!previewPath || previewPath !== file.path) throw new Error('Invalid artifact path');
+                      const version = file.versionId || preview.get('fileVersion');
+                      const current = new URLSearchParams(location.search);
+                      const inTask = location.pathname === '/workspace' && current.get('section') === 'tasks' &&
+                        current.get('task') === conversationId;
+                      const next = inTask ? current : new URLSearchParams({ section: 'files' });
+                      next.set('previewPath', previewPath);
+                      if (version) next.set('fileVersion', version);
+                      else next.delete('fileVersion');
+                      navigate({ pathname: '/workspace', search: next.toString() });
                     } catch {
                       setFailure(true);
                     }

@@ -101,7 +101,10 @@ const downloadWorkspaceFile = (file: EnterpriseFile, version?: EnterpriseFileVer
   window.open(`/enterprise/files/download?${query.toString()}`, '_blank', 'noopener,noreferrer');
 };
 
-const WorkspaceFiles: React.FC = () => {
+const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
+  active = true,
+  previewOnly = false,
+}) => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -116,6 +119,17 @@ const WorkspaceFiles: React.FC = () => {
   const [workspaceRoot, setWorkspaceRoot] = useState('');
   const [dataPath, setDataPath] = useState<string>();
   const [preview, setPreview] = useState<FilePreview | null>(null);
+  const params = new URLSearchParams(location.search);
+  const requestedPath = active
+    ? params.get('previewPath') || (location.state as { previewPath?: string } | null)?.previewPath
+    : undefined;
+  const requestedVersion = params.get('fileVersion');
+  const requestedFile = files.find((item) => item.path === requestedPath);
+  const fileVersion = requestedVersion ? requestedFile?.versions?.find((version) => version.id === requestedVersion) : undefined;
+  const matchesPreview = preview?.file.path === requestedPath && (preview?.version?.id ?? null) === requestedVersion;
+  const previewLookupError = !loading && (
+    errorCode || (!requestedFile ? 'FILE_NOT_FOUND' : requestedVersion && !fileVersion ? 'VERSION_NOT_FOUND' : null)
+  );
 
   const fileListRequest = useRef<AbortController | null>(null);
   const loadFiles = useCallback(async () => {
@@ -133,11 +147,6 @@ const WorkspaceFiles: React.FC = () => {
       const currentFiles = Array.isArray(result.files) ? result.files : [];
       setFiles(currentFiles);
       setVersionFile((current) => (current ? currentFiles.find((file) => file.path === current.path) || null : null));
-      setPreview((current) => {
-        if (!current || current.version) return current;
-        const latest = currentFiles.find((file) => file.path === current.file.path);
-        return latest ? { ...current, file: latest } : null;
-      });
       setWarnings(Array.isArray(result.warnings) ? result.warnings : []);
       setWorkspaceRoot(typeof result.workspaceRoot === 'string' ? result.workspaceRoot : '');
       setErrorCode(null);
@@ -218,27 +227,34 @@ const WorkspaceFiles: React.FC = () => {
     });
   };
 
-  const openPreview = useCallback((file: EnterpriseFile, version?: EnterpriseFileVersion) => {
-    const previewKind = workspaceFilePreviewKind(file.name || file.path);
-    setPreview({
-      file,
-      version,
-      kind: previewKind,
-      loading: previewKind === 'pdf' || previewKind === 'image' || previewKind === 'text',
-    });
-  }, []);
+  const openPreview = (file: EnterpriseFile, version?: EnterpriseFileVersion) => {
+    const next = new URLSearchParams(location.search);
+    next.set('previewPath', file.path);
+    const versionId = version?.id || file.currentVersionId;
+    if (versionId) next.set('fileVersion', versionId);
+    else next.delete('fileVersion');
+    navigate({ pathname: location.pathname, search: next.toString() });
+  };
+  const closePreview = () => {
+    const next = new URLSearchParams(location.search);
+    next.delete('previewPath');
+    next.delete('fileVersion');
+    navigate({ pathname: location.pathname, search: next.toString() }, { replace: true, state: null });
+  };
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const requested = params.get('previewPath') || (location.state as { previewPath?: string } | null)?.previewPath;
-    const file = requested ? files.find((item) => item.path === requested) : undefined;
-    if (file) {
-      const versionId = params.get('fileVersion');
-      const version = versionId ? file.versions.find(item => item.id === versionId) : undefined;
-      if (versionId && !version) { message.error(t('workspace.errors.action', { code: 'VERSION_NOT_FOUND' }));return; }
-      openPreview(file, version);
+    if (!requestedFile || (requestedVersion && !fileVersion)) {
+      setPreview(null);
+      return;
     }
-  }, [location.key, location.search, files, openPreview]);
+    const previewKind = workspaceFilePreviewKind(requestedFile.name || requestedFile.path);
+    setPreview({
+      file: requestedFile,
+      version: fileVersion,
+      kind: previewKind,
+      loading: ['pdf', 'image', 'text'].includes(previewKind),
+    });
+  }, [requestedFile, requestedVersion, fileVersion]);
 
   useEffect(() => {
     const file = preview?.file;
@@ -266,6 +282,7 @@ const WorkspaceFiles: React.FC = () => {
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP_${response.status}`);
         const bytes = await response.arrayBuffer();
+        if (disposed) return;
         if (bytes.byteLength > limit) throw new Error('PREVIEW_TOO_LARGE');
         if (previewKind === 'text') {
           const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
@@ -316,6 +333,101 @@ const WorkspaceFiles: React.FC = () => {
       message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
     }
   };
+
+  const visiblePreview = matchesPreview ? preview : null;
+  const previewDrawer = (
+      <Drawer
+        width='min(900px, 100vw)'
+        visible={Boolean(requestedPath)}
+        focusLock
+        autoFocus
+        role='dialog'
+        aria-modal='true'
+        aria-label={visiblePreview?.file.name || t('workspace.files.preview')}
+        title={visiblePreview
+          ? visiblePreview.file.name + (visiblePreview.version ? ' · ' + formatDate(visiblePreview.version.createdAt) : '')
+          : t('workspace.files.preview')}
+        footer={
+          <Space wrap>
+            <Button onClick={closePreview}>{t('common.close')}</Button>
+            {visiblePreview && (
+              <Button icon={<Download />} onClick={() => downloadWorkspaceFile(visiblePreview.file, visiblePreview.version)}>
+                {t('workspace.files.download')}
+              </Button>
+            )}
+          </Space>
+        }
+        onCancel={closePreview}
+      >
+        {previewLookupError ? (
+          <Alert type='error' showIcon content={t('workspace.errors.action', { code: previewLookupError })} />
+        ) : !visiblePreview ? (
+          <div className='flex min-h-240px items-center justify-center'>
+            <Spin loading />
+          </div>
+        ) : visiblePreview.kind === 'office' && /\.(xlsx|docx|pptx)$/i.test(visiblePreview.file.name) ? (
+          <OfficePreview
+            path={visiblePreview.file.path}
+            version={visiblePreview.version?.id}
+            revision={visiblePreview.version?.sha256 || visiblePreview.file.modifiedAt}
+            onContinue={previewOnly || (visiblePreview.version && visiblePreview.version.id !== visiblePreview.file.currentVersionId)
+              ? undefined : () => continueWithFile(visiblePreview.file)}
+          />
+        ) : visiblePreview.loading ? (
+          <div className='flex min-h-240px items-center justify-center'>
+            <Spin loading />
+          </div>
+        ) : visiblePreview.errorCode ? (
+          <Space direction='vertical'>
+            <Alert type='error' showIcon content={t('workspace.errors.action', { code: visiblePreview.errorCode })} />
+            <Button
+              onClick={() =>
+                setPreview((current) =>
+                  current
+                    ? { ...current, loading: true, errorCode: undefined, retry: (current.retry || 0) + 1 }
+                    : current
+                )
+              }
+            >
+              {t('workspace.preview.retry')}
+            </Button>
+          </Space>
+        ) : visiblePreview.kind === 'text' ? (
+          <pre className='m-0 max-h-[72vh] overflow-auto whitespace-pre-wrap break-words bg-fill-1 p-12px text-12px'>
+            {visiblePreview.text || t('workspace.preview.empty')}
+          </pre>
+        ) : visiblePreview.kind === 'image' && visiblePreview.objectUrl ? (
+          <div className='flex max-h-[72vh] justify-center overflow-auto bg-fill-1 p-12px'>
+            <img src={visiblePreview.objectUrl} alt={visiblePreview.file.name} className='max-w-full object-contain' />
+          </div>
+        ) : visiblePreview.kind === 'pdf' && visiblePreview.objectUrl ? (
+          <iframe title={visiblePreview.file.name} src={visiblePreview.objectUrl} className='h-[72vh] w-full border-0' />
+        ) : (
+          <div className='min-w-0 flex flex-col gap-12px'>
+            <Alert
+              type={visiblePreview.kind === 'office' ? 'info' : 'warning'}
+              showIcon
+              content={
+                visiblePreview.kind === 'office'
+                  ? t('workspace.files.officePreviewHint')
+                  : t('workspace.files.unsupportedPreviewHint')
+              }
+            />
+            <Space wrap>
+              {visiblePreview.kind === 'office' && !previewOnly ? (
+                <Button type='primary' onClick={() => continueWithFile(visiblePreview.file)}>
+                  {t('workspace.files.openInTask')}
+                </Button>
+              ) : null}
+              <Button icon={<Download />} onClick={() => downloadWorkspaceFile(visiblePreview.file, visiblePreview.version)}>
+                {t('workspace.files.download')}
+              </Button>
+            </Space>
+          </div>
+        )}
+      </Drawer>
+  );
+  if (previewOnly) return previewDrawer;
 
   return (
     <div className='min-w-0 flex flex-col gap-12px'>
@@ -458,83 +570,7 @@ const WorkspaceFiles: React.FC = () => {
           />
         ) : null}
       </Drawer>
-      <Drawer
-        width={900}
-        visible={Boolean(preview)}
-        title={preview ? preview.file.name + (preview.version ? ' · ' + formatDate(preview.version.createdAt) : '') : t('workspace.files.preview')}
-        footer={
-          preview ? (
-            <Button icon={<Download />} onClick={() => downloadWorkspaceFile(preview.file, preview.version)}>
-              {t('workspace.files.download')}
-            </Button>
-          ) : null
-        }
-        onCancel={() => {
-          setPreview(null);
-          const params = new URLSearchParams(location.search);
-          if (params.has('previewPath')) { params.delete('previewPath');params.delete('fileVersion');navigate({ pathname: location.pathname, search: params.toString() }, { replace: true, state: null }); }
-        }}
-      >
-        {preview?.kind === 'office' && /\.(xlsx|docx|pptx)$/i.test(preview.file.name) ? (
-          <OfficePreview
-            path={preview.file.path}
-            version={preview.version?.id}
-            revision={preview.version?.sha256 || preview.file.modifiedAt}
-            onContinue={preview.version ? undefined : () => continueWithFile(preview.file)}
-          />
-        ) : preview?.loading ? (
-          <div className='flex min-h-240px items-center justify-center'>
-            <Spin loading />
-          </div>
-        ) : preview?.errorCode ? (
-          <Space direction='vertical'>
-            <Alert type='error' showIcon content={t('workspace.errors.action', { code: preview.errorCode })} />
-            <Button
-              onClick={() =>
-                setPreview((current) =>
-                  current
-                    ? { ...current, loading: true, errorCode: undefined, retry: (current.retry || 0) + 1 }
-                    : current
-                )
-              }
-            >
-              {t('workspace.preview.retry')}
-            </Button>
-          </Space>
-        ) : preview?.kind === 'text' ? (
-          <pre className='m-0 max-h-[72vh] overflow-auto whitespace-pre-wrap break-words bg-fill-1 p-12px text-12px'>
-            {preview.text || t('workspace.preview.empty')}
-          </pre>
-        ) : preview?.kind === 'image' && preview.objectUrl ? (
-          <div className='flex max-h-[72vh] justify-center overflow-auto bg-fill-1 p-12px'>
-            <img src={preview.objectUrl} alt={preview.file.name} className='max-w-full object-contain' />
-          </div>
-        ) : preview?.kind === 'pdf' && preview.objectUrl ? (
-          <iframe title={preview.file.name} src={preview.objectUrl} className='h-[72vh] w-full border-0' />
-        ) : preview ? (
-          <div className='min-w-0 flex flex-col gap-12px'>
-            <Alert
-              type={preview.kind === 'office' ? 'info' : 'warning'}
-              showIcon
-              content={
-                preview.kind === 'office'
-                  ? t('workspace.files.officePreviewHint')
-                  : t('workspace.files.unsupportedPreviewHint')
-              }
-            />
-            <Space wrap>
-              {preview.kind === 'office' ? (
-                <Button type='primary' onClick={() => continueWithFile(preview.file)}>
-                  {t('workspace.files.openInTask')}
-                </Button>
-              ) : null}
-              <Button icon={<Download />} onClick={() => downloadWorkspaceFile(preview.file, preview.version)}>
-                {t('workspace.files.download')}
-              </Button>
-            </Space>
-          </div>
-        ) : null}
-      </Drawer>
+      {previewDrawer}
       <Drawer
         width={720}
         visible={Boolean(diff)}
