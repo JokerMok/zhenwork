@@ -245,7 +245,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
             {/* Scrollable content: pinned → team (slot) → projects → conversations */}
             <SiderScheduledEntry
               isMobile={isMobile}
-              isActive={pathname === '/scheduled'}
+              isActive={pathname === '/scheduled' || pathname.startsWith('/scheduled/')}
               collapsed={collapsed}
               siderTooltipProps={siderTooltipProps}
               onClick={handleScheduledClick}

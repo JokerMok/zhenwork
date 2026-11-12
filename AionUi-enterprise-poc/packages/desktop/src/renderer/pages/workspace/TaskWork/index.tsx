@@ -245,41 +245,45 @@ export default function TaskWork({
         </Collapse>
       )}
       {!embedded &&
-        artifacts.map((file) => (
-          <Space key={JSON.stringify([file.path, file.versionId || file.sha256])} wrap className='min-w-0'>
-            <span className='break-all text-13px' title={file.path}>
-              {file.path.split('/').pop() || file.path}
-              {file.version !== undefined ? ` · v${file.version}` : ''}
-            </span>
-            {file.valid && file.previewUrl && (
-              <Button
-                size='mini'
-                type='text'
-                onClick={() => {
-                  try {
-                    const target = new URL(file.previewUrl!, window.location.origin);
-                    if (target.origin !== window.location.origin || !target.hash.startsWith('#/workspace?')) {
-                      throw new Error('Invalid artifact preview route');
+        artifacts.map((file) => {
+          const fileName = file.path.split('/').pop() || file.path;
+          const title = file.version !== undefined ? fileName + ' · v' + file.version : fileName;
+          return (
+            <Space key={JSON.stringify([file.path, file.versionId || file.sha256])} wrap className='min-w-0'>
+              <span className='break-all text-13px' title={file.path}>
+                {title}
+              </span>
+              {file.valid && file.previewUrl && (
+                <Button
+                  size='mini'
+                  type='text'
+                  aria-label={t('workspace.files.preview') + ' · ' + title}
+                  onClick={() => {
+                    try {
+                      const target = new URL(file.previewUrl!, window.location.origin);
+                      if (target.origin !== window.location.origin || !target.hash.startsWith('#/workspace?')) {
+                        throw new Error('Invalid artifact preview route');
+                      }
+                      navigate(target.hash.slice(1));
+                    } catch {
+                      setFailure(true);
                     }
-                    navigate(target.hash.slice(1));
-                  } catch {
-                    setFailure(true);
-                  }
-                }}
-              >
-                {t('workspace.files.preview')}
-              </Button>
-            )}
-            {file.valid && file.downloadUrl && (
-              <Link href={file.downloadUrl} download>
-                {t('common.download')}
-              </Link>
-            )}
-            {!file.valid && (
-              <span className='text-12px text-t-secondary'>{t('workspace.experience.artifactUnavailable')}</span>
-            )}
-          </Space>
-        ))}
+                  }}
+                >
+                  {t('workspace.files.preview')}
+                </Button>
+              )}
+              {file.valid && file.downloadUrl && (
+                <Link href={file.downloadUrl} download aria-label={t('common.download') + ' · ' + title}>
+                  {t('common.download')}
+                </Link>
+              )}
+              {(!file.valid || (!file.previewUrl && !file.downloadUrl)) && (
+                <span className='text-12px text-t-secondary'>{t('workspace.experience.artifactUnavailable')}</span>
+              )}
+            </Space>
+          );
+        })}
       {feedbackVisible && <TaskFeedback taskId={conversationId} attemptId={a.id} />}
     </section>
   );

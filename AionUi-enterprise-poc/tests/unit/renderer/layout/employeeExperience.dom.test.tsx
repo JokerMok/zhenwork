@@ -159,7 +159,7 @@ test('session result cards preserve older attempt versions and withhold unavaila
     </MemoryRouter>
   );
   expect(screen.getByText('original.xlsx · v1')).toBeTruthy();
-  expect(screen.getByRole('link', { name: 'common.download' }).getAttribute('href')).toContain('version=old-version');
+  expect(screen.getByRole('link', { name: /^common\.download · / }).getAttribute('href')).toContain('version=old-version');
   expect(screen.getByText('workspace.experience.artifactUnavailable')).toBeTruthy();
   expect(document.querySelector('[href="/should-not-be-rendered"]')).toBeNull();
 });
@@ -193,7 +193,7 @@ test('repeated receipts show one card per file version across attempts', () => {
   );
   expect(screen.getAllByText('report.xlsx · v1')).toHaveLength(1);
   expect(screen.getAllByText('report.xlsx · v2')).toHaveLength(1);
-  expect(screen.getAllByRole('link', { name: 'common.download' })).toHaveLength(2);
+  expect(screen.getAllByRole('link', { name: /^common\.download · / })).toHaveLength(2);
 });
 
 function PreviewRoute() {
@@ -218,7 +218,7 @@ test.each(['relative', 'absolute'])('opens a fixed artifact version from a %s hi
       <PreviewRoute />
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByRole('button', { name: 'workspace.files.preview' }));
+  fireEvent.click(screen.getByRole('button', { name: /^workspace\.files\.preview · / }));
   expect(screen.getByTestId('preview-route').textContent).toBe(route);
 });
 
@@ -238,7 +238,7 @@ test('a foreign preview URL cannot navigate away from the authorized workspace',
       <PreviewRoute />
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByRole('button', { name: 'workspace.files.preview' }));
+  fireEvent.click(screen.getByRole('button', { name: /^workspace\.files\.preview · / }));
   expect(screen.getByTestId('preview-route').textContent).toBe('/');
   expect(screen.getByRole('alert').textContent).toBe('workspace.experience.actionFailed');
 });
