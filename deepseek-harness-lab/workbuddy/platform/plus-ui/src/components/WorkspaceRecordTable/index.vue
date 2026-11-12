@@ -16,7 +16,7 @@
   <el-dialog
     :model-value="Boolean(detail)"
     title="记录详情"
-    width="780px"
+    width="min(780px, calc(100vw - 32px))"
     @close="detail = null"
     @update:model-value="
       value => {

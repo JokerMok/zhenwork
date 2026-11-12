@@ -202,10 +202,13 @@
             <el-table-column v-if="columns[5].visible" key="status" label="状态" align="center">
               <template #default="scope">
                 <el-switch
-                  v-model="scope.row.status"
+                  :model-value="scope.row.status"
                   active-value="0"
                   inactive-value="1"
-                  @change="handleStatusChange(scope.row)"
+                  :aria-label="scope.row.userName + ' · 账号状态'"
+                  :loading="statusPending === scope.row.userId"
+                  :disabled="statusPending !== null || !checkPermi(['system:user:edit'])"
+                  @change="handleStatusChange(scope.row, $event)"
                 ></el-switch>
               </template>
             </el-table-column>
@@ -481,6 +484,7 @@ import UserViewDrawer from './view.vue';
 const router = useRouter();
 const { sys_normal_disable, sys_user_gender } = toRefs<any>(useDict('sys_normal_disable', 'sys_user_gender'));
 const userList = ref<UserVO[]>();
+const statusPending = ref<UserVO['userId'] | null>(null);
 const { loading, withLoading } = useLoading(true);
 const { showSearch } = useSearchToggle();
 const total = ref(0);
@@ -675,14 +679,21 @@ const handleUnlock = async () => {
 };
 
 /** 用户状态修改  */
-const handleStatusChange = async (row: Partial<UserVO>) => {
-  const text = row.status === '0' ? '启用' : '停用';
+const handleStatusChange = async (row: UserVO, status: string | number | boolean) => {
+  if (statusPending.value !== null || !checkPermi(['system:user:edit']) || (status !== '0' && status !== '1')) return;
+  const action = status === '0' ? '启用' : '停用';
+  statusPending.value = row.userId;
   try {
-    await modal.confirm('确认要"' + text + '""' + row.userName + '"用户吗?');
-    await api.changeUserStatus(row.userId, row.status);
-    modal.msgSuccess(text + '成功');
-  } catch (err) {
-    row.status = row.status === '0' ? '1' : '0';
+    try {
+      await modal.confirm(`确认${action}用户“${row.userName}”？`);
+    } catch {
+      return;
+    }
+    await api.changeUserStatus(row.userId, status);
+    row.status = status;
+    modal.msgSuccess(`${action}成功`);
+  } finally {
+    statusPending.value = null;
   }
 };
 /** 跳转角色分配 */

@@ -3,7 +3,7 @@
     <header class="usage-heading">
       <div><h1>用户使用统计</h1><p>查看用户的模型调用与用量</p></div>
       <div class="usage-actions" v-if="canView">
-        <el-radio-group v-model="days" @change="load">
+        <el-radio-group aria-label="使用统计时间范围" v-model="days" @change="load">
           <el-radio-button :value="7">近7天</el-radio-button>
           <el-radio-button :value="30">近30天</el-radio-button>
           <el-radio-button :value="90">近90天</el-radio-button>

@@ -14,7 +14,7 @@
       </div>
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-table v-loading="loading" :data="rows" :empty-text="status||category?'没有符合筛选条件的反馈':'暂无结果反馈'">
+    <el-table v-if="!error" v-loading="loading" :data="rows" :empty-text="status||category?'没有符合筛选条件的反馈':'暂无结果反馈'">
       <el-table-column prop="created_at" label="提交时间" min-width="170" />
       <el-table-column prop="owner_user_id" label="员工 ID" min-width="110" />
       <el-table-column prop="task_id" label="任务 ID" min-width="180" />
@@ -31,14 +31,17 @@
         <template #default="{ row }"><el-button link type="primary" @click="open(row.id)">查看</el-button></template>
       </el-table-column>
     </el-table>
-    <div class="paging">
+    <div v-if="!error" class="paging">
       <el-button :disabled="page === 1 || loading" @click="page--; load()">上一页</el-button>
       <span>第 {{ page }} 页</span>
       <el-button :disabled="rows.length < 30 || loading" @click="page++; load()">下一页</el-button>
     </div>
 
-    <el-dialog v-model="dialog" title="反馈处理" width="920px" :close-on-click-modal="false">
+    <el-dialog v-model="dialog" title="反馈处理" width="min(920px, calc(100vw - 32px))" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" @close="clearDetail">
       <el-skeleton v-if="detailLoading" :rows="8" animated />
+      <el-alert v-else-if="detailError" type="error" title="反馈详情加载失败" :closable="false">
+        <el-button link type="primary" @click="open(selectedId)">重试</el-button>
+      </el-alert>
       <template v-else-if="detail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="任务 ID">
@@ -64,14 +67,14 @@
           <el-descriptions-item label="工具">{{ versions(detail.provenance.tools) }}</el-descriptions-item>
         </el-descriptions>
 
-        <el-form v-hasPermi="['ai:resource:enterprise']" label-position="top" class="case-form">
+        <el-form v-hasPermi="['ai:resource:enterprise']" label-position="top" class="case-form" :disabled="saving">
           <el-form-item label="处理状态"><el-select v-model="form.status"><el-option v-for="value in statuses" :key="value" :label="label(value)" :value="value" /></el-select></el-form-item>
           <el-form-item label="问题描述"><el-input v-model="form.badcaseDescription" type="textarea" :rows="2" maxlength="2000" show-word-limit /></el-form-item>
           <el-form-item label="人工确认原因"><el-input v-model="form.rootCause" type="textarea" :rows="2" maxlength="2000" show-word-limit /></el-form-item>
           <el-form-item label="原因证据引用"><el-input v-model="form.causeEvidence" maxlength="1000" placeholder="测试记录、工单或日志标识；不要粘贴敏感原文" /></el-form-item>
           <el-form-item label="预期结果"><el-input v-model="form.expectedResult" type="textarea" :rows="2" maxlength="2000" show-word-limit /></el-form-item>
           <el-form-item label="处理结果"><el-input v-model="form.resolution" type="textarea" :rows="2" maxlength="2000" show-word-limit /></el-form-item>
-          <el-button type="primary" :loading="saving" @click="save">保存处理记录</el-button>
+          <el-button type="primary" :loading="saving" @click="save()">保存处理记录</el-button>
         </el-form>
 
         <h3>定向复核</h3>
@@ -82,7 +85,7 @@
           <el-table-column prop="evidence" label="证据" min-width="160" />
           <el-table-column label="结论" width="90"><template #default="{ row }">{{ label(row.result) }}</template></el-table-column>
         </el-table>
-        <el-form v-if="detail.status === 'RESOLVED'" v-hasPermi="['ai:resource:enterprise']" label-position="top" class="recheck-form">
+        <el-form v-if="detail.status === 'RESOLVED'" v-hasPermi="['ai:resource:enterprise']" label-position="top" class="recheck-form" :disabled="saving">
           <el-form-item label="检查项"><el-input v-model="check.checkDescription" maxlength="500" /></el-form-item>
           <el-form-item label="预期"><el-input v-model="check.expectedResult" maxlength="1000" /></el-form-item>
           <el-form-item label="实际结果"><el-input v-model="check.actualResult" maxlength="1000" /></el-form-item>
@@ -92,7 +95,7 @@
         </el-form>
       </template>
       <template #footer>
-        <el-button @click="dialog = false">关闭</el-button>
+        <el-button :disabled="saving" @click="dialog = false">关闭</el-button>
         <el-button v-if="detail?.status === 'RESOLVED'" v-hasPermi="['ai:resource:enterprise']" type="primary" :disabled="!canClose" :loading="saving" @click="closeCase">复核通过并关闭</el-button>
       </template>
     </el-dialog>
@@ -151,6 +154,9 @@ const loading = ref(false);
 const error = ref('');
 const dialog = ref(false);
 const detailLoading = ref(false);
+const detailError = ref(false);
+const selectedId = ref('');
+let detailGeneration = 0;
 const saving = ref(false);
 const detail = ref<Detail>();
 const form = reactive({ status: 'NEW', badcaseDescription: '', rootCause: '', causeEvidence: '', expectedResult: '', resolution: '' });
@@ -194,26 +200,38 @@ function setDetail(value: Detail) {
   Object.assign(check, { checkDescription: '', expectedResult: '', actualResult: '', evidence: '', result: 'PASSED' });
 }
 
+function clearDetail() {
+  ++detailGeneration;
+  selectedId.value = '';
+  detail.value = undefined;
+  detailLoading.value = false;
+  detailError.value = false;
+}
+
 async function open(id: string) {
+  if (!id || saving.value) return;
+  const current = ++detailGeneration;
+  selectedId.value = id;
+  detail.value = undefined;
+  detailError.value = false;
   dialog.value = true;
   detailLoading.value = true;
   try {
     const result = await request({ url: `/ai/admin/feedback/${id}` });
-    setDetail(result.data);
+    if (current === detailGeneration) setDetail(result.data);
   } catch {
-    ElMessage.error('反馈详情加载失败');
-    dialog.value = false;
+    if (current === detailGeneration) detailError.value = true;
   } finally {
-    detailLoading.value = false;
+    if (current === detailGeneration) detailLoading.value = false;
   }
 }
 
-async function save() {
+async function save(nextStatus = form.status) {
   if (!detail.value || saving.value) return;
   saving.value = true;
   try {
     const result = await request({ url: `/ai/admin/feedback/${detail.value.id}`, method: 'patch', data: {
-      ...form, expectedVersion: detail.value.record_version,
+      ...form, status: nextStatus, expectedVersion: detail.value.record_version,
     } });
     setDetail(result.data);
     ElMessage.success('处理记录已保存');
@@ -241,13 +259,12 @@ async function addRecheck() {
 
 async function closeCase() {
   if (!detail.value || !canClose.value) return;
-  form.status = 'CLOSED';
-  await save();
+  await save('CLOSED');
 }
 
 onMounted(load);
 </script>
 
 <style scoped>
-.toolbar,.filters,.paging{display:flex;align-items:center;gap:12px}.toolbar{justify-content:space-between;margin-bottom:18px}.toolbar h2{margin:0}.filters .el-select{width:150px}.paging{justify-content:flex-end;margin-top:18px}.case-form,.recheck-form{margin-top:18px}.recheck-form{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}.recheck-form .el-button{justify-self:start}h3{margin:22px 0 12px}
+.toolbar,.filters,.paging{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.toolbar{justify-content:space-between;margin-bottom:18px}.toolbar h2{margin:0}.filters .el-select{width:150px}.paging{justify-content:flex-end;margin-top:18px}.case-form,.recheck-form{margin-top:18px}.recheck-form{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}.recheck-form .el-button{justify-self:start}h3{margin:22px 0 12px}
 </style>

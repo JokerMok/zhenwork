@@ -2,9 +2,7 @@
   <div class="p-2 app-container system-tools-page">
     <section class="tools-heading">
       <div>
-        <span class="tools-kicker">System Tools</span>
         <h1>系统工具</h1>
-        <p>这里只显示当前账号已获授权、已启用的运维工具。</p>
       </div>
     </section>
 
@@ -31,16 +29,15 @@ const tools = [
   { permission: 'monitor:cache:list', title: '缓存监控', description: '查看 Redis 运行状态、内存与命令统计。', path: '/monitor/cache', icon: 'redis' },
   { permission: 'monitor:online:list', title: '在线用户', description: '查看当前登录会话与在线状态。', path: '/monitor/online', icon: 'online' }
 ];
-const availableTools = computed(() => tools.filter(tool => auth.hasPermiOr([tool.permission])));
+const availableTools = computed(() => tools.filter(tool => auth.hasPermiOr([tool.permission])
+  && router.getRoutes().some(record => record.path === tool.path)));
 const open = (path: string) => router.push(path);
 </script>
 
 <style lang="scss" scoped>
 .system-tools-page { display: grid; gap: 20px; }
 .tools-heading { padding: 24px; border: 1px solid var(--app-surface-border); border-radius: 14px; background: var(--app-surface-bg); }
-.tools-kicker { display: block; margin-bottom: 8px; color: var(--el-color-primary); font-size: 12px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
 .tools-heading h1 { margin: 0 0 8px; color: var(--app-text-title); font-size: 26px; font-weight: 650; }
-.tools-heading p { margin: 0; color: var(--app-text-muted); font-size: 13px; line-height: 1.7; }
 .tools-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
 .tool-card { display: flex; align-items: center; gap: 14px; min-height: 112px; padding: 20px; border: 1px solid var(--app-surface-border); border-radius: 14px; background: var(--app-surface-bg); color: inherit; text-align: left; cursor: pointer; transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease; }
 .tool-card:hover { border-color: var(--el-color-primary-light-5); box-shadow: var(--app-shadow-sm); transform: translateY(-1px); }

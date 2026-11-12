@@ -2,11 +2,8 @@
   <div class="p-2 app-container branding-page">
     <div class="branding-heading">
       <div>
-        <span class="panel-kicker">Workspace Branding</span>
         <h2>品牌配置</h2>
-        <p>维护登录页和工作区使用的基础品牌信息。</p>
       </div>
-      <el-tag v-if="pageStatus === 'success'" type="success" effect="plain">已加载</el-tag>
     </div>
 
     <section v-if="pageStatus === 'loading'" class="state-card">
@@ -20,16 +17,14 @@
     </section>
 
     <section v-else-if="pageStatus === 'error'" class="state-card state-card--center">
-      <el-empty :description="brandState.error || '加载品牌配置失败'">
-        <el-button type="primary" @click="loadLatest">重新加载</el-button>
-      </el-empty>
+      <el-alert type="error" :title="brandState.error || '加载品牌配置失败'" :closable="false" show-icon />
+      <el-button @click="loadLatest">重试</el-button>
     </section>
 
     <el-card v-else-if="brandState.data" shadow="hover" class="branding-card">
       <template #header>
         <div class="card-heading">
           <div>
-            <span class="panel-kicker">Brand Settings</span>
             <h3>站点信息</h3>
           </div>
           <span class="version-label">当前版本 v{{ form.version }}</span>
@@ -50,7 +45,7 @@
         </template>
       </el-alert>
 
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="branding-form">
+      <el-form ref="formRef" :model="form" :rules="rules" :disabled="saving" label-position="top" class="branding-form">
         <div class="form-grid">
           <el-form-item label="产品名称" prop="productName">
             <el-input v-model="form.productName" maxlength="80" show-word-limit placeholder="请输入产品名称" />

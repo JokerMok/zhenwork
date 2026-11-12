@@ -12,7 +12,7 @@
     </div>
 
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb-3" />
-    <el-table v-loading="loading" :data="rows" row-key="id" empty-text="尚未配置外部业务连接">
+    <el-table v-if="rows.length || !error" v-loading="loading" :data="rows" row-key="id" empty-text="尚未配置外部业务连接">
       <el-table-column prop="name" label="连接名称" min-width="150" show-overflow-tooltip />
       <el-table-column label="连接器" min-width="160">
         <template #default="{ row }">{{ connectorName(row.type) }}</template>
@@ -180,7 +180,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailsVisible" title="连接详情" width="720px">
+    <el-dialog v-model="detailsVisible" title="连接详情" width="min(720px, calc(100vw - 32px))">
       <template v-if="selected">
         <el-alert
           v-if="validationMessage(selected)"
@@ -248,7 +248,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="expertVisible" title="配置跨系统查询专家" width="760px">
+    <el-dialog v-model="expertVisible" title="配置跨系统查询专家" width="min(760px, calc(100vw - 32px))">
       <el-alert v-if="dialogError" :title="dialogError" type="error" :closable="false" class="mb-3" />
       <el-alert
         title="只会绑定本次明确勾选的连接。后续调整也不会自动加入其它业务单位。"
@@ -284,7 +284,7 @@
 
     <ResourceShareDialog v-model="sharesVisible" :resource="shareResource" />
 
-    <el-dialog v-model="callsVisible" title="外部调用审计" width="880px">
+    <el-dialog v-model="callsVisible" title="外部调用审计" width="min(880px, calc(100vw - 32px))">
       <el-alert v-if="dialogError" :title="dialogError" type="error" :closable="false" class="mb-3" />
       <p v-if="selected">{{ selected.name }} · 仅展示调用元数据，不展示访问凭据或接口原始响应。</p>
       <el-table v-loading="callsLoading" :data="calls" empty-text="暂无外部调用记录">
