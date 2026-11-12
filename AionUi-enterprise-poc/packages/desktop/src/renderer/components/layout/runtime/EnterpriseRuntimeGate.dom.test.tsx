@@ -22,10 +22,10 @@ vi.mock('@/renderer/components/Markdown/ShadowView', () => ({
 vi.mock('@/renderer/components/Markdown/CodeBlock', () => ({
   default: ({ children }: React.PropsWithChildren) => <code>{children}</code>,
 }));
-vi.mock('@/renderer/components/media/LocalImageView', () => ({ default: () => null }));
+vi.mock('@/renderer/components/media/LocalImageView', () => ({ default: (): null => null }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useLocation: () => route }));
 vi.mock('@/renderer/pages/workspace/TaskWork', () => ({
-  default: ({ onTaskChange }: { onTaskChange?: (task: typeof taskFixture.task) => void }) => {
+  default: ({ onTaskChange }: { onTaskChange?: (task: typeof taskFixture.task) => void }): null => {
     React.useEffect(() => {
       onTaskChange?.(taskFixture.task);
     }, [onTaskChange]);
