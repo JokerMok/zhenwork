@@ -7,6 +7,8 @@ import { persistDraftKnowledge } from '@/renderer/components/chat/SendBox/WebKno
 
 import { ipcBridge } from '@/common';
 import { type ChatFileRef, chatFileRefPath } from '@/common/types/chatFile';
+import { initialMessageKey, writeDraft, type InitialMessage } from '@/renderer/hooks/chat/employeeDraftStorage';
+import { taskRequestId } from '@/renderer/pages/workspace/TaskWork/api';
 import type { IMcpServer, TProviderWithModel } from '@/common/config/storage';
 import { toSessionMcpServer } from '@/renderer/hooks/mcp/catalog';
 import { emitter } from '@/renderer/utils/emitter';
@@ -21,6 +23,8 @@ import { getConversationCreateErrorMessage } from '@/renderer/pages/conversation
 export type GuidSendDeps = {
   // Input state
   input: string;
+  draftScope?: string;
+  clearSentDraft?: () => void;
   setInput: React.Dispatch<React.SetStateAction<string>>;
   files: ChatFileRef[];
   setFiles: React.Dispatch<React.SetStateAction<ChatFileRef[]>>;
@@ -61,8 +65,8 @@ export type GuidSendDeps = {
 };
 
 export type GuidSendResult = {
-  handleSend: () => Promise<void>;
-  sendMessageHandler: () => void;
+  handleSend: () => Promise<boolean>;
+  sendMessageHandler: () => Promise<void>;
   isButtonDisabled: boolean;
 };
 
@@ -72,6 +76,8 @@ export type GuidSendResult = {
 export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
   const {
     input,
+    draftScope,
+    clearSentDraft,
     setInput,
     files,
     setFiles,
@@ -106,7 +112,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
 
   const handleSend = useCallback(async () => {
     if (!selectedAssistantId || !assistantDefaultsReady) {
-      return;
+      return false;
     }
 
     const isCustomWorkspace = !!dir;
@@ -185,7 +191,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     if (assistantBackend === 'aionrs') {
       if (!current_model) {
         Message.warning(t('conversation.noModelConfigured'));
-        return;
+        return false;
       }
       try {
         const conversation = await ipcBridge.conversation.create.invoke({
@@ -207,7 +213,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
 
         if (!conversation || !conversation.id) {
           Message.error(t('conversation.createFailed'));
-          return;
+          return false;
         }
 
         await persistDraftKnowledge(conversation.id);
@@ -229,11 +235,17 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
         // initial message, so the window opens idle on the empty state instead of
         // auto-sending a blank first turn.
         if (input.trim()) {
-          const initialMessage = {
-            input,
-            files: files.length > 0 ? files : undefined,
-          };
-          sessionStorage.setItem(`aionrs_initial_message_${conversation.id}`, JSON.stringify(initialMessage));
+          if (draftScope) {
+            const executionId = await taskRequestId(conversation.id, { input, files, sessions: undefined });
+            writeDraft<InitialMessage>(initialMessageKey(draftScope, conversation.id), {
+              input,
+              files,
+              executionId,
+              phase: 'ready',
+            });
+          } else {
+            writeDraft(`aionrs_initial_message_${conversation.id}`, { input, files: files.length ? files : undefined });
+          }
         }
 
         await navigate(`/conversation/${conversation.id}`);
@@ -241,7 +253,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
         console.error('Failed to create Aion CLI conversation:', error);
         throw error;
       }
-      return;
+      return true;
     }
 
     try {
@@ -265,7 +277,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
       });
       if (!conversation || !conversation.id) {
         console.error('Failed to create ACP conversation - conversation object is null or missing id');
-        return;
+        return false;
       }
 
       if (isCustomWorkspace) {
@@ -293,12 +305,14 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
       }
 
       await navigate(`/conversation/${conversation.id}`);
+      return true;
     } catch (error: unknown) {
       console.error('Failed to create ACP conversation:', error);
       throw error;
     }
   }, [
     input,
+    draftScope,
     files,
     dir,
     selectedAssistantId,
@@ -321,31 +335,37 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     localeKey,
   ]);
 
-  const sendMessageHandler = useCallback(() => {
+  const sendMessageHandler = useCallback(async () => {
     if (loading || sendingRef.current) return;
     sendingRef.current = true;
     setLoading(true);
-    handleSend()
-      .then(() => {
+    try {
+      if (!(await handleSend())) return;
+      if (clearSentDraft) {
+        // A blank start does not hand off attachment refs as a first message.
+        if (input.trim() || files.length === 0) clearSentDraft();
+      } else {
         setInput('');
-        setMentionOpen(false);
-        setMentionQuery(null);
-        setMentionSelectorOpen(false);
-        setMentionActiveIndex(0);
         setFiles([]);
         setDir('');
-      })
-      .catch((error) => {
-        console.error('Failed to send message:', error);
-        Message.error(getConversationCreateErrorMessage(error, t));
-      })
-      .finally(() => {
-        sendingRef.current = false;
-        setLoading(false);
-      });
+      }
+      setMentionOpen(false);
+      setMentionQuery(null);
+      setMentionSelectorOpen(false);
+      setMentionActiveIndex(0);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      Message.error(getConversationCreateErrorMessage(error, t));
+    } finally {
+      sendingRef.current = false;
+      setLoading(false);
+    }
   }, [
     loading,
     handleSend,
+    clearSentDraft,
+    input,
+    files.length,
     setLoading,
     setInput,
     setMentionOpen,

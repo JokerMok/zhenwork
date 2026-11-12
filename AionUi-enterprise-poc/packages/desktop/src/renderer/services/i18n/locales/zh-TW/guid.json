@@ -1,4 +1,12 @@
 {
+  "discardDraft": "捨棄草稿",
+  "initialMessage": {
+    "label": "待傳送訊息",
+    "sending": "正在傳送第一則訊息",
+    "rejected": "第一則訊息未受理",
+    "uncertain": "第一則訊息的受理狀態待確認",
+    "check": "查詢狀態"
+  },
   "mcpCatalogLoadFailed": "工具連線目錄載入失敗。你仍可繼續使用工作台；預設連線將由對話復原。可重試載入或在進階設定中調整。",
   "mcpDefaultsUnavailable": "以下預設工具連線目前無法使用：{{names}}。工作台將繼續使用其餘可用能力；可在進階設定中調整。",
   "promptExamplesHint": "試試這些指令",

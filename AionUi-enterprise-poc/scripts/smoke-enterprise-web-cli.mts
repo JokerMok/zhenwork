@@ -15,6 +15,12 @@ const profileRoot = path.join(root, 'profiles');
 await fs.mkdir(profileRoot, { mode: 0o700 });
 const rootKey = createHash('sha256').update(await fs.realpath(profileRoot)).digest('hex').slice(0, 20);
 const serviceToken = randomBytes(32).toString('base64url');
+const edgeToken = randomBytes(32).toString('base64url');
+const edgeHeaders = {
+  'x-zhenwork-edge-token': edgeToken,
+  'x-zhenwork-client-ip': '127.0.0.1',
+  'x-zhenwork-client-user-agent': 'ZhenWork isolated smoke',
+};
 await fs.writeFile(tokenPath, `${serviceToken}\n`, { mode: 0o600 });
 execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', keyPath,
   '-out', certPath, '-days', '1', '-subj', '/CN=127.0.0.1',
@@ -200,7 +206,7 @@ const rc2 = https.createServer({ key, cert }, async (req, res) => {
     return send(200, { code: 200 });
   }
   if (!active.get(userId)) return send(401, { code: 401 });
-  const grantRoute = req.url?.match(/^\/ai\/background\/jobs\/(cron_[A-Za-z0-9_-]{8,80})\/grant$/);
+  const grantRoute = req.url?.match(/^\/ai\/background\/jobs\/((?:cron|task)_[A-Za-z0-9_-]{8,80})\/grant$/);
   if (uiHold && grantRoute) {
     if (req.headers.authorization !== `Bearer ${serviceToken}`) return send(401, { code: 401 });
     const jobId = grantRoute[1];
@@ -237,17 +243,20 @@ const webOrigin = proxyPort ? `https://127.0.0.1:${proxyPort}` : 'https://worksp
 const webHost = new URL(webOrigin).host;
 const webProxy = proxyPort ? https.createServer({ key, cert }, (req, res) => {
   const upstream = http.request({ hostname: '127.0.0.1', port: gatewayPort,
-    path: req.url, method: req.method, headers: req.headers }, (response) => {
+    path: req.url, method: req.method, headers: { ...req.headers, ...edgeHeaders } }, (response) => {
     res.writeHead(response.statusCode || 502, response.headers);
     response.pipe(res);
   });
   upstream.once('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
   req.pipe(upstream);
 }) : null;
+const upgradeSockets = new Set<net.Socket>();
 webProxy?.on('upgrade', (req, socket, head) => {
+  upgradeSockets.add(socket);
+  socket.once('close', () => upgradeSockets.delete(socket));
   const upstream = net.connect(gatewayPort, '127.0.0.1');
   upstream.once('connect', () => {
-    const lines = [`${req.method} ${req.url} HTTP/1.1`,
+    const lines = [`${req.method} ${req.url} HTTP/1.1`, ...Object.entries(edgeHeaders).map(([name, value]) => `${name}: ${value}`),
       ...Object.entries(req.headers).map(([name, value]) => `${name}: ${value}`), '', ''];
     upstream.write(lines.join('\r\n'));
     if (head.length) upstream.write(head);
@@ -264,6 +273,7 @@ const gatewayImage = image(process.env.AION_SMOKE_GATEWAY_IMAGE || 'aionui-enter
 const cli = path.resolve('packages/web-cli/dist/aionui-enterprise-web.cjs');
 const child = spawn(process.execPath, [cli], { env: { ...process.env,
   NODE_EXTRA_CA_CERTS: certPath,
+  ZHENWORK_EDGE_TOKEN: edgeToken,
   AION_ENTERPRISE_WEB_PUBLIC_ORIGIN: webOrigin,
   AION_ENTERPRISE_WEB_RC2_URL: `https://127.0.0.1:${rc2Port}`,
   AION_ENTERPRISE_WEB_STATIC_DIR: path.resolve('out/renderer'),
@@ -280,7 +290,7 @@ const call = (method: string, route: string, cookie?: string, data?: unknown,
   extraHeaders?: Record<string, string>) =>
   new Promise<{ status: number; body: string; cookie?: string }>((resolve, reject) => {
     const req = http.request({ hostname: '127.0.0.1', port: gatewayPort, path: route, method,
-      headers: { Host: webHost, Origin: webOrigin,
+      headers: { Host: webHost, Origin: webOrigin, ...edgeHeaders,
         ...(cookie ? { Cookie: cookie } : {}), ...(data ? { 'Content-Type': 'application/json' } : {}),
         ...extraHeaders } }, (res) => {
       const parts: Buffer[] = [];
@@ -301,7 +311,7 @@ const upload = (cookie: string, fileName: string, contents: string) =>
       `smoke-upload-actor-91\r\n--${boundary}--\r\n`
     );
     const req = http.request({ hostname: '127.0.0.1', port: gatewayPort, path: '/api/fs/upload', method: 'POST',
-      headers: { Host: webHost, Origin: webOrigin, Cookie: cookie,
+      headers: { Host: webHost, Origin: webOrigin, ...edgeHeaders, Cookie: cookie,
         'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': payload.length } }, (res) => {
       const chunks: Buffer[] = [];
       res.on('data', (chunk) => chunks.push(chunk));
@@ -310,14 +320,18 @@ const upload = (cookie: string, fileName: string, contents: string) =>
     req.once('error', reject);
     req.end(payload);
   });
-try {
-  let ready = false;
-  for (let i = 0; i < 80; i += 1) {
-    if (child.exitCode !== null) throw new Error(`CLI exited ${child.exitCode}: ${logs}`);
-    try { if ((await call('GET', '/enterprise/login')).status === 200) { ready = true; break; } } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 500));
+async function holdBrowser(createdId?: string) {
+  const releaseFile = path.join(root, 'ui-release');
+  console.log(`UI_READY ${JSON.stringify({ rc2Url: `https://127.0.0.1:${rc2Port}`,
+    webOrigin, certPath, createdId, releaseFile })}`);
+  const deadline = Date.now() + 300_000;
+  while (Date.now() < deadline) {
+    if (await fs.access(releaseFile).then(() => true, () => false)) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  if (!ready) throw new Error(`CLI did not listen: ${logs}`);
+}
+
+async function verifyCli() {
   const unauth = await call('GET', '/api/providers');
   const login = await call('POST', '/enterprise/login', undefined, { username: 'demo', password: 'demo' });
   if (login.status !== 200 || !login.cookie) throw new Error(`Login failed: ${login.status} ${login.body} ${logs}`);
@@ -462,16 +476,7 @@ try {
     desktopSession: desktopSession.status, desktopCatalog: desktopCatalog?.status,
     createdId, rawCoreList: (await call('GET', '/api/conversations?limit=100', login.cookie)).body.slice(0, 1500),
     aItems, bItems, desktopItems })}`);
-  if (uiHold) {
-    const releaseFile = path.join(root, 'ui-release');
-    console.log(`UI_READY ${JSON.stringify({ rc2Url: `https://127.0.0.1:${rc2Port}`,
-      webOrigin, certPath, createdId, releaseFile })}`);
-    const deadline = Date.now() + 300_000;
-    while (Date.now() < deadline) {
-      if (await fs.access(releaseFile).then(() => true, () => false)) break;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-  }
+  if (uiHold) await holdBrowser(createdId);
   active.set('91', false);
   const revoked = await call('GET', '/api/providers', login.cookie);
   const unaffected = await call('GET', '/api/providers', secondLogin.cookie);
@@ -512,6 +517,17 @@ try {
   await call('POST', '/enterprise/logout', secondLogin.cookie);
   if (desktopSession.cookie) await call('POST', '/enterprise/logout', desktopSession.cookie);
   await call('POST', '/enterprise/logout', resumedLogin.cookie);
+}
+try {
+  let ready = false;
+  for (let i = 0; i < 80; i += 1) {
+    if (child.exitCode !== null) throw new Error(`CLI exited ${child.exitCode}: ${logs}`);
+    try { if ((await call('GET', '/enterprise/login')).status === 200) { ready = true; break; } } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!ready) throw new Error(`CLI did not listen: ${logs}`);
+  if (process.env.AION_SMOKE_UI_DRAFT === '1') await holdBrowser();
+  else await verifyCli();
 } catch (error) {
   console.error(String(error));
   console.error(logs.slice(-4500));
@@ -523,8 +539,13 @@ try {
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
   }
   if (child.exitCode === null) child.kill('SIGKILL');
+  rc2.closeAllConnections();
   await new Promise<void>((resolve) => rc2.close(() => resolve()));
-  if (webProxy) await new Promise<void>((resolve) => webProxy.close(() => resolve()));
+  if (webProxy) {
+    for (const socket of upgradeSockets) socket.destroy();
+    webProxy.closeAllConnections();
+    await new Promise<void>((resolve) => webProxy.close(() => resolve()));
+  }
   // Report an incomplete shutdown, then clean only Docker objects with this
   // disposable profile root's verified label.
   let cleanupComplete = false;

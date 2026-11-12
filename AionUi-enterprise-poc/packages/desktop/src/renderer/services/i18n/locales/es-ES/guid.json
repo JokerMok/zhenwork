@@ -1,4 +1,12 @@
 {
+  "discardDraft": "Descartar borrador",
+  "initialMessage": {
+    "label": "Mensaje pendiente",
+    "sending": "Enviando el primer mensaje",
+    "rejected": "Mensaje no aceptado",
+    "uncertain": "Aceptación sin confirmar",
+    "check": "Consultar estado"
+  },
   "mcpCatalogLoadFailed": "No se pudieron cargar las conexiones de herramientas. Puedes seguir usando el espacio de trabajo; la conversación restaurará las conexiones predeterminadas. Reintenta o ajústalas en Configuración avanzada.",
   "mcpDefaultsUnavailable": "Estas conexiones de herramientas predeterminadas no están disponibles: {{names}}. El espacio de trabajo continuará con las demás funciones; ajústalas en Configuración avanzada.",
   "agentFallbackNotice": "{{original}} no está disponible, usando {{fallback}} en su lugar.",

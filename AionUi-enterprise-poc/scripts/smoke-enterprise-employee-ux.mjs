@@ -389,7 +389,37 @@ try {
   assert.equal(await directory.getByText('.versions', { exact: true }).count(), 0);
   assert.equal(await directory.getByText('conversations', { exact: true }).count(), 0);
   assert.ok(!(await directory.innerText()).includes('/fixture/workspace'));
-  await directory.getByRole('button', { name: '取消', exact: true }).click();
+  await directory.getByText('资料', { exact: true }).click();
+  await directory.getByRole('button', { name: '确定', exact: true }).click();
+  const savedDirectory = page.getByRole('button', { name: '资料', exact: true });
+  await savedDirectory.waitFor();
+  const versionDraftUrl = page.url();
+  const editedVersionPrompt = (await draft.inputValue()) + '\n增补验收要求';
+  await draft.fill(editedVersionPrompt);
+  await page.getByText('办公工作台', { exact: true }).first().click();
+  await page.goBack();
+  await draft.waitFor();
+  assert.equal(await draft.inputValue(), editedVersionPrompt);
+  await page.reload();
+  await draft.waitFor();
+  assert.equal(await draft.inputValue(), editedVersionPrompt);
+  await savedDirectory.waitFor();
+
+  const versionAttachment = page.getByText('stock-weekly.xlsx', { exact: true });
+  await versionAttachment.locator('../../..').locator('.i-icon-close').click();
+  await versionAttachment.waitFor({ state: 'hidden' });
+  await page.getByText('办公工作台', { exact: true }).first().click();
+  await page.goBack();
+  await draft.waitFor();
+  assert.equal(await draft.inputValue(), editedVersionPrompt);
+  assert.equal(await versionAttachment.count(), 0);
+  await page.getByRole('button', { name: '放弃草稿' }).click();
+  await page.goto(versionDraftUrl);
+  await draft.waitFor();
+  assert.equal(await draft.inputValue(), '');
+  assert.equal(await versionAttachment.count(), 0);
+  console.log(JSON.stringify({ scenario: 'employee-draft', versionEditSurvivesBackAndReload: true,
+    removedVersionDoesNotReappear: true, workingDirectoryRestored: true, discardedDraftStaysEmpty: true }));
   console.log(JSON.stringify({ scenario: 'P2', duplicateNavigationRemoved: true, rawToolCodeHidden: true,
     availableAssistantHasNoContradictoryEmptyState: true, neutralWorkspaceFileLabel: true,
     exactSnapshotAttachedToNewDraft: true, physicalDirectoryHidden: true }));

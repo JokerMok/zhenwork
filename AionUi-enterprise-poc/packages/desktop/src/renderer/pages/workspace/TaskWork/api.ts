@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { enterpriseRequest, workspaceErrorCode } from '../workspaceApi';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import { readDraft } from '@/renderer/hooks/chat/employeeDraftStorage';
 export type WorkAttempt = {
   id: string;
+  requestId?: string;
   round: number;
   attempt: number;
   state: string;
@@ -120,8 +122,10 @@ export async function taskRequestId(id: string, payload: unknown): Promise<strin
   sessionStorage.setItem(key, JSON.stringify({ hash, id: requestId }));
   return requestId;
 }
-export function taskAccepted(id: string): void {
-  sessionStorage.removeItem('zhenwork:pending-send:' + id);
+export function taskAccepted(id: string, executionId?: string): void {
+  const key = 'zhenwork:pending-send:' + id;
+  const saved = readDraft<{ id: string }>(key);
+  if (!executionId || saved?.id === executionId) sessionStorage.removeItem(key);
   window.dispatchEvent(new Event('task-work:changed'));
 }
 

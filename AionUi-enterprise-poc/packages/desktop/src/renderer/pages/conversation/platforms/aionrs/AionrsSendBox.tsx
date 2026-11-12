@@ -7,6 +7,15 @@ import { taskRequestId, taskAccepted, taskStatusVisible, useTaskWork } from '@/r
  */
 
 import { ipcBridge } from '@/common';
+import { BackendHttpError } from '@/common/adapter/httpBridge';
+import { useAuth } from '@/renderer/hooks/context/AuthContext';
+import {
+  employeeDraftScope,
+  initialMessageKey,
+  readDraft,
+  writeDraft,
+  type InitialMessage,
+} from '@/renderer/hooks/chat/employeeDraftStorage';
 import type { IConversationMcpStatus } from '@/common/config/storage';
 import AgentModeSelector from '@/renderer/components/agent/AgentModeSelector';
 import CommandQueuePanel from '@/renderer/components/chat/CommandQueuePanel';
@@ -48,7 +57,7 @@ import type { SessionRef } from '@/common/adapter/ipcBridge';
 import CrossSessionDisabledBanner from '@/renderer/components/chat/CrossSessionDisabledBanner';
 import { useCrossSessionMessageEnabled } from '@/renderer/hooks/chat/useCrossSessionMessageEnabled';
 import { emitter, useAddEventListener } from '@/renderer/utils/emitter';
-import { type ChatFileRef, isChatFileRef, uploadFileRef } from '@/common/types/chatFile';
+import { type ChatFileRef, chatFileRefPath, isChatFileRef, uploadFileRef } from '@/common/types/chatFile';
 import { localSelectionItems, mergeFileSelectionItems } from '@/renderer/utils/file/fileSelection';
 import { collectChatFileRefs, splitChatFileRefs } from '@/renderer/utils/file/messageFiles';
 import type { AgentModeOption } from '@/renderer/utils/model/agentTypes';
@@ -60,6 +69,20 @@ import { classifyConversationBusyError } from '../conversationBusyError';
 import { useAionrsMessage } from './useAionrsMessage';
 import AionrsModelSelector from './AionrsModelSelector';
 import { enterpriseModelBlockKey, type AionrsModelSelection } from './useAionrsModelSelection';
+
+const initialSends = new Set<string>();
+// These gateway responses occur before admission. A transport error, a 5xx, or
+// an empty task snapshot can still race a successfully persisted request.
+const preAdmissionErrors = new Set([
+  'TASK_INPUT_INVALID',
+  'TASK_INPUT_TOO_LARGE',
+  'TASK_CONVERSATION_NOT_FOUND',
+  'TASK_QUEUE_FULL',
+  'TASK_HISTORY_CAPACITY',
+  'TASK_ATTEMPT_CAPACITY',
+  'TASK_BUSY',
+  'UNAUTHENTICATED',
+]);
 
 const configErrorMessageKey = (error: unknown) => {
   const errorKind = classifyConfigSetError(error);
@@ -144,11 +167,18 @@ const AionrsSendBox: React.FC<{
       status: 'loaded',
     }));
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const hosted = isEnterpriseWeb();
+  const initialScope = hosted ? employeeDraftScope(user?.id) : undefined;
+  const pendingKey = initialScope && initialMessageKey(initialScope, conversation_id);
+  const initialMessage = pendingKey ? readDraft<InitialMessage>(pendingKey) : undefined;
+  const [, redrawInitial] = useState(0);
   const { checkAndUpdateTitle } = useAutoTitle();
   const { current_model, enterpriseCatalog } = modelSelection;
   const modelBlock = enterpriseCatalog?.sendBlock;
   const modelBlockMessage = modelBlock ? t(enterpriseModelBlockKey[modelBlock]) : undefined;
   const isModelSwitching = enterpriseCatalog?.isSwitching;
+  const modelSwitching = enterpriseCatalog?.switching;
   const teamPermission = useTeamPermission();
   const propagateMode = teamPermission?.propagateMode;
 
@@ -237,7 +267,7 @@ const AionrsSendBox: React.FC<{
     isProcessing: runtimeView.isProcessing,
   };
   const isCancelling = runtimeView.state === 'cancelling';
-  const { attempt: workAttempt } = useTaskWork(conversation_id);
+  const { attempt: workAttempt, task: workTask, reload: reloadTask } = useTaskWork(conversation_id);
   const workBusy = !!workAttempt && ['queued', 'running', 'cancelling'].includes(workAttempt.state);
   const isBusy =
     workBusy || isCancelling || commandQueueRuntimeGate.isProcessing || !commandQueueRuntimeGate.canSendMessage;
@@ -294,7 +324,10 @@ const AionrsSendBox: React.FC<{
   );
 
   const executeCommand = useCallback(
-    async ({ input, files, sessions }: Pick<ConversationCommandQueueItem, 'input' | 'files' | 'sessions'>) => {
+    async (
+      { input, files, sessions }: Pick<ConversationCommandQueueItem, 'input' | 'files' | 'sessions'>,
+      executionId?: string
+    ) => {
       if (modelBlockMessage || isModelSwitching?.()) {
         throw new Error(modelBlockMessage ?? t('workspace.modelAvailability.switching'));
       }
@@ -323,14 +356,14 @@ const AionrsSendBox: React.FC<{
         setWaitingResponse(true);
         const res = await ipcBridge.conversation.sendMessage.invoke({
           input,
-          execution_id: await taskRequestId(conversation_id, { input, files, sessions }),
+          execution_id: executionId ?? (await taskRequestId(conversation_id, { input, files, sessions })),
           conversation_id,
           files,
           // `@@` references. Omitting this makes the whole feature silently
           // no-op for this platform.
           sessions,
         });
-        taskAccepted(conversation_id);
+        if (!executionId) taskAccepted(conversation_id);
         acceptedExecutionRef.current = res.turn_id ? { conversationId: conversation_id, id: res.turn_id } : null;
         // Durable acceptance precedes the native turn. Do not fence later stream
         // events with an outbox ID or a previous round's message ID.
@@ -396,13 +429,83 @@ const AionrsSendBox: React.FC<{
     conversation_id: conversation_id,
     enabled: true,
     isBusy,
-    runtimeGate: modelBlock ? { ...commandQueueRuntimeGate, canSendMessage: false } : commandQueueRuntimeGate,
+    runtimeGate:
+      modelBlock || initialMessage ? { ...commandQueueRuntimeGate, canSendMessage: false } : commandQueueRuntimeGate,
     onExecute: executeCommand,
   });
 
+  const forgetInitialMessage = useCallback(
+    (key: string, executionId: string) => {
+      if (readDraft<InitialMessage>(key)?.executionId !== executionId) return;
+      sessionStorage.removeItem(key);
+      taskAccepted(conversation_id, executionId);
+      redrawInitial((revision) => revision + 1);
+    },
+    [conversation_id]
+  );
+
+  useEffect(() => {
+    if (!pendingKey || !initialMessage || workTask?.id !== conversation_id) return;
+    if (workTask.attempts.some((attempt) => attempt.requestId === initialMessage.executionId)) {
+      forgetInitialMessage(pendingKey, initialMessage.executionId);
+    }
+  }, [conversation_id, forgetInitialMessage, initialMessage, pendingKey, workTask]);
+
+  const submitInitialMessage = useCallback(
+    async (automatic: boolean) => {
+      if (!pendingKey || !current_model?.use_model || modelBlock || modelSwitching || initialSends.has(pendingKey))
+        return;
+      const saved = readDraft<InitialMessage>(pendingKey);
+      if (!saved || (automatic && saved.phase !== 'ready')) return;
+      if (
+        workTask?.id === conversation_id &&
+        workTask.attempts.some((attempt) => attempt.requestId === saved.executionId)
+      ) {
+        forgetInitialMessage(pendingKey, saved.executionId);
+        return;
+      }
+      initialSends.add(pendingKey);
+      try {
+        // Persist the uncertain state before POST, so reloads only reconcile it.
+        writeDraft<InitialMessage>(pendingKey, { ...saved, phase: 'uncertain' });
+        redrawInitial((revision) => revision + 1);
+        await executeCommand(saved, saved.executionId);
+        forgetInitialMessage(pendingKey, saved.executionId);
+      } catch (error) {
+        if (readDraft<InitialMessage>(pendingKey)?.executionId === saved.executionId) {
+          const rejected =
+            saved.phase !== 'uncertain' &&
+            error instanceof BackendHttpError &&
+            preAdmissionErrors.has(error.code || error.backendMessage);
+          if (rejected) writeDraft<InitialMessage>(pendingKey, { ...saved, phase: 'rejected' });
+        }
+        if (hosted) void reloadTask();
+      } finally {
+        initialSends.delete(pendingKey);
+        redrawInitial((revision) => revision + 1);
+      }
+    },
+    [
+      conversation_id,
+      current_model?.use_model,
+      executeCommand,
+      forgetInitialMessage,
+      hosted,
+      modelBlock,
+      modelSwitching,
+      pendingKey,
+      reloadTask,
+      workTask,
+    ]
+  );
+
+  useEffect(() => {
+    if (initialMessage?.phase === 'ready') void submitInitialMessage(true);
+  }, [initialMessage?.phase, submitInitialMessage]);
+
   // Handle initial message from Guid page — wait until model is ready
   useEffect(() => {
-    if (!conversation_id || !current_model?.use_model || modelBlock) return;
+    if (hosted || !conversation_id || !current_model?.use_model || modelBlock) return;
 
     const storageKey = `aionrs_initial_message_${conversation_id}`;
     const processedKey = `aionrs_initial_processed_${conversation_id}`;
@@ -431,7 +534,7 @@ const AionrsSendBox: React.FC<{
     };
 
     void processInitialMessage();
-  }, [conversation_id, current_model?.use_model, executeCommand, modelBlock]);
+  }, [conversation_id, current_model?.use_model, executeCommand, hosted, modelBlock]);
 
   // `@@` session references the user picked. Declared before the handlers that
   // read it — every send path has to both forward and release it.
@@ -443,6 +546,7 @@ const AionrsSendBox: React.FC<{
   // enqueuing. The only way to queue a message while busy is the explicit
   // "add to queue" entry (handleAddToQueue below).
   const onSendHandler = async (message: string): Promise<void | false> => {
+    if (initialMessage) return false;
     if (modelBlockMessage || isModelSwitching?.()) {
       Message.warning(modelBlockMessage ?? t('workspace.modelAvailability.switching'));
       return false;
@@ -802,6 +906,52 @@ const AionrsSendBox: React.FC<{
 
   return (
     <div className={`${sendBoxWidthClass} flex flex-col mt-auto mb-16px`}>
+      {initialMessage && pendingKey ? (
+        <section
+          aria-label={t('guid.initialMessage.label')}
+          className='mb-8px p-12px rounded-8px border border-solid b-color-border-2'
+        >
+          <div role='status' className='text-t-primary font-medium'>
+            {t(
+              initialSends.has(pendingKey)
+                ? 'guid.initialMessage.sending'
+                : initialMessage.phase === 'ready'
+                  ? 'guid.initialMessage.label'
+                  : initialMessage.phase === 'rejected'
+                    ? 'guid.initialMessage.rejected'
+                    : 'guid.initialMessage.uncertain'
+            )}
+          </div>
+          <div className='max-h-120px overflow-auto whitespace-pre-wrap break-words'>{initialMessage.input}</div>
+          {initialMessage.files.length > 0 ? (
+            <ul className='my-4px ps-20px'>
+              {initialMessage.files.map((file, index) => {
+                const path = chatFileRefPath(file);
+                return <li key={`${index}:${path}`}>{path.split(/[/\\]/).pop() || path}</li>;
+              })}
+            </ul>
+          ) : null}
+          {initialMessage.phase !== 'ready' ? (
+            <div className='mt-8px flex gap-8px'>
+              {hosted && initialMessage.phase === 'uncertain' ? (
+                <Button size='mini' onClick={() => void reloadTask()}>
+                  {t('guid.initialMessage.check')}
+                </Button>
+              ) : null}
+              <Button
+                size='mini'
+                type='primary'
+                disabled={
+                  initialSends.has(pendingKey) || !current_model?.use_model || Boolean(modelBlock) || modelSwitching
+                }
+                onClick={() => void submitInitialMessage(false)}
+              >
+                {t('common.retry')}
+              </Button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <CommandQueuePanel
         items={queuedCommands}
         mode={queueMode}
@@ -863,7 +1013,7 @@ const AionrsSendBox: React.FC<{
         active={teamRuntime?.isActive}
         onFocused={teamRuntime?.onFocus}
         disabled={!enterpriseCatalog && (!current_model?.use_model || !agentWarmed)}
-        sendDisabled={isBusy || Boolean(enterpriseCatalog && (!agentWarmed || modelBlock))}
+        sendDisabled={Boolean(initialMessage) || isBusy || Boolean(enterpriseCatalog && (!agentWarmed || modelBlock))}
         sendDisabledTooltip={
           modelBlockMessage ??
           (isBusy
@@ -946,7 +1096,7 @@ const AionrsSendBox: React.FC<{
         slash_commands={slash_commands}
         onSlashBuiltinCommand={onSlashBuiltinCommand}
         onAddToDraft={handleAddToQueue}
-        addToDraftDisabled={!canQueueCurrentDraft}
+        addToDraftDisabled={Boolean(initialMessage) || !canQueueCurrentDraft}
         addToDraftTooltip={
           isBusy
             ? t('conversation.commandQueue.addToQueueBusyHint', {

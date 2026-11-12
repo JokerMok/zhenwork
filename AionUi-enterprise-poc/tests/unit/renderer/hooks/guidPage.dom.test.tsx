@@ -130,6 +130,10 @@ const {
   ensureBackendMcpCatalogMock: vi.fn(),
 }));
 
+vi.mock('@/renderer/hooks/context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'test-employee' } }),
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string; [key: string]: unknown }) => options?.defaultValue || key,

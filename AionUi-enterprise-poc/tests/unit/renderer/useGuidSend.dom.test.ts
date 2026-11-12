@@ -8,6 +8,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IMcpServer } from '@/common/config/storage';
 import { useGuidSend, type GuidSendDeps } from '@/renderer/pages/guid/hooks/useGuidSend';
+import { initialMessageKey, readDraft, type InitialMessage } from '@/renderer/hooks/chat/employeeDraftStorage';
 
 const createConversationInvokeMock = vi.fn();
 const swrMutateMock = vi.fn();
@@ -399,7 +400,9 @@ describe('useGuidSend', () => {
     const { result } = renderHook(() => useGuidSend(deps));
 
     expect(result.current.isButtonDisabled).toBe(true);
-    act(() => result.current.sendMessageHandler());
+    act(() => {
+      void result.current.sendMessageHandler();
+    });
     expect(createConversationInvokeMock).not.toHaveBeenCalled();
     expect(deps.setLoading).not.toHaveBeenCalled();
   });
@@ -442,5 +445,54 @@ describe('useGuidSend', () => {
     expect(deps.navigate).toHaveBeenCalledWith('/conversation/conv-1');
     expect(setItemSpy).not.toHaveBeenCalledWith('aionrs_initial_message_conv-1', expect.anything());
     setItemSpy.mockRestore();
+  });
+});
+
+describe('employee first-message handoff', () => {
+  const scope = 'employee-login';
+  const files = [{ kind: 'upload' as const, path: '/uploads/fixed-version.xlsx' }];
+  const key = initialMessageKey(scope, 'conv-handoff');
+  const employeeDeps = () => ({
+    ...createDeps(),
+    draftScope: scope,
+    input: 'Continue with these exact bytes',
+    files,
+    dir: '/chosen',
+    selectedAssistantBackend: 'aionrs',
+    current_model: { use_model: 'enterprise/model' } as NonNullable<GuidSendDeps['current_model']>,
+    clearSentDraft: vi.fn(),
+  });
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    createConversationInvokeMock.mockReset();
+    createConversationInvokeMock.mockResolvedValue({ id: 'conv-handoff' });
+    swrMutateMock.mockResolvedValue(undefined);
+  });
+
+  it('stages the exact attachment before navigation and clears only after handoff', async () => {
+    const deps = employeeDeps();
+    vi.mocked(deps.navigate).mockImplementation(() => {
+      expect(readDraft<InitialMessage>(key)).toEqual({
+        input: deps.input,
+        files,
+        phase: 'ready',
+        executionId: expect.any(String),
+      });
+      expect(deps.clearSentDraft).not.toHaveBeenCalled();
+    });
+    const { result } = renderHook(() => useGuidSend(deps));
+    await act(async () => result.current.sendMessageHandler());
+    expect(deps.clearSentDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the draft when conversation creation returns no usable ID', async () => {
+    createConversationInvokeMock.mockResolvedValueOnce({});
+    const deps = employeeDeps();
+    const { result } = renderHook(() => useGuidSend(deps));
+    await act(async () => result.current.sendMessageHandler());
+    expect(deps.clearSentDraft).not.toHaveBeenCalled();
+    expect(deps.navigate).not.toHaveBeenCalled();
+    expect(readDraft(key)).toBeUndefined();
   });
 });

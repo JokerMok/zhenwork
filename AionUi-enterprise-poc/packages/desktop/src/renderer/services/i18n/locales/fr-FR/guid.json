@@ -1,4 +1,12 @@
 {
+  "discardDraft": "Supprimer le brouillon",
+  "initialMessage": {
+    "label": "Message en attente",
+    "sending": "Envoi du premier message",
+    "rejected": "Message non accepté",
+    "uncertain": "Acceptation non confirmée",
+    "check": "Vérifier le statut"
+  },
   "mcpCatalogLoadFailed": "Impossible de charger les connexions aux outils. Vous pouvez continuer à utiliser l’espace de travail ; la conversation restaurera les connexions par défaut. Réessayez ou modifiez-les dans les paramètres avancés.",
   "mcpDefaultsUnavailable": "Ces connexions aux outils par défaut sont indisponibles : {{names}}. L’espace de travail continuera avec les autres fonctions ; modifiez-les dans les paramètres avancés.",
   "promptExamplesHint": "Essayez ces exemples de prompts :",

@@ -1,4 +1,12 @@
 {
+  "discardDraft": "Discard draft",
+  "initialMessage": {
+    "label": "Pending message",
+    "sending": "Sending first message",
+    "rejected": "Message not accepted",
+    "uncertain": "Acceptance not confirmed",
+    "check": "Check status"
+  },
   "mcpCatalogLoadFailed": "Tool connections could not be loaded. You can keep using the workspace; the conversation will restore its defaults. Retry or adjust them in Advanced Settings.",
   "viewCapabilities": "View available abilities",
   "mcpDefaultsUnavailable": "These default tool connections are unavailable: {{names}}. The workspace will continue with the remaining capabilities; adjust them in Advanced Settings.",

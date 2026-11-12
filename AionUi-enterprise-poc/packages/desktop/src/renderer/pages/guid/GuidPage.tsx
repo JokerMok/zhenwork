@@ -25,6 +25,8 @@ import QuickActionButtons from './components/QuickActionButtons';
 import FeedbackReportModal from '@/renderer/components/settings/SettingsModal/contents/FeedbackReportModal';
 import { isGuidNavigationSelectionReady, useGuidAssistantSelection } from './hooks/useGuidAssistantSelection';
 import { useGuidInput } from './hooks/useGuidInput';
+import { useAuth } from '@/renderer/hooks/context/AuthContext';
+import { employeeDraftScope } from '@/renderer/hooks/chat/employeeDraftStorage';
 import { useGuidModelSelection } from './hooks/useGuidModelSelection';
 import { useGuidSend } from './hooks/useGuidSend';
 import { useTypewriterPlaceholder } from './hooks/useTypewriterPlaceholder';
@@ -66,6 +68,8 @@ const GuidPage: React.FC = () => {
   const localeKey = resolveLocaleKey(i18n.language);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const hostedEnterpriseWeb = isEnterpriseWeb();
+  const { user } = useAuth();
+  const draftScope = hostedEnterpriseWeb ? employeeDraftScope(user?.id) : undefined;
   const [showAdvancedConfiguration, setShowAdvancedConfiguration] = useState(false);
   const simplifiedEnterpriseExperience = hostedEnterpriseWeb && !showAdvancedConfiguration;
   const navState = location.state as GuidNavigationState | null;
@@ -185,7 +189,8 @@ const GuidPage: React.FC = () => {
   }, [hostedEnterpriseWeb, agentSelection.catalogError]);
 
   const guidInput = useGuidInput({
-    locationState: location.state as { workspace?: string } | null,
+    locationState: navState,
+    employeeDraft: draftScope ? { scope: draftScope, location } : undefined,
   });
   const [uploadingFiles, setUploadingFiles] = useState(false);
   // The `/open` builtin + attach picker browse the backend machine's filesystem
@@ -320,6 +325,8 @@ const GuidPage: React.FC = () => {
     files: guidInput.files,
     setFiles: guidInput.setFiles,
     dir: guidInput.dir,
+    draftScope,
+    clearSentDraft: guidInput.clearSentDraft,
     setDir: guidInput.setDir,
     setLoading: guidInput.setLoading,
     loading: guidInput.loading || uploadingFiles,
@@ -600,6 +607,31 @@ const GuidPage: React.FC = () => {
     [hasSelectedAssistant, modelSelection, selectedAssistantId]
   );
 
+  // Anchor each draft in its own history entry, and remove the consumed seed.
+  // History can restore a draft ID, but cannot replay someone else's prefill.
+  useLayoutEffect(() => {
+    if (!guidInput.draftId) return;
+    const search = new URLSearchParams(location.search);
+    if (search.has('draft')) return;
+    search.set('draft', guidInput.draftId);
+    const {
+      prefillPrompt: _prefillPrompt,
+      prefillFiles: _prefillFiles,
+      preservePrefillDraft: _preservePrefillDraft,
+      workspace: _workspace,
+      ...remainingState
+    } = navState ?? {};
+    navigate(
+      { pathname: location.pathname, search: search.toString(), hash: location.hash },
+      {
+        replace: true,
+        state: remainingState,
+      }
+    );
+  }, [guidInput.draftId, location.hash, location.pathname, location.search, navState, navigate]);
+
+  const anchoringDraft = Boolean(guidInput.draftId && !new URLSearchParams(location.search).has('draft'));
+
   // Reset guid-local UI state before paint so same-route navigations do not
   // briefly show the previous draft or preset assistant layout. When a caller
   // navigates here with a `prefillPrompt` (e.g. "Create via chat" from the
@@ -617,6 +649,7 @@ const GuidPage: React.FC = () => {
   // one such follow-up pass skip the clear, preserving the seeded prompt.
   const skipNextClearRef = useRef(false);
   useLayoutEffect(() => {
+    if (draftScope) return;
     const prefillState = location.state as GuidNavigationState | null;
     const prefillPrompt = prefillState?.prefillPrompt;
     const prefillFiles = prefillState?.prefillFiles;
@@ -645,11 +678,20 @@ const GuidPage: React.FC = () => {
     if (!preserveCurrentDraft && !(location.state as { workspace?: string } | null)?.workspace) {
       guidInput.setDir('');
     }
-  }, [guidInput.setDir, guidInput.setFiles, guidInput.setInput, guidInput.setLoading, location.key, location.state]);
+  }, [
+    draftScope,
+    guidInput.setDir,
+    guidInput.setFiles,
+    guidInput.setInput,
+    guidInput.setLoading,
+    location.key,
+    location.state,
+  ]);
 
   // A draft-preserving prefill is an action, not durable navigation state.
   // Strip it after consumption so browser history or a remount cannot replay it.
   useEffect(() => {
+    if (draftScope) return;
     const prefillState = location.state as GuidNavigationState | null;
     if (!prefillState?.preservePrefillDraft || !prefillState.prefillPrompt) return;
 
@@ -664,7 +706,7 @@ const GuidPage: React.FC = () => {
       replace: true,
       state: Object.keys(remainingState).length > 0 ? remainingState : null,
     });
-  }, [location.hash, location.pathname, location.search, location.state, navigate]);
+  }, [draftScope, location.hash, location.pathname, location.search, location.state, navigate]);
 
   // Clear resetAssistant from location.state after the hook has consumed it,
   // so that re-renders don't re-trigger the reset logic.
@@ -675,12 +717,13 @@ const GuidPage: React.FC = () => {
   // next hard reload, the browser would then request '/guid' directly from
   // the dev server (which has no SPA fallback) and 404.
   useEffect(() => {
-    if (!resetAssistantRequested && !preselectAssistantId) return;
+    if (anchoringDraft || (!resetAssistantRequested && !preselectAssistantId)) return;
     // The organization catalog can arrive after this page mounts. Clearing the
     // request earlier silently replaces the chosen expert with the web default.
     if (!isGuidNavigationSelectionReady(preselectAssistantId, selectedAssistantId)) return;
     navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null });
   }, [
+    anchoringDraft,
     resetAssistantRequested,
     preselectAssistantId,
     selectedAssistantId,
@@ -900,7 +943,11 @@ const GuidPage: React.FC = () => {
           ) : null}
 
           <GuidInputCard
-            focusRequestKey={navState?.focusPrefill && navState.prefillPrompt ? location.key : undefined}
+            focusRequestKey={
+              navState?.focusPrefill
+                ? (guidInput.draftId ?? (navState.prefillPrompt ? location.key : undefined))
+                : undefined
+            }
             input={guidInput.input}
             onInputChange={handleInputChange}
             onKeyDown={handleInputKeyDown}
@@ -922,6 +969,18 @@ const GuidPage: React.FC = () => {
             onSelectWorkspace={(dir) => guidInput.setDir(dir)}
             onClearWorkspace={() => guidInput.setDir('')}
           />
+
+          {guidInput.discardDraft && (guidInput.input || guidInput.files.length > 0 || guidInput.dir) ? (
+            <Button
+              type='text'
+              size='mini'
+              className='self-end'
+              disabled={guidInput.loading || uploadingFiles}
+              onClick={guidInput.discardDraft}
+            >
+              {t('guid.discardDraft')}
+            </Button>
+          ) : null}
 
           {selectedAssistantPrompts.length > 0 ? (
             <div className='mt-18px w-full animate-fade-in ps-20px'>

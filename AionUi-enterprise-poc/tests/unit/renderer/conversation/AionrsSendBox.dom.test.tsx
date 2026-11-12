@@ -1,10 +1,16 @@
 import React from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Message } from '@arco-design/web-react';
 import { BackendHttpError } from '@/common/adapter/httpBridge';
 import AionrsSendBox from '@/renderer/pages/conversation/platforms/aionrs/AionrsSendBox';
 import type { AionrsModelSelection } from '@/renderer/pages/conversation/platforms/aionrs/useAionrsModelSelection';
+import {
+  employeeDraftScope,
+  initialMessageKey,
+  writeDraft,
+  type InitialMessage,
+} from '@/renderer/hooks/chat/employeeDraftStorage';
 import type { TeamSendBoxRuntime } from '@/renderer/pages/team/components/teamSendRuntime';
 
 const {
@@ -37,6 +43,10 @@ const {
   draftMutateMock: vi.fn(),
   draftContentRef: { current: '' },
   runtimeViewIsProcessingRef: { current: false },
+}));
+
+vi.mock('@/renderer/hooks/context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'test-employee' } }),
 }));
 
 vi.mock('@/common', () => ({
@@ -580,5 +590,92 @@ describe('AionrsSendBox', () => {
       expect(props.onAddToDraft).toBeDefined();
       expect(props.addToDraftDisabled).toBe(true);
     });
+  });
+});
+
+describe('initial message recovery', () => {
+  const id = 'conv-first';
+  const executionId = '5d471dc2-194e-4b07-82d2-565c52325180';
+  const input = 'Use the fixed historical version';
+  const files = [{ kind: 'upload', path: '/uploads/stock-v1.xlsx' }] as const;
+  const receipt = { turn_id: 'native-attempt', msg_id: '', runtime: {} };
+  let accepted = false;
+
+  function mount() {
+    return render(<AionrsSendBox conversation_id={id} modelSelection={modelSelection} />);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('__AION_ENTERPRISE_WEB__', true);
+    accepted = false;
+    sessionStorage.clear();
+    writeDraft<InitialMessage>(initialMessageKey(employeeDraftScope('test-employee')!, id), {
+      executionId,
+      input,
+      files: [...files],
+      phase: 'ready',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify(
+              accepted
+                ? {
+                    id,
+                    updatedAt: 1,
+                    attempts: [
+                      { id: receipt.turn_id, requestId: executionId, state: 'queued', artifacts: [], steps: [] },
+                    ],
+                  }
+                : { error: 'TASK_NOT_FOUND' }
+            ),
+            { status: accepted ? 200 : 404 }
+          )
+      )
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  it('leaves the original body and attachment visible after admission fails and the route remounts', async () => {
+    sendMessageInvokeMock
+      .mockRejectedValueOnce(
+        new BackendHttpError({ method: 'POST', path: '/messages', status: 429, body: { error: 'TASK_QUEUE_FULL' } })
+      )
+      .mockResolvedValueOnce(receipt);
+    const initial = mount();
+    await screen.findByText('guid.initialMessage.rejected');
+    initial.unmount();
+    mount();
+    expect(await screen.findByText(input)).toBeTruthy();
+    expect(screen.getByText('stock-v1.xlsx')).toBeTruthy();
+    expect(sendMessageInvokeMock).toHaveBeenCalledTimes(1);
+    await act(async () => screen.getByRole('button', { name: 'common.retry' }).click());
+    expect(sendMessageInvokeMock.mock.calls).toEqual([
+      [expect.objectContaining({ input, files, execution_id: executionId })],
+      [expect.objectContaining({ input, files, execution_id: executionId })],
+    ]);
+    expect(screen.queryByText(input)).toBeNull();
+  });
+
+  it('keeps an unknown request through a missing task snapshot and reconciles its persisted request ID', async () => {
+    sendMessageInvokeMock.mockRejectedValueOnce(new TypeError('Response lost'));
+    const initial = mount();
+    await screen.findByText('guid.initialMessage.uncertain');
+    initial.unmount();
+    mount();
+    await screen.findByText('guid.initialMessage.uncertain');
+    expect(sendMessageInvokeMock).toHaveBeenCalledTimes(1);
+
+    accepted = true;
+    await act(async () => screen.getByRole('button', { name: 'guid.initialMessage.check' }).click());
+    await waitFor(() => expect(screen.queryByText(input)).toBeNull());
+    expect(sendMessageInvokeMock).toHaveBeenCalledTimes(1);
   });
 });
