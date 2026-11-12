@@ -190,6 +190,8 @@ const ArchivedSettings: React.FC = () => {
   // and emit a single refresh on unmount ("Back to Chat"). Deletes/clear touch
   // archived units only, so they never need to refresh the active list.
   const restoredRef = React.useRef(false);
+  const restoringRef = React.useRef(false);
+  const [restoringKey, setRestoringKey] = React.useState<string>();
   React.useEffect(
     () => () => {
       if (restoredRef.current) emitter.emit('chat.history.refresh');
@@ -362,6 +364,9 @@ const ArchivedSettings: React.FC = () => {
 
   const handleRestore = React.useCallback(
     async (row: ArchivedRow) => {
+      if (restoringRef.current) return;
+      restoringRef.current = true;
+      setRestoringKey(row.key);
       try {
         await ipcBridge.sidebar.unarchive.invoke({ item_type: row.item_type, item_id: row.item_id });
         restoredRef.current = true;
@@ -370,6 +375,9 @@ const ArchivedSettings: React.FC = () => {
       } catch (error) {
         console.error('Failed to restore archived item:', error);
         Message.error(t('settings.archived.restoreFailed'));
+      } finally {
+        restoringRef.current = false;
+        setRestoringKey(undefined);
       }
     },
     [refresh, t]
@@ -504,6 +512,7 @@ const ArchivedSettings: React.FC = () => {
       {selectionMode ? (
         <Checkbox
           checked={selectedKeys.has(row.key)}
+          aria-label={row.name}
           onClick={(event) => event.stopPropagation()}
           onChange={(checked) => setRowSelected(row, checked)}
         />
@@ -525,6 +534,8 @@ const ArchivedSettings: React.FC = () => {
             type='text'
             size='small'
             status='danger'
+            aria-label={t('common.delete') + ' · ' + row.name}
+            disabled={restoringKey !== undefined}
             icon={<DeleteOne theme='outline' size='14' />}
             onClick={() => handleDelete(row)}
           />
@@ -532,6 +543,9 @@ const ArchivedSettings: React.FC = () => {
             type='secondary'
             size='mini'
             className='!h-28px !rounded-8px !px-10px'
+            aria-label={t('settings.archived.restore') + ' · ' + row.name}
+            loading={restoringKey === row.key}
+            disabled={restoringKey !== undefined}
             onClick={() => void handleRestore(row)}
           >
             {t('settings.archived.restore')}
