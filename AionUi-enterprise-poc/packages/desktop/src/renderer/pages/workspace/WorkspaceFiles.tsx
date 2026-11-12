@@ -127,7 +127,7 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
   const requestedFile = files.find((item) => item.path === requestedPath);
   const fileVersion = requestedVersion ? requestedFile?.versions?.find((version) => version.id === requestedVersion) : undefined;
   const matchesPreview = preview?.file.path === requestedPath && (preview?.version?.id ?? null) === requestedVersion;
-  const previewLookupError = !loading && (
+  const previewLookupError = requestedPath && !loading && (
     errorCode || (!requestedFile ? 'FILE_NOT_FOUND' : requestedVersion && !fileVersion ? 'VERSION_NOT_FOUND' : null)
   );
 
@@ -341,9 +341,11 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
         visible={Boolean(requestedPath)}
         focusLock
         autoFocus
-        role='dialog'
-        aria-modal='true'
-        aria-label={visiblePreview?.file.name || t('workspace.files.preview')}
+        mountOnEnter
+        unmountOnExit
+        role={requestedPath ? 'dialog' : undefined}
+        aria-modal={requestedPath ? true : undefined}
+        aria-label={requestedPath ? visiblePreview?.file.name || t('workspace.files.preview') : undefined}
         title={visiblePreview
           ? visiblePreview.file.name + (visiblePreview.version ? ' · ' + formatDate(visiblePreview.version.createdAt) : '')
           : t('workspace.files.preview')}
