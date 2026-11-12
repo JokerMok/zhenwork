@@ -18,7 +18,7 @@ public class WorkspaceModelAdmin {
     private final WorkspaceConversations conversations;
     private final TransactionTemplate tx;
     private static final String PROVIDER_COLUMNS="id,name,provider_type,base_url,protocol,enabled,version,timeout_seconds,retry_count,secret_updated_at,(secret_cipher<>'') AS configured";
-    private static final String MODEL_COLUMNS="m.id,m.provider_id,m.code,m.name,m.enabled,m.streaming,m.tools,m.vision,m.context_window,m.max_output_tokens,m.version,m.verified_status,m.default_parameters::text,m.cost_config::text,p.name AS provider_name";
+    private static final String MODEL_COLUMNS="m.id,m.provider_id,m.code,m.name,m.enabled,m.streaming,m.tools,m.vision,m.context_window,m.max_output_tokens,m.version,m.verified_status,m.default_parameters::text,m.cost_config::text,p.name AS provider_name,p.enabled AS provider_enabled";
     private void audit(long actor,String action,UUID id){jdbc.update("INSERT INTO ai_security_event(id,actor_user_id,action,resource_id,metadata) VALUES(?,?,?,?, '{}'::jsonb)",UUID.randomUUID(),actor,action,id);}
     public List<Map<String,Object>> providers(int page){return jdbc.queryForList("SELECT "+PROVIDER_COLUMNS+" FROM ai_provider ORDER BY created_at DESC,id LIMIT 30 OFFSET ?",offset(page));}
     private int offset(int page){return (Math.max(1,Math.min(1000,page))-1)*30;}
