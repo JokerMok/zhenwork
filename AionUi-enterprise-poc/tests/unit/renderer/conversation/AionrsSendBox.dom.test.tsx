@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Message } from '@arco-design/web-react';
 import { BackendHttpError } from '@/common/adapter/httpBridge';
@@ -269,7 +269,8 @@ vi.mock('@/renderer/utils/file/messageFiles', () => ({
   collectChatFileRefs: () => [],
   splitChatFileRefs: () => ({ uploadFiles: [], atPath: [] }),
 }));
-vi.mock('@arco-design/web-react', () => ({
+vi.mock('@arco-design/web-react', async (importOriginal) => ({
+  Input: (await importOriginal<typeof import('@arco-design/web-react')>()).Input,
   Message: {
     warning: vi.fn(),
     error: vi.fn(),
@@ -609,6 +610,7 @@ describe('initial message recovery', () => {
     vi.clearAllMocks();
     vi.stubGlobal('__AION_ENTERPRISE_WEB__', true);
     accepted = false;
+    sendMessageInvokeMock.mockReset();
     sessionStorage.clear();
     writeDraft<InitialMessage>(initialMessageKey(employeeDraftScope('test-employee')!, id), {
       executionId,
@@ -664,6 +666,52 @@ describe('initial message recovery', () => {
     expect(screen.queryByText(input)).toBeNull();
   });
 
+  it('lets a rejected first message be edited across remounts and sends the same attachment with a new ID', async () => {
+    sendMessageInvokeMock
+      .mockRejectedValueOnce(
+        new BackendHttpError({
+          method: 'POST',
+          path: '/messages',
+          status: 413,
+          body: { error: 'TASK_INPUT_TOO_LARGE' },
+        })
+      )
+      .mockResolvedValueOnce(receipt);
+    const initial = mount();
+    await screen.findByText('guid.initialMessage.rejected');
+    fireEvent.click(screen.getByRole('button', { name: 'common.edit' }));
+    const edited = 'Read the original workbook';
+    const editor = screen.getByRole('textbox', { name: 'guid.initialMessage.label' });
+    expect(editor).toHaveValue(input);
+    fireEvent.change(editor, { target: { value: edited } });
+    initial.unmount();
+
+    mount();
+    expect(screen.getByRole('textbox', { name: 'guid.initialMessage.label' })).toHaveValue(edited);
+    expect(screen.getByText('stock-v1.xlsx')).toBeTruthy();
+    expect(sendMessageInvokeMock).toHaveBeenCalledTimes(1);
+    await act(async () => screen.getByRole('button', { name: 'common.send' }).click());
+    expect(sendMessageInvokeMock).toHaveBeenLastCalledWith(expect.objectContaining({ input: edited, files }));
+    expect(sendMessageInvokeMock.mock.lastCall?.[0].execution_id).not.toBe(executionId);
+  });
+
+  it('retries the original request after a temporary status lookup failure', async () => {
+    vi.mocked(fetch).mockImplementation(
+      async () => new Response(JSON.stringify({ error: 'TASK_SERVICE_UNAVAILABLE' }), { status: 503 })
+    );
+    sendMessageInvokeMock.mockRejectedValueOnce(new TypeError('Accepted response lost')).mockResolvedValueOnce(receipt);
+    mount();
+    await screen.findByText('guid.initialMessage.uncertain');
+    await act(async () => screen.getByRole('button', { name: 'guid.initialMessage.check' }).click());
+    await screen.findByText('guid.initialMessage.uncertain');
+    expect(screen.queryByRole('button', { name: 'common.edit' })).toBeNull();
+    await act(async () => screen.getByRole('button', { name: 'common.retry' }).click());
+    expect(sendMessageInvokeMock.mock.calls).toEqual([
+      [expect.objectContaining({ input, files, execution_id: executionId })],
+      [expect.objectContaining({ input, files, execution_id: executionId })],
+    ]);
+  });
+
   it('keeps an unknown request through a missing task snapshot and reconciles its persisted request ID', async () => {
     sendMessageInvokeMock.mockRejectedValueOnce(new TypeError('Response lost'));
     const initial = mount();
@@ -672,6 +720,7 @@ describe('initial message recovery', () => {
     mount();
     await screen.findByText('guid.initialMessage.uncertain');
     expect(sendMessageInvokeMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'common.edit' })).toBeNull();
 
     accepted = true;
     await act(async () => screen.getByRole('button', { name: 'guid.initialMessage.check' }).click());

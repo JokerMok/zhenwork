@@ -8,6 +8,7 @@ import { taskRequestId, taskAccepted, taskStatusVisible, useTaskWork } from '@/r
 
 import { ipcBridge } from '@/common';
 import { BackendHttpError } from '@/common/adapter/httpBridge';
+import { enterpriseTaskInputTooLarge } from '@/common/adapter/enterpriseTaskInput';
 import { useAuth } from '@/renderer/hooks/context/AuthContext';
 import {
   employeeDraftScope,
@@ -61,7 +62,7 @@ import { type ChatFileRef, chatFileRefPath, isChatFileRef, uploadFileRef } from 
 import { localSelectionItems, mergeFileSelectionItems } from '@/renderer/utils/file/fileSelection';
 import { collectChatFileRefs, splitChatFileRefs } from '@/renderer/utils/file/messageFiles';
 import type { AgentModeOption } from '@/renderer/utils/model/agentTypes';
-import { Button, Message } from '@arco-design/web-react';
+import { Button, Input, Message } from '@arco-design/web-react';
 import { Brain, Lightning, MagicHat, Shield } from '@icon-park/react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -375,8 +376,10 @@ const AionrsSendBox: React.FC<{
         }
       } catch (error) {
         const errorMessage =
-          getConversationRuntimeWorkspaceErrorMessage(error, t) ||
-          (error instanceof Error ? error.message : String(error));
+          error instanceof BackendHttpError && (error.code || error.backendMessage) === 'TASK_INPUT_TOO_LARGE'
+            ? t('guid.initialMessage.inputTooLarge')
+            : getConversationRuntimeWorkspaceErrorMessage(error, t) ||
+              (error instanceof Error ? error.message : String(error));
         const busyError = classifyConversationBusyError(error);
         if (busyError) {
           markSendFailed({
@@ -451,6 +454,18 @@ const AionrsSendBox: React.FC<{
     }
   }, [conversation_id, forgetInitialMessage, initialMessage, pendingKey, workTask]);
 
+  const updateInitialEdit = (value: string | null) => {
+    if (!pendingKey || initialSends.has(pendingKey)) return;
+    const saved = readDraft<InitialMessage>(pendingKey);
+    if (!saved || (saved.phase !== 'rejected' && saved.phase !== 'editing')) return;
+    writeDraft<InitialMessage>(pendingKey, {
+      ...saved,
+      phase: value === null ? 'rejected' : 'editing',
+      editedInput: value ?? undefined,
+    });
+    redrawInitial((revision) => revision + 1);
+  };
+
   const submitInitialMessage = useCallback(
     async (automatic: boolean) => {
       if (!pendingKey || !current_model?.use_model || modelBlock || modelSwitching || initialSends.has(pendingKey))
@@ -464,20 +479,30 @@ const AionrsSendBox: React.FC<{
         forgetInitialMessage(pendingKey, saved.executionId);
         return;
       }
+      const { editedInput, ...original } = saved;
+      const input = saved.phase === 'editing' ? (editedInput ?? saved.input) : saved.input;
+      if (!input.trim()) return;
+      if (saved.phase === 'editing' && enterpriseTaskInputTooLarge({ content: input, files: saved.files })) {
+        Message.error(t('guid.initialMessage.inputTooLarge'));
+        return;
+      }
+      const executionId = input === saved.input ? saved.executionId : crypto.randomUUID();
+      const pending = { ...original, input, executionId };
+
       initialSends.add(pendingKey);
       try {
         // Persist the uncertain state before POST, so reloads only reconcile it.
-        writeDraft<InitialMessage>(pendingKey, { ...saved, phase: 'uncertain' });
+        writeDraft<InitialMessage>(pendingKey, { ...pending, phase: 'uncertain' });
         redrawInitial((revision) => revision + 1);
-        await executeCommand(saved, saved.executionId);
-        forgetInitialMessage(pendingKey, saved.executionId);
+        await executeCommand(pending, executionId);
+        forgetInitialMessage(pendingKey, executionId);
       } catch (error) {
-        if (readDraft<InitialMessage>(pendingKey)?.executionId === saved.executionId) {
+        if (readDraft<InitialMessage>(pendingKey)?.executionId === executionId) {
           const rejected =
             saved.phase !== 'uncertain' &&
             error instanceof BackendHttpError &&
             preAdmissionErrors.has(error.code || error.backendMessage);
-          if (rejected) writeDraft<InitialMessage>(pendingKey, { ...saved, phase: 'rejected' });
+          if (rejected) writeDraft<InitialMessage>(pendingKey, { ...pending, phase: 'rejected' });
         }
         if (hosted) void reloadTask();
       } finally {
@@ -495,6 +520,7 @@ const AionrsSendBox: React.FC<{
       modelSwitching,
       pendingKey,
       reloadTask,
+      t,
       workTask,
     ]
   );
@@ -564,6 +590,10 @@ const AionrsSendBox: React.FC<{
 
     const filesToSend = collectChatFileRefs(uploadFile, atPath);
     const sessions = selectedSessions.length > 0 ? selectedSessions : undefined;
+    if (hosted && enterpriseTaskInputTooLarge({ content: message, files: filesToSend, sessions })) {
+      Message.error(t('guid.initialMessage.inputTooLarge'));
+      return false;
+    }
     clearFiles();
     setSelectedSessions([]);
     emitter.emit('aionrs.selected.file.clear');
@@ -917,12 +947,21 @@ const AionrsSendBox: React.FC<{
                 ? 'guid.initialMessage.sending'
                 : initialMessage.phase === 'ready'
                   ? 'guid.initialMessage.label'
-                  : initialMessage.phase === 'rejected'
-                    ? 'guid.initialMessage.rejected'
-                    : 'guid.initialMessage.uncertain'
+                  : initialMessage.phase === 'uncertain'
+                    ? 'guid.initialMessage.uncertain'
+                    : 'guid.initialMessage.rejected'
             )}
           </div>
-          <div className='max-h-120px overflow-auto whitespace-pre-wrap break-words'>{initialMessage.input}</div>
+          {initialMessage.phase === 'editing' ? (
+            <Input.TextArea
+              autoSize={{ minRows: 3, maxRows: 8 }}
+              aria-label={t('guid.initialMessage.label')}
+              value={initialMessage.editedInput ?? initialMessage.input}
+              onChange={updateInitialEdit}
+            />
+          ) : (
+            <div className='max-h-120px overflow-auto whitespace-pre-wrap break-words'>{initialMessage.input}</div>
+          )}
           {initialMessage.files.length > 0 ? (
             <ul className='my-4px ps-20px'>
               {initialMessage.files.map((file, index) => {
@@ -938,15 +977,29 @@ const AionrsSendBox: React.FC<{
                   {t('guid.initialMessage.check')}
                 </Button>
               ) : null}
+              {initialMessage.phase === 'rejected' ? (
+                <Button size='mini' onClick={() => updateInitialEdit(initialMessage.input)}>
+                  {t('common.edit')}
+                </Button>
+              ) : null}
+              {initialMessage.phase === 'editing' ? (
+                <Button size='mini' onClick={() => updateInitialEdit(null)}>
+                  {t('common.cancel')}
+                </Button>
+              ) : null}
               <Button
                 size='mini'
                 type='primary'
                 disabled={
-                  initialSends.has(pendingKey) || !current_model?.use_model || Boolean(modelBlock) || modelSwitching
+                  initialSends.has(pendingKey) ||
+                  !current_model?.use_model ||
+                  Boolean(modelBlock) ||
+                  modelSwitching ||
+                  (initialMessage.phase === 'editing' && !initialMessage.editedInput?.trim())
                 }
                 onClick={() => void submitInitialMessage(false)}
               >
-                {t('common.retry')}
+                {t(initialMessage.phase === 'editing' ? 'common.send' : 'common.retry')}
               </Button>
             </div>
           ) : null}

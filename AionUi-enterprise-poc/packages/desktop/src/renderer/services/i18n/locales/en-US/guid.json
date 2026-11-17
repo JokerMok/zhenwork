@@ -1,6 +1,7 @@
 {
   "discardDraft": "Discard draft",
   "initialMessage": {
+    "inputTooLarge": "The message and attachment references exceed the submission limit. Shorten the message before sending.",
     "label": "Pending message",
     "sending": "Sending first message",
     "rejected": "Message not accepted",

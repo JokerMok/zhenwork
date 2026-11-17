@@ -1133,6 +1133,7 @@ export type I18nKey =
   | 'guid.enabledCount'
   | 'guid.enterpriseCatalog'
   | 'guid.initialMessage.check'
+  | 'guid.initialMessage.inputTooLarge'
   | 'guid.initialMessage.label'
   | 'guid.initialMessage.rejected'
   | 'guid.initialMessage.sending'

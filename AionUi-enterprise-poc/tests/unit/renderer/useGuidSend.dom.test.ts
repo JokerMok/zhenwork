@@ -486,6 +486,26 @@ describe('employee first-message handoff', () => {
     expect(deps.clearSentDraft).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    { name: 'ASCII over the content limit', input: 'a'.repeat(64001) },
+    { name: 'escaped JSON over the request limit', input: '"'.repeat(64000) },
+    { name: 'Chinese UTF-8 over the request limit', input: '中'.repeat(43000) },
+    {
+      name: 'emoji and an attachment reference over the request limit',
+      input: '😀'.repeat(31970),
+      files: [{ kind: 'upload', path: '/uploads/' + 'a'.repeat(120) + '.xlsx' }] as GuidSendDeps['files'],
+    },
+  ])('keeps the new draft intact for $name', async ({ input, files: oversizedFiles }) => {
+    const deps = { ...employeeDeps(), input, ...(oversizedFiles ? { files: oversizedFiles } : {}) };
+    const { result } = renderHook(() => useGuidSend(deps));
+    await act(async () => result.current.sendMessageHandler());
+
+    expect(createConversationInvokeMock).not.toHaveBeenCalled();
+    expect(deps.clearSentDraft).not.toHaveBeenCalled();
+    expect(deps.navigate).not.toHaveBeenCalled();
+    expect(readDraft(key)).toBeUndefined();
+  });
+
   it('keeps the draft when conversation creation returns no usable ID', async () => {
     createConversationInvokeMock.mockResolvedValueOnce({});
     const deps = employeeDeps();

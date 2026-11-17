@@ -16,6 +16,7 @@ import type { IConfirmation } from '@/common/chat/chatLib';
 import type { AcpSlashCommandApiItem } from '@/common/chat/slash/types';
 import { bridge } from '@/common/platform/bridge';
 import { buildListTasksPath } from './teamTaskPath';
+import { enterpriseTaskInputTooLarge } from './enterpriseTaskInput';
 import type { OpenDialogOptions } from 'electron';
 import type {
   ICssTheme,
@@ -106,6 +107,7 @@ import {
   toApiModelOptional,
 } from './apiModelMapper';
 import {
+  BackendHttpError,
   httpDelete,
   httpGet,
   httpPatch,
@@ -368,17 +370,31 @@ export const conversation = {
   activeCount: httpGet<{ count: number }>('/api/conversations/active-count'),
   sendMessage: httpPost<ISendMessageResult, ISendMessageParams>(
     (p) => `/api/conversations/${p.conversation_id}/messages`,
-    (p) => ({
-      content: p.input,
-      request_id: p.execution_id || globalThis.crypto?.randomUUID(),
-      files: p.files,
-      // `@@` session references. Omitting this silently breaks the feature end
-      // to end: the backend's send-boundary resolver would always see an empty
-      // list and neither side would report an error.
-      sessions: p.sessions,
-      loading_id: p.loading_id,
-      inject_skills: p.inject_skills,
-    })
+    (p) => {
+      const body = {
+        content: p.input,
+        request_id: p.execution_id || globalThis.crypto?.randomUUID(),
+        files: p.files,
+        // `@@` session references. Omitting this silently breaks the feature end
+        // to end: the backend's send-boundary resolver would always see an empty
+        // list and neither side would report an error.
+        sessions: p.sessions,
+        loading_id: p.loading_id,
+        inject_skills: p.inject_skills,
+      };
+      if (
+        (globalThis as typeof globalThis & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__ &&
+        enterpriseTaskInputTooLarge(body)
+      ) {
+        throw new BackendHttpError({
+          method: 'POST',
+          path: '/api/conversations/' + p.conversation_id + '/messages',
+          status: 413,
+          body: { error: 'TASK_INPUT_TOO_LARGE' },
+        });
+      }
+      return body;
+    }
   ),
   getSlashCommands: httpGet<AcpSlashCommandApiItem[], { conversation_id: string }>(
     (p) => `/api/conversations/${p.conversation_id}/slash-commands`

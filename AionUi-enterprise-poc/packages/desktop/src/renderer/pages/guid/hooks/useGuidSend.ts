@@ -6,6 +6,7 @@ import { persistDraftKnowledge } from '@/renderer/components/chat/SendBox/WebKno
  */
 
 import { ipcBridge } from '@/common';
+import { enterpriseTaskInputTooLarge } from '@/common/adapter/enterpriseTaskInput';
 import { type ChatFileRef, chatFileRefPath } from '@/common/types/chatFile';
 import { initialMessageKey, writeDraft, type InitialMessage } from '@/renderer/hooks/chat/employeeDraftStorage';
 import { taskRequestId } from '@/renderer/pages/workspace/TaskWork/api';
@@ -189,6 +190,10 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     };
 
     if (assistantBackend === 'aionrs') {
+      if (draftScope && input.trim() && enterpriseTaskInputTooLarge({ content: input, files })) {
+        Message.error(t('guid.initialMessage.inputTooLarge'));
+        return false;
+      }
       if (!current_model) {
         Message.warning(t('conversation.noModelConfigured'));
         return false;

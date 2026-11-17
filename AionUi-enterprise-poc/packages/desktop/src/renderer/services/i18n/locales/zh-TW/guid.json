@@ -1,6 +1,7 @@
 {
   "discardDraft": "捨棄草稿",
   "initialMessage": {
+    "inputTooLarge": "訊息和附件引用超出提交上限，請縮短正文後再傳送。",
     "label": "待傳送訊息",
     "sending": "正在傳送第一則訊息",
     "rejected": "第一則訊息未受理",

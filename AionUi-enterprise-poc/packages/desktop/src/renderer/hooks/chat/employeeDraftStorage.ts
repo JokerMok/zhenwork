@@ -22,7 +22,8 @@ export type InitialMessage = {
   input: string;
   files: ChatFileRef[];
   executionId: string;
-  phase: 'ready' | 'rejected' | 'uncertain';
+  phase: 'ready' | 'rejected' | 'uncertain' | 'editing';
+  editedInput?: string;
 };
 
 export function initialMessageKey(scope: string, conversationId: string): string {

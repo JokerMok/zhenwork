@@ -1,6 +1,7 @@
 {
   "discardDraft": "放弃草稿",
   "initialMessage": {
+    "inputTooLarge": "消息和附件引用超出提交上限，请缩短正文后再发送。",
     "label": "待发消息",
     "sending": "正在发送首条消息",
     "rejected": "首条消息未受理",
