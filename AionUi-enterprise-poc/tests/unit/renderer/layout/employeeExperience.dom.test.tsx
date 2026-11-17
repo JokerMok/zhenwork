@@ -159,7 +159,9 @@ test('session result cards preserve older attempt versions and withhold unavaila
     </MemoryRouter>
   );
   expect(screen.getByText('original.xlsx · v1')).toBeTruthy();
-  expect(screen.getByRole('link', { name: /^common\.download · / }).getAttribute('href')).toContain('version=old-version');
+  expect(screen.getByRole('link', { name: /^common\.download · / }).getAttribute('href')).toContain(
+    'version=old-version'
+  );
   expect(screen.getByText('workspace.experience.artifactUnavailable')).toBeTruthy();
   expect(document.querySelector('[href="/should-not-be-rendered"]')).toBeNull();
 });

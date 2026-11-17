@@ -82,8 +82,11 @@ import { verifyCoreLocalGate } from './process/services/enterprise/coreGateProbe
 import { syncEnterpriseModelProvider } from './process/services/enterprise/modelProvider.mjs';
 import { syncEnterpriseResources } from './process/services/enterprise/resourceSync.mjs';
 import { installEnterpriseWorkerRpc } from './process/services/enterprise/workerRpc.mjs';
-import { enterpriseWorkerLocalToken, enterpriseWorkerMcpProxyKey,
-  enterpriseWorkerModelProxyKey } from './process/services/enterprise/workerSecrets';
+import {
+  enterpriseWorkerLocalToken,
+  enterpriseWorkerMcpProxyKey,
+  enterpriseWorkerModelProxyKey,
+} from './process/services/enterprise/workerSecrets';
 import type { AutoUpdateStatus } from './process/services/autoUpdaterService';
 
 if (process.env.AION_ENTERPRISE_ROLE === 'worker') {
@@ -586,7 +589,9 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
   // 初始化自动更新服务（通过环境变量禁用时跳过，例如 E2E / CI 场景）
   const isCiRuntime = process.env.CI === 'true' || process.env.CI === '1' || process.env.GITHUB_ACTIONS === 'true';
   const disableAutoUpdater =
-    process.env.AIONUI_DISABLE_AUTO_UPDATE === '1' || process.env.AIONUI_E2E_TEST === '1' || isCiRuntime ||
+    process.env.AIONUI_DISABLE_AUTO_UPDATE === '1' ||
+    process.env.AIONUI_E2E_TEST === '1' ||
+    isCiRuntime ||
     process.env.AION_ENTERPRISE_ROLE === 'worker';
   if (!disableAutoUpdater) {
     Promise.all([import('./process/services/autoUpdaterService'), import('./process/bridge/updateBridge')])
@@ -776,11 +781,16 @@ const handleAppReady = async (): Promise<void> => {
       let requestHeaders = details.requestHeaders;
       try {
         const url = new URL(details.url);
-        if (url.hostname === '127.0.0.1' && Number(url.port) === backendManager.port &&
-          (url.protocol === 'http:' || url.protocol === 'ws:')) {
+        if (
+          url.hostname === '127.0.0.1' &&
+          Number(url.port) === backendManager.port &&
+          (url.protocol === 'http:' || url.protocol === 'ws:')
+        ) {
           requestHeaders = { ...requestHeaders, 'x-aion-enterprise-local-token': enterpriseWorkerLocalToken() ?? '' };
         }
-      } catch { /* non-URL request */ }
+      } catch {
+        /* non-URL request */
+      }
       callback({ requestHeaders });
     });
   }
@@ -891,7 +901,11 @@ const handleAppReady = async (): Promise<void> => {
             logDir: sysDir.logDir,
           },
           {
-            allowPendingOnHealthTimeout: !(isWebUIMode || isResetPasswordMode || process.env.AION_ENTERPRISE_ROLE === 'worker'),
+            allowPendingOnHealthTimeout: !(
+              isWebUIMode ||
+              isResetPasswordMode ||
+              process.env.AION_ENTERPRISE_ROLE === 'worker'
+            ),
             onHealthTimeout: async (error) => {
               markBackendStartupFailed(error);
               // Hard rule: while the process is still alive, a health timeout is a
@@ -940,10 +954,14 @@ const handleAppReady = async (): Promise<void> => {
         const localToken = enterpriseWorkerLocalToken();
         if (!localToken) throw new Error('Enterprise worker capability unavailable');
         await verifyCoreLocalGate(backendManager.port, localToken);
-        await syncEnterpriseModelProvider(backendManager.port, localToken,
-          { ...process.env, AION_ENTERPRISE_MODEL_PROXY_KEY: enterpriseWorkerModelProxyKey() });
-        await syncEnterpriseResources(backendManager.port, localToken,
-          { ...process.env, AION_ENTERPRISE_MCP_PROXY_KEY: enterpriseWorkerMcpProxyKey() });
+        await syncEnterpriseModelProvider(backendManager.port, localToken, {
+          ...process.env,
+          AION_ENTERPRISE_MODEL_PROXY_KEY: enterpriseWorkerModelProxyKey(),
+        });
+        await syncEnterpriseResources(backendManager.port, localToken, {
+          ...process.env,
+          AION_ENTERPRISE_MCP_PROXY_KEY: enterpriseWorkerMcpProxyKey(),
+        });
         if (process.connected) process.send?.({ type: 'enterprise:core-ready', port: backendManager.port });
       } catch (error) {
         console.error('[Enterprise] Refusing to open an unprotected or unconfigured Core:', error);

@@ -54,8 +54,11 @@ export function createRc2GatewayResume(baseUrl, origin) {
       client,
       brand: () => client.branding(),
       validate: async () => {
-        try { return (await client.me()).userId === String(actor.userId); }
-        catch { return false; }
+        try {
+          return (await client.me()).userId === String(actor.userId);
+        } catch {
+          return false;
+        }
       },
       // This borrowed cookie belongs to the desktop supervisor. Closing the
       // hosted-web session must not log out the desktop app.
@@ -72,13 +75,19 @@ export function createRc2GatewayPasswordChange(baseUrl, origin, edgeToken) {
     try {
       await client.bootstrap();
       const actor = await client.login({ username, password: oldPassword, clientMetadata, edgeToken });
-      if (expectedActor && (String(actor.userId) !== expectedActor.userId || String(actor.serverId) !== expectedActor.serverId))
+      if (
+        expectedActor &&
+        (String(actor.userId) !== expectedActor.userId || String(actor.serverId) !== expectedActor.serverId)
+      )
         throw new Error('Password update identity mismatch');
       const { response, body } = await client.request('/system/user/profile/updatePwd', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPassword, newPassword }),
       });
       if (!response.ok || body?.code !== 200) throw new Error('Password update failed');
-    } finally { await client.logout().catch(() => {}); }
+    } finally {
+      await client.logout().catch(() => {});
+    }
   };
 }

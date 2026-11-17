@@ -1,8 +1,15 @@
 import { lstat, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { acquireEnterpriseDockerSupervisor, createEnterpriseDockerCoreStarter, createEnterpriseModelRuntime,
-  createRc2GatewayLogin, createRc2GatewayResume, createRc2GatewayPasswordChange, createRc2GatewayPublicBrand,
-  EnterpriseWebSessions, startEnterpriseGateway,
+import {
+  acquireEnterpriseDockerSupervisor,
+  createEnterpriseDockerCoreStarter,
+  createEnterpriseModelRuntime,
+  createRc2GatewayLogin,
+  createRc2GatewayResume,
+  createRc2GatewayPasswordChange,
+  createRc2GatewayPublicBrand,
+  EnterpriseWebSessions,
+  startEnterpriseGateway,
 } from '@aionui/web-host';
 
 const required = (name: string): string => {
@@ -36,8 +43,12 @@ export async function startEnterpriseWebFromEnvironment() {
   const profileRoot = required('AION_ENTERPRISE_WEB_PROFILE_ROOT');
   const tokenFile = required('AION_ENTERPRISE_WEB_RC2_SERVICE_TOKEN_FILE');
   const tokenEntry = await lstat(tokenFile);
-  if (!tokenEntry.isFile() || tokenEntry.isSymbolicLink() || (tokenEntry.mode & 0o077) !== 0 ||
-      (process.getuid && tokenEntry.uid !== process.getuid())) {
+  if (
+    !tokenEntry.isFile() ||
+    tokenEntry.isSymbolicLink() ||
+    (tokenEntry.mode & 0o077) !== 0 ||
+    (process.getuid && tokenEntry.uid !== process.getuid())
+  ) {
     throw new Error('RC2 service token file must be private and owned by the web host');
   }
   const serviceToken = (await readFile(tokenFile, 'utf8')).trim();
@@ -47,77 +58,104 @@ export async function startEnterpriseWebFromEnvironment() {
   const gatewayImage = required('AION_ENTERPRISE_WEB_DOCKER_GATEWAY_IMAGE');
   const supervisor = await acquireEnterpriseDockerSupervisor(profileRoot, gatewayImage);
   try {
-  const upstreamProxyPort = process.env.AION_ENTERPRISE_WEB_UPSTREAM_PROXY_PORT
-    ? Number(process.env.AION_ENTERPRISE_WEB_UPSTREAM_PROXY_PORT) : undefined;
-  let runtime: ReturnType<typeof createEnterpriseModelRuntime> | undefined;
-  const appVersion = required('AION_ENTERPRISE_WEB_APP_VERSION');
-  const startCore = createEnterpriseDockerCoreStarter({ profileRoot, supervisor,
-    appVersion,
-    coreImage: required('AION_ENTERPRISE_WEB_DOCKER_CORE_IMAGE'), gatewayImage, upstreamProxyPort,
-    authorizeCronJob: async (actor, jobId) => (runtime ? runtime.authorizeCronJob(actor, jobId) : false),
+    const upstreamProxyPort = process.env.AION_ENTERPRISE_WEB_UPSTREAM_PROXY_PORT
+      ? Number(process.env.AION_ENTERPRISE_WEB_UPSTREAM_PROXY_PORT)
+      : undefined;
+    let runtime: ReturnType<typeof createEnterpriseModelRuntime> | undefined;
+    const appVersion = required('AION_ENTERPRISE_WEB_APP_VERSION');
+    const startCore = createEnterpriseDockerCoreStarter({
+      profileRoot,
+      supervisor,
+      appVersion,
+      coreImage: required('AION_ENTERPRISE_WEB_DOCKER_CORE_IMAGE'),
+      gatewayImage,
+      upstreamProxyPort,
+      authorizeCronJob: async (actor, jobId) => (runtime ? runtime.authorizeCronJob(actor, jobId) : false),
     });
-  runtime = createEnterpriseModelRuntime(createRc2GatewayLogin(rc2Url, publicOrigin, edgeToken), startCore,
-    { profileRoot, publicOrigin, rc2Resume: createRc2GatewayResume(rc2Url, publicOrigin),
+    runtime = createEnterpriseModelRuntime(createRc2GatewayLogin(rc2Url, publicOrigin, edgeToken), startCore, {
+      profileRoot,
+      publicOrigin,
+      rc2Resume: createRc2GatewayResume(rc2Url, publicOrigin),
       background: { rc2Url, serviceToken },
     });
-  const gateway = await startEnterpriseGateway({ staticDir, publicOrigin, port, appVersion, adminUrl: new URL('/admin/', rc2Url).toString(),
-    maxSessions: optionalLimit('AION_ENTERPRISE_WEB_MAX_SESSIONS', 1, 1000),
-    maxCores: optionalLimit('AION_ENTERPRISE_WEB_MAX_CORES', 1, 200),
-    maxStartingCores: optionalLimit('AION_ENTERPRISE_WEB_MAX_STARTING_CORES', 1, 32),
-    maxQueuedCoreStarts: optionalLimit('AION_ENTERPRISE_WEB_MAX_QUEUED_CORE_STARTS', 0, 200),
-    coreStartWaitMs: optionalLimit('AION_ENTERPRISE_WEB_CORE_START_WAIT_MS', 1000, 300_000),
-    coreIdleMs: optionalLimit('AION_ENTERPRISE_WEB_CORE_IDLE_MS', 0, 86_400_000),
-    publicBrand: createRc2GatewayPublicBrand(rc2Url, publicOrigin),
-    changePassword: createRc2GatewayPasswordChange(rc2Url, publicOrigin, edgeToken),
-    login: runtime.login, resume: runtime.resume, startCore: runtime.startCore,
-    webSessions: await EnterpriseWebSessions.open(profileRoot, serviceToken),
-    trustedProxyToken: edgeToken,
-    profileRoot,
+    const gateway = await startEnterpriseGateway({
+      staticDir,
+      publicOrigin,
+      port,
+      appVersion,
+      adminUrl: new URL('/admin/', rc2Url).toString(),
+      maxSessions: optionalLimit('AION_ENTERPRISE_WEB_MAX_SESSIONS', 1, 1000),
+      maxCores: optionalLimit('AION_ENTERPRISE_WEB_MAX_CORES', 1, 200),
+      maxStartingCores: optionalLimit('AION_ENTERPRISE_WEB_MAX_STARTING_CORES', 1, 32),
+      maxQueuedCoreStarts: optionalLimit('AION_ENTERPRISE_WEB_MAX_QUEUED_CORE_STARTS', 0, 200),
+      coreStartWaitMs: optionalLimit('AION_ENTERPRISE_WEB_CORE_START_WAIT_MS', 1000, 300_000),
+      coreIdleMs: optionalLimit('AION_ENTERPRISE_WEB_CORE_IDLE_MS', 0, 86_400_000),
+      publicBrand: createRc2GatewayPublicBrand(rc2Url, publicOrigin),
+      changePassword: createRc2GatewayPasswordChange(rc2Url, publicOrigin, edgeToken),
+      login: runtime.login,
+      resume: runtime.resume,
+      startCore: runtime.startCore,
+      webSessions: await EnterpriseWebSessions.open(profileRoot, serviceToken),
+      trustedProxyToken: edgeToken,
+      profileRoot,
       taskRuntime: runtime,
       controlRequest: runtime.controlRequest,
       taskFeedbackRequest: runtime.taskFeedbackRequest,
-    refreshResources: runtime.refreshResources, resourceStatus: runtime.resourceStatus,
-    syncCronGrant: runtime.syncCronGrant, hasBackgroundJobs: runtime.hasBackgroundJobs,
-    authorizeBackground: runtime.authorizeBackground,
-    backgroundDue: runtime.backgroundDue,
-    reconcileCronJobs: runtime.reconcileCronJobs,
+      refreshResources: runtime.refreshResources,
+      resourceStatus: runtime.resourceStatus,
+      syncCronGrant: runtime.syncCronGrant,
+      hasBackgroundJobs: runtime.hasBackgroundJobs,
+      authorizeBackground: runtime.authorizeBackground,
+      backgroundDue: runtime.backgroundDue,
+      reconcileCronJobs: runtime.reconcileCronJobs,
     });
-  try {
-    for (const actor of await runtime.backgroundActors()) await gateway.startBackgroundCore(actor);
-    await gateway.reconcileAuthorization();
-  } catch (error) {
-    await gateway.stop();
-    throw error;
-  }
-  let stopping = false;
-  let retrying: Promise<void> | null = null;
-  let lastCapacity = '';
-  let lastCapacityLogAt = 0;
-  const retry = setInterval(() => {
-    if (stopping || retrying) return;
-    const capacity = JSON.stringify(gateway.capacity());
-    if (capacity !== lastCapacity || Date.now() - lastCapacityLogAt >= 600_000) {
-      console.info('[Enterprise Web] capacity:', capacity);
-      lastCapacity = capacity;lastCapacityLogAt = Date.now();
+    try {
+      for (const actor of await runtime.backgroundActors()) await gateway.startBackgroundCore(actor);
+      await gateway.reconcileAuthorization();
+    } catch (error) {
+      await gateway.stop();
+      throw error;
     }
-    retrying = (async () => {
-      for (const actor of await runtime.backgroundActors()) {
-        if (stopping) return;
-        await gateway.startBackgroundCore(actor);
+    let stopping = false;
+    let retrying: Promise<void> | null = null;
+    let lastCapacity = '';
+    let lastCapacityLogAt = 0;
+    const retry = setInterval(() => {
+      if (stopping || retrying) return;
+      const capacity = JSON.stringify(gateway.capacity());
+      if (capacity !== lastCapacity || Date.now() - lastCapacityLogAt >= 600_000) {
+        console.info('[Enterprise Web] capacity:', capacity);
+        lastCapacity = capacity;
+        lastCapacityLogAt = Date.now();
       }
-      if (!stopping) await gateway.reconcileAuthorization();
-    })().catch(async (error) => {
-      console.error('[Enterprise Web] background Core recovery deferred:', error);
-      if (!stopping) await gateway.reconcileAuthorization().catch(() => {});
-    }).finally(() => { retrying = null; });
-  }, 60_000);
-  retry.unref();
-  return { ...gateway, stop: async () => {
-    stopping = true;
-    clearInterval(retry);
-    await retrying;
-    try { await gateway.stop(); } finally { await supervisor.close(); }
-  },
+      retrying = (async () => {
+        for (const actor of await runtime.backgroundActors()) {
+          if (stopping) return;
+          await gateway.startBackgroundCore(actor);
+        }
+        if (!stopping) await gateway.reconcileAuthorization();
+      })()
+        .catch(async (error) => {
+          console.error('[Enterprise Web] background Core recovery deferred:', error);
+          if (!stopping) await gateway.reconcileAuthorization().catch(() => {});
+        })
+        .finally(() => {
+          retrying = null;
+        });
+    }, 60_000);
+    retry.unref();
+    return {
+      ...gateway,
+      stop: async () => {
+        stopping = true;
+        clearInterval(retry);
+        await retrying;
+        try {
+          await gateway.stop();
+        } finally {
+          await supervisor.close();
+        }
+      },
     };
   } catch (error) {
     await supervisor.close();
@@ -126,21 +164,28 @@ export async function startEnterpriseWebFromEnvironment() {
 }
 
 export function runEnterpriseWeb(): void {
-  startEnterpriseWebFromEnvironment().then((gateway) => {
-    console.info(`[Enterprise Web] gateway listening on 127.0.0.1:${gateway.port}`);
-    let stopping = false;
-    const stop = () => {
-      if (stopping) return;
-      stopping = true;
-      void gateway.stop().then(() => { process.exitCode = 0; }).catch((error) => {
-        console.error('[Enterprise Web] stop failed:', error);
-        process.exitCode = 1;
-      });
-    };
-    process.once('SIGINT', stop);
-    process.once('SIGTERM', stop);
-  }).catch((error) => {
-    console.error('[Enterprise Web] startup failed:', error);
-    process.exitCode = 1;
-  });
+  startEnterpriseWebFromEnvironment()
+    .then((gateway) => {
+      console.info(`[Enterprise Web] gateway listening on 127.0.0.1:${gateway.port}`);
+      let stopping = false;
+      const stop = () => {
+        if (stopping) return;
+        stopping = true;
+        void gateway
+          .stop()
+          .then(() => {
+            process.exitCode = 0;
+          })
+          .catch((error) => {
+            console.error('[Enterprise Web] stop failed:', error);
+            process.exitCode = 1;
+          });
+      };
+      process.once('SIGINT', stop);
+      process.once('SIGTERM', stop);
+    })
+    .catch((error) => {
+      console.error('[Enterprise Web] startup failed:', error);
+      process.exitCode = 1;
+    });
 }

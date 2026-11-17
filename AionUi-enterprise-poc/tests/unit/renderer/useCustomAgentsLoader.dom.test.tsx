@@ -83,7 +83,6 @@ test('an empty authorized catalog reports missing capability without suggesting 
   hook.unmount();
 });
 
-
 test('the employee chooser includes enterprise assistants and excludes underlying runtime presets', async () => {
   vi.stubGlobal('fetch', ready());
   const managed = { id: 'rc2-12345678-1234-1234-1234-123456789012' };

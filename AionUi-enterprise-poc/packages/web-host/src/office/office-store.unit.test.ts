@@ -40,36 +40,44 @@ test('memories remain actor-isolated and concurrent updates are not lost', async
   const { root } = await fixture();
   const first = await OfficeStore.create(root, actor('17'));
   const second = await OfficeStore.create(root, actor('18'));
-  await Promise.all(Array.from({ length: 20 }, (_, index) => first.remember({
-    scope: 'personal', content: `first-${index}`,
-  })));
+  await Promise.all(
+    Array.from({ length: 20 }, (_, index) =>
+      first.remember({
+        scope: 'personal',
+        content: `first-${index}`,
+      })
+    )
+  );
   await second.remember({ scope: 'personal', content: 'second-only' });
   expect((await first.memories()).map((item) => item.content).sort()).toEqual(
-    Array.from({ length: 20 }, (_, index) => `first-${index}`).sort(),
+    Array.from({ length: 20 }, (_, index) => `first-${index}`).sort()
   );
   expect((await second.memories()).map((item) => item.content)).toEqual(['second-only']);
 });
 
-test.runIf(process.platform === 'linux')('file versions restore exact bytes and preserve the replaced version', async () => {
-  const { root, workspace } = await fixture();
-  const store = await OfficeStore.create(root, actor('19'));
-  await store.upload(workspace, '资料/report.txt', Buffer.from('version one'));
-  await store.upload(workspace, '资料/report.txt', Buffer.from('version two'), true);
+test.runIf(process.platform === 'linux')(
+  'file versions restore exact bytes and preserve the replaced version',
+  async () => {
+    const { root, workspace } = await fixture();
+    const store = await OfficeStore.create(root, actor('19'));
+    await store.upload(workspace, '资料/report.txt', Buffer.from('version one'));
+    await store.upload(workspace, '资料/report.txt', Buffer.from('version two'), true);
 
-  const listed = await store.files(workspace);
-  const report = listed.files.find((item) => item.path === '资料/report.txt');
-  const versions = report?.versions as Array<{ id: string; sha256: string }>;
-  const original = versions.find((item) => item.sha256 === sha256('version one'));
-  expect(original).toBeDefined();
+    const listed = await store.files(workspace);
+    const report = listed.files.find((item) => item.path === '资料/report.txt');
+    const versions = report?.versions as Array<{ id: string; sha256: string }>;
+    const original = versions.find((item) => item.sha256 === sha256('version one'));
+    expect(original).toBeDefined();
 
-  await store.restore(workspace, '资料/report.txt', original!.id);
-  expect((await store.download(workspace, '资料/report.txt')).toString()).toBe('version one');
-  const after = await store.files(workspace);
-  const restored = after.files.find((item) => item.path === '资料/report.txt');
-  expect(restored?.versions).toEqual(
-    expect.arrayContaining([expect.objectContaining({ sha256: sha256('version two') })])
-  );
-});
+    await store.restore(workspace, '资料/report.txt', original!.id);
+    expect((await store.download(workspace, '资料/report.txt')).toString()).toBe('version one');
+    const after = await store.files(workspace);
+    const restored = after.files.find((item) => item.path === '资料/report.txt');
+    expect(restored?.versions).toEqual(
+      expect.arrayContaining([expect.objectContaining({ sha256: sha256('version two') })])
+    );
+  }
+);
 
 test.runIf(process.platform === 'linux')('ordinary symlink traversal is rejected for reads and writes', async () => {
   const { root, workspace } = await fixture();
@@ -82,52 +90,78 @@ test.runIf(process.platform === 'linux')('ordinary symlink traversal is rejected
   const store = await OfficeStore.create(root, actor('20'));
 
   await expect(store.download(workspace, '资料/secret-link.txt')).rejects.toThrow('WORKSPACE_DENIED');
-  await expect(store.upload(workspace, '资料/outside-link/escaped.txt', Buffer.from('escaped'))).rejects.toThrow('WORKSPACE_DENIED');
+  await expect(store.upload(workspace, '资料/outside-link/escaped.txt', Buffer.from('escaped'))).rejects.toThrow(
+    'WORKSPACE_DENIED'
+  );
 });
 
-test.runIf(process.platform === 'linux')('a rejected version-budget upload does not leave an unreported file behind', async () => {
-  const { root, workspace } = await fixture();
-  const currentActor = actor('22');
-  const managed = await enterpriseManagedResourcePath(root, currentActor);
-  const directory = path.join(path.dirname(managed), 'office');
-  await mkdir(directory, { recursive: true });
-  await writeFile(path.join(directory, 'index.json'), JSON.stringify({
-    files: { old: [{ id: 'existing', createdAt: new Date().toISOString(), byteSize: 256 * 1024 * 1024, sha256: '0'.repeat(64) }] },
-    memories: [],
-  }));
-  const store = await OfficeStore.create(root, currentActor);
-  await expect(store.upload(workspace, '资料/unreported.txt', Buffer.from('must be atomic'))).rejects.toThrow('VERSION_STORAGE_LIMIT_256MB');
-  await expect(readFile(path.join(workspace, '资料', 'unreported.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
-});
+test.runIf(process.platform === 'linux')(
+  'a rejected version-budget upload does not leave an unreported file behind',
+  async () => {
+    const { root, workspace } = await fixture();
+    const currentActor = actor('22');
+    const managed = await enterpriseManagedResourcePath(root, currentActor);
+    const directory = path.join(path.dirname(managed), 'office');
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      path.join(directory, 'index.json'),
+      JSON.stringify({
+        files: {
+          old: [
+            {
+              id: 'existing',
+              createdAt: new Date().toISOString(),
+              byteSize: 256 * 1024 * 1024,
+              sha256: '0'.repeat(64),
+            },
+          ],
+        },
+        memories: [],
+      })
+    );
+    const store = await OfficeStore.create(root, currentActor);
+    await expect(store.upload(workspace, '资料/unreported.txt', Buffer.from('must be atomic'))).rejects.toThrow(
+      'VERSION_STORAGE_LIMIT_256MB'
+    );
+    await expect(readFile(path.join(workspace, '资料', 'unreported.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+  }
+);
 
-test.runIf(process.platform === 'linux')('overwrite refuses to erase a Core edit made after the version snapshot', async () => {
-  const { root, workspace } = await fixture();
-  const store = await OfficeStore.create(root, actor('24'));
-  const directory = path.join(workspace, '资料');
-  const target = path.join(directory, 'race.txt');
-  await store.upload(workspace, '资料/race.txt', Buffer.from('original'));
+test.runIf(process.platform === 'linux')(
+  'overwrite refuses to erase a Core edit made after the version snapshot',
+  async () => {
+    const { root, workspace } = await fixture();
+    const store = await OfficeStore.create(root, actor('24'));
+    const directory = path.join(workspace, '资料');
+    const target = path.join(directory, 'race.txt');
+    await store.upload(workspace, '资料/race.txt', Buffer.from('original'));
 
-  let changed = false;
-  const concurrentEdit = new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('upload temporary file was not observed')), 5_000);
-    const watcher = watch(directory, (_event, filename) => {
-      if (changed || !String(filename).startsWith('.zhenwork-upload-')) return;
-      changed = true;
-      void writeFile(target, 'concurrent Core edit').then(() => {
-        clearTimeout(timer);watcher.close();resolve();
-      }, reject);
+    let changed = false;
+    const concurrentEdit = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('upload temporary file was not observed')), 5_000);
+      const watcher = watch(directory, (_event, filename) => {
+        if (changed || !String(filename).startsWith('.zhenwork-upload-')) return;
+        changed = true;
+        void writeFile(target, 'concurrent Core edit').then(() => {
+          clearTimeout(timer);
+          watcher.close();
+          resolve();
+        }, reject);
+      });
     });
-  });
-  const upload = store.upload(workspace, '资料/race.txt', Buffer.alloc(48 * 1024 * 1024, 0x78), true);
-  await concurrentEdit;
-  await expect(upload).rejects.toThrow('FILE_CHANGED_RETRY');
-  expect(await readFile(target, 'utf8')).toBe('concurrent Core edit');
-});
+    const upload = store.upload(workspace, '资料/race.txt', Buffer.alloc(48 * 1024 * 1024, 0x78), true);
+    await concurrentEdit;
+    await expect(upload).rejects.toThrow('FILE_CHANGED_RETRY');
+    expect(await readFile(target, 'utf8')).toBe('concurrent Core edit');
+  }
+);
 
 test.runIf(process.platform !== 'linux')('file access fails closed on platforms without descriptor paths', async () => {
   const { root, workspace } = await fixture();
   const store = await OfficeStore.create(root, actor('23'));
-  await expect(store.upload(workspace, '资料/report.txt', Buffer.from('data'))).rejects.toThrow('OFFICE_FILE_STORAGE_REQUIRES_LINUX');
+  await expect(store.upload(workspace, '资料/report.txt', Buffer.from('data'))).rejects.toThrow(
+    'OFFICE_FILE_STORAGE_REQUIRES_LINUX'
+  );
   await expect(store.download(workspace, '资料/report.txt')).rejects.toThrow('OFFICE_FILE_STORAGE_REQUIRES_LINUX');
 });
 
@@ -138,7 +172,9 @@ test('delivery receipts persist by actor and dataset without exposing another em
   await first.rememberDelivery('a'.repeat(64), 'report.docx', 'b'.repeat(64));
   expect(await first.deliveryReceipt('a'.repeat(64), 'report.docx')).toBe('b'.repeat(64));
   expect(await second.deliveryReceipt('a'.repeat(64), 'report.docx')).toBeUndefined();
-  await expect(first.rememberDelivery('not-a-hash', 'report.docx', 'b'.repeat(64))).rejects.toThrow('INVALID_DELIVERY_RECEIPT');
+  await expect(first.rememberDelivery('not-a-hash', 'report.docx', 'b'.repeat(64))).rejects.toThrow(
+    'INVALID_DELIVERY_RECEIPT'
+  );
 });
 
 test.runIf(process.platform === 'linux')('only the bytes of a recorded delivery are listed as generated', async () => {
@@ -148,25 +184,30 @@ test.runIf(process.platform === 'linux')('only the bytes of a recorded delivery 
   await writeFile(path.join(workspace, 'report.json'), original);
   await writeFile(path.join(workspace, 'intermediate.json'), original);
   await store.rememberDelivery('a'.repeat(64), 'report.json', createHash('sha256').update(original).digest('hex'));
-  expect((await store.files(workspace)).files).toEqual(expect.arrayContaining([
-    expect.objectContaining({ path: 'report.json', kind: 'generated' }),
-    expect.objectContaining({ path: 'intermediate.json', kind: 'result' }),
-  ]));
+  expect((await store.files(workspace)).files).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ path: 'report.json', kind: 'generated' }),
+      expect.objectContaining({ path: 'intermediate.json', kind: 'result' }),
+    ])
+  );
   await writeFile(path.join(workspace, 'report.json'), '{"approved":false}');
   expect((await store.files(workspace)).files.find((file) => file.path === 'report.json')?.kind).toBe('result');
 });
 
-test.runIf(process.platform === 'linux')('invalid Office originals remain listed and downloadable without weakening tool validation or path isolation', async () => {
-  const { root, workspace } = await fixture();
-  const store = await OfficeStore.create(root, actor('29'));
-  await writeFile(path.join(workspace, 'broken.xlsx'), 'PK broken original');
-  await expect(store.download(workspace, 'broken.xlsx')).rejects.toThrow('OFFICE_FILE_INCOMPLETE_RETRY');
-  expect((await store.downloadOriginal(workspace, 'broken.xlsx')).toString()).toBe('PK broken original');
-  expect((await store.files(workspace)).files.some(file => file.path === 'broken.xlsx')).toBe(true);
-  await writeFile(path.join(root, 'outside.xlsx'), 'private');
-  await symlink(path.join(root, 'outside.xlsx'), path.join(workspace, 'escape.xlsx'));
-  await expect(store.downloadOriginal(workspace, 'escape.xlsx')).rejects.toThrow('WORKSPACE_DENIED');
-});
+test.runIf(process.platform === 'linux')(
+  'invalid Office originals remain listed and downloadable without weakening tool validation or path isolation',
+  async () => {
+    const { root, workspace } = await fixture();
+    const store = await OfficeStore.create(root, actor('29'));
+    await writeFile(path.join(workspace, 'broken.xlsx'), 'PK broken original');
+    await expect(store.download(workspace, 'broken.xlsx')).rejects.toThrow('OFFICE_FILE_INCOMPLETE_RETRY');
+    expect((await store.downloadOriginal(workspace, 'broken.xlsx')).toString()).toBe('PK broken original');
+    expect((await store.files(workspace)).files.some((file) => file.path === 'broken.xlsx')).toBe(true);
+    await writeFile(path.join(root, 'outside.xlsx'), 'private');
+    await symlink(path.join(root, 'outside.xlsx'), path.join(workspace, 'escape.xlsx'));
+    await expect(store.downloadOriginal(workspace, 'escape.xlsx')).rejects.toThrow('WORKSPACE_DENIED');
+  }
+);
 
 test('task knowledge selection is persistent metadata isolated by actor and conversation', async () => {
   const { root } = await fixture();

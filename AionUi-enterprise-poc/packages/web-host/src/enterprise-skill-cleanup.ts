@@ -49,11 +49,16 @@ export async function removeManagedSkillCache(profile: string, name: string): Pr
   if (process.platform !== 'linux' || !path.isAbsolute(profile) || path.resolve(profile) !== profile)
     throw new Error('MANAGED_SKILL_CLEANUP_REQUIRES_LINUX_PROFILE');
   await new Promise<void>((resolve, reject) => {
-    const child = execFile('/usr/bin/python3', ['-c', MANAGED_SKILL_CLEANUP_SCRIPT],
-      { timeout: 10_000, maxBuffer: 16_384, encoding: 'utf8' }, (error, stdout) => {
-        if (error || stdout.trim() !== 'MANAGED_SKILL_CACHE_REMOVED') reject(new Error('MANAGED_SKILL_REVOCATION_CLEANUP_FAILED'));
+    const child = execFile(
+      '/usr/bin/python3',
+      ['-c', MANAGED_SKILL_CLEANUP_SCRIPT],
+      { timeout: 10_000, maxBuffer: 16_384, encoding: 'utf8' },
+      (error, stdout) => {
+        if (error || stdout.trim() !== 'MANAGED_SKILL_CACHE_REMOVED')
+          reject(new Error('MANAGED_SKILL_REVOCATION_CLEANUP_FAILED'));
         else resolve();
-      });
+      }
+    );
     child.stdin?.on('error', () => {});
     child.stdin?.end(JSON.stringify({ profile, name }));
   });

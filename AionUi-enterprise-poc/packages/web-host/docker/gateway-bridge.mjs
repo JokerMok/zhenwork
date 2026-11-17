@@ -9,9 +9,16 @@ const corePort = Number(process.env.AION_CORE_PORT || '3000');
 const secret = process.env.AION_BRIDGE_CONTROL_TOKEN || '';
 const actorIp = process.env.AION_BRIDGE_ACTOR_IP || '';
 const upstreamProxyPort = Number(process.env.AION_BRIDGE_UPSTREAM_PROXY_PORT || '0');
-if (!Number.isInteger(corePort) || corePort < 1 || corePort > 65535 ||
-    !/^[a-f0-9]{64}$/.test(secret) || isIP(actorIp) !== 4 ||
-    !Number.isInteger(upstreamProxyPort) || upstreamProxyPort < 0 || upstreamProxyPort > 65535) {
+if (
+  !Number.isInteger(corePort) ||
+  corePort < 1 ||
+  corePort > 65535 ||
+  !/^[a-f0-9]{64}$/.test(secret) ||
+  isIP(actorIp) !== 4 ||
+  !Number.isInteger(upstreamProxyPort) ||
+  upstreamProxyPort < 0 ||
+  upstreamProxyPort > 65535
+) {
   throw new Error('Invalid bridge configuration');
 }
 const routes = new Map();
@@ -21,8 +28,14 @@ let pendingTunnels = 0;
 function connectTcp(host, port) {
   return new Promise((resolve, reject) => {
     const socket = net.connect({ host, port });
-    const timer = setTimeout(() => { socket.destroy(); reject(new Error('TCP connect timeout')); }, 5000);
-    const onError = (error) => { clearTimeout(timer); reject(error); };
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error('TCP connect timeout'));
+    }, 5000);
+    const onError = (error) => {
+      clearTimeout(timer);
+      reject(error);
+    };
     socket.once('error', onError);
     socket.once('connect', () => {
       clearTimeout(timer);
@@ -35,18 +48,31 @@ function connectTcp(host, port) {
 function readHeader(socket) {
   return new Promise((resolve, reject) => {
     let body = Buffer.alloc(0);
-    const timer = setTimeout(() => { cleanup(); reject(new Error('Proxy response timeout')); }, 5000);
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Proxy response timeout'));
+    }, 5000);
     const cleanup = () => {
       clearTimeout(timer);
       socket.removeListener('data', onData);
       socket.removeListener('error', onError);
       socket.removeListener('close', onClose);
     };
-    const onError = (error) => { cleanup(); reject(error); };
-    const onClose = () => { cleanup(); reject(new Error('Proxy closed connection')); };
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const onClose = () => {
+      cleanup();
+      reject(new Error('Proxy closed connection'));
+    };
     const onData = (chunk) => {
       body = Buffer.concat([body, chunk]);
-      if (body.length > 4096) { cleanup(); reject(new Error('Proxy header too large')); return; }
+      if (body.length > 4096) {
+        cleanup();
+        reject(new Error('Proxy header too large'));
+        return;
+      }
       const end = body.indexOf('\r\n\r\n');
       if (end < 0) return;
       socket.pause();
@@ -67,7 +93,10 @@ async function openPublicTunnel(address) {
     const response = await readHeader(socket);
     if (!/^HTTP\/1\.[01] 200(?: |$)/.test(response.header)) throw new Error('Upstream proxy refused public IP');
     return { socket, extra: response.extra };
-  } catch (error) { socket.destroy(); throw error; }
+  } catch (error) {
+    socket.destroy();
+    throw error;
+  }
 }
 
 function forward(targetHost, targetPort) {
@@ -120,9 +149,11 @@ egress.on('connect', (request, client, head) => {
           dnsTimer = setTimeout(() => reject(new Error('DNS timeout')), 5000);
         }),
       ]);
+    } catch {
+      addresses = [];
+    } finally {
+      clearTimeout(dnsTimer);
     }
-    catch { addresses = []; }
-    finally { clearTimeout(dnsTimer); }
     if (!addresses.length || addresses.some((item) => !publicIpv4(item.address))) {
       pendingTunnels--;
       client.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
@@ -138,9 +169,15 @@ egress.on('connect', (request, client, head) => {
     }
     pendingTunnels--;
     const upstream = tunnel.socket;
-    if (client.destroyed) { upstream.destroy(); return; }
+    if (client.destroyed) {
+      upstream.destroy();
+      return;
+    }
     tunnels.add(client);
-    client.once('close', () => { tunnels.delete(client); upstream.destroy(); });
+    client.once('close', () => {
+      tunnels.delete(client);
+      upstream.destroy();
+    });
     upstream.once('close', () => client.destroy());
     client.on('error', () => upstream.destroy());
     upstream.on('error', () => client.destroy());
@@ -168,8 +205,13 @@ const control = http.createServer(async (req, res) => {
   }
   if (req.method === 'POST' && req.url === '/egress/enable') {
     if (!egressEnabled) {
-      try { await listen(egress, 3128, actorIp); egressEnabled = true; }
-      catch { res.writeHead(409).end(); return; }
+      try {
+        await listen(egress, 3128, actorIp);
+        egressEnabled = true;
+      } catch {
+        res.writeHead(409).end();
+        return;
+      }
     }
     res.writeHead(204).end();
     return;
@@ -181,12 +223,27 @@ const control = http.createServer(async (req, res) => {
   let raw = '';
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 1024) { res.writeHead(413).end(); return; }
+    if (raw.length > 1024) {
+      res.writeHead(413).end();
+      return;
+    }
   }
   let port;
-  try { port = JSON.parse(raw).port; } catch { res.writeHead(400).end(); return; }
-  if (!Number.isInteger(port) || port < 1024 || port > 65535 || port === corePort ||
-      port === 3100 || port === 3101 || port === 3128) {
+  try {
+    port = JSON.parse(raw).port;
+  } catch {
+    res.writeHead(400).end();
+    return;
+  }
+  if (
+    !Number.isInteger(port) ||
+    port < 1024 ||
+    port > 65535 ||
+    port === corePort ||
+    port === 3100 ||
+    port === 3101 ||
+    port === 3128
+  ) {
     res.writeHead(400).end();
     return;
   }
@@ -199,8 +256,14 @@ const control = http.createServer(async (req, res) => {
     res.writeHead(204).end();
     return;
   }
-  if (routes.has(port)) { res.writeHead(204).end(); return; }
-  if (routes.size >= 32) { res.writeHead(429).end(); return; }
+  if (routes.has(port)) {
+    res.writeHead(204).end();
+    return;
+  }
+  if (routes.size >= 32) {
+    res.writeHead(429).end();
+    return;
+  }
   const route = forward('host.docker.internal', port);
   try {
     await listen(route, port, actorIp);

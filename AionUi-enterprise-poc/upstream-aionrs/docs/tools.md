@@ -2,17 +2,17 @@
 
 The agent includes a core local tool suite and agent-level helpers. The LLM automatically selects and invokes them based on the task. MCP servers can add more tools at runtime.
 
-| Tool | Function | Concurrent |
-|------|----------|------------|
-| **Read** | Read file contents (with line numbers) | Yes |
-| **Write** | Write files (auto-creates directories) | No |
-| **Edit** | Precise string replacement | No |
-| **ExecCommand** | Execute shell commands | No |
-| **Grep** | Regex search file contents (via ripgrep) | Yes |
-| **Glob** | Find files by pattern matching | Yes |
-| **ViewImage** | Load a local JPEG, PNG, GIF, or WebP image for model inspection | Yes |
-| **Spawn** | Spawn sub-agents for parallel tasks | No |
-| **ToolSearch** | Load schemas for deferred tools | Yes |
+| Tool            | Function                                                        | Concurrent |
+| --------------- | --------------------------------------------------------------- | ---------- |
+| **Read**        | Read file contents (with line numbers)                          | Yes        |
+| **Write**       | Write files (auto-creates directories)                          | No         |
+| **Edit**        | Precise string replacement                                      | No         |
+| **ExecCommand** | Execute shell commands                                          | No         |
+| **Grep**        | Regex search file contents (via ripgrep)                        | Yes        |
+| **Glob**        | Find files by pattern matching                                  | Yes        |
+| **ViewImage**   | Load a local JPEG, PNG, GIF, or WebP image for model inspection | Yes        |
+| **Spawn**       | Spawn sub-agents for parallel tasks                             | No         |
+| **ToolSearch**  | Load schemas for deferred tools                                 | Yes        |
 
 ---
 

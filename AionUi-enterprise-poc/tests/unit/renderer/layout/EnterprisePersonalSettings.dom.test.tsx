@@ -5,7 +5,9 @@ import EnterprisePersonalSettings from '@/renderer/pages/EnterprisePersonalSetti
 import { enterpriseRequest, WorkspaceApiError } from '@/renderer/pages/workspace/workspaceApi';
 
 const auth = vi.hoisted(() => ({ user: { id: 'employee-1' } }));
-vi.mock('@/renderer/hooks/context/AuthContext', () => ({ useAuth: () => ({ user: auth.user, clearAuthCache: vi.fn() }) }));
+vi.mock('@/renderer/hooks/context/AuthContext', () => ({
+  useAuth: () => ({ user: auth.user, clearAuthCache: vi.fn() }),
+}));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { resolvedLanguage: 'en-US' } }),
 }));
@@ -54,11 +56,11 @@ test('keeps unsaved changes on conflict and uses the newer version and untouched
   });
 });
 
-
 test('restores an unsaved draft for the same account and never shows it to another account', async () => {
   const original = { version: 1, enabled: true, style: '', detail: '', language: '', instructions: '' };
   const request = vi.mocked(enterpriseRequest).mockResolvedValue(original);
-  const input = async () => (await screen.findByRole('textbox', { name: 'settings.enterpriseAccount.instructions' })) as HTMLTextAreaElement;
+  const input = async () =>
+    (await screen.findByRole('textbox', { name: 'settings.enterpriseAccount.instructions' })) as HTMLTextAreaElement;
   const renderSettings = () => render(<EnterprisePersonalSettings section='personalization' />);
   const first = renderSettings();
   fireEvent.change(await input(), { target: { value: 'Employee one draft' } });

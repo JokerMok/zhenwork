@@ -225,7 +225,11 @@ export function buildSpawnArgs(config: SpawnConfig): string[] {
  * backend's `/api/system/info` matches what Electron main persists in
  * ProcessEnv('aionui.dir').
  */
-export function buildSpawnEnv(dirs?: BackendDirConfig, childEnv?: NodeJS.ProcessEnv, inheritEnv = true): NodeJS.ProcessEnv {
+export function buildSpawnEnv(
+  dirs?: BackendDirConfig,
+  childEnv?: NodeJS.ProcessEnv,
+  inheritEnv = true
+): NodeJS.ProcessEnv {
   // PREBUILDS_ONLY protects the packaged Electron process's own node-gyp-build
   // natives (see desktop process/index.ts) and must stay scoped to it. Agent
   // CLIs spawned under aioncore (e.g. cursor-agent) ship natives under
@@ -694,10 +698,12 @@ export class BackendLifecycleManager {
     }
 
     try {
-      const workerToken = this.childEnv?.AION_ENTERPRISE_ROLE === 'worker'
-        ? this.childEnv.AION_ENTERPRISE_LOCAL_TOKEN : undefined;
-      if (this.childEnv?.AION_ENTERPRISE_ROLE === 'worker' &&
-          (typeof workerToken !== 'string' || !/^[a-f0-9]{64}$/i.test(workerToken))) {
+      const workerToken =
+        this.childEnv?.AION_ENTERPRISE_ROLE === 'worker' ? this.childEnv.AION_ENTERPRISE_LOCAL_TOKEN : undefined;
+      if (
+        this.childEnv?.AION_ENTERPRISE_ROLE === 'worker' &&
+        (typeof workerToken !== 'string' || !/^[a-f0-9]{64}$/i.test(workerToken))
+      ) {
         throw new Error('Enterprise Core capability invalid');
       }
       const spawnEnv = buildSpawnEnv(dirs, this.childEnv, this.inheritEnv);
@@ -714,8 +720,9 @@ export class BackendLifecycleManager {
       throw makeStartupError('spawn', 'aioncore process spawn threw before startup', error);
     }
 
-    this.childProcess.stdin?.end(this.childEnv?.AION_ENTERPRISE_ROLE === 'worker'
-      ? `${this.childEnv.AION_ENTERPRISE_LOCAL_TOKEN}\n` : undefined);
+    this.childProcess.stdin?.end(
+      this.childEnv?.AION_ENTERPRISE_ROLE === 'worker' ? `${this.childEnv.AION_ENTERPRISE_LOCAL_TOKEN}\n` : undefined
+    );
 
     backendPid = this.childProcess.pid;
     const pid = backendPid;

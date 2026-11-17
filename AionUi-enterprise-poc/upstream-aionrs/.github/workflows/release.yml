@@ -4,13 +4,13 @@ on:
   workflow_call:
     inputs:
       tag_name:
-        description: "Release tag to build and publish (e.g., v0.2.0)"
+        description: 'Release tag to build and publish (e.g., v0.2.0)'
         required: true
         type: string
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag to build and publish (e.g., v0.2.0)"
+        description: 'Release tag to build and publish (e.g., v0.2.0)'
         required: true
         type: string
 
@@ -20,8 +20,8 @@ permissions:
 env:
   BINARY_NAME: aionrs
   CARGO_TERM_COLOR: always
-  CARGO_HTTP_TIMEOUT: "600"
-  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_TIMEOUT: '600'
+  CARGO_NET_RETRY: '10'
 
 jobs:
   prepare-release:

@@ -4,16 +4,16 @@
 
 ## 当前代码已确认
 
-| 动作 | 契约 | 依据 |
-| --- | --- | --- |
-| 发现客户端 | `GET /ai/bootstrap` 返回 `data.clientId` | `WorkspaceBrandController.bootstrap` |
-| 密码登录 | `POST /auth/login` JSON 含 `clientId`、`grantType=password`、`username`、`password`；若开启验证码另含 `code`、`uuid` | `AuthController.login`、`PasswordAuthStrategy.login` |
-| 写请求来源 | RC2 拦截器要求登录、退出等非 GET 请求的 `Origin` 精确等于运行配置的 `workspace.public-origin` | `WorkspaceWebSecurity.preHandle` |
-| 登录响应 | 服务端真实 Sa-Token 只放在 `__Host-workspace-rc2` Cookie；`HttpOnly; Secure; SameSite=Strict; Path=/`；JSON `access_token="cookie-session"` 是非凭据标记 | `WorkspaceAuthResponse.beforeBodyWrite` |
-| 读取会话 | 当前 RC2 配置从 Cookie 读 Sa-Token，不从 header/body 读；后续请求还须发送 `clientid` 头并与令牌内客户端 ID 一致。桌面主进程回送 Cookie 和 `clientid` 后调用 `GET /ai/me` | 运行配置、`SecurityConfig.addInterceptors` 与 `LoginHelper.CLIENT_KEY`、`WorkspacePrincipal.current` |
-| 稳定身份 | `/ai/me` 的 `data.userId` 是字符串形式的 `sys_user.user_id`，不是用户名或前端会话键 | `WorkspaceConversationController.me` |
-| 停用与撤权 | `WorkspacePrincipal.load` 每次联查 `sys_user.status='0'`、未删除标记和 `ai_principal_state.auth_version`；不匹配抛 401 `SessionRevoked` | `WorkspacePrincipal.load/current` |
-| 退出 | `POST /auth/logout` 调用 `StpUtil.logout()`，响应清 Cookie；样机同步结束当前 worker/Core | `SysLoginService.logout`、`WorkspaceAuthResponse` |
+| 动作       | 契约                                                                                                                                                                     | 依据                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| 发现客户端 | `GET /ai/bootstrap` 返回 `data.clientId`                                                                                                                                 | `WorkspaceBrandController.bootstrap`                                                                 |
+| 密码登录   | `POST /auth/login` JSON 含 `clientId`、`grantType=password`、`username`、`password`；若开启验证码另含 `code`、`uuid`                                                     | `AuthController.login`、`PasswordAuthStrategy.login`                                                 |
+| 写请求来源 | RC2 拦截器要求登录、退出等非 GET 请求的 `Origin` 精确等于运行配置的 `workspace.public-origin`                                                                            | `WorkspaceWebSecurity.preHandle`                                                                     |
+| 登录响应   | 服务端真实 Sa-Token 只放在 `__Host-workspace-rc2` Cookie；`HttpOnly; Secure; SameSite=Strict; Path=/`；JSON `access_token="cookie-session"` 是非凭据标记                 | `WorkspaceAuthResponse.beforeBodyWrite`                                                              |
+| 读取会话   | 当前 RC2 配置从 Cookie 读 Sa-Token，不从 header/body 读；后续请求还须发送 `clientid` 头并与令牌内客户端 ID 一致。桌面主进程回送 Cookie 和 `clientid` 后调用 `GET /ai/me` | 运行配置、`SecurityConfig.addInterceptors` 与 `LoginHelper.CLIENT_KEY`、`WorkspacePrincipal.current` |
+| 稳定身份   | `/ai/me` 的 `data.userId` 是字符串形式的 `sys_user.user_id`，不是用户名或前端会话键                                                                                      | `WorkspaceConversationController.me`                                                                 |
+| 停用与撤权 | `WorkspacePrincipal.load` 每次联查 `sys_user.status='0'`、未删除标记和 `ai_principal_state.auth_version`；不匹配抛 401 `SessionRevoked`                                  | `WorkspacePrincipal.load/current`                                                                    |
+| 退出       | `POST /auth/logout` 调用 `StpUtil.logout()`，响应清 Cookie；样机同步结束当前 worker/Core                                                                                 | `SysLoginService.logout`、`WorkspaceAuthResponse`                                                    |
 
 源码：[登录控制器](../../deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-admin/src/main/java/org/dromara/web/controller/AuthController.java)、[密码策略](../../deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-admin/src/main/java/org/dromara/web/service/impl/PasswordAuthStrategy.java)、[来源拦截器](../../deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceWebSecurity.java)、[Cookie 响应](../../deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspaceAuthResponse.java)、[主体复核](../../deepseek-harness-lab/workbuddy/platform/ruoyi/ruoyi-modules/ruoyi-ai/src/main/java/org/dromara/ai/workspace/WorkspacePrincipal.java)。
 
@@ -42,7 +42,6 @@
 匿名请求实际返回 HTTP 200、JSON `code=401`；模型名不匹配返回 HTTP 400、JSON `code=400`。员工 A 停用后测试构建返回 401，恢复启用后原状态恢复。桌面本地代理必须同时检查 HTTP 状态和 JSON `code`。一次真实上游短请求收到上游 HTTP 200，但旧的通配返回类型使 Spring 报 `HttpMessageNotWritableException`；已改为 `ResponseEntity<StreamingResponseBody>`，定向 Spring MVC 固定 SSE 测试 2/2 通过。该段记录 3586 阶段断点；后续真实短请求见下方。
 
 2026-09-24 后续构建在独立 3587 进程复核：输出上限收紧为 64 token，并向 ARK 请求 `stream_options.include_usage=true`。原始 SSE 字节不改写；RC2 在既有 `ai_security_event` 中按调用 ID 记录 `model.relay.started/finished`，元数据仅含员工关联、模型、完成状态、供应商输入/输出 token 与 `costStatus=UNKNOWN`，不含提示词、Cookie 或密钥。管理员可通过 `/ai/admin/audit?category=model-relay` 查看安全投影。一次真实短请求的结束状态为 `COMPLETED`，供应商返回输入 3452、输出 3 token；因该模型 `cost_config={}` 且无账单，金额未知。首次自动化误读 Shadow DOM；获授权后第二次短请求直接确认 Renderer 显示“你好呀！”，Core `finish`，供应商返回输入 3456、输出 4 token。两次费用金额均未知，详见实施检查记录。
-
 
 ## W06 Skill 与 MCP 增量（独立 3589 测试构建）
 

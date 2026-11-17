@@ -53,7 +53,8 @@ async function coreFixture(
         return;
       }
       if (req.method === 'GET' && req.url === '/api/mcp/servers/office-mcp') {
-        res.end(JSON.stringify({success:true,data:registration}));return;
+        res.end(JSON.stringify({ success: true, data: registration }));
+        return;
       }
       if (req.method === 'POST' && req.url === '/api/mcp/servers/office-mcp/toggle') {
         res.statusCode = toggleStatus;
@@ -84,7 +85,16 @@ async function coreFixture(
       }
       if (req.url === '/api/assistants/rc2-11111111-1111-4111-8111-111111111111') {
         res.end(
-          JSON.stringify({ success: true, data: { defaults: { model: { mode: 'fixed', value: 'enterprise-model' }, skills: { mode: 'fixed', value: ['finance'] }, mcps: { mode: 'fixed', value: ['independent-mcp'] } } } })
+          JSON.stringify({
+            success: true,
+            data: {
+              defaults: {
+                model: { mode: 'fixed', value: 'enterprise-model' },
+                skills: { mode: 'fixed', value: ['finance'] },
+                mcps: { mode: 'fixed', value: ['independent-mcp'] },
+              },
+            },
+          })
         );
         return;
       }
@@ -139,35 +149,30 @@ afterEach(async () => {
 
 test('builds evidence table rows from verified source text and locator', () => {
   const table = buildEvidenceTable(
-    [{
-      topic: '标签',
-      claim: '支持识别',
-      status: '待核查',
-      independentRequirement: '未提供',
-      acceptanceEvidence: '未提供',
-      followUp: '现场核验',
-      ref: 'source-1',
-      quote: '模型误抄的原文',
-    }],
-    [{
-      ref: 'source-1',
-      kind: 'knowledge',
-      quote: '扫码',
-      locator: { documentId: 'doc-1', version: 3, location: '第 4 页' },
-    }]
+    [
+      {
+        topic: '标签',
+        claim: '支持识别',
+        status: '待核查',
+        independentRequirement: '未提供',
+        acceptanceEvidence: '未提供',
+        followUp: '现场核验',
+        ref: 'source-1',
+        quote: '模型误抄的原文',
+      },
+    ],
+    [
+      {
+        ref: 'source-1',
+        kind: 'knowledge',
+        quote: '扫码',
+        locator: { documentId: 'doc-1', version: 3, location: '第 4 页' },
+      },
+    ]
   );
 
   expect(table.name).toBe('证据核查表');
-  expect(table.rows[0]).toEqual([
-    1,
-    '标签',
-    '支持识别',
-    '待核查',
-    '未提供',
-    '未提供',
-    '现场核验',
-    'S1',
-  ]);
+  expect(table.rows[0]).toEqual([1, '标签', '支持识别', '待核查', '未提供', '未提供', '现场核验', 'S1']);
   expect(JSON.stringify(table)).not.toContain('模型误抄的原文');
 });
 
@@ -195,49 +200,73 @@ test('appends bounded custom evidence columns without replacing protected source
   );
 
   expect(table.headers.slice(0, 8)).toEqual([
-    '编号', '主题', '结论/声明', '状态', '独立要求', '验收证据', '后续事项', '来源',
+    '编号',
+    '主题',
+    '结论/声明',
+    '状态',
+    '独立要求',
+    '验收证据',
+    '后续事项',
+    '来源',
   ]);
   expect(table.headers.slice(8)).toEqual(['后续验证责任', '置信度', '已复核', '备注']);
-  expect(table.rows[0].slice(7)).toEqual([
-    'S1',
-    '需用户指定责任人', 0.8, 'true', '',
-  ]);
-  expect(table.rows[1].slice(7)).toEqual([
-    'S2',
-    '', '', '', null,
-  ]);
+  expect(table.rows[0].slice(7)).toEqual(['S1', '需用户指定责任人', 0.8, 'true', '']);
+  expect(table.rows[1].slice(7)).toEqual(['S2', '', '', '', null]);
 });
 
 test('rejects unsupported, excessive and protected custom evidence columns', () => {
   const row = (extra: Record<string, unknown>) => ({
-    topic: '标签', claim: '声明', status: '待核查', independentRequirement: '未提供',
-    acceptanceEvidence: '未提供', followUp: '核验', ref: 'source-1', quoteIndex: 0, ...extra,
+    topic: '标签',
+    claim: '声明',
+    status: '待核查',
+    independentRequirement: '未提供',
+    acceptanceEvidence: '未提供',
+    followUp: '核验',
+    ref: 'source-1',
+    quoteIndex: 0,
+    ...extra,
   });
   const source = [{ ref: 'source-1', kind: 'knowledge' as const, quote: '真实原文', locator: {} }];
 
-  expect(() => buildEvidenceTable([row({ 嵌套: { value: 1 } })] as never, source))
-    .toThrow('OFFICE_EVIDENCE_CUSTOM_VALUE_INVALID');
-  expect(() => buildEvidenceTable([row({ 列表: ['x'] })] as never, source))
-    .toThrow('OFFICE_EVIDENCE_CUSTOM_VALUE_INVALID');
-  expect(() => buildEvidenceTable([row({ [String('列').repeat(121)]: 'x' })] as never, source))
-    .toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_NAME_LIMIT_120');
-  expect(() => buildEvidenceTable([row({ 超长值: 'x'.repeat(8001) })] as never, source))
-    .toThrow('OFFICE_EVIDENCE_CUSTOM_VALUE_LIMIT_8000');
-  expect(() => buildEvidenceTable([row(Object.fromEntries(Array.from({ length: 13 }, (_, index) => [`列${index}`, index])))] as never, source))
-    .toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_LIMIT_12');
-  expect(() => buildEvidenceTable([row({ 原文摘录: '伪造覆盖' })] as never, source))
-    .toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_PROTECTED');
-  expect(() => buildEvidenceTable([row({ constructor: 'unsafe' })] as never, source))
-    .toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_FORBIDDEN');
-  expect(() => buildEvidenceTable([row(JSON.parse('{"__proto__":"unsafe"}') as Record<string, unknown>)] as never, source))
-    .toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_FORBIDDEN');
+  expect(() => buildEvidenceTable([row({ 嵌套: { value: 1 } })] as never, source)).toThrow(
+    'OFFICE_EVIDENCE_CUSTOM_VALUE_INVALID'
+  );
+  expect(() => buildEvidenceTable([row({ 列表: ['x'] })] as never, source)).toThrow(
+    'OFFICE_EVIDENCE_CUSTOM_VALUE_INVALID'
+  );
+  expect(() => buildEvidenceTable([row({ [String('列').repeat(121)]: 'x' })] as never, source)).toThrow(
+    'OFFICE_EVIDENCE_CUSTOM_COLUMN_NAME_LIMIT_120'
+  );
+  expect(() => buildEvidenceTable([row({ 超长值: 'x'.repeat(8001) })] as never, source)).toThrow(
+    'OFFICE_EVIDENCE_CUSTOM_VALUE_LIMIT_8000'
+  );
+  expect(() =>
+    buildEvidenceTable(
+      [row(Object.fromEntries(Array.from({ length: 13 }, (_, index) => [`列${index}`, index])))] as never,
+      source
+    )
+  ).toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_LIMIT_12');
+  expect(() => buildEvidenceTable([row({ 原文摘录: '伪造覆盖' })] as never, source)).toThrow(
+    'OFFICE_EVIDENCE_CUSTOM_COLUMN_PROTECTED'
+  );
+  expect(() => buildEvidenceTable([row({ constructor: 'unsafe' })] as never, source)).toThrow(
+    'OFFICE_EVIDENCE_CUSTOM_COLUMN_FORBIDDEN'
+  );
+  expect(() =>
+    buildEvidenceTable([row(JSON.parse('{"__proto__":"unsafe"}') as Record<string, unknown>)] as never, source)
+  ).toThrow('OFFICE_EVIDENCE_CUSTOM_COLUMN_FORBIDDEN');
 });
 
 test('advertises bounded custom scalar evidence columns in the tool schema', async () => {
   const fixture = await coreFixture();
   const root = await profileRoot();
   fixture.core.workspaceRoot = path.join(root, 'workspace');
-  const office = await startOfficeTools(actor, fixture.core, root, async () => ({ me: async () => ({ userId: actor.userId }) }) as never);
+  const office = await startOfficeTools(
+    actor,
+    fixture.core,
+    root,
+    async () => ({ me: async () => ({ userId: actor.userId }) }) as never
+  );
   const registration = fixture.registered();
   try {
     const response = await fetch(registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
@@ -245,8 +274,11 @@ test('advertises bounded custom scalar evidence columns in the tool schema', asy
       headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
     });
-    const listed = await response.json() as { result: { tools: Array<{ name: string; inputSchema: Record<string, any> }> } };
-    const createSchema = listed.result.tools.find((tool) => tool.name === 'create_office_document')?.inputSchema.properties;
+    const listed = (await response.json()) as {
+      result: { tools: Array<{ name: string; inputSchema: Record<string, any> }> };
+    };
+    const createSchema = listed.result.tools.find((tool) => tool.name === 'create_office_document')?.inputSchema
+      .properties;
     const evidenceRowsSchema = createSchema.evidenceRows.items;
     const exactlyOne = [
       { required: ['quote'], not: { required: ['quoteIndex'] } },
@@ -254,7 +286,10 @@ test('advertises bounded custom scalar evidence columns in the tool schema', asy
     ];
     expect(createSchema.citations.items.oneOf).toEqual(exactlyOne);
     expect(evidenceRowsSchema.oneOf).toEqual(exactlyOne);
-    expect(evidenceRowsSchema.additionalProperties).toMatchObject({ type: ['string', 'number', 'boolean', 'null'], maxLength: 8000 });
+    expect(evidenceRowsSchema.additionalProperties).toMatchObject({
+      type: ['string', 'number', 'boolean', 'null'],
+      maxLength: 8000,
+    });
     expect(evidenceRowsSchema.propertyNames).toMatchObject({ minLength: 1, maxLength: 120 });
   } finally {
     await office.stop();
@@ -267,24 +302,38 @@ test('reports safe row and field details for invalid evidence rows through MCP',
   const root = await profileRoot();
   fixture.core.workspaceRoot = path.join(root, 'workspace');
   await mkdir(fixture.core.workspaceRoot, { recursive: true });
-  const office = await startOfficeTools(actor, fixture.core, root, async () => ({
-    me: async () => ({ userId: actor.userId }),
-  }) as never);
+  const office = await startOfficeTools(
+    actor,
+    fixture.core,
+    root,
+    async () =>
+      ({
+        me: async () => ({ userId: actor.userId }),
+      }) as never
+  );
   const registration = fixture.registered();
-  const call = async (evidenceRows: unknown) => (await (await fetch(
-    registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
-      body: JSON.stringify({
-        jsonrpc: '2.0', id: 1, method: 'tools/call',
-        params: { name: 'create_office_document', arguments: { path: 'report.xlsx', format: 'xlsx', evidenceRows } },
-      }),
-    }
-  )).json()) as { error: { message: string } };
+  const call = async (evidenceRows: unknown) =>
+    (await (
+      await fetch(registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'create_office_document', arguments: { path: 'report.xlsx', format: 'xlsx', evidenceRows } },
+        }),
+      })
+    ).json()) as { error: { message: string } };
   const validRow = {
-    topic: 'Source claim', claim: 'Supplier states support', status: 'To confirm',
-    independentRequirement: 'Missing', acceptanceEvidence: 'Missing', followUp: 'Verify independently',
-    ref: 'source-1', quoteIndex: 0,
+    topic: 'Source claim',
+    claim: 'Supplier states support',
+    status: 'To confirm',
+    independentRequirement: 'Missing',
+    acceptanceEvidence: 'Missing',
+    followUp: 'Verify independently',
+    ref: 'source-1',
+    quoteIndex: 0,
   };
   try {
     const emptyRef = await call([
@@ -316,23 +365,55 @@ test('structured manifests use actor workspace, explicit overwrite and truthful 
   vi.spyOn(OfficeStore.prototype, 'files').mockResolvedValue({ files: [{ path: 'data.json' }] } as never);
   const upload = vi.spyOn(OfficeStore.prototype, 'upload').mockResolvedValue();
   const client = { me: async () => ({ userId: actor.userId }) };
-  const office = await startOfficeTools(actor, fixture.core, root, async () => client as never, 'https://workspace.example');
+  const office = await startOfficeTools(
+    actor,
+    fixture.core,
+    root,
+    async () => client as never,
+    'https://workspace.example'
+  );
   const registration = fixture.registered();
-  const call = async (args: unknown) => (await (await fetch(
-    registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
-      method: 'POST', headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'write_workspace_json', arguments: args } }),
-    })).json()) as { result?: { content: Array<{ text: string }> }; error?: { message: string } };
+  const call = async (args: unknown) =>
+    (await (
+      await fetch(registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'write_workspace_json', arguments: args },
+        }),
+      })
+    ).json()) as { result?: { content: Array<{ text: string }> }; error?: { message: string } };
   try {
-    expect((await call({ path: 'data.json', data: { amount: '12.30' } })).error?.message).toBe('OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME');
-    expect((await call({ path: 'data.xlsx', data: [] })).error?.message).toBe('WORKSPACE_JSON_OBJECT_OR_ARRAY_REQUIRED');
-    expect((await call({ path: 'data.json', data: '{"amount":12}' })).error?.message).toBe('OFFICE_ARGUMENT_INVALID arguments.data: expected object|array');
+    expect((await call({ path: 'data.json', data: { amount: '12.30' } })).error?.message).toBe(
+      'OUTPUT_EXISTS_CONFIRM_OVERWRITE_OR_USE_NEW_NAME'
+    );
+    expect((await call({ path: 'data.xlsx', data: [] })).error?.message).toBe(
+      'WORKSPACE_JSON_OBJECT_OR_ARRAY_REQUIRED'
+    );
+    expect((await call({ path: 'data.json', data: '{"amount":12}' })).error?.message).toBe(
+      'OFFICE_ARGUMENT_INVALID arguments.data: expected object|array'
+    );
     expect(upload).not.toHaveBeenCalled();
-    expect((await call({ path: 'data.json', data: {}, overwrite: 'yes' })).error?.message).toBe('OFFICE_BOOLEAN_ARGUMENT_INVALID');
+    expect((await call({ path: 'data.json', data: {}, overwrite: 'yes' })).error?.message).toBe(
+      'OFFICE_BOOLEAN_ARGUMENT_INVALID'
+    );
     const result = await call({ path: 'data.json', data: { amount: '12.30' }, overwrite: 'True' });
-    expect(JSON.parse(result.result!.content[0].text).downloadUrl).toBe('https://workspace.example/enterprise/files/download?path=data.json');
-    expect(upload).toHaveBeenCalledWith(fixture.core.workspaceRoot, 'data.json', Buffer.from('{\n  "amount": "12.30"\n}\n'), true);
-  } finally { await office.stop(); await fixture.close(); }
+    expect(JSON.parse(result.result!.content[0].text).downloadUrl).toBe(
+      'https://workspace.example/enterprise/files/download?path=data.json'
+    );
+    expect(upload).toHaveBeenCalledWith(
+      fixture.core.workspaceRoot,
+      'data.json',
+      Buffer.from('{\n  "amount": "12.30"\n}\n'),
+      true
+    );
+  } finally {
+    await office.stop();
+    await fixture.close();
+  }
 });
 
 test('pre-conversation uploads resolve inside the current actor tree, never a different actor upload root', async () => {
@@ -343,19 +424,39 @@ test('pre-conversation uploads resolve inside the current actor tree, never a di
   const client = { me: async () => ({ userId: actor.userId }) };
   const office = await startOfficeTools(actor, fixture.core, root, async () => client as never);
   const registration = fixture.registered();
-  const call = async (file: string) => fetch(registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
-    method: 'POST', headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_document', arguments: { path: file } } }),
-  }).then(response => response.json());
+  const call = async (file: string) =>
+    fetch(registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'read_document', arguments: { path: file } },
+      }),
+    }).then((response) => response.json());
   try {
     const uploads = path.join(enterpriseProfilePath(root, actor), 'runtime-temp', 'aionui');
     await call(path.join(uploads, 'general', 'receipt.pdf'));
-    expect(read).toHaveBeenLastCalledWith(uploads, path.join('general', 'receipt.pdf'));
-    const foreign = path.join(enterpriseProfilePath(root, { ...actor, userId: '18' }), 'runtime-temp', 'aionui', 'general', 'receipt.pdf');
+    expect(read).toHaveBeenLastCalledWith(uploads, path.join('general', 'receipt.pdf'), undefined);
+    const foreign = path.join(
+      enterpriseProfilePath(root, { ...actor, userId: '18' }),
+      'runtime-temp',
+      'aionui',
+      'general',
+      'receipt.pdf'
+    );
     await call(foreign);
-    expect(read).toHaveBeenLastCalledWith(fixture.core.workspaceRoot, path.relative(fixture.core.workspaceRoot, foreign));
+    expect(read).toHaveBeenLastCalledWith(
+      fixture.core.workspaceRoot,
+      path.relative(fixture.core.workspaceRoot, foreign),
+      undefined
+    );
     expect(path.relative(fixture.core.workspaceRoot, foreign).startsWith('..')).toBe(true);
-  } finally { await office.stop(); await fixture.close(); }
+  } finally {
+    await office.stop();
+    await fixture.close();
+  }
 });
 
 test('registers and enables the employee MCP, then configures the default office assistant', async () => {
@@ -567,7 +668,13 @@ test('enterprise assistants retain their tools and receive the authorized knowle
       fixture.calls.find(
         (call) => call.method === 'PUT' && call.route.endsWith('rc2-11111111-1111-4111-8111-111111111111')
       )?.body
-    ).toEqual({ defaults: { model: { mode: 'fixed', value: 'enterprise-model' }, skills: { mode: 'fixed', value: ['finance'] }, mcps: { mode: 'fixed', value: ['independent-mcp', 'office-mcp'] } } });
+    ).toEqual({
+      defaults: {
+        model: { mode: 'fixed', value: 'enterprise-model' },
+        skills: { mode: 'fixed', value: ['finance'] },
+        mcps: { mode: 'fixed', value: ['independent-mcp', 'office-mcp'] },
+      },
+    });
   } finally {
     await office.stop();
     await fixture.close();
@@ -582,21 +689,49 @@ test('knowledge search resolves permitted bases and output context without inven
   const baseId = '11111111-1111-4111-8111-111111111111';
   const checked: string[] = [];
   let allowed = true;
-  const preview = vi.fn(async () => ({ response: new Response('{}'), body: { code: 200, data: { sha256: 'source-sha' } } }));
+  const preview = vi.fn(async () => ({
+    response: new Response('{}'),
+    body: { code: 200, data: { sha256: 'source-sha' } },
+  }));
   const client = {
     me: async () => ({ userId: actor.userId }),
-    resources: async (type: string) => type === 'KNOWLEDGE' ? [{ id: baseId, name: 'Company evidence', version: 3 }] : [],
-    authorizedResource: async (id: string) => { checked.push(id); if (!allowed) throw new Error('resource revoked'); },
-    knowledgeSearch: async (id: string, query: string) => ({ citations: [{ baseId: id, documentId: baseId, sha256: 'source-sha', content: 'Original source claim only, no acceptance evidence.', version: 3, query, locationLabel: '第 4 页' }] }),
+    resources: async (type: string) =>
+      type === 'KNOWLEDGE' ? [{ id: baseId, name: 'Company evidence', version: 3 }] : [],
+    authorizedResource: async (id: string) => {
+      checked.push(id);
+      if (!allowed) throw new Error('resource revoked');
+    },
+    knowledgeSearch: async (id: string, query: string) => ({
+      citations: [
+        {
+          baseId: id,
+          documentId: baseId,
+          sha256: 'source-sha',
+          content: 'Original source claim only, no acceptance evidence.',
+          version: 3,
+          query,
+          locationLabel: '第 4 页',
+        },
+      ],
+    }),
     request: preview,
   };
-  const office = await startOfficeTools(actor, fixture.core, root, async () => client as never, 'https://workspace.example');
+  const office = await startOfficeTools(
+    actor,
+    fixture.core,
+    root,
+    async () => client as never,
+    'https://workspace.example'
+  );
   const registration = fixture.registered();
-  const call = async (name: string, args: unknown) => (await (await fetch(
-    registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
-      method: 'POST', headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
-    })).json()) as { result: { content: Array<{text: string}> } };
+  const call = async (name: string, args: unknown) =>
+    (await (
+      await fetch(registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
   try {
     const context = JSON.parse((await call('office_context', {})).result.content[0].text);
     expect(context.workspaceRoot).toBe(fixture.core.workspaceRoot);
@@ -605,9 +740,17 @@ test('knowledge search resolves permitted bases and output context without inven
     // its filename must still prevent silently dropping all citations.
     const invented = await call('verify_source_quotes', { citations: [{ ref: 'uploaded-file.txt', quoteIndex: 0 }] });
     expect(invented).not.toHaveProperty('error');
-    expect(invented.result).toMatchObject({isError:true});
-    expect(JSON.parse(invented.result.content[0].text)).toMatchObject({status:'failed',correctable:true,error:expect.stringContaining('read_document')});
-    const noSources = await call('create_office_document', { path: 'unsourced.docx', format: 'docx', paragraphs: ['Not verified'] }) as unknown as { error: { message: string } };
+    expect(invented.result).toMatchObject({ isError: true });
+    expect(JSON.parse(invented.result.content[0].text)).toMatchObject({
+      status: 'failed',
+      correctable: true,
+      error: expect.stringContaining('read_document'),
+    });
+    const noSources = (await call('create_office_document', {
+      path: 'unsourced.docx',
+      format: 'docx',
+      paragraphs: ['Not verified'],
+    })) as unknown as { error: { message: string } };
     expect(noSources.error.message).toContain('SOURCE_BASED_REPORT_REQUIRES_CITATIONS');
     const found = JSON.parse((await call('search_knowledge', { query: 'requirements' })).result.content[0].text);
     expect(found.searchedBases).toBe(1);
@@ -615,27 +758,59 @@ test('knowledge search resolves permitted bases and output context without inven
     expect(found.results[0].citations[0].sourceUrl).toContain('/#/workspace?section=knowledge&documentId=');
     expect(checked).toEqual([baseId]);
     const ref = found.results[0].citations[0].sourceRef;
-    expect(found.results[0].citations[0].quoteOptions[0]).toEqual({ index: 0, quote: 'Original source claim only, no acceptance evidence.' });
-    const bypass = await call('create_office_document', { path: 'report.docx', format: 'docx', sourceBased: 'True', paragraphs: ['No source should be fabricated.'] }) as unknown as { error: { message: string } };
+    expect(found.results[0].citations[0].quoteOptions[0]).toEqual({
+      index: 0,
+      quote: 'Original source claim only, no acceptance evidence.',
+    });
+    const bypass = (await call('create_office_document', {
+      path: 'report.docx',
+      format: 'docx',
+      sourceBased: 'True',
+      paragraphs: ['No source should be fabricated.'],
+    })) as unknown as { error: { message: string } };
     expect(bypass.error.message).toContain('SOURCE_BASED_REPORT_REQUIRES_CITATIONS_USE_SOURCE_REF_AND_QUOTE_INDEX');
-    const omitted = await call('create_office_document', { path: 'report.docx', format: 'docx', paragraphs: ['No source should be fabricated.'] }) as unknown as { error: { message: string } };
+    const omitted = (await call('create_office_document', {
+      path: 'report.docx',
+      format: 'docx',
+      paragraphs: ['No source should be fabricated.'],
+    })) as unknown as { error: { message: string } };
     expect(omitted.error.message).toBe(bypass.error.message);
-    const indexed = JSON.parse((await call('verify_source_quotes', { citations: [{ ref, quoteIndex: '0' }] })).result.content[0].text);
+    const indexed = JSON.parse(
+      (await call('verify_source_quotes', { citations: [{ ref, quoteIndex: '0' }] })).result.content[0].text
+    );
     expect(indexed.sources[0].quote).toBe('Original source claim only, no acceptance evidence.');
-    const evidence = JSON.parse((await call('verify_source_quotes', { citations: [{ ref, quote: 'Original source claim only' }] })).result.content[0].text);
+    const evidence = JSON.parse(
+      (await call('verify_source_quotes', { citations: [{ ref, quote: 'Original source claim only' }] })).result
+        .content[0].text
+    );
     expect(evidence.sources[0].locator).toMatchObject({ baseId, documentId: baseId, version: 3, location: '第 4 页' });
     expect(preview).toHaveBeenCalledWith(`/ai/knowledge/documents/${baseId}/versions/3`);
     const evidenceRow = {
-      topic: 'Source claim', claim: 'Supplier states support', status: 'To confirm',
-      independentRequirement: 'Missing', acceptanceEvidence: 'Missing', followUp: 'Verify independently',
-      ref, quoteIndex: 0,
+      topic: 'Source claim',
+      claim: 'Supplier states support',
+      status: 'To confirm',
+      independentRequirement: 'Missing',
+      acceptanceEvidence: 'Missing',
+      followUp: 'Verify independently',
+      ref,
+      quoteIndex: 0,
     };
-    const wrongFormat = await call('create_office_document', { path: 'report.docx', format: 'docx', evidenceRows: [evidenceRow] }) as unknown as { error: { message: string } };
+    const wrongFormat = (await call('create_office_document', {
+      path: 'report.docx',
+      format: 'docx',
+      evidenceRows: [evidenceRow],
+    })) as unknown as { error: { message: string } };
     expect(wrongFormat.error.message).toBe('OFFICE_EVIDENCE_ROWS_XLSX_ONLY');
     allowed = false;
-    const denied = await call('verify_source_quotes', { citations: [{ ref, quote: 'Original source claim only' }] }) as unknown as { error: { message: string } };
+    const denied = (await call('verify_source_quotes', {
+      citations: [{ ref, quote: 'Original source claim only' }],
+    })) as unknown as { error: { message: string } };
     expect(denied.error.message).toBe('resource revoked');
-    const deniedCreate = await call('create_office_document', { path: 'report.xlsx', format: 'xlsx', evidenceRows: [evidenceRow] }) as unknown as { error: { message: string } };
+    const deniedCreate = (await call('create_office_document', {
+      path: 'report.xlsx',
+      format: 'xlsx',
+      evidenceRows: [evidenceRow],
+    })) as unknown as { error: { message: string } };
     expect(deniedCreate.error.message).toBe('resource revoked');
     allowed = true;
     await (await OfficeStore.create(root, actor)).selectKnowledge('c1', { baseIds: [], documents: [] });
@@ -648,62 +823,187 @@ test('knowledge search resolves permitted bases and output context without inven
       citations: [{ ref, quoteIndex: 0 }],
     })) as unknown as { error: { message: string } };
     expect(staleCitation.error.message).toBe('SOURCE_OUTSIDE_SELECTED_KNOWLEDGE');
-
-  } finally { await office.stop(); await fixture.close(); }
+  } finally {
+    await office.stop();
+    await fixture.close();
+  }
 });
 
 test('shared enterprise calculators are discoverable and executed under current employee authorization', async () => {
-  const fixture=await coreFixture();const root=await profileRoot();fixture.core.workspaceRoot=path.join(root,'workspace');
-  const resourceId='11111111-1111-4111-8111-111111111111';let allowed=true;
-  const request=vi.fn(async()=>({response:new Response('{}',{status:allowed?200:403}),body:allowed?{code:200,data:{value:'20.75',rounding:'HALF_UP'}}:{code:403}}));
-  const client={me:async()=>({userId:actor.userId}),resources:async(type:string)=>type==='TOOL'?[{id:resourceId,name:'Shared calculator',version:1}]:type==='MCP'?[{id:resourceId,name:'Authorized business source',version:2}]:[],readyMcpConnection:async()=>({id:resourceId}),relayMcp:async()=>new Response(JSON.stringify({result:{tools:[{name:'entSummary',description:'Fixed read query'}]}})),authorizedResource:async()=>({config:{toolType:'CALCULATOR',managedProfile:'external-query',allowedTools:['entSummary'],toolEffects:{entSummary:'READ'}}}),request};
-  const office=await startOfficeTools(actor,fixture.core,root,async()=>client as never,'https://workspace.example');const registration=fixture.registered();
-  const call=async(name:string,args:unknown)=>await(await fetch(registration.transport.url.replace('/mcp','/conversations/c1/mcp'),{method:'POST',headers:{'content-type':'application/json',authorization:registration.transport.headers.Authorization},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json();
-  try{
-    const context=JSON.parse((await call('office_context',{})).result.content[0].text);expect(context.enterpriseCalculators).toEqual([{id:resourceId,name:'Shared calculator',version:1}]);expect(context.enterpriseQueries.sources[0]).toMatchObject({name:'Authorized business source',status:'available',tools:[{name:'entSummary',description:'Fixed read query'}]});
-    expect(await office.trustedConfirmation({description:'MCP rc2-enterprise-zhenwork-office-tools/calculate_enterprise_tool: {}'})).toBe(true);
-    expect(await office.trustedConfirmation({description:'exec wants to use: ExecCommand'})).toBe(false);
-    const args={resourceId,operation:'add',a:'12.35',b:'8.40'};const result=JSON.parse((await call('calculate_enterprise_tool',args)).result.content[0].text);expect(result.value).toBe('20.75');
-    expect(request).toHaveBeenCalledWith(`/ai/tools/${resourceId}/calculate`,expect.objectContaining({method:'POST',body:JSON.stringify({operation:'add',a:'12.35',b:'8.40'})}));
-    allowed=false;expect((await call('calculate_enterprise_tool',args)).error.message).toContain('UNAVAILABLE');
-    const count=request.mock.calls.length;expect((await call('calculate_enterprise_tool',{...args,resourceId:'../../other'})).error.message).toContain('ID_INVALID');expect(request.mock.calls.length).toBe(count);
-  }finally{await office.stop();await fixture.close()}
+  const fixture = await coreFixture();
+  const root = await profileRoot();
+  fixture.core.workspaceRoot = path.join(root, 'workspace');
+  const resourceId = '11111111-1111-4111-8111-111111111111';
+  let allowed = true;
+  const request = vi.fn(async () => ({
+    response: new Response('{}', { status: allowed ? 200 : 403 }),
+    body: allowed ? { code: 200, data: { value: '20.75', rounding: 'HALF_UP' } } : { code: 403 },
+  }));
+  const client = {
+    me: async () => ({ userId: actor.userId }),
+    resources: async (type: string) =>
+      type === 'TOOL'
+        ? [{ id: resourceId, name: 'Shared calculator', version: 1 }]
+        : type === 'MCP'
+          ? [{ id: resourceId, name: 'Authorized business source', version: 2 }]
+          : [],
+    readyMcpConnection: async () => ({ id: resourceId }),
+    relayMcp: async () =>
+      new Response(JSON.stringify({ result: { tools: [{ name: 'entSummary', description: 'Fixed read query' }] } })),
+    authorizedResource: async () => ({
+      config: {
+        toolType: 'CALCULATOR',
+        managedProfile: 'external-query',
+        allowedTools: ['entSummary'],
+        toolEffects: { entSummary: 'READ' },
+      },
+    }),
+    request,
+  };
+  const office = await startOfficeTools(
+    actor,
+    fixture.core,
+    root,
+    async () => client as never,
+    'https://workspace.example'
+  );
+  const registration = fixture.registered();
+  const call = async (name: string, args: unknown) =>
+    await (
+      await fetch(registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+      })
+    ).json();
+  try {
+    const context = JSON.parse((await call('office_context', {})).result.content[0].text);
+    expect(context.enterpriseCalculators).toEqual([{ id: resourceId, name: 'Shared calculator', version: 1 }]);
+    expect(context.enterpriseQueries.sources[0]).toMatchObject({
+      name: 'Authorized business source',
+      status: 'available',
+      tools: [{ name: 'entSummary', description: 'Fixed read query' }],
+    });
+    expect(
+      await office.trustedConfirmation({
+        description: 'MCP rc2-enterprise-zhenwork-office-tools/calculate_enterprise_tool: {}',
+      })
+    ).toBe(true);
+    expect(await office.trustedConfirmation({ description: 'exec wants to use: ExecCommand' })).toBe(false);
+    const args = { resourceId, operation: 'add', a: '12.35', b: '8.40' };
+    const result = JSON.parse((await call('calculate_enterprise_tool', args)).result.content[0].text);
+    expect(result.value).toBe('20.75');
+    expect(request).toHaveBeenCalledWith(
+      `/ai/tools/${resourceId}/calculate`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ operation: 'add', a: '12.35', b: '8.40' }) })
+    );
+    allowed = false;
+    expect((await call('calculate_enterprise_tool', args)).error.message).toContain('UNAVAILABLE');
+    const count = request.mock.calls.length;
+    expect((await call('calculate_enterprise_tool', { ...args, resourceId: '../../other' })).error.message).toContain(
+      'ID_INVALID'
+    );
+    expect(request.mock.calls.length).toBe(count);
+  } finally {
+    await office.stop();
+    await fixture.close();
+  }
 });
 
-
 test('existing office-only conversations can discover and execute authorized business reads, with revocation and writes denied', async () => {
-  const fixture=await coreFixture(), root=await profileRoot();
-  const resourceId='22222222-2222-4222-8222-222222222222';
-  let allowed=true, effect='READ';
-  const relay=vi.fn(async (_id:string, raw:string, _headers:unknown, _signal:unknown, conversation:string) => {
+  const fixture = await coreFixture(),
+    root = await profileRoot();
+  const resourceId = '22222222-2222-4222-8222-222222222222';
+  let allowed = true,
+    effect = 'READ';
+  const relay = vi.fn(async (_id: string, raw: string, _headers: unknown, _signal: unknown, conversation: string) => {
     expect(conversation).toBe('c1');
-    const call=JSON.parse(raw);
-    return new Response(JSON.stringify({result:call.method==='tools/list'
-      ?{tools:[{name:'ledger',description:'Monthly ledger',inputSchema:{type:'object',properties:{page:{type:'integer'}},required:['page']}},{name:'submit',inputSchema:{type:'object'}}]}
-      :{content:[{type:'text',text:JSON.stringify({rows:[],page:call.params.arguments.page})}]}}));
+    const call = JSON.parse(raw);
+    return new Response(
+      JSON.stringify({
+        result:
+          call.method === 'tools/list'
+            ? {
+                tools: [
+                  {
+                    name: 'ledger',
+                    description: 'Monthly ledger',
+                    inputSchema: { type: 'object', properties: { page: { type: 'integer' } }, required: ['page'] },
+                  },
+                  { name: 'submit', inputSchema: { type: 'object' } },
+                ],
+              }
+            : { content: [{ type: 'text', text: JSON.stringify({ rows: [], page: call.params.arguments.page }) }] },
+      })
+    );
   });
-  const connection=vi.fn(async()=>{});
-  const client={me:async()=>({userId:actor.userId}),resources:async(type:string)=>type==='MCP'?[{id:resourceId,name:'Authorized ledger',version:2}]:[],
-    authorizedResource:async(id:string,type:string)=>{
-      if(!allowed || id!==resourceId || type!=='MCP')throw Error('RESOURCE_USE_DENIED');
-      return {version:2,name:'Authorized ledger',config:{managedProfile:'external-query',allowedTools:['ledger','submit'],toolEffects:{ledger:effect,submit:'WRITE'}}};
-    },readyMcpConnection:async()=>({id:'connection-id'}),authorizedMcpConnection:connection,relayMcp:relay};
-  const office=await startOfficeTools(actor,fixture.core,root,async()=>client as never,'https://workspace.example');
-  const registration=fixture.registered();
-  const call=async(name:string,args:unknown)=>await(await fetch(registration.transport.url.replace('/mcp','/conversations/c1/mcp'),{method:'POST',headers:{'content-type':'application/json',authorization:registration.transport.headers.Authorization},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})})).json();
+  const connection = vi.fn(async () => {});
+  const client = {
+    me: async () => ({ userId: actor.userId }),
+    resources: async (type: string) =>
+      type === 'MCP' ? [{ id: resourceId, name: 'Authorized ledger', version: 2 }] : [],
+    authorizedResource: async (id: string, type: string) => {
+      if (!allowed || id !== resourceId || type !== 'MCP') throw Error('RESOURCE_USE_DENIED');
+      return {
+        version: 2,
+        name: 'Authorized ledger',
+        config: {
+          managedProfile: 'external-query',
+          allowedTools: ['ledger', 'submit'],
+          toolEffects: { ledger: effect, submit: 'WRITE' },
+        },
+      };
+    },
+    readyMcpConnection: async () => ({ id: 'connection-id' }),
+    authorizedMcpConnection: connection,
+    relayMcp: relay,
+  };
+  const office = await startOfficeTools(
+    actor,
+    fixture.core,
+    root,
+    async () => client as never,
+    'https://workspace.example'
+  );
+  const registration = fixture.registered();
+  const call = async (name: string, args: unknown) =>
+    await (
+      await fetch(registration.transport.url.replace('/mcp', '/conversations/c1/mcp'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+      })
+    ).json();
   try {
-    const context=JSON.parse((await call('office_context',{})).result.content[0].text);
-    expect(context.enterpriseQueries.sources[0]).toMatchObject({resourceId,callWith:'query_enterprise_data',status:'available',tools:[{name:'ledger',inputSchema:{required:['page']}}]});
+    const context = JSON.parse((await call('office_context', {})).result.content[0].text);
+    expect(context.enterpriseQueries.sources[0]).toMatchObject({
+      resourceId,
+      callWith: 'query_enterprise_data',
+      status: 'available',
+      tools: [{ name: 'ledger', inputSchema: { required: ['page'] } }],
+    });
     expect(context.enterpriseQueries.instruction).toContain('Call query_enterprise_data DIRECTLY');
-    const result=JSON.parse((await call('query_enterprise_data',{resourceId,toolName:'ledger',arguments:{page:3}})).result.content[0].text);
-    expect(JSON.parse(result.result.content[0].text)).toEqual({rows:[],page:3});
-    expect(connection).toHaveBeenCalledWith('connection-id',resourceId);
-    const before=relay.mock.calls.length;
-    expect((await call('query_enterprise_data',{resourceId,toolName:'submit',arguments:{}})).error.message).toBe('BUSINESS_QUERY_READ_ONLY_REQUIRED');
-    effect='WRITE';
-    expect((await call('query_enterprise_data',{resourceId,toolName:'ledger',arguments:{}})).error.message).toBe('BUSINESS_QUERY_READ_ONLY_REQUIRED');
-    allowed=false;
-    expect((await call('query_enterprise_data',{resourceId,toolName:'ledger',arguments:{}})).error.message).toBe('RESOURCE_USE_DENIED');
+    const result = JSON.parse(
+      (await call('query_enterprise_data', { resourceId, toolName: 'ledger', arguments: { page: 3 } })).result
+        .content[0].text
+    );
+    expect(JSON.parse(result.result.content[0].text)).toEqual({ rows: [], page: 3 });
+    expect(connection).toHaveBeenCalledWith('connection-id', resourceId);
+    const before = relay.mock.calls.length;
+    expect((await call('query_enterprise_data', { resourceId, toolName: 'submit', arguments: {} })).error.message).toBe(
+      'BUSINESS_QUERY_READ_ONLY_REQUIRED'
+    );
+    effect = 'WRITE';
+    expect((await call('query_enterprise_data', { resourceId, toolName: 'ledger', arguments: {} })).error.message).toBe(
+      'BUSINESS_QUERY_READ_ONLY_REQUIRED'
+    );
+    allowed = false;
+    expect((await call('query_enterprise_data', { resourceId, toolName: 'ledger', arguments: {} })).error.message).toBe(
+      'RESOURCE_USE_DENIED'
+    );
     expect(relay.mock.calls.length).toBe(before);
-  }finally{await office.stop();await fixture.close();}
+  } finally {
+    await office.stop();
+    await fixture.close();
+  }
 });

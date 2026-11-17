@@ -9,60 +9,128 @@ import { removeManagedSkillCache } from './enterprise-skill-cleanup.js';
 import type { EnterpriseActor, EnterpriseCore } from './enterprise-gateway.js';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 import { enterpriseCoreBase, enterpriseProxyBindHost, enterpriseProxyHost } from './enterprise-core-address.js';
-import { dependencyDeclarations, evaluateCoreDependencies, validateCoreDependencyInventory,
-  type CoreDependencyProbe, type DependencyProbeResult } from './maintenance/core-dependency-probe.js';
+import {
+  dependencyDeclarations,
+  evaluateCoreDependencies,
+  validateCoreDependencyInventory,
+  type CoreDependencyProbe,
+  type DependencyProbeResult,
+} from './maintenance/core-dependency-probe.js';
 
-type Model = { id: string; code: string; name?: string;
-  availableModels?: Array<{ id: string; code: string; name?: string }> };
+type Model = {
+  id: string;
+  code: string;
+  name?: string;
+  availableModels?: Array<{ id: string; code: string; name?: string }>;
+};
 type CatalogItem = { id: string; name: string; description?: string; source?: string; version: number };
-type SkillFile = { path: string; content: string; encoding: 'utf8' | 'base64';
-  executable?: boolean; sha256?: string };
+type SkillFile = { path: string; content: string; encoding: 'utf8' | 'base64'; executable?: boolean; sha256?: string };
 type Resource = { version: number; name?: unknown; config?: Record<string, unknown> & { files?: unknown } };
 type KnowledgeBinding = { baseId: string; version: number; name: string };
-type Assistant = CatalogItem & { instruction: string; modelId: string; modelCode: string;
-  skillIds: string[]; mcpIds: string[]; knowledgeBases: KnowledgeBinding[] };
-type SkillResource = { id: string; name: string; source: string; version: number;
-  files: SkillFile[]; dependencyIds: string[]; packageSha256: string; dependencyProbe?: DependencyProbeResult };
+type Assistant = CatalogItem & {
+  instruction: string;
+  modelId: string;
+  modelCode: string;
+  skillIds: string[];
+  mcpIds: string[];
+  knowledgeBases: KnowledgeBinding[];
+};
+type SkillResource = {
+  id: string;
+  name: string;
+  source: string;
+  version: number;
+  files: SkillFile[];
+  dependencyIds: string[];
+  packageSha256: string;
+  dependencyProbe?: DependencyProbeResult;
+};
 export type RuntimeResourceIssue = { type: 'SKILL' | 'MCP' | 'ASSISTANT'; id: string; code: string };
 
-type McpBinding = {resourceId: string; port: string; key: string; host: string; version: number; connectionId: string};
-export type EnterpriseMcpCache = Map<string, {proxy: EnterpriseMcpProxy; binding: McpBinding}>;
+type McpBinding = {
+  resourceId: string;
+  port: string;
+  key: string;
+  host: string;
+  version: number;
+  connectionId: string;
+};
+export type EnterpriseMcpCache = Map<string, { proxy: EnterpriseMcpProxy; binding: McpBinding }>;
 export async function closeEnterpriseMcpCache(core: EnterpriseCore, cache: EnterpriseMcpCache): Promise<void> {
-  const entries=[...cache.values()];cache.clear();
-  await Promise.allSettled(entries.map(async ({proxy,binding})=>{
-    await core.unregisterProxyPort?.(Number(binding.port)).catch(()=>{});await proxy.stop();
-  }));
+  const entries = [...cache.values()];
+  cache.clear();
+  await Promise.allSettled(
+    entries.map(async ({ proxy, binding }) => {
+      await core.unregisterProxyPort?.(Number(binding.port)).catch(() => {});
+      await proxy.stop();
+    })
+  );
 }
 
-
 /** Only administrator-managed READ queries on this exact registered actor proxy are trusted. */
-export async function trustedEnterpriseRead(core: EnterpriseCore, confirmation: Record<string, unknown>, bindings: McpBinding[],
-  activeClient: () => Promise<Rc2GatewayClient>, fetchImpl: typeof fetch = fetch): Promise<boolean> {
+export async function trustedEnterpriseRead(
+  core: EnterpriseCore,
+  confirmation: Record<string, unknown>,
+  bindings: McpBinding[],
+  activeClient: () => Promise<Rc2GatewayClient>,
+  fetchImpl: typeof fetch = fetch
+): Promise<boolean> {
   if (confirmation.questions || typeof confirmation.description !== 'string') return false;
   const match = /^MCP rc2-enterprise-([0-9a-f-]{36})\/([A-Za-z0-9_.-]{1,100}): /i.exec(confirmation.description);
-  const binding = bindings.find(item => item.resourceId === match?.[1]);
+  const binding = bindings.find((item) => item.resourceId === match?.[1]);
   if (!match || !binding) return false;
   try {
-    const client=await activeClient();const resource=await client.authorizedResource(binding.resourceId,'MCP') as Resource;
-    const config=resource.config||{};const effects=config.toolEffects as Record<string,unknown>|undefined;
-    if(resource.version!==binding.version || config.managedProfile!=='external-query' || effects?.[match[2]]!=='READ' ||
-       !Array.isArray(config.allowedTools) || !config.allowedTools.includes(match[2])) return false;
-    await client.authorizedMcpConnection(binding.connectionId,binding.resourceId);
-    const response=await fetchImpl(enterpriseCoreBase(core)+'/api/mcp/servers',{headers:{'x-aion-enterprise-local-token':core.localToken},signal:AbortSignal.timeout(3000)});
-    const body=await response.json() as {success?:boolean;data?:Array<{name?:string;description?:string;enabled?:boolean;transport?:{url?:string;headers?:Record<string,string>}}>};
-    const server=body.data?.find(item=>item.name==='rc2-enterprise-'+binding.resourceId);
-    return response.ok && body.success===true && server?.enabled===true && server.description==='RC2 authorized enterprise MCP' &&
-      server.transport?.url===`http://${binding.host}:${binding.port}/mcp` && server.transport.headers?.Authorization==='Bearer '+binding.key;
-  } catch { return false; }
+    const client = await activeClient();
+    const resource = (await client.authorizedResource(binding.resourceId, 'MCP')) as Resource;
+    const config = resource.config || {};
+    const effects = config.toolEffects as Record<string, unknown> | undefined;
+    if (
+      resource.version !== binding.version ||
+      config.managedProfile !== 'external-query' ||
+      effects?.[match[2]] !== 'READ' ||
+      !Array.isArray(config.allowedTools) ||
+      !config.allowedTools.includes(match[2])
+    )
+      return false;
+    await client.authorizedMcpConnection(binding.connectionId, binding.resourceId);
+    const response = await fetchImpl(enterpriseCoreBase(core) + '/api/mcp/servers', {
+      headers: { 'x-aion-enterprise-local-token': core.localToken },
+      signal: AbortSignal.timeout(3000),
+    });
+    const body = (await response.json()) as {
+      success?: boolean;
+      data?: Array<{
+        name?: string;
+        description?: string;
+        enabled?: boolean;
+        transport?: { url?: string; headers?: Record<string, string> };
+      }>;
+    };
+    const server = body.data?.find((item) => item.name === 'rc2-enterprise-' + binding.resourceId);
+    return (
+      response.ok &&
+      body.success === true &&
+      server?.enabled === true &&
+      server.description === 'RC2 authorized enterprise MCP' &&
+      server.transport?.url === `http://${binding.host}:${binding.port}/mcp` &&
+      server.transport.headers?.Authorization === 'Bearer ' + binding.key
+    );
+  } catch {
+    return false;
+  }
 }
 
 const MCP_METADATA_METHODS = new Set(['initialize', 'notifications/initialized', 'ping', 'tools/list']);
 
 export type McpRuntimeFailureStage = 'resource' | 'connection' | 'authorization' | 'proxy' | 'route';
 export function mcpRuntimeFailureCode(stage: McpRuntimeFailureStage): string {
-  return { resource: 'RESOURCE_UNAVAILABLE', connection: 'CONNECTION_NOT_READY',
-    authorization: 'CONNECTION_UNAUTHORIZED', proxy: 'PROXY_START_FAILED',
-    route: 'PROXY_ROUTE_FAILED' }[stage];
+  return {
+    resource: 'RESOURCE_UNAVAILABLE',
+    connection: 'CONNECTION_NOT_READY',
+    authorization: 'CONNECTION_UNAUTHORIZED',
+    proxy: 'PROXY_START_FAILED',
+    route: 'PROXY_ROUTE_FAILED',
+  }[stage];
 }
 
 const MAX_SYNC_SKILL_BYTES = 48 * 1024 * 1024;
@@ -79,16 +147,20 @@ export async function enterpriseManagedResourcePath(root: string, actor: Enterpr
       throw error;
     });
     if (!current) {
-      try { await mkdir(dir, { mode: 0o700 }); }
-      catch (error) {
+      try {
+        await mkdir(dir, { mode: 0o700 });
+      } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       }
     }
     const entry = await lstat(dir);
-    if (!entry.isDirectory() || entry.isSymbolicLink() ||
-        (entry.mode & 0o777) !== 0o700 ||
-        (typeof process.getuid === 'function' && entry.uid !== process.getuid()) ||
-        await realpath(dir) !== path.join(canonicalRoot, path.relative(root, dir))) {
+    if (
+      !entry.isDirectory() ||
+      entry.isSymbolicLink() ||
+      (entry.mode & 0o777) !== 0o700 ||
+      (typeof process.getuid === 'function' && entry.uid !== process.getuid()) ||
+      (await realpath(dir)) !== path.join(canonicalRoot, path.relative(root, dir))
+    ) {
       throw new Error('Enterprise control directory invalid');
     }
   }
@@ -110,9 +182,15 @@ function assistantKnowledgeIds(value: unknown): string[] {
 }
 
 function knowledgeBinding(id: string, resource: Resource): KnowledgeBinding {
-  if (!Number.isInteger(resource.version) || typeof resource.name !== 'string' ||
-      !resource.name.trim() || resource.name !== resource.name.trim() || resource.name.length > 200 ||
-      /[\r\n]/.test(resource.name) || resource.name.includes('\0')) {
+  if (
+    !Number.isInteger(resource.version) ||
+    typeof resource.name !== 'string' ||
+    !resource.name.trim() ||
+    resource.name !== resource.name.trim() ||
+    resource.name.length > 200 ||
+    /[\r\n]/.test(resource.name) ||
+    resource.name.includes('\0')
+  ) {
     throw new Error('RC2 assistant knowledge invalid');
   }
   return { baseId: id, version: resource.version, name: resource.name };
@@ -120,13 +198,22 @@ function knowledgeBinding(id: string, resource: Resource): KnowledgeBinding {
 
 function catalog(value: unknown): CatalogItem[] {
   if (!Array.isArray(value)) throw new Error('RC2 assistant catalog invalid');
-  return value.filter((item): item is CatalogItem => item && typeof item === 'object' &&
-    /^[0-9a-f-]{36}$/i.test(item.id) && typeof item.name === 'string' &&
-    Number.isInteger(item.version));
+  return value.filter(
+    (item): item is CatalogItem =>
+      item &&
+      typeof item === 'object' &&
+      /^[0-9a-f-]{36}$/i.test(item.id) &&
+      typeof item.name === 'string' &&
+      Number.isInteger(item.version)
+  );
 }
 
 function optionalCatalog(value: unknown): CatalogItem[] {
-  try { return catalog(value); } catch { return []; }
+  try {
+    return catalog(value);
+  } catch {
+    return [];
+  }
 }
 
 function skillFiles(value: unknown): { files: SkillFile[]; decodedBytes: number } {
@@ -139,36 +226,65 @@ function skillFiles(value: unknown): { files: SkillFile[]; decodedBytes: number 
     const file = item as Partial<SkillFile>;
     const encoding = file.encoding === undefined ? 'utf8' : file.encoding;
     const parts = typeof file.path === 'string' ? file.path.split('/') : [];
-    const rootFiles = new Set(['requirements.txt', 'requirements.lock', 'pyproject.toml', 'uv.lock',
-      'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'README.md', 'CHANGELOG.md',
-      'USAGE.md', 'VERSION', 'LICENSE', 'LICENSE.md']);
+    const rootFiles = new Set([
+      'requirements.txt',
+      'requirements.lock',
+      'pyproject.toml',
+      'uv.lock',
+      'package.json',
+      'package-lock.json',
+      'pnpm-lock.yaml',
+      'yarn.lock',
+      'README.md',
+      'CHANGELOG.md',
+      'USAGE.md',
+      'VERSION',
+      'LICENSE',
+      'LICENSE.md',
+    ]);
     const directories = new Set(['scripts', 'templates', 'references', 'examples', 'assets', 'docs', 'tests']);
-    if (typeof file.path !== 'string' || file.path.length > 400 || file.path.startsWith('/') ||
-        file.path.endsWith('/') || file.path.includes('\\') ||
-        [...file.path].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) ||
-        parts.some((part) => !part || part === '.' || part === '..' || /[<>:"|?*]/.test(part) ||
-          part.endsWith('.') || part.endsWith(' ')) ||
-        !(parts.length === 1 ? rootFiles.has(file.path) : directories.has(parts[0])) || paths.has(file.path) ||
-        typeof file.content !== 'string' || !['utf8', 'base64'].includes(String(encoding)) ||
-        (encoding === 'utf8' && file.content.includes('\0')) ||
-        (parts.length === 1 && encoding !== 'utf8') ||
-        (file.path.startsWith('scripts/') && encoding !== 'utf8') ||
-        (file.executable !== undefined && typeof file.executable !== 'boolean') ||
-        (file.executable === true && !file.path.startsWith('scripts/')) ||
-        (file.sha256 !== undefined && !/^[0-9a-f]{64}$/.test(file.sha256))) {
+    if (
+      typeof file.path !== 'string' ||
+      file.path.length > 400 ||
+      file.path.startsWith('/') ||
+      file.path.endsWith('/') ||
+      file.path.includes('\\') ||
+      [...file.path].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) ||
+      parts.some(
+        (part) =>
+          !part || part === '.' || part === '..' || /[<>:"|?*]/.test(part) || part.endsWith('.') || part.endsWith(' ')
+      ) ||
+      !(parts.length === 1 ? rootFiles.has(file.path) : directories.has(parts[0])) ||
+      paths.has(file.path) ||
+      typeof file.content !== 'string' ||
+      !['utf8', 'base64'].includes(String(encoding)) ||
+      (encoding === 'utf8' && file.content.includes('\0')) ||
+      (parts.length === 1 && encoding !== 'utf8') ||
+      (file.path.startsWith('scripts/') && encoding !== 'utf8') ||
+      (file.executable !== undefined && typeof file.executable !== 'boolean') ||
+      (file.executable === true && !file.path.startsWith('scripts/')) ||
+      (file.sha256 !== undefined && !/^[0-9a-f]{64}$/.test(file.sha256))
+    ) {
       throw new Error('RC2 Skill package invalid');
     }
     const decoded = encoding === 'base64' ? Buffer.from(file.content, 'base64') : Buffer.from(file.content, 'utf8');
-    if (encoding === 'base64' && decoded.toString('base64') !== file.content || decoded.length > 20 * 1024 * 1024 ||
-        file.sha256 !== undefined && createHash('sha256').update(decoded).digest('hex') !== file.sha256) {
+    if (
+      (encoding === 'base64' && decoded.toString('base64') !== file.content) ||
+      decoded.length > 20 * 1024 * 1024 ||
+      (file.sha256 !== undefined && createHash('sha256').update(decoded).digest('hex') !== file.sha256)
+    ) {
       throw new Error('RC2 Skill package invalid');
     }
     paths.add(file.path);
     bytes += decoded.length;
     if (bytes > 30 * 1024 * 1024) throw new Error('RC2 Skill package invalid');
-    return { path: file.path, content: file.content, encoding,
+    return {
+      path: file.path,
+      content: file.content,
+      encoding,
       ...(file.executable === undefined ? {} : { executable: file.executable }),
-      ...(file.sha256 === undefined ? {} : { sha256: file.sha256 }) };
+      ...(file.sha256 === undefined ? {} : { sha256: file.sha256 }),
+    };
   });
   return { files, decodedBytes: bytes };
 }
@@ -177,14 +293,22 @@ export function runtimeSkillPackageSha256(source: string, files: SkillFile[]): s
   const digest = createHash('sha256');
   const update = (filePath: string, bytes: Buffer) => {
     const name = Buffer.from(filePath, 'utf8');
-    const nameLength = Buffer.alloc(4);nameLength.writeUInt32BE(name.length);
-    const contentLength = Buffer.alloc(8);contentLength.writeBigUInt64BE(BigInt(bytes.length));
-    digest.update(nameLength);digest.update(name);digest.update(contentLength);digest.update(bytes);
+    const nameLength = Buffer.alloc(4);
+    nameLength.writeUInt32BE(name.length);
+    const contentLength = Buffer.alloc(8);
+    contentLength.writeBigUInt64BE(BigInt(bytes.length));
+    digest.update(nameLength);
+    digest.update(name);
+    digest.update(contentLength);
+    digest.update(bytes);
   };
   digest.update('SKILL_PACKAGE_V1');
   update('SKILL.md', Buffer.from(source, 'utf8'));
-  for (const file of [...files].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0)) {
-    update(file.path, file.encoding === 'base64' ? Buffer.from(file.content, 'base64') : Buffer.from(file.content, 'utf8'));
+  for (const file of [...files].sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))) {
+    update(
+      file.path,
+      file.encoding === 'base64' ? Buffer.from(file.content, 'base64') : Buffer.from(file.content, 'utf8')
+    );
     digest.update(Buffer.from([file.executable === true ? 1 : 0]));
   }
   return digest.digest('hex');
@@ -192,7 +316,10 @@ export function runtimeSkillPackageSha256(source: string, files: SkillFile[]): s
 
 export function verifyRuntimeSkillPackageSha256(source: string, files: SkillFile[], expected: unknown): string {
   const actual = runtimeSkillPackageSha256(source, files);
-  if (expected !== undefined && (typeof expected !== 'string' || !/^[0-9a-f]{64}$/.test(expected) || expected !== actual)) {
+  if (
+    expected !== undefined &&
+    (typeof expected !== 'string' || !/^[0-9a-f]{64}$/.test(expected) || expected !== actual)
+  ) {
     throw new Error('RC2 Skill package hash mismatch');
   }
   return actual;
@@ -207,7 +334,9 @@ function aliasedSkillSource(source: string, originalName: string, alias: string)
   const lines = source.split(/\r?\n/);
   const end = lines.indexOf('---', 1);
   if (lines[0] !== '---' || end < 2) throw new Error('RC2 Skill frontmatter invalid');
-  const names = lines.slice(1, end).map((line, index) => ({ line, index: index + 1 }))
+  const names = lines
+    .slice(1, end)
+    .map((line, index) => ({ line, index: index + 1 }))
     .filter(({ line }) => /^name\s*:/.test(line));
   if (names.length !== 1) throw new Error('RC2 Skill frontmatter invalid');
   const match = /^name\s*:\s*(?:"([a-z0-9-]+)"|'([a-z0-9-]+)'|([a-z0-9-]+))\s*$/.exec(names[0].line);
@@ -229,46 +358,68 @@ export async function syncEnterpriseWebResources(
   onCatalogChange?: () => void,
   proxyCache?: EnterpriseMcpCache,
   dependencyProbe?: CoreDependencyProbe
-): Promise<{ stop: () => Promise<void>; invalidated: Promise<void>; issues: RuntimeResourceIssue[];
+): Promise<{
+  stop: () => Promise<void>;
+  invalidated: Promise<void>;
+  issues: RuntimeResourceIssue[];
   dependencyProbes: Record<string, DependencyProbeResult>;
-  trustedConfirmation: (c:Record<string,unknown>)=>Promise<boolean> }> {
+  trustedConfirmation: (c: Record<string, unknown>) => Promise<boolean>;
+}> {
   const profile = enterpriseProfilePath(profileRoot, actor);
   const stage = await mkdtemp(path.join(profile, 'rc2-stage-'));
   await mkdir(stage, { recursive: true, mode: 0o700 });
   const mcpProxies: Array<{ proxy: EnterpriseMcpProxy; port: number; resourceId: string }> = [];
-  const closeProxies = async () => Promise.allSettled(mcpProxies.map(async ({ proxy, port, resourceId }) => {
-    if (proxyCache?.get(resourceId)?.proxy === proxy) proxyCache.delete(resourceId);
-    if (core.unregisterProxyPort) await core.unregisterProxyPort(port).catch(() => {});
-    await proxy.stop();
-  }));
+  const closeProxies = async () =>
+    Promise.allSettled(
+      mcpProxies.map(async ({ proxy, port, resourceId }) => {
+        if (proxyCache?.get(resourceId)?.proxy === proxy) proxyCache.delete(resourceId);
+        if (core.unregisterProxyPort) await core.unregisterProxyPort(port).catch(() => {});
+        await proxy.stop();
+      })
+    );
   try {
     const client = await activeClient();
     const assistants: Assistant[] = [];
     const issues: RuntimeResourceIssue[] = [];
     const catalogs = { skills: [] as CatalogItem[], mcps: [] as CatalogItem[] };
-    const fingerprint = (items: CatalogItem[]): string => items.map(item => `${item.id}:${item.version}`).sort().join('|');
+    const fingerprint = (items: CatalogItem[]): string =>
+      items
+        .map((item) => `${item.id}:${item.version}`)
+        .sort()
+        .join('|');
     let catalogSignatures: string[] = [];
-    let modelSignature = (model?.availableModels || (model ? [model] : [])).map(item => item.id).join('|');
+    let modelSignature = (model?.availableModels || (model ? [model] : [])).map((item) => item.id).join('|');
     if (model) {
       const availableModels = model.availableModels?.length ? model.availableModels : [model];
       const [assistantCatalog, skillCatalog, mcpCatalog] = await Promise.allSettled([
-        client.resources('ASSISTANT'), client.resources('SKILL'), client.resources('MCP'),
+        client.resources('ASSISTANT'),
+        client.resources('SKILL'),
+        client.resources('MCP'),
       ]);
-      catalogSignatures = [assistantCatalog, skillCatalog, mcpCatalog].map(result =>
-        fingerprint(result.status === 'fulfilled' ? optionalCatalog(result.value) : []));
+      catalogSignatures = [assistantCatalog, skillCatalog, mcpCatalog].map((result) =>
+        fingerprint(result.status === 'fulfilled' ? optionalCatalog(result.value) : [])
+      );
       if (skillCatalog.status === 'fulfilled') catalogs.skills = optionalCatalog(skillCatalog.value);
       if (mcpCatalog.status === 'fulfilled') catalogs.mcps = optionalCatalog(mcpCatalog.value);
-      for (const item of assistantCatalog.status === 'fulfilled' ? optionalCatalog(assistantCatalog.value).slice(0, 20) : []) {
+      for (const item of assistantCatalog.status === 'fulfilled'
+        ? optionalCatalog(assistantCatalog.value).slice(0, 20)
+        : []) {
         try {
-          const detail = await client.authorizedResource(item.id, 'ASSISTANT') as Resource;
+          const detail = (await client.authorizedResource(item.id, 'ASSISTANT')) as Resource;
           const resourceConfig = detail.config || {};
           const selectedModel = availableModels.find((available) => available.id === resourceConfig.modelId);
-          if (!selectedModel || typeof resourceConfig.instruction !== 'string' ||
-              !resourceConfig.instruction.trim() || resourceConfig.instruction.length > 4000 ||
-              detail.version !== item.version) continue;
+          if (
+            !selectedModel ||
+            typeof resourceConfig.instruction !== 'string' ||
+            !resourceConfig.instruction.trim() ||
+            resourceConfig.instruction.length > 4000 ||
+            detail.version !== item.version
+          )
+            continue;
           let knowledgeIds: string[];
-          try { knowledgeIds = assistantKnowledgeIds(resourceConfig.knowledgeIds); }
-          catch {
+          try {
+            knowledgeIds = assistantKnowledgeIds(resourceConfig.knowledgeIds);
+          } catch {
             issues.push({ type: 'ASSISTANT', id: item.id, code: 'INVALID_CONFIGURATION' });
             continue;
           }
@@ -276,8 +427,9 @@ export async function syncEnterpriseWebResources(
           let knowledgeUnavailable = false;
           for (const knowledgeId of knowledgeIds) {
             try {
-              knowledgeBases.push(knowledgeBinding(knowledgeId,
-                await client.authorizedResource(knowledgeId, 'KNOWLEDGE') as Resource));
+              knowledgeBases.push(
+                knowledgeBinding(knowledgeId, (await client.authorizedResource(knowledgeId, 'KNOWLEDGE')) as Resource)
+              );
             } catch {
               issues.push({ type: 'ASSISTANT', id: item.id, code: 'KNOWLEDGE_UNAVAILABLE' });
               knowledgeUnavailable = true;
@@ -285,23 +437,38 @@ export async function syncEnterpriseWebResources(
             }
           }
           if (knowledgeUnavailable) continue;
-          assistants.push({ ...item, modelId: selectedModel.id, modelCode: selectedModel.code,
+          assistants.push({
+            ...item,
+            modelId: selectedModel.id,
+            modelCode: selectedModel.code,
             instruction: resourceConfig.instruction,
-            skillIds: stringIds(resourceConfig.skillIds), mcpIds: stringIds(resourceConfig.mcpIds),
-            knowledgeBases });
-        } catch { /* A malformed or revoked assistant must not prevent employee Core startup. */ }
+            skillIds: stringIds(resourceConfig.skillIds),
+            mcpIds: stringIds(resourceConfig.mcpIds),
+            knowledgeBases,
+          });
+        } catch {
+          /* A malformed or revoked assistant must not prevent employee Core startup. */
+        }
       }
     }
     const config: Record<string, string> = {
-      AION_ENTERPRISE_ROLE: 'worker', AION_ENTERPRISE_PROFILE_DIR: profile,
+      AION_ENTERPRISE_ROLE: 'worker',
+      AION_ENTERPRISE_PROFILE_DIR: profile,
       AION_ENTERPRISE_MODEL_CODE: model?.code || '',
       AION_ENTERPRISE_MANAGED_PATH: await enterpriseManagedResourcePath(profileRoot, actor),
     };
-    const skillIds = mergedIds(assistants.flatMap((item) => item.skillIds), catalogs.skills);
-    const mcpIds = mergedIds(assistants.flatMap((item) => item.mcpIds), catalogs.mcps);
-    const bundle: { skills: Array<{ id: string; name: string; path: string; version: number }>;
-      mcps: McpBinding[] } =
-      { skills: [], mcps: [] };
+    const skillIds = mergedIds(
+      assistants.flatMap((item) => item.skillIds),
+      catalogs.skills
+    );
+    const mcpIds = mergedIds(
+      assistants.flatMap((item) => item.mcpIds),
+      catalogs.mcps
+    );
+    const bundle: { skills: Array<{ id: string; name: string; path: string; version: number }>; mcps: McpBinding[] } = {
+      skills: [],
+      mcps: [],
+    };
     const skillResources: SkillResource[] = [];
     const pendingSkillIds = [...skillIds];
     const visitedSkillIds = new Set<string>();
@@ -311,43 +478,63 @@ export async function syncEnterpriseWebResources(
       if (visitedSkillIds.has(skillId)) continue;
       visitedSkillIds.add(skillId);
       try {
-        const resource = await client.authorizedResource(skillId, 'SKILL') as Resource;
+        const resource = (await client.authorizedResource(skillId, 'SKILL')) as Resource;
         const manifest = resource.config?.manifest as { name?: unknown; dependencies?: unknown } | undefined;
         const name = manifest?.name;
         const source = resource.config?.source;
-        if (typeof name !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) ||
-            typeof source !== 'string' || Buffer.byteLength(source) > 24_000 ||
-            !Number.isInteger(resource.version)) throw new Error('RC2 Skill invalid');
+        if (
+          typeof name !== 'string' ||
+          !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) ||
+          typeof source !== 'string' ||
+          Buffer.byteLength(source) > 24_000 ||
+          !Number.isInteger(resource.version)
+        )
+          throw new Error('RC2 Skill invalid');
         const dependencyIds = stringIds(manifest?.dependencies);
         const skillPackage = skillFiles(resource.config?.files);
-        const packageSha256 = verifyRuntimeSkillPackageSha256(source, skillPackage.files, resource.config?.packageSha256);
+        const packageSha256 = verifyRuntimeSkillPackageSha256(
+          source,
+          skillPackage.files,
+          resource.config?.packageSha256
+        );
         const packageBytes = Buffer.byteLength(source) + skillPackage.decodedBytes;
         if (decodedSkillBytes + packageBytes > MAX_SYNC_SKILL_BYTES) {
           issues.push({ type: 'SKILL', id: skillId, code: 'PACKAGE_BUDGET_EXCEEDED' });
           continue;
         }
         decodedSkillBytes += packageBytes;
-        skillResources.push({ id: skillId, name, source, version: resource.version,
-          files: skillPackage.files, dependencyIds, packageSha256 });
+        skillResources.push({
+          id: skillId,
+          name,
+          source,
+          version: resource.version,
+          files: skillPackage.files,
+          dependencyIds,
+          packageSha256,
+        });
         for (const dependencyId of dependencyIds.toReversed()) {
           if (!visitedSkillIds.has(dependencyId) && !pendingSkillIds.includes(dependencyId)) {
             pendingSkillIds.unshift(dependencyId);
           }
         }
-      } catch { issues.push({ type: 'SKILL', id: skillId, code: 'INVALID_OR_UNAVAILABLE' }); }
+      } catch {
+        issues.push({ type: 'SKILL', id: skillId, code: 'INVALID_OR_UNAVAILABLE' });
+      }
     }
     let resolvedSkillIds = new Set(skillResources.map((item) => item.id));
     let reduced = true;
     while (reduced) {
       reduced = false;
-      for (const item of skillResources) if (resolvedSkillIds.has(item.id) &&
-          item.dependencyIds.some((id) => !resolvedSkillIds.has(id))) {
-        resolvedSkillIds.delete(item.id);reduced = true;
+      for (const item of skillResources)
+        if (resolvedSkillIds.has(item.id) && item.dependencyIds.some((id) => !resolvedSkillIds.has(id))) {
+          resolvedSkillIds.delete(item.id);
+          reduced = true;
+        }
+    }
+    for (const item of skillResources)
+      if (!resolvedSkillIds.has(item.id)) {
+        issues.push({ type: 'SKILL', id: item.id, code: 'DEPENDENCY_UNAVAILABLE' });
       }
-    }
-    for (const item of skillResources) if (!resolvedSkillIds.has(item.id)) {
-      issues.push({ type: 'SKILL', id: item.id, code: 'DEPENDENCY_UNAVAILABLE' });
-    }
     const dependencyProbes: Record<string, DependencyProbeResult> = {};
     const probeSkills = skillResources.filter((item) => {
       const declared = dependencyDeclarations(item.files);
@@ -356,16 +543,32 @@ export async function syncEnterpriseWebResources(
     let inventory = {};
     if (probeSkills.length && dependencyProbe) {
       try {
-        inventory = validateCoreDependencyInventory(await dependencyProbe({ core: {
-          port: core.port, ...(core.host ? { host: core.host } : {}),
-          ...(core.networkMode ? { networkMode: core.networkMode } : {}),
-        }, skills: probeSkills.map((item) => ({ id: item.id, version: item.version,
-          packageSha256: item.packageSha256, files: item.files })) }));
-      } catch { /* A failed or malformed read-only probe stays explicitly unverified. */ }
+        inventory = validateCoreDependencyInventory(
+          await dependencyProbe({
+            core: {
+              port: core.port,
+              ...(core.host ? { host: core.host } : {}),
+              ...(core.networkMode ? { networkMode: core.networkMode } : {}),
+            },
+            skills: probeSkills.map((item) => ({
+              id: item.id,
+              version: item.version,
+              packageSha256: item.packageSha256,
+              files: item.files,
+            })),
+          })
+        );
+      } catch {
+        /* A failed or malformed read-only probe stays explicitly unverified. */
+      }
     }
     for (const item of probeSkills) {
-      const result: DependencyProbeResult = { resourceId: item.id, resourceVersion: item.version,
-        packageSha256: item.packageSha256, ...evaluateCoreDependencies(item.files, inventory) };
+      const result: DependencyProbeResult = {
+        resourceId: item.id,
+        resourceVersion: item.version,
+        packageSha256: item.packageSha256,
+        ...evaluateCoreDependencies(item.files, inventory),
+      };
       item.dependencyProbe = result;
       dependencyProbes[item.id] = result;
       if (result.state !== 'READY') {
@@ -376,19 +579,22 @@ export async function syncEnterpriseWebResources(
     let dependencyReduced = true;
     while (dependencyReduced) {
       dependencyReduced = false;
-      for (const item of skillResources) if (resolvedSkillIds.has(item.id) &&
-          item.dependencyIds.some((id) => !resolvedSkillIds.has(id))) {
-        resolvedSkillIds.delete(item.id);dependencyReduced = true;
-        issues.push({ type: 'SKILL', id: item.id, code: 'DEPENDENCY_UNAVAILABLE' });
-      }
+      for (const item of skillResources)
+        if (resolvedSkillIds.has(item.id) && item.dependencyIds.some((id) => !resolvedSkillIds.has(id))) {
+          resolvedSkillIds.delete(item.id);
+          dependencyReduced = true;
+          issues.push({ type: 'SKILL', id: item.id, code: 'DEPENDENCY_UNAVAILABLE' });
+        }
     }
     const resolvedSkillResources = skillResources.filter((item) => resolvedSkillIds.has(item.id));
     const counts = new Map<string, number>();
     for (const item of resolvedSkillResources) counts.set(item.name, (counts.get(item.name) || 0) + 1);
     const names = new Set<string>();
     for (const item of resolvedSkillResources) {
-      const name = (counts.get(item.name) || 0) > 1
-        ? `${item.name.slice(0, 20).replace(/-+$/, '')}-${item.id.replaceAll('-', '')}` : item.name;
+      const name =
+        (counts.get(item.name) || 0) > 1
+          ? `${item.name.slice(0, 20).replace(/-+$/, '')}-${item.id.replaceAll('-', '')}`
+          : item.name;
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) || name.length > 64 || names.has(name)) {
         throw new Error('RC2 Skill alias invalid');
       }
@@ -400,62 +606,82 @@ export async function syncEnterpriseWebResources(
       for (const file of item.files) {
         const destination = path.join(skillPath, ...file.path.split('/'));
         await mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
-        await writeFile(destination, file.encoding === 'base64' ? Buffer.from(file.content, 'base64') : file.content,
-          { mode: file.executable ? 0o700 : 0o600 });
+        await writeFile(destination, file.encoding === 'base64' ? Buffer.from(file.content, 'base64') : file.content, {
+          mode: file.executable ? 0o700 : 0o600,
+        });
       }
       bundle.skills.push({ id: item.id, name, path: skillPath, version: item.version });
     }
     // A resource refresh is not a Core lifecycle boundary. Existing native
     // agents retain these URLs, so keep compatible actor proxies stable.
-    if (proxyCache) for (const [id,entry] of proxyCache) if (!mcpIds.includes(id)) {
-      proxyCache.delete(id);await core.unregisterProxyPort?.(Number(entry.binding.port)).catch(()=>{});await entry.proxy.stop();
-    }
+    if (proxyCache)
+      for (const [id, entry] of proxyCache)
+        if (!mcpIds.includes(id)) {
+          proxyCache.delete(id);
+          await core.unregisterProxyPort?.(Number(entry.binding.port)).catch(() => {});
+          await entry.proxy.stop();
+        }
     for (const mcpResourceId of mcpIds) {
       let mcpProxy: EnterpriseMcpProxy | undefined;
       let mcpStage: McpRuntimeFailureStage = 'resource';
       try {
-        const resource = await client.authorizedResource(mcpResourceId, 'MCP') as Resource;
+        const resource = (await client.authorizedResource(mcpResourceId, 'MCP')) as Resource;
         mcpStage = 'connection';
         const connection = await client.readyMcpConnection(mcpResourceId);
         mcpStage = 'authorization';
         await client.authorizedMcpConnection(connection.id, mcpResourceId);
-        const cached=proxyCache?.get(mcpResourceId);
+        const cached = proxyCache?.get(mcpResourceId);
         if (cached && cached.binding.version === resource.version && cached.binding.connectionId === connection.id) {
-          bundle.mcps.push({...cached.binding});continue;
+          bundle.mcps.push({ ...cached.binding });
+          continue;
         }
         if (cached) {
-          proxyCache!.delete(mcpResourceId);await core.unregisterProxyPort?.(Number(cached.binding.port)).catch(()=>{});await cached.proxy.stop();
+          proxyCache!.delete(mcpResourceId);
+          await core.unregisterProxyPort?.(Number(cached.binding.port)).catch(() => {});
+          await cached.proxy.stop();
         }
         mcpStage = 'proxy';
-        mcpProxy = new EnterpriseMcpProxy({ connectionId: connection.id, requireConversationId: true,
-        client: { relayMcp: async (connectionId, raw, headers, signal, conversationId) => {
-          let stage = 'identity';
-          try {
-            // SDK bootstrap may run before a user message has an execution grant.
-            // Metadata still needs current actor/resource/connection authorization;
-            // every actual tool call retains its conversation-bound execution client.
-            const metadata = MCP_METADATA_METHODS.has(JSON.parse(raw).method);
-            const current = metadata ? await activeClient() : await relayClient(conversationId);
-            stage = 'resource';
-            const latest = await current.authorizedResource(mcpResourceId, 'MCP') as Resource;
-            if (latest.version !== resource.version) return new Response(null, { status: 403 });
-            stage = 'connection';
-            await current.authorizedMcpConnection(connectionId, mcpResourceId);
-            stage = 'relay';
-            return current.relayMcp(connectionId, raw, headers, signal, conversationId);
-          } catch {
-            console.warn('[Enterprise MCP]', JSON.stringify({event:'authorization_rejected',stage}));
-            return new Response(null, { status: 403 });
-          }
-        } },
+        mcpProxy = new EnterpriseMcpProxy({
+          connectionId: connection.id,
+          requireConversationId: true,
+          client: {
+            relayMcp: async (connectionId, raw, headers, signal, conversationId) => {
+              let stage = 'identity';
+              try {
+                // SDK bootstrap may run before a user message has an execution grant.
+                // Metadata still needs current actor/resource/connection authorization;
+                // every actual tool call retains its conversation-bound execution client.
+                const metadata = MCP_METADATA_METHODS.has(JSON.parse(raw).method);
+                const current = metadata ? await activeClient() : await relayClient(conversationId);
+                stage = 'resource';
+                const latest = (await current.authorizedResource(mcpResourceId, 'MCP')) as Resource;
+                if (latest.version !== resource.version) return new Response(null, { status: 403 });
+                stage = 'connection';
+                await current.authorizedMcpConnection(connectionId, mcpResourceId);
+                stage = 'relay';
+                return current.relayMcp(connectionId, raw, headers, signal, conversationId);
+              } catch {
+                console.warn('[Enterprise MCP]', JSON.stringify({ event: 'authorization_rejected', stage }));
+                return new Response(null, { status: 403 });
+              }
+            },
+          },
         });
         const host = enterpriseProxyHost(core);
         const proxy = await mcpProxy.start(enterpriseProxyBindHost(core));
         mcpStage = 'route';
         await core.registerProxyPort?.(proxy.port);
         mcpProxies.push({ proxy: mcpProxy, port: proxy.port, resourceId: mcpResourceId });
-        const binding={resourceId: mcpResourceId, port: String(proxy.port), key: proxy.key,host,version:resource.version,connectionId:connection.id};
-        proxyCache?.set(mcpResourceId,{proxy:mcpProxy,binding});bundle.mcps.push(binding);
+        const binding = {
+          resourceId: mcpResourceId,
+          port: String(proxy.port),
+          key: proxy.key,
+          host,
+          version: resource.version,
+          connectionId: connection.id,
+        };
+        proxyCache?.set(mcpResourceId, { proxy: mcpProxy, binding });
+        bundle.mcps.push(binding);
       } catch {
         issues.push({ type: 'MCP', id: mcpResourceId, code: mcpRuntimeFailureCode(mcpStage) });
         if (mcpProxy) await mcpProxy.stop().catch(() => {});
@@ -464,8 +690,8 @@ export async function syncEnterpriseWebResources(
     const availableSkills = new Set(bundle.skills.map((item) => item.id));
     const availableMcps = new Set(bundle.mcps.map((item) => item.resourceId));
     const runnable = assistants.filter((item) => {
-      const ready = item.skillIds.every((id) => availableSkills.has(id)) &&
-        item.mcpIds.every((id) => availableMcps.has(id));
+      const ready =
+        item.skillIds.every((id) => availableSkills.has(id)) && item.mcpIds.every((id) => availableMcps.has(id));
       if (!ready) issues.push({ type: 'ASSISTANT', id: item.id, code: 'DEPENDENCY_UNAVAILABLE' });
       return ready;
     });
@@ -481,7 +707,9 @@ export async function syncEnterpriseWebResources(
       removeRevokedSkill: (name: string) => removeManagedSkillCache(profile, name),
     });
     let invalidate!: () => void;
-    const invalidated = new Promise<void>((resolve) => { invalidate = resolve; });
+    const invalidated = new Promise<void>((resolve) => {
+      invalidate = resolve;
+    });
     let checking = false;
     const check = async (): Promise<void> => {
       if (checking) return;
@@ -493,46 +721,60 @@ export async function syncEnterpriseWebResources(
         // Additions and a changed default apply once the Core is idle. Revocations
         // below still invalidate the running capability immediately.
         if (onCatalogChange && model) {
-          const snapshots = await Promise.allSettled(['ASSISTANT', 'SKILL', 'MCP'].map(type => current.resources(type)));
-          const signatures = snapshots.map((result, index) => result.status === 'fulfilled'
-            ? fingerprint(optionalCatalog(result.value)) : catalogSignatures[index]);
-          const nextModels = currentModels.map(item => item.id).join('|');
-          if (nextModels !== modelSignature || signatures.some((value,index) => value !== catalogSignatures[index])) {
-            modelSignature = nextModels;catalogSignatures = signatures;onCatalogChange();
+          const snapshots = await Promise.allSettled(
+            ['ASSISTANT', 'SKILL', 'MCP'].map((type) => current.resources(type))
+          );
+          const signatures = snapshots.map((result, index) =>
+            result.status === 'fulfilled' ? fingerprint(optionalCatalog(result.value)) : catalogSignatures[index]
+          );
+          const nextModels = currentModels.map((item) => item.id).join('|');
+          if (nextModels !== modelSignature || signatures.some((value, index) => value !== catalogSignatures[index])) {
+            modelSignature = nextModels;
+            catalogSignatures = signatures;
+            onCatalogChange();
           }
         }
         if (model && !availableModelIds.has(model.id)) throw new Error('Model revoked');
         if (runnable.some((item) => !availableModelIds.has(item.modelId))) throw new Error('Assistant model revoked');
         for (const item of runnable) {
-          const latest = await current.authorizedResource(item.id, 'ASSISTANT') as Resource;
+          const latest = (await current.authorizedResource(item.id, 'ASSISTANT')) as Resource;
           if (latest.version !== item.version) throw new Error('Assistant changed');
           for (const knowledge of item.knowledgeBases) {
-            const currentKnowledge = await current.authorizedResource(knowledge.baseId, 'KNOWLEDGE') as Resource;
+            const currentKnowledge = (await current.authorizedResource(knowledge.baseId, 'KNOWLEDGE')) as Resource;
             if (currentKnowledge.version !== knowledge.version) throw new Error('Knowledge changed');
           }
         }
         for (const item of bundle.skills) {
-          const latest = await current.authorizedResource(item.id, 'SKILL') as Resource;
+          const latest = (await current.authorizedResource(item.id, 'SKILL')) as Resource;
           if (latest.version !== item.version) throw new Error('Skill changed');
         }
         for (const item of bundle.mcps) {
-          const latest = await current.authorizedResource(item.resourceId, 'MCP') as Resource;
+          const latest = (await current.authorizedResource(item.resourceId, 'MCP')) as Resource;
           if (latest.version !== item.version) throw new Error('MCP changed');
           await current.authorizedMcpConnection(item.connectionId, item.resourceId);
         }
       } catch {
         clearInterval(monitor);
         invalidate();
-      } finally { checking = false; }
+      } finally {
+        checking = false;
+      }
     };
-    const monitor = setInterval(() => { void check(); }, 5000);
+    const monitor = setInterval(() => {
+      void check();
+    }, 5000);
     monitor.unref();
-    return { invalidated, issues: syncResult.issues, dependencyProbes,
-      trustedConfirmation: c => trustedEnterpriseRead(core,c,bundle.mcps,activeClient), stop: async () => {
-      clearInterval(monitor);
-      if (!proxyCache) await closeProxies();
-      await rm(stage, { recursive: true, force: true });
-    } };
+    return {
+      invalidated,
+      issues: syncResult.issues,
+      dependencyProbes,
+      trustedConfirmation: (c) => trustedEnterpriseRead(core, c, bundle.mcps, activeClient),
+      stop: async () => {
+        clearInterval(monitor);
+        if (!proxyCache) await closeProxies();
+        await rm(stage, { recursive: true, force: true });
+      },
+    };
   } catch (error) {
     await closeProxies();
     await rm(stage, { recursive: true, force: true });

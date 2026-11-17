@@ -45,18 +45,18 @@ Emitted once after initialization completes. Client MUST wait for this before se
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `version` | string | Protocol version (semver) |
-| `session_id` | string? | Session ID (omitted when sessions are disabled in config) |
-| `capabilities.tool_approval` | bool | Whether agent supports pause-and-wait tool approval |
-| `capabilities.image_input` | string | Resolved image-input capability: `supported`, `unsupported`, or `unknown` |
-| `capabilities.thinking` | bool | Whether current provider supports extended thinking |
-| `capabilities.effort` | bool | Whether current provider supports reasoning_effort |
+| Field                        | Type     | Description                                                                         |
+| ---------------------------- | -------- | ----------------------------------------------------------------------------------- |
+| `version`                    | string   | Protocol version (semver)                                                           |
+| `session_id`                 | string?  | Session ID (omitted when sessions are disabled in config)                           |
+| `capabilities.tool_approval` | bool     | Whether agent supports pause-and-wait tool approval                                 |
+| `capabilities.image_input`   | string   | Resolved image-input capability: `supported`, `unsupported`, or `unknown`           |
+| `capabilities.thinking`      | bool     | Whether current provider supports extended thinking                                 |
+| `capabilities.effort`        | bool     | Whether current provider supports reasoning_effort                                  |
 | `capabilities.effort_levels` | string[] | Valid effort values (e.g., `["low", "medium", "high"]`). Empty when effort is false |
-| `capabilities.modes` | string[] | Available approval modes for `set_mode` command |
-| `capabilities.current_mode` | string | Currently active approval mode |
-| `capabilities.mcp` | bool | Whether MCP tools are available |
+| `capabilities.modes`         | string[] | Available approval modes for `set_mode` command                                     |
+| `capabilities.current_mode`  | string   | Currently active approval mode                                                      |
+| `capabilities.mcp`           | bool     | Whether MCP tools are available                                                     |
 
 ### 1.2 `stream_start`
 
@@ -114,26 +114,26 @@ Agent wants to invoke a tool and needs client approval. Agent PAUSES execution u
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `call_id` | string | Unique ID for this tool invocation |
-| `tool.name` | string | Tool name: `Read`, `Write`, `Edit`, `ExecCommand`, `Glob`, `Grep`, `Spawn`, or MCP tool name |
-| `tool.category` | string | `"info"` (read-only), `"edit"` (file mutation), `"exec"` (shell), `"mcp"` (MCP tool) |
-| `tool.args` | object | Tool arguments |
-| `tool.description` | string | Human-readable one-line description |
+| Field              | Type   | Description                                                                                  |
+| ------------------ | ------ | -------------------------------------------------------------------------------------------- |
+| `call_id`          | string | Unique ID for this tool invocation                                                           |
+| `tool.name`        | string | Tool name: `Read`, `Write`, `Edit`, `ExecCommand`, `Glob`, `Grep`, `Spawn`, or MCP tool name |
+| `tool.category`    | string | `"info"` (read-only), `"edit"` (file mutation), `"exec"` (shell), `"mcp"` (MCP tool)         |
+| `tool.args`        | object | Tool arguments                                                                               |
+| `tool.description` | string | Human-readable one-line description                                                          |
 
 **Category mapping for built-in tools:**
 
-| Tool | Category | Rationale |
-|------|----------|-----------|
-| `Read` | `info` | Read-only file access |
-| `Glob` | `info` | Read-only file search |
-| `Grep` | `info` | Read-only content search |
-| `Write` | `edit` | Creates or overwrites files |
-| `Edit` | `edit` | Modifies file content |
-| `ExecCommand` | `exec` | Executes shell commands |
-| `Spawn` | `exec` | Spawns sub-agent |
-| MCP tools | `mcp` | External MCP server tools |
+| Tool          | Category | Rationale                   |
+| ------------- | -------- | --------------------------- |
+| `Read`        | `info`   | Read-only file access       |
+| `Glob`        | `info`   | Read-only file search       |
+| `Grep`        | `info`   | Read-only content search    |
+| `Write`       | `edit`   | Creates or overwrites files |
+| `Edit`        | `edit`   | Modifies file content       |
+| `ExecCommand` | `exec`   | Executes shell commands     |
+| `Spawn`       | `exec`   | Spawns sub-agent            |
+| MCP tools     | `mcp`    | External MCP server tools   |
 
 > **Note**: When `auto_approve = true` (yolo mode) or when a tool is in the `allow_list`, the agent executes immediately and emits `tool_running` directly, skipping `tool_request`.
 
@@ -166,10 +166,10 @@ Tool execution completed.
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | string | `"success"` or `"error"` |
-| `output` | string | Tool output (truncated if exceeds limit) |
+| Field         | Type   | Description                                                      |
+| ------------- | ------ | ---------------------------------------------------------------- |
+| `status`      | string | `"success"` or `"error"`                                         |
+| `output`      | string | Tool output (truncated if exceeds limit)                         |
 | `output_type` | string | `"text"` (default), `"diff"` (for Edit tool), `"image"` (base64) |
 
 **Special output for Edit tool** (`output_type: "diff"`):
@@ -235,13 +235,13 @@ An error occurred. The agent may or may not continue depending on severity.
 }
 ```
 
-| Error Code | Description |
-|------------|-------------|
+| Error Code       | Description                            |
+| ---------------- | -------------------------------------- |
 | `provider_error` | LLM API error (rate limit, auth, etc.) |
-| `tool_error` | Built-in tool execution error |
-| `config_error` | Configuration or initialization error |
-| `protocol_error` | Invalid command from client |
-| `internal_error` | Unexpected internal error |
+| `tool_error`     | Built-in tool execution error          |
+| `config_error`   | Configuration or initialization error  |
+| `protocol_error` | Invalid command from client            |
+| `internal_error` | Unexpected internal error              |
 
 ### 1.11 `info`
 
@@ -289,9 +289,9 @@ Emitted after a dynamically injected MCP server has connected and its tools are 
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Server name (as provided in `add_mcp_server`) |
+| Field   | Type     | Description                                    |
+| ------- | -------- | ---------------------------------------------- |
+| `name`  | string   | Server name (as provided in `add_mcp_server`)  |
 | `tools` | string[] | List of tool names registered from this server |
 
 ### 1.14 `pong`
@@ -323,11 +323,11 @@ Send a user message. Agent responds with a stream of events.
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `msg_id` | string | yes | Client-generated unique message ID |
-| `content` | string | yes | User's message text |
-| `files` | string[] | no | Attached file paths (images, documents) |
+| Field     | Type     | Required | Description                             |
+| --------- | -------- | -------- | --------------------------------------- |
+| `msg_id`  | string   | yes      | Client-generated unique message ID      |
+| `content` | string   | yes      | User's message text                     |
+| `files`   | string[] | no       | Attached file paths (images, documents) |
 
 ### 2.2 `stop`
 
@@ -340,6 +340,7 @@ Abort the current response stream.
 ```
 
 Agent MUST:
+
 1. Cancel any in-flight LLM request
 2. Cancel any running tool (if possible)
 3. Emit `stream_end` for the current msg_id
@@ -356,10 +357,10 @@ Approve a pending tool execution.
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `call_id` | string | Must match a pending `tool_request` |
-| `scope` | string | `"once"` = this call only; `"always"` = auto-approve this tool+category for the session |
+| Field     | Type   | Description                                                                             |
+| --------- | ------ | --------------------------------------------------------------------------------------- |
+| `call_id` | string | Must match a pending `tool_request`                                                     |
+| `scope`   | string | `"once"` = this call only; `"always"` = auto-approve this tool+category for the session |
 
 When `scope = "always"`, the agent adds the tool's category to the session allow-list, so future calls of the same category skip approval.
 
@@ -376,6 +377,7 @@ Deny a pending tool execution.
 ```
 
 Agent MUST:
+
 1. Emit `tool_cancelled` event
 2. Feed the denial reason back to the LLM as tool result
 3. Continue the conversation (LLM decides next action)
@@ -404,11 +406,11 @@ Change the agent's approval mode for the session.
 }
 ```
 
-| Mode | Behavior |
-|------|----------|
-| `"default"` | All tools need approval (except allow-listed) |
+| Mode          | Behavior                                                        |
+| ------------- | --------------------------------------------------------------- |
+| `"default"`   | All tools need approval (except allow-listed)                   |
 | `"auto_edit"` | `info` and `edit` auto-approved; `exec` and `mcp` need approval |
-| `"yolo"` | All tools auto-approved |
+| `"yolo"`      | All tools auto-approved                                         |
 
 ### 2.7 `set_config`
 
@@ -426,14 +428,14 @@ Update model and its host-resolved capabilities or request configuration at runt
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `model` | string | no | Switch to a different model |
-| `image_input` | string | no | Host-resolved capability for the selected model: `supported`, `unsupported`, or `unknown` |
-| `thinking` | string | no | `"enabled"` or `"disabled"` |
-| `thinking_budget` | number | no | Token budget for enabled thinking (default: 10000); sent on Anthropic requests and ignored by OpenAI-compatible requests |
-| `effort` | string | no | Reasoning effort level (e.g., `"low"`, `"medium"`, `"high"`) |
-| `compaction` | string | no | Output compaction level: `"off"`, `"safe"`, `"full"` |
+| Field             | Type   | Required | Description                                                                                                              |
+| ----------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `model`           | string | no       | Switch to a different model                                                                                              |
+| `image_input`     | string | no       | Host-resolved capability for the selected model: `supported`, `unsupported`, or `unknown`                                |
+| `thinking`        | string | no       | `"enabled"` or `"disabled"`                                                                                              |
+| `thinking_budget` | number | no       | Token budget for enabled thinking (default: 10000); sent on Anthropic requests and ignored by OpenAI-compatible requests |
+| `effort`          | string | no       | Reasoning effort level (e.g., `"low"`, `"medium"`, `"high"`)                                                             |
+| `compaction`      | string | no       | Output compaction level: `"off"`, `"safe"`, `"full"`                                                                     |
 
 All fields are optional. Only provided fields are updated.
 
@@ -452,19 +454,19 @@ Dynamically inject an MCP server before the conversation starts. This command is
   "transport": "stdio",
   "command": "node",
   "args": ["bridge.js", "--port", "9000"],
-  "env": {"TOKEN": "abc123"}
+  "env": { "TOKEN": "abc123" }
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Unique server name |
-| `transport` | string | yes | `"stdio"`, `"sse"`, or `"streamable-http"` |
-| `command` | string | stdio only | Executable to launch |
-| `args` | string[] | no | Command arguments |
-| `env` | object | no | Environment variables for the subprocess |
-| `url` | string | sse/http only | Server URL |
-| `headers` | object | no | HTTP headers (for sse/http) |
+| Field       | Type     | Required      | Description                                |
+| ----------- | -------- | ------------- | ------------------------------------------ |
+| `name`      | string   | yes           | Unique server name                         |
+| `transport` | string   | yes           | `"stdio"`, `"sse"`, or `"streamable-http"` |
+| `command`   | string   | stdio only    | Executable to launch                       |
+| `args`      | string[] | no            | Command arguments                          |
+| `env`       | object   | no            | Environment variables for the subprocess   |
+| `url`       | string   | sse/http only | Server URL                                 |
+| `headers`   | object   | no            | HTTP headers (for sse/http)                |
 
 Dynamic MCP servers use the default startup timeout of 30000ms. To customize
 startup timeout, define the server in config with `startup_timeout_ms`.
@@ -529,11 +531,11 @@ Between receiving `ready` and sending the first `message`, the client may inject
 
 **Session lifecycle flags** (mutually exclusive):
 
-| Flag | Description |
-|------|-------------|
-| `--session-id <ID>` | Use a specific session ID instead of auto-generating one. Errors if the ID already exists. |
-| `--resume <ID>` | Resume a previous session (loads conversation history). Use `latest` to resume the most recent. |
-| `--fork-session` | With `--resume`: fork the session into a NEW session id instead of continuing the original. The `ready` event's `session_id` carries the new id. |
+| Flag                | Description                                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--session-id <ID>` | Use a specific session ID instead of auto-generating one. Errors if the ID already exists.                                                       |
+| `--resume <ID>`     | Resume a previous session (loads conversation history). Use `latest` to resume the most recent.                                                  |
+| `--fork-session`    | With `--resume`: fork the session into a NEW session id instead of continuing the original. The `ready` event's `session_id` carries the new id. |
 
 ```bash
 # New session with a custom ID
@@ -660,12 +662,12 @@ aionrs --json-stream \
 
 **Environment variables** (set by client before spawn):
 
-| Provider | Variables |
-|----------|-----------|
-| Anthropic | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` |
-| OpenAI | `OPENAI_API_KEY`, `OPENAI_BASE_URL` |
-| Bedrock | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE` |
-| Vertex AI | `GOOGLE_APPLICATION_CREDENTIALS`, `VERTEX_PROJECT_ID`, `VERTEX_REGION` |
+| Provider  | Variables                                                                 |
+| --------- | ------------------------------------------------------------------------- |
+| Anthropic | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`                                 |
+| OpenAI    | `OPENAI_API_KEY`, `OPENAI_BASE_URL`                                       |
+| Bedrock   | `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE` |
+| Vertex AI | `GOOGLE_APPLICATION_CREDENTIALS`, `VERTEX_PROJECT_ID`, `VERTEX_REGION`    |
 
 ## 6. Protocol Versioning
 

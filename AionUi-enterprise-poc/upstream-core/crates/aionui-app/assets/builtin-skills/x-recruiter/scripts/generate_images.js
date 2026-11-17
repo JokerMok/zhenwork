@@ -99,7 +99,10 @@ save('jd_details.png', (ctx) => {
   ctx.font = `bold 55px ${FONT}`;
   drawLines(ctx, job.role, 72, 245, 930, 74, 2);
   let y = 395;
-  for (const [heading, entries] of [['岗位职责', job.responsibilities], ['任职要求', job.requirements]]) {
+  for (const [heading, entries] of [
+    ['岗位职责', job.responsibilities],
+    ['任职要求', job.requirements],
+  ]) {
     ctx.fillStyle = colors.accent;
     ctx.font = `bold 39px ${FONT}`;
     ctx.fillText(heading, 72, y);

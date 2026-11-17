@@ -252,10 +252,18 @@ export function hasRunningToolMessages(messages: ToolMessage[]): boolean {
 }
 
 /** Only server tool receipts establish deliverables; chat prose is not a receipt. */
-export type ToolDeliveryReceipt = { path: string; status: 'complete' | 'failed'; error?: string; version?: number; versionId?: string; headingCount?: number; tableCount?: number; sheetCount?: number; addedHeadings?: string[] };
-export function toolDeliveryReceipts(
-  tools: NormalizedToolCall[]
-): ToolDeliveryReceipt[] {
+export type ToolDeliveryReceipt = {
+  path: string;
+  status: 'complete' | 'failed';
+  error?: string;
+  version?: number;
+  versionId?: string;
+  headingCount?: number;
+  tableCount?: number;
+  sheetCount?: number;
+  addedHeadings?: string[];
+};
+export function toolDeliveryReceipts(tools: NormalizedToolCall[]): ToolDeliveryReceipt[] {
   const files = new Map<string, ToolDeliveryReceipt>();
   for (const tool of tools) {
     if (!tool.output) continue;
@@ -290,7 +298,17 @@ export function toolDeliveryReceipts(
           ...(Number.isInteger(item.inspection?.headingCount) ? { headingCount: item.inspection.headingCount } : {}),
           ...(Array.isArray(item.inspection?.tables) ? { tableCount: item.inspection.tables.length } : {}),
           ...(Number.isInteger(item.inspection?.sheetCount) ? { sheetCount: item.inspection.sheetCount } : {}),
-          ...(Array.isArray(item.changes) ? { addedHeadings: item.changes.filter((change: { kind?: string; actualHeading?: unknown }) => change.kind === 'append_section' && typeof change.actualHeading === 'string').map((change: { actualHeading: string }) => change.actualHeading.slice(0,300)).slice(0,32) } : {}),
+          ...(Array.isArray(item.changes)
+            ? {
+                addedHeadings: item.changes
+                  .filter(
+                    (change: { kind?: string; actualHeading?: unknown }) =>
+                      change.kind === 'append_section' && typeof change.actualHeading === 'string'
+                  )
+                  .map((change: { actualHeading: string }) => change.actualHeading.slice(0, 300))
+                  .slice(0, 32),
+              }
+            : {}),
           ...(item.error ? { error: String(item.error).slice(0, 200) } : {}),
         });
       }

@@ -12,11 +12,11 @@ The LLM can use the Spawn tool to create independent sub-agents that run tasks i
 
 ### Limits
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Max parallel sub-agents | 5 | Prevents resource exhaustion |
-| Sub-agent max turns | 10 | Per sub-agent run turn limit |
-| Sub-agent max tokens | 4096 | Per sub-agent response token limit |
+| Setting                 | Default | Description                        |
+| ----------------------- | ------- | ---------------------------------- |
+| Max parallel sub-agents | 5       | Prevents resource exhaustion       |
+| Sub-agent max turns     | 10      | Per sub-agent run turn limit       |
+| Sub-agent max tokens    | 4096    | Per sub-agent response token limit |
 
 ### Behavior
 
@@ -34,11 +34,11 @@ Event-driven hooks execute shell commands at specific points in the tool lifecyc
 
 ### Hook Types
 
-| Type | Trigger | Behavior |
-|------|---------|----------|
-| `pre_tool_use` | Before tool execution | Non-zero exit blocks the tool |
-| `post_tool_use` | After tool execution | Non-blocking; errors are logged |
-| `stop` | When agent session ends | Non-blocking |
+| Type            | Trigger                 | Behavior                        |
+| --------------- | ----------------------- | ------------------------------- |
+| `pre_tool_use`  | Before tool execution   | Non-zero exit blocks the tool   |
+| `post_tool_use` | After tool execution    | Non-blocking; errors are logged |
+| `stop`          | When agent session ends | Non-blocking                    |
 
 ### Configuration
 
@@ -73,14 +73,14 @@ command = "cargo clippy --quiet 2>&1 | tail -5"
 
 Hook commands can reference these variables via `${VAR}` syntax:
 
-| Variable | Description |
-|----------|-------------|
-| `TOOL_NAME` | Tool name |
-| `TOOL_INPUT` | Full tool input JSON |
-| `TOOL_INPUT_FILE_PATH` | File path (if the tool has a file_path parameter) |
-| `TOOL_INPUT_COMMAND` | Command (if the tool has a command parameter) |
-| `TOOL_INPUT_PATTERN` | Search pattern (if the tool has a pattern parameter) |
-| `TOOL_OUTPUT` | Tool output (post_tool_use only) |
+| Variable               | Description                                          |
+| ---------------------- | ---------------------------------------------------- |
+| `TOOL_NAME`            | Tool name                                            |
+| `TOOL_INPUT`           | Full tool input JSON                                 |
+| `TOOL_INPUT_FILE_PATH` | File path (if the tool has a file_path parameter)    |
+| `TOOL_INPUT_COMMAND`   | Command (if the tool has a command parameter)        |
+| `TOOL_INPUT_PATTERN`   | Search pattern (if the tool has a pattern parameter) |
+| `TOOL_OUTPUT`          | Tool output (post_tool_use only)                     |
 
 ### Matching Rules
 
@@ -168,37 +168,43 @@ dir = "/path/to/logs"  # log directory (default: platform-specific, see below)
 
 The `level` field accepts standard tracing filter directives:
 
-| Value | Effect |
-|-------|--------|
-| `"info"` | Info and above for all targets |
-| `"debug"` | Debug and above for all targets |
+| Value                         | Effect                                        |
+| ----------------------------- | --------------------------------------------- |
+| `"info"`                      | Info and above for all targets                |
+| `"debug"`                     | Debug and above for all targets               |
 | `"aion_providers=debug,info"` | Debug for providers, info for everything else |
 
 ### Default Log Directory
 
 When `dir` is not set, logs go to the platform-specific location:
 
-| Platform | Path |
-|----------|------|
-| macOS | `~/Library/Logs/aionrs/` |
-| Linux | `$XDG_STATE_HOME/aionrs/logs/` or `~/.local/state/aionrs/logs/` |
-| Windows | `{data_local_dir}/aionrs/logs/` |
+| Platform | Path                                                            |
+| -------- | --------------------------------------------------------------- |
+| macOS    | `~/Library/Logs/aionrs/`                                        |
+| Linux    | `$XDG_STATE_HOME/aionrs/logs/` or `~/.local/state/aionrs/logs/` |
+| Windows  | `{data_local_dir}/aionrs/logs/`                                 |
 
 ### Log Format
 
 Each line is a JSON object with structured fields:
 
 ```json
-{"timestamp":"2026-05-13T12:12:52.431Z","level":"INFO","fields":{"message":"mcp server connected","server":"sentry","tools":20},"target":"aion_mcp","spans":[{"name":"agent_run","session_id":"abc-123","msg_id":"msg-456"}]}
+{
+  "timestamp": "2026-05-13T12:12:52.431Z",
+  "level": "INFO",
+  "fields": { "message": "mcp server connected", "server": "sentry", "tools": 20 },
+  "target": "aion_mcp",
+  "spans": [{ "name": "agent_run", "session_id": "abc-123", "msg_id": "msg-456" }]
+}
 ```
 
 Key fields:
 
-| Field | Description |
-|-------|-------------|
-| `target` | Source crate (`aion_agent`, `aion_providers`, `aion_mcp`, etc.) |
-| `spans[].session_id` | Session ID for correlating events within a conversation |
-| `spans[].msg_id` | Message ID for correlating events within a single turn |
+| Field                | Description                                                     |
+| -------------------- | --------------------------------------------------------------- |
+| `target`             | Source crate (`aion_agent`, `aion_providers`, `aion_mcp`, etc.) |
+| `spans[].session_id` | Session ID for correlating events within a conversation         |
+| `spans[].msg_id`     | Message ID for correlating events within a single turn          |
 
 ### Session Correlation
 
@@ -276,12 +282,12 @@ Persistent, file-based memory that allows the agent to retain project-specific k
 
 ### Memory Types
 
-| Type | Purpose |
-|------|---------|
-| `user` | User's role, goals, preferences, knowledge |
-| `feedback` | Corrections and confirmations on work approach |
-| `project` | Ongoing work context not derivable from code/git |
-| `reference` | Pointers to external systems and resources |
+| Type        | Purpose                                          |
+| ----------- | ------------------------------------------------ |
+| `user`      | User's role, goals, preferences, knowledge       |
+| `feedback`  | Corrections and confirmations on work approach   |
+| `project`   | Ongoing work context not derivable from code/git |
+| `reference` | Pointers to external systems and resources       |
 
 ### Storage
 
@@ -361,11 +367,11 @@ A three-tier automatic compaction strategy that prevents context window overflow
 
 ### Tiers
 
-| Tier | Trigger | Method | LLM Call |
-|------|---------|--------|----------|
-| **Microcompact** | Tool result count exceeds threshold or time gap | Clears old tool result content, keeping the N most recent | No |
-| **Autocompact** | Input tokens approach context limit | LLM summarizes the conversation | Yes |
-| **Emergency** | Input tokens near absolute limit | Blocks further API calls, asks user to start fresh | No |
+| Tier             | Trigger                                         | Method                                                    | LLM Call |
+| ---------------- | ----------------------------------------------- | --------------------------------------------------------- | -------- |
+| **Microcompact** | Tool result count exceeds threshold or time gap | Clears old tool result content, keeping the N most recent | No       |
+| **Autocompact**  | Input tokens approach context limit             | LLM summarizes the conversation                           | Yes      |
+| **Emergency**    | Input tokens near absolute limit                | Blocks further API calls, asks user to start fresh        | No       |
 
 ### How It Works
 
@@ -414,11 +420,11 @@ max_size_bytes = 26214400     # Max total cache size (25 MB)
 
 Post-processes tool output to reduce token usage. Three levels from lightest to heaviest:
 
-| Level | Transformations |
-|-------|----------------|
-| `off` | No transformation |
+| Level            | Transformations                                                                                |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| `off`            | No transformation                                                                              |
 | `safe` (default) | Strip ANSI escape codes, merge consecutive blank lines, collapse carriage-return progress bars |
-| `full` | Everything in `safe`, plus: fold repeated lines, compact JSON indentation |
+| `full`           | Everything in `safe`, plus: fold repeated lines, compact JSON indentation                      |
 
 ### TOON Encoding
 
@@ -433,7 +439,10 @@ When enabled alongside `full` compaction, TOON (Token-Oriented Object Notation) 
 This is equivalent to:
 
 ```json
-[{"id":1,"name":"Alice","role":"admin"},{"id":2,"name":"Bob","role":"user"}]
+[
+  { "id": 1, "name": "Alice", "role": "admin" },
+  { "id": 2, "name": "Bob", "role": "user" }
+]
 ```
 
 TOON instructions are injected into the system prompt so the LLM understands the format.
@@ -451,5 +460,5 @@ toon = false          # Enable TOON encoding (default: false)
 In `--json-stream` mode, the compaction level can be changed at runtime via `set_config`:
 
 ```json
-{"type": "set_config", "compaction": "full"}
+{ "type": "set_config", "compaction": "full" }
 ```

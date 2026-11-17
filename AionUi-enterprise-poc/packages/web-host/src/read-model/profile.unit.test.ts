@@ -113,18 +113,22 @@ INSERT INTO cron_jobs SELECT 'job2','other','Private job',enabled,schedule_kind,
       items: [{ id: '44444444', project_name: 'Own project', archived_at: 19 }],
       total: 1,
     });
-    expect(await readProfile(root, actor, 'messageSearch', args({ keyword: 'matching', page: 1, limit: 20 }))).toMatchObject({
+    expect(
+      await readProfile(root, actor, 'messageSearch', args({ keyword: 'matching', page: 1, limit: 20 }))
+    ).toMatchObject({
       total: 1,
       items: [{ message_id: 'm1', preview_text: 'matching prompt' }],
     });
     const schedules = await readProfile(root, actor, 'cronJobs', args({}));
-    expect(schedules).toMatchObject([{
-      id: 'job1',
-      schedule: { kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Shanghai' },
-      metadata: { agent_type: 'acp', agent_config: { name: 'Analyst', assistant_id: 'analysis' } },
-      state: { last_status: 'ok', queue_enabled: true },
-      target: { payload: { kind: 'message', text: 'Generate report' }, execution_mode: 'new_conversation' },
-    }]);
+    expect(schedules).toMatchObject([
+      {
+        id: 'job1',
+        schedule: { kind: 'cron', expr: '0 9 * * *', tz: 'Asia/Shanghai' },
+        metadata: { agent_type: 'acp', agent_config: { name: 'Analyst', assistant_id: 'analysis' } },
+        state: { last_status: 'ok', queue_enabled: true },
+        target: { payload: { kind: 'message', text: 'Generate report' }, execution_mode: 'new_conversation' },
+      },
+    ]);
     expect(JSON.stringify(schedules)).not.toMatch(/secret|private\/path|job2/);
     expect(await readProfile(root, actor, 'cronConversations', 'job1')).toMatchObject([{ id: '22222222' }]);
     expect(await readProfile(root, actor, 'cronJobs', args({ id: 'job2' }))).toBeNull();

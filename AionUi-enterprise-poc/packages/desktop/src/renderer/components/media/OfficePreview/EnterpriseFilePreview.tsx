@@ -31,7 +31,11 @@ const text = new Set([
   'ini',
   'sql',
 ]);
-const BinaryFilePreview: React.FC<{ path: string; extension: string; version?: string }> = ({ path, extension, version }) => {
+const BinaryFilePreview: React.FC<{ path: string; extension: string; version?: string }> = ({
+  path,
+  extension,
+  version,
+}) => {
   const { t } = useTranslation();
   const [data, setData] = useState<{ url?: string; text?: string; error?: string }>();
   const [retry, setRetry] = useState(0);

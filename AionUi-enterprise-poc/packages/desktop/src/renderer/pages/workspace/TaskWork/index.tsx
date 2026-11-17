@@ -270,7 +270,9 @@ export default function TaskWork({
                       if (!previewPath || previewPath !== file.path) throw new Error('Invalid artifact path');
                       const version = file.versionId || preview.get('fileVersion');
                       const current = new URLSearchParams(location.search);
-                      const inTask = location.pathname === '/workspace' && current.get('section') === 'tasks' &&
+                      const inTask =
+                        location.pathname === '/workspace' &&
+                        current.get('section') === 'tasks' &&
                         current.get('task') === conversationId;
                       const next = inTask ? current : new URLSearchParams({ section: 'files' });
                       next.set('previewPath', previewPath);

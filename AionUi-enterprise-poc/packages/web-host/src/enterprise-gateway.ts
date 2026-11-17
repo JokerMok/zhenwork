@@ -601,8 +601,8 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
   startBackgroundCore: (actor: EnterpriseActor) => Promise<void>;
 }> {
   const origin = new URL(opts.publicOrigin);
-  const appVersion = opts.appVersion && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(opts.appVersion)
-    ? opts.appVersion : '';
+  const appVersion =
+    opts.appVersion && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(opts.appVersion) ? opts.appVersion : '';
   const localDev =
     opts.allowInsecureLoopbackDev === true &&
     origin.protocol === 'http:' &&
@@ -662,8 +662,13 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
   // A cold Web session can be restored on demand. Keep active workers and
   // open requests attached, even when the browser has been idle.
   const isColdWebSession = (session: Session): boolean =>
-    session.persisted && session.lastUsed < Date.now() - WEB_SESSION_IDLE_CACHE_MS && !session.validating &&
-    !session.sockets.size && !session.requests.size && !session.responses.size && !cores.has(actorKey(session.actor));
+    session.persisted &&
+    session.lastUsed < Date.now() - WEB_SESSION_IDLE_CACHE_MS &&
+    !session.validating &&
+    !session.sockets.size &&
+    !session.requests.size &&
+    !session.responses.size &&
+    !cores.has(actorKey(session.actor));
   const admitSession = (): boolean => {
     if (sessions.size + pendingSessions < maxSessions) return true;
     for (const [id, session] of sessions) {
@@ -1002,14 +1007,16 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       } finally {
         pendingSessions -= 1;
       }
-    })().catch(() => undefined).finally(() => restoring.delete(id));
+    })()
+      .catch(() => undefined)
+      .finally(() => restoring.delete(id));
     restoring.set(id, restore);
     return restore;
   };
   const authenticate = async (req: IncomingMessage): Promise<{ id: string; session: Session } | null> => {
     const id = sessionId(req, cookieName);
     if (!id || revoking.has(id) || shuttingDown) return null;
-    const session = sessions.get(id) ?? await restoreSession(id);
+    const session = sessions.get(id) ?? (await restoreSession(id));
     if (!session) return null;
     session.lastUsed = Date.now();
     if (session.expiresAt <= session.lastUsed || !(await validateSession(session))) {
@@ -1236,10 +1243,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         if (typeof input.username !== 'string' || typeof input.password !== 'string') throw new Error('Invalid login');
         if (req.url === '/enterprise/password') {
           if (!opts.changePassword) return reply(res, 404, { error: 'NOT_FOUND' });
-          if (
-            typeof input.newPassword !== 'string' ||
-            !NEW_PASSWORD_PATTERN.test(input.newPassword)
-          ) {
+          if (typeof input.newPassword !== 'string' || !NEW_PASSWORD_PATTERN.test(input.newPassword)) {
             return reply(res, 400, { error: 'INVALID_NEW_PASSWORD' });
           }
           await opts.changePassword(input.username, input.password, input.newPassword, client);
@@ -1254,7 +1258,11 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         if (opts.webSessions) {
           try {
             if (!login.sessionCredential || !opts.resume) throw new Error('Missing restorable RC2 session');
-            await opts.webSessions.put(id, { credential: login.sessionCredential, username: login.username, expiresAt });
+            await opts.webSessions.put(id, {
+              credential: login.sessionCredential,
+              username: login.username,
+              expiresAt,
+            });
           } catch {
             await login.close().catch(() => {});
             return reply(res, 503, { error: 'SESSION_STORAGE_UNAVAILABLE' });
@@ -1384,8 +1392,11 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       try {
         let input: unknown;
         if (req.method === 'PUT') {
-          try { input = JSON.parse((await body(req, profile ? 1024 : 16384)).toString('utf8')); }
-          catch { return reply(res, 400, { error: profile ? 'PROFILE_INVALID' : 'PREFS_INVALID' }); }
+          try {
+            input = JSON.parse((await body(req, profile ? 1024 : 16384)).toString('utf8'));
+          } catch {
+            return reply(res, 400, { error: profile ? 'PROFILE_INVALID' : 'PREFS_INVALID' });
+          }
         }
         const result = profile
           ? req.method === 'PUT'
@@ -1409,13 +1420,20 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       if (!client) return reply(res, 401, { error: 'PASSWORD_CHANGE_FAILED' });
       if (!consumeLoginAttempt()) return reply(res, 429, { error: 'TOO_MANY_ATTEMPTS' });
       let input: unknown;
-      try { input = JSON.parse((await body(req, LOGIN_BODY)).toString('utf8')); }
-      catch { return reply(res, 400, { error: 'PASSWORD_CHANGE_INVALID' }); }
+      try {
+        input = JSON.parse((await body(req, LOGIN_BODY)).toString('utf8'));
+      } catch {
+        return reply(res, 400, { error: 'PASSWORD_CHANGE_INVALID' });
+      }
       if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 2)
         return reply(res, 400, { error: 'PASSWORD_CHANGE_INVALID' });
       const { oldPassword, newPassword } = input as Record<string, unknown>;
-      if (typeof oldPassword !== 'string' || !oldPassword || typeof newPassword !== 'string' ||
-          !NEW_PASSWORD_PATTERN.test(newPassword))
+      if (
+        typeof oldPassword !== 'string' ||
+        !oldPassword ||
+        typeof newPassword !== 'string' ||
+        !NEW_PASSWORD_PATTERN.test(newPassword)
+      )
         return reply(res, 400, { error: 'PASSWORD_CHANGE_INVALID' });
       try {
         const { username } = await readSelfProfile(opts.controlRequest, auth.session.actor);
@@ -1424,8 +1442,10 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       } catch {
         return reply(res, 400, { error: 'PASSWORD_CHANGE_FAILED' });
       }
-      res.setHeader('set-cookie',
-        `${cookieName}=; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict; Max-Age=0`);
+      res.setHeader(
+        'set-cookie',
+        `${cookieName}=; Path=/; HttpOnly; ${localDev ? '' : 'Secure; '}SameSite=Strict; Max-Age=0`
+      );
       const backgroundTasksVerified = await revoke(auth.id);
       return reply(res, 200, { ok: true, backgroundTasksVerified });
     }
@@ -1451,13 +1471,38 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       try {
         if (req.method === 'GET') {
           const attemptId = new URL(req.url, opts.publicOrigin).searchParams.get('attemptId') || '';
-          return reply(res, 200, await readTaskFeedback(opts.profileRoot, auth.session.actor, feedbackRoute[1], attemptId, opts.taskFeedbackRequest));
+          return reply(
+            res,
+            200,
+            await readTaskFeedback(
+              opts.profileRoot,
+              auth.session.actor,
+              feedbackRoute[1],
+              attemptId,
+              opts.taskFeedbackRequest
+            )
+          );
         }
         if (req.method === 'POST') {
           let input: unknown;
-          try { input = JSON.parse((await body(req, 4000)).toString()); } catch { return reply(res, 400, { error: 'INVALID_FEEDBACK' }); }
-          if (!input || typeof input !== 'object' || Array.isArray(input)) return reply(res, 400, { error: 'INVALID_FEEDBACK' });
-          return reply(res, 200, await submitTaskFeedback(opts.profileRoot, auth.session.actor, feedbackRoute[1], input as Record<string, unknown>, opts.taskFeedbackRequest));
+          try {
+            input = JSON.parse((await body(req, 4000)).toString());
+          } catch {
+            return reply(res, 400, { error: 'INVALID_FEEDBACK' });
+          }
+          if (!input || typeof input !== 'object' || Array.isArray(input))
+            return reply(res, 400, { error: 'INVALID_FEEDBACK' });
+          return reply(
+            res,
+            200,
+            await submitTaskFeedback(
+              opts.profileRoot,
+              auth.session.actor,
+              feedbackRoute[1],
+              input as Record<string, unknown>,
+              opts.taskFeedbackRequest
+            )
+          );
         }
         return reply(res, 405, { error: 'METHOD_NOT_ALLOWED' });
       } catch (error) {
@@ -1649,8 +1694,12 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
           );
           type Resource = { id: string; name: string; publishedVersion: number; actions: string[] };
           const body = (await response.json()) as { code: number; data: { items: Resource[]; hasMore: boolean } };
-          if (!response.ok || body.code !== 200 || !Array.isArray(body.data?.items) ||
-              typeof body.data.hasMore !== 'boolean')
+          if (
+            !response.ok ||
+            body.code !== 200 ||
+            !Array.isArray(body.data?.items) ||
+            typeof body.data.hasMore !== 'boolean'
+          )
             throw new Error('BUSINESS_RULE_UNAVAILABLE');
           found.push(
             ...body.data.items
@@ -1878,12 +1927,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       }
     }
     const coldHistory = historyPath === '/api/conversations' || historyPath === '/api/messages/search';
-    if (
-      opts.profileRoot &&
-      req.method === 'GET' &&
-      coldHistory &&
-      !cores.get(actorKey(auth.session.actor))?.ready
-    ) {
+    if (opts.profileRoot && req.method === 'GET' && coldHistory && !cores.get(actorKey(auth.session.actor))?.ready) {
       const query = new URL(req.url, origin).searchParams;
       const search = historyPath === '/api/messages/search';
       const cursor = query.get('cursor') || '';
@@ -1891,7 +1935,9 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       const page = Number(query.get('page') || 1);
       const limit = Number(query.get(search ? 'page_size' : 'limit') || (search ? 20 : 100));
       if (
-        !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 100 ||
         (cursor && !isConversationId(cursor)) ||
         (search && (!keyword || keyword.length > 200 || !Number.isInteger(page) || page < 1 || page > 1000))
       ) {
@@ -1921,10 +1967,19 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       } catch {
         return reply(res, 400, { error: 'BAD_REQUEST' });
       }
-      const nativeShell = /^\/api\/(?:shell\/(?:open-file|show-item-in-folder|open-external|open-folder-with)|fs\/(?:reveal|open-system|copy-absolute-path))\/?$/.test(route);
-      const nativeAgentManagement = /^\/api\/(?:agents\/(?:custom(?:\/.*)?|refresh|[^/]+\/(?:overrides|enabled))|system\/ensure-(?:node-runtime|managed-acp-tool))\/?$/.test(route);
+      const nativeShell =
+        /^\/api\/(?:shell\/(?:open-file|show-item-in-folder|open-external|open-folder-with)|fs\/(?:reveal|open-system|copy-absolute-path))\/?$/.test(
+          route
+        );
+      const nativeAgentManagement =
+        /^\/api\/(?:agents\/(?:custom(?:\/.*)?|refresh|[^/]+\/(?:overrides|enabled))|system\/ensure-(?:node-runtime|managed-acp-tool))\/?$/.test(
+          route
+        );
       const nativeMcpManagement = /^\/api\/mcp\/(?:servers(?:\/.*)?|test-connection|oauth(?:\/.*)?)\/?$/.test(route);
-      if (nativeShell || (!['GET', 'HEAD'].includes(req.method || 'GET') && (nativeAgentManagement || nativeMcpManagement))) {
+      if (
+        nativeShell ||
+        (!['GET', 'HEAD'].includes(req.method || 'GET') && (nativeAgentManagement || nativeMcpManagement))
+      ) {
         return reply(res, 403, { error: 'HOSTED_CAPABILITY_UNAVAILABLE' });
       }
     }
@@ -1937,7 +1992,12 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         return reply(res, 400, { error: 'BAD_REQUEST' });
       }
       try {
-        const page = await readProfile(opts.profileRoot, auth.session.actor, 'archivedConversations', JSON.stringify({ cursor, limit }));
+        const page = await readProfile(
+          opts.profileRoot,
+          auth.session.actor,
+          'archivedConversations',
+          JSON.stringify({ cursor, limit })
+        );
         if (!(await validateSession(auth.session))) {
           await revoke(auth.id);
           return reply(res, 401, { error: 'UNAUTHENTICATED' });
@@ -1958,9 +2018,10 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       if ([before, target].some((id) => id && !/^[A-Za-z0-9_-]{1,100}$/.test(id)) || (before && target))
         return reply(res, 400, { error: 'BAD_REQUEST' });
       try {
-        const argument = query.has('page') || before || target
-          ? JSON.stringify({ id: conversationView[1], before, target, paging: true })
-          : conversationView[1];
+        const argument =
+          query.has('page') || before || target
+            ? JSON.stringify({ id: conversationView[1], before, target, paging: true })
+            : conversationView[1];
         const view = await readProfile(opts.profileRoot, auth.session.actor, 'conversationView', argument);
         if (!(await validateSession(auth.session))) {
           await revoke(auth.id);
@@ -2752,12 +2813,14 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       clearInterval(reap);
       const serverClosed = new Promise<void>((resolve) => server.close(() => resolve()));
       await Promise.allSettled(restoring.values());
-      const sessionResults = await Promise.all([...sessions].map(([id, session]) => {
-        if (!session.persisted) return revoke(id);
-        closeSessionConnections(session);
-        detachSession(id, session);
-        return true;
-      }));
+      const sessionResults = await Promise.all(
+        [...sessions].map(([id, session]) => {
+          if (!session.persisted) return revoke(id);
+          closeSessionConnections(session);
+          detachSession(id, session);
+          return true;
+        })
+      );
       await serverClosed;
       const coreResults = await Promise.allSettled(
         [...cores.values()].map(async (entry) => (await entry.started).stop())

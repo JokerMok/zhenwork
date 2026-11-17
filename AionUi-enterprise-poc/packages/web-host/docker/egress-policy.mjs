@@ -32,10 +32,17 @@ export function publicIpv4(value) {
 export function connectHostname(target) {
   if (typeof target !== 'string' || target.length > 258 || !target.endsWith(':443')) return null;
   const host = target.slice(0, -4).toLowerCase();
-  if (host.length > 253 || !host.includes('.') || isIP(host) ||
-      host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return null;
+  if (
+    host.length > 253 ||
+    !host.includes('.') ||
+    isIP(host) ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal')
+  )
+    return null;
   const labels = host.split('.');
-  if (labels.some((label) => label.length < 1 || label.length > 63 ||
-      !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))) return null;
+  if (labels.some((label) => label.length < 1 || label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)))
+    return null;
   return host;
 }

@@ -368,7 +368,10 @@ test('a durable waiting checkpoint delivers its saved question as a nonempty fin
     client: {
       relayModel: async () => {
         calls++;
-        return new Response(JSON.stringify({question:'请补充10月台账文件。'}), { status: 409, headers: { 'X-Aion-Execution-State': 'paused' } });
+        return new Response(JSON.stringify({ question: '请补充10月台账文件。' }), {
+          status: 409,
+          headers: { 'X-Aion-Execution-State': 'paused' },
+        });
       },
     },
   });
@@ -382,8 +385,11 @@ test('a durable waiting checkpoint delivers its saved question as a nonempty fin
     const text = await response.text();
     assert.equal(response.status, 200);
     assert.match(text, /"finish_reason":"stop"/);
-    const frames = text.split('\n\n').filter(x => x.startsWith('data: {')).map(x => JSON.parse(x.slice(6)));
-    assert.equal(frames.map(x => x.choices[0].delta.content || '').join(''), '请补充10月台账文件。');
+    const frames = text
+      .split('\n\n')
+      .filter((x) => x.startsWith('data: {'))
+      .map((x) => JSON.parse(x.slice(6)));
+    assert.equal(frames.map((x) => x.choices[0].delta.content || '').join(''), '请补充10月台账文件。');
     assert.doesNotMatch(text, /AUTH_FAILED|401/);
     assert.equal(calls, 1);
   } finally {
@@ -409,11 +415,23 @@ test('a real authorization rejection stays forbidden rather than becoming a cred
   }
 });
 
- test('a paused response without a persisted question fails rather than inventing a result', async () => {
-  const proxy = new EnterpriseModelProxy({model,client:{relayModel:async()=>new Response('{}',{status:409,headers:{'X-Aion-Execution-State':'paused'}})}});
-  const {port,key}=await proxy.start();
+test('a paused response without a persisted question fails rather than inventing a result', async () => {
+  const proxy = new EnterpriseModelProxy({
+    model,
+    client: {
+      relayModel: async () => new Response('{}', { status: 409, headers: { 'X-Aion-Execution-State': 'paused' } }),
+    },
+  });
+  const { port, key } = await proxy.start();
   try {
-    const r=await fetch(`http://127.0.0.1:${port}/chat/completions`,{method:'POST',headers:{Authorization:`Bearer ${key}`},body:JSON.stringify({model:model.code,stream:true})});
-    assert.equal(r.status,502);assert.equal(await r.text(),'');
-  } finally {await proxy.stop();}
+    const r = await fetch(`http://127.0.0.1:${port}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ model: model.code, stream: true }),
+    });
+    assert.equal(r.status, 502);
+    assert.equal(await r.text(), '');
+  } finally {
+    await proxy.stop();
+  }
 });

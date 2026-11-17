@@ -304,10 +304,7 @@ describe('preview download behavior', () => {
 
       const downloadButton = await screen.findByTitle('preview.downloadFile');
       fireEvent.click(downloadButton);
-      await Promise.resolve();
-      await Promise.resolve();
-
-      expect(messageError).toHaveBeenCalledWith('Failed to download');
+      await waitFor(() => expect(messageError).toHaveBeenCalledWith('Failed to download'));
       expect(downloadedBlobs).toHaveLength(0);
       expect(downloadedNames).toHaveLength(0);
     },

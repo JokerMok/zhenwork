@@ -102,7 +102,8 @@ function clearAuthCache(): void {
           key.startsWith('enterprise:settings-draft:') ||
           key.startsWith('conversation-command-queue/') ||
           key.startsWith('aionrs_initial_processed_')
-        ) sessionStorage.removeItem(key);
+        )
+          sessionStorage.removeItem(key);
       }
     }
   } catch (error) {

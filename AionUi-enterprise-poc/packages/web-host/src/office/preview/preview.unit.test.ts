@@ -6,7 +6,9 @@ describe('bounded Office preview admission', () => {
     await expect(previewOfficeFile('a.doc', Buffer.from('original'), {})).rejects.toThrow('PREVIEW_FORMAT_UNSUPPORTED');
   });
   it('rejects large inputs and invalid page requests before launching a converter', async () => {
-    await expect(previewOfficeFile('a.xlsx', Buffer.alloc(25 * 1024 * 1024 + 1), {})).rejects.toThrow('PREVIEW_LIMIT_25MB');
+    await expect(previewOfficeFile('a.xlsx', Buffer.alloc(25 * 1024 * 1024 + 1), {})).rejects.toThrow(
+      'PREVIEW_LIMIT_25MB'
+    );
     await expect(previewOfficeFile('a.docx', Buffer.from('x'), { start: -1 })).rejects.toThrow('PREVIEW_PAGE_INVALID');
   });
 });

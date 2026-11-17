@@ -28,7 +28,9 @@ import {
 } from '@/renderer/components/agent/runtimeSelectorOptions';
 
 export function GuidEnterpriseModelSelector({
-  model, setModel, busy,
+  model,
+  setModel,
+  busy,
 }: {
   model?: TProviderWithModel;
   setModel: (next: TProviderWithModel) => Promise<void>;

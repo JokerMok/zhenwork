@@ -10,6 +10,9 @@ const getAssistantMock = vi.fn();
 
 vi.mock('@/common', () => ({
   ipcBridge: {
+    mode: {
+      listProviders: { invoke: vi.fn().mockResolvedValue([{ models: ['gpt-4.1'] }]) },
+    },
     assistants: {
       get: {
         invoke: (...args: unknown[]) => getAssistantMock(...args),
@@ -27,6 +30,7 @@ describe('resolveDefaultTeamAgentModel', () => {
 
   it('prefers the assistant fixed default model over agent-level fallbacks', async () => {
     getAssistantMock.mockResolvedValue({
+      engine: { agent: { type: 'acp', acp_backend: 'claude' } },
       defaults: {
         model: { mode: 'fixed', value: 'claude-sonnet-4-5-20250514' },
       },
@@ -44,6 +48,7 @@ describe('resolveDefaultTeamAgentModel', () => {
 
   it('uses the assistant remembered auto model before falling back to backend defaults', async () => {
     getAssistantMock.mockResolvedValue({
+      engine: { agent: { type: 'acp', acp_backend: 'gemini' } },
       defaults: {
         model: { mode: 'auto' },
       },
@@ -133,12 +138,12 @@ describe('resolveDefaultTeamAgentModel', () => {
     ).resolves.toBe('');
   });
 
-  it('keeps the default placeholder for aionrs assistants', async () => {
+  it('resolves an enabled provider model for aionrs assistants', async () => {
     await expect(
       resolveDefaultTeamAgentModel({
         assistant_backend: 'aionrs',
       })
-    ).resolves.toBe('default');
+    ).resolves.toBe('gpt-4.1');
   });
 
   it('keeps the default placeholder for other ACP backends such as claude', async () => {

@@ -13,9 +13,4 @@ workspace-hack-line-style = "workspace-dotted"
 resolver = "2"
 
 # Platforms commonly used by local development and CI.
-platforms = [
-    "x86_64-unknown-linux-gnu",
-    "x86_64-apple-darwin",
-    "aarch64-apple-darwin",
-    "x86_64-pc-windows-msvc",
-]
+platforms = ["x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin", "x86_64-pc-windows-msvc"]

@@ -418,11 +418,15 @@ function wakeIdleWs(): void {
   ensureWs();
 }
 
-if (typeof window !== 'undefined' &&
-    (window as typeof window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__) {
+if (
+  typeof window !== 'undefined' &&
+  (window as typeof window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__
+) {
   window.addEventListener('pointerdown', wakeIdleWs, { passive: true });
   window.addEventListener('keydown', wakeIdleWs);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeIdleWs(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) wakeIdleWs();
+  });
 }
 
 function dispatchWsEvent(eventName: string, payload: unknown): void {
@@ -473,10 +477,12 @@ function ensureWs(): void {
   current.addEventListener('close', (e) => {
     console.debug('[ensureWs] CLOSED code=' + e.code + ' reason=' + e.reason);
     if (ws === current) ws = null;
-    if (e.code === 4001 &&
-        (window as typeof window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__) {
+    if (e.code === 4001 && (window as typeof window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__) {
       wsIdleSuspended = true;
-      if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+      if (wsReconnectTimer) {
+        clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = null;
+      }
       return;
     }
     if (e.code === WS_CLOSE_POLICY_VIOLATION) {

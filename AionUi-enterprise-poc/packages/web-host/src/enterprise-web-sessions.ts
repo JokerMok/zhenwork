@@ -8,7 +8,10 @@ type StoredSession = { credential: string; username?: string; expiresAt: number 
 
 /** Encrypted, host-only RC2 credentials indexed by a digest of the opaque browser cookie. */
 export class EnterpriseWebSessions {
-  private constructor(private readonly directory: string, private readonly key: Buffer) {}
+  private constructor(
+    private readonly directory: string,
+    private readonly key: Buffer
+  ) {}
 
   static async open(profileRoot: string, serviceToken: string): Promise<EnterpriseWebSessions> {
     const directory = path.join(profileRoot, '.web-sessions');

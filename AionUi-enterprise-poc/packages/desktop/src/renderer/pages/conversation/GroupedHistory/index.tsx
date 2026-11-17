@@ -265,16 +265,26 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
   const sourceControls = enterpriseSources && !collapsed && (
     <div className='flex gap-6px px-12px py-6px' aria-label={t('conversation.history.allSources')}>
       {(['all', 'desktop', 'web'] as const).map((source) => (
-        <button key={source} type='button' aria-pressed={activeSourceFilter === source}
-          className={classNames('px-8px py-4px rounded-12px text-12px border-0 cursor-pointer',
-            activeSourceFilter === source ? 'bg-fill-3 text-t-primary' : 'bg-transparent text-t-secondary')}
+        <button
+          key={source}
+          type='button'
+          aria-pressed={activeSourceFilter === source}
+          className={classNames(
+            'px-8px py-4px rounded-12px text-12px border-0 cursor-pointer',
+            activeSourceFilter === source ? 'bg-fill-3 text-t-primary' : 'bg-transparent text-t-secondary'
+          )}
           onClick={() => {
             if (source === 'web') onBatchModeChange?.(false);
             setSourceFilter(source);
-          }}>
-          {t(source === 'all' ? 'conversation.history.allSources' :
-            source === 'web' ? 'conversation.history.webConversationSource' :
-              'conversation.history.desktopConversationSource')}
+          }}
+        >
+          {t(
+            source === 'all'
+              ? 'conversation.history.allSources'
+              : source === 'web'
+                ? 'conversation.history.webConversationSource'
+                : 'conversation.history.desktopConversationSource'
+          )}
         </button>
       ))}
     </div>
@@ -313,18 +323,23 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
         {sourceControls}
         {activeSourceFilter !== 'web' && afterPinnedContent}
         {activeSourceFilter !== 'desktop' && <EnterpriseWebConversations collapsed={collapsed} />}
-        {activeSourceFilter !== 'web' && (
-          enterprise && historyLoading ? (
+        {activeSourceFilter !== 'web' &&
+          (enterprise && historyLoading ? (
             <div className='flex justify-center py-16px' role='status' aria-label={t('common.loading')}>
               <Spin size={16} />
             </div>
-          ) : !historyError && !historyHasMore && (
-            <div className='py-48px flex-center'>
-              <Empty description={t(enterpriseSources
-                ? 'conversation.history.noDesktopHistory' : 'conversation.history.noHistory')} />
-            </div>
-          )
-        )}
+          ) : (
+            !historyError &&
+            !historyHasMore && (
+              <div className='py-48px flex-center'>
+                <Empty
+                  description={t(
+                    enterpriseSources ? 'conversation.history.noDesktopHistory' : 'conversation.history.noHistory'
+                  )}
+                />
+              </div>
+            )
+          ))}
         {historyStatus}
       </>
     );
@@ -452,157 +467,165 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
 
       <div>
         {sourceControls}
-        {activeSourceFilter !== 'web' && <>
-        {/* L1: Pinned section */}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          modifiers={[restrictToVerticalAxis]}
-          onDragEnd={handleDragEnd}
-        >
-          {pinnedConversations.length > 0 && (
-            <div className='min-w-0'>
-              {!collapsed && <SectionLabel sectionKey='pinned' label={t('conversation.history.pinnedSection')} />}
-              {!collapsedSections.has('pinned') && (
-                <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
-                  <div className='min-w-0'>
-                    {pinnedConversations.map((conversation) => {
-                      const props = getConversationRowProps(conversation);
-                      return isDragEnabled ? (
-                        <SortableConversationRow key={conversation.id} {...props} />
-                      ) : (
-                        <ConversationRow key={conversation.id} {...props} />
-                      );
-                    })}
-                  </div>
-                </SortableContext>
+        {activeSourceFilter !== 'web' && (
+          <>
+            {/* L1: Pinned section */}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              modifiers={[restrictToVerticalAxis]}
+              onDragEnd={handleDragEnd}
+            >
+              {pinnedConversations.length > 0 && (
+                <div className='min-w-0'>
+                  {!collapsed && <SectionLabel sectionKey='pinned' label={t('conversation.history.pinnedSection')} />}
+                  {!collapsedSections.has('pinned') && (
+                    <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
+                      <div className='min-w-0'>
+                        {pinnedConversations.map((conversation) => {
+                          const props = getConversationRowProps(conversation);
+                          return isDragEnabled ? (
+                            <SortableConversationRow key={conversation.id} {...props} />
+                          ) : (
+                            <ConversationRow key={conversation.id} {...props} />
+                          );
+                        })}
+                      </div>
+                    </SortableContext>
+                  )}
+                </div>
               )}
-            </div>
-          )}
-        </DndContext>
+            </DndContext>
 
-        {/* Slot 由父级（Sider）填入：例如 Team / CronJob sections，位于「置顶」之后、「项目」之前 */}
-        {afterPinnedContent}
-        </>}
+            {/* Slot 由父级（Sider）填入：例如 Team / CronJob sections，位于「置顶」之后、「项目」之前 */}
+            {afterPinnedContent}
+          </>
+        )}
 
         {activeSourceFilter !== 'desktop' && <EnterpriseWebConversations collapsed={collapsed} />}
 
-        {activeSourceFilter !== 'web' && <>
-
-        {/* L1: Projects section — workspace folders, peer to conversations */}
-        {projectGroups.length > 0 && (
-          <div className='min-w-0'>
-            {!collapsed && <SectionLabel sectionKey='projects' label={t('conversation.history.projectsSection')} />}
-            {!collapsedSections.has('projects') &&
-              projectGroups.map((group) => {
-                const projectMenu = (
-                  <Menu
-                    onClickMenuItem={(key) => {
-                      if (key === 'archive') {
-                        handleArchiveProject(group.displayName, group.conversations);
-                      }
-                    }}
-                  >
-                    <Menu.Item key='archive'>
-                      <span className='flex items-center gap-8px'>
-                        <FolderClose theme='outline' size='14' />
-                        {t('conversation.history.archiveProject')}
-                      </span>
-                    </Menu.Item>
-                  </Menu>
-                );
-                return (
-                  <div key={group.workspace} className='min-w-0'>
-                    <WorkspaceCollapse
-                      expanded={expandedWorkspaces.includes(group.workspace)}
-                      onToggle={() => handleToggleWorkspace(group.workspace)}
-                      siderCollapsed={collapsed}
-                      stickyHeader
-                      stickyTop={28}
-                      header={
-                        <span className='text-14px font-[500] truncate flex-1 text-t-primary min-w-0'>
-                          {group.displayName}
-                        </span>
-                      }
-                      trailing={
-                        <span className='flex items-center gap-6px'>
-                          <Tooltip content={t('conversation.history.newConversationInProject')} position='top'>
-                            <span
-                              role='button'
-                              tabIndex={0}
-                              aria-label={t('conversation.history.newConversationInProject')}
-                              className={classNames(
-                                'flex-center cursor-pointer transition-colors text-t-secondary hover:text-t-primary size-20px rd-4px sider-action-btn',
-                                isMobile ? 'flex' : 'hidden group-hover:flex'
-                              )}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void navigate('/guid', { state: { workspace: group.workspace } });
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  void navigate('/guid', { state: { workspace: group.workspace } });
-                                }
-                              }}
-                            >
-                              <Plus theme='outline' size='14' fill='currentColor' className='block leading-none' />
+        {activeSourceFilter !== 'web' && (
+          <>
+            {/* L1: Projects section — workspace folders, peer to conversations */}
+            {projectGroups.length > 0 && (
+              <div className='min-w-0'>
+                {!collapsed && <SectionLabel sectionKey='projects' label={t('conversation.history.projectsSection')} />}
+                {!collapsedSections.has('projects') &&
+                  projectGroups.map((group) => {
+                    const projectMenu = (
+                      <Menu
+                        onClickMenuItem={(key) => {
+                          if (key === 'archive') {
+                            handleArchiveProject(group.displayName, group.conversations);
+                          }
+                        }}
+                      >
+                        <Menu.Item key='archive'>
+                          <span className='flex items-center gap-8px'>
+                            <FolderClose theme='outline' size='14' />
+                            {t('conversation.history.archiveProject')}
+                          </span>
+                        </Menu.Item>
+                      </Menu>
+                    );
+                    return (
+                      <div key={group.workspace} className='min-w-0'>
+                        <WorkspaceCollapse
+                          expanded={expandedWorkspaces.includes(group.workspace)}
+                          onToggle={() => handleToggleWorkspace(group.workspace)}
+                          siderCollapsed={collapsed}
+                          stickyHeader
+                          stickyTop={28}
+                          header={
+                            <span className='text-14px font-[500] truncate flex-1 text-t-primary min-w-0'>
+                              {group.displayName}
                             </span>
-                          </Tooltip>
-                          <Dropdown
-                            droplist={projectMenu}
-                            trigger='click'
-                            position='br'
-                            getPopupContainer={() => document.body}
-                            unmountOnExit={false}
-                          >
-                            <span
-                              aria-label='Project actions'
-                              className={classNames(
-                                'flex-center cursor-pointer transition-colors text-t-secondary hover:text-t-primary size-20px rd-4px sider-action-btn',
-                                isMobile ? 'flex' : 'hidden group-hover:flex'
-                              )}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <MoreOne theme='outline' size='14' fill='currentColor' className='block leading-none' />
+                          }
+                          trailing={
+                            <span className='flex items-center gap-6px'>
+                              <Tooltip content={t('conversation.history.newConversationInProject')} position='top'>
+                                <span
+                                  role='button'
+                                  tabIndex={0}
+                                  aria-label={t('conversation.history.newConversationInProject')}
+                                  className={classNames(
+                                    'flex-center cursor-pointer transition-colors text-t-secondary hover:text-t-primary size-20px rd-4px sider-action-btn',
+                                    isMobile ? 'flex' : 'hidden group-hover:flex'
+                                  )}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void navigate('/guid', { state: { workspace: group.workspace } });
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      void navigate('/guid', { state: { workspace: group.workspace } });
+                                    }
+                                  }}
+                                >
+                                  <Plus theme='outline' size='14' fill='currentColor' className='block leading-none' />
+                                </span>
+                              </Tooltip>
+                              <Dropdown
+                                droplist={projectMenu}
+                                trigger='click'
+                                position='br'
+                                getPopupContainer={() => document.body}
+                                unmountOnExit={false}
+                              >
+                                <span
+                                  aria-label='Project actions'
+                                  className={classNames(
+                                    'flex-center cursor-pointer transition-colors text-t-secondary hover:text-t-primary size-20px rd-4px sider-action-btn',
+                                    isMobile ? 'flex' : 'hidden group-hover:flex'
+                                  )}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreOne
+                                    theme='outline'
+                                    size='14'
+                                    fill='currentColor'
+                                    className='block leading-none'
+                                  />
+                                </span>
+                              </Dropdown>
                             </span>
-                          </Dropdown>
-                        </span>
-                      }
-                    >
-                      <div className={classNames('flex flex-col min-w-0', { 'mt-1px': !collapsed })}>
-                        {group.conversations.map((conversation) => renderConversation(conversation, true))}
+                          }
+                        >
+                          <div className={classNames('flex flex-col min-w-0', { 'mt-1px': !collapsed })}>
+                            {group.conversations.map((conversation) => renderConversation(conversation, true))}
+                          </div>
+                        </WorkspaceCollapse>
                       </div>
-                    </WorkspaceCollapse>
-                  </div>
-                );
-              })}
-          </div>
-        )}
-
-        {/* L1: Conversations section — peer to projects, internally split by timeline */}
-        {conversationOnlySections.length > 0 && (
-          <div className='min-w-0'>
-            {!collapsed && (
-              <SectionLabel sectionKey='conversations' label={t('conversation.history.conversationsSection')} />
+                    );
+                  })}
+              </div>
             )}
-            {!collapsedSections.has('conversations') &&
-              conversationOnlySections.map((section) => (
-                <div key={section.timeline} className='min-w-0'>
-                  {!collapsed && conversationOnlySections.length > 1 && (
-                    <div className='flex items-center px-16px h-24px select-none'>
-                      <span className='text-12px text-t-secondary font-[500] leading-none'>{section.timeline}</span>
+
+            {/* L1: Conversations section — peer to projects, internally split by timeline */}
+            {conversationOnlySections.length > 0 && (
+              <div className='min-w-0'>
+                {!collapsed && (
+                  <SectionLabel sectionKey='conversations' label={t('conversation.history.conversationsSection')} />
+                )}
+                {!collapsedSections.has('conversations') &&
+                  conversationOnlySections.map((section) => (
+                    <div key={section.timeline} className='min-w-0'>
+                      {!collapsed && conversationOnlySections.length > 1 && (
+                        <div className='flex items-center px-16px h-24px select-none'>
+                          <span className='text-12px text-t-secondary font-[500] leading-none'>{section.timeline}</span>
+                        </div>
+                      )}
+                      {section.items.map((item) =>
+                        item.type === 'conversation' && item.conversation ? renderConversation(item.conversation) : null
+                      )}
                     </div>
-                  )}
-                  {section.items.map((item) =>
-                    item.type === 'conversation' && item.conversation ? renderConversation(item.conversation) : null
-                  )}
-                </div>
-              ))}
-          </div>
+                  ))}
+              </div>
+            )}
+          </>
         )}
-        </>}
         {historyStatus}
       </div>
     </>
@@ -610,5 +633,9 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
 };
 
 export default function TaskAwareHistory(props: WorkspaceGroupedHistoryProps) {
-  return <TaskOverviewProvider><WorkspaceGroupedHistory {...props} /></TaskOverviewProvider>;
+  return (
+    <TaskOverviewProvider>
+      <WorkspaceGroupedHistory {...props} />
+    </TaskOverviewProvider>
+  );
 }

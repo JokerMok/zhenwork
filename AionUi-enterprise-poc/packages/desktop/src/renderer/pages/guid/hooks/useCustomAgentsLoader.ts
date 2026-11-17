@@ -87,9 +87,11 @@ export const useCustomAgentsLoader = (): UseCustomAgentsLoaderResult => {
   const retryCatalog = useCallback(() => {
     if (retrying.current || isValidating) return;
     retrying.current = true;
-    void mutate().catch(() => {}).finally(() => {
-      retrying.current = false;
-    });
+    void mutate()
+      .catch(() => {})
+      .finally(() => {
+        retrying.current = false;
+      });
   }, [isValidating, mutate]);
   return {
     assistants,

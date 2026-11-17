@@ -15,8 +15,12 @@ test('rejects a linked actor directory before touching its target', async () => 
     await mkdir(path.dirname(profile), { recursive: true });
     await symlink(target, profile);
     const before = (await stat(target)).mode & 0o777;
-    const start = createEnterpriseCoreStarter({ profileRoot: root, isolatedLauncher: launcher,
-      appVersion: '2.2.2', resourcesPath: root });
+    const start = createEnterpriseCoreStarter({
+      profileRoot: root,
+      isolatedLauncher: launcher,
+      appVersion: '2.2.2',
+      resourcesPath: root,
+    });
     await expect(start(actor)).rejects.toThrow('symlink');
     expect((await stat(target)).mode & 0o777).toBe(before);
   } finally {

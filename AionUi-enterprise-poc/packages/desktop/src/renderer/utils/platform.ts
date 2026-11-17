@@ -21,8 +21,10 @@ export const isElectronDesktop = (): boolean => {
 
 /** The hosted enterprise page has no desktop WebUI listener to configure. */
 export const isEnterpriseWeb = (): boolean => {
-  return typeof window !== 'undefined' &&
-    Boolean((window as typeof window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__);
+  return (
+    typeof window !== 'undefined' &&
+    Boolean((window as typeof window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__)
+  );
 };
 
 /**

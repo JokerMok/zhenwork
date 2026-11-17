@@ -72,7 +72,11 @@ try:
 except Exception as error:
  print(json.dumps({'error':'JSON_DATA_INVALID','reason':str(error)[:200]},ensure_ascii=False));sys.exit(2)
 `;
-export async function summarizeJsonData(data: Buffer, operations: unknown, signal?: AbortSignal): Promise<Record<string, unknown>> {
+export async function summarizeJsonData(
+  data: Buffer,
+  operations: unknown,
+  signal?: AbortSignal
+): Promise<Record<string, unknown>> {
   if (data.length > 2 * 1024 * 1024) throw new Error('JSON_SUMMARY_INPUT_LIMIT_2MB');
   const python = process.env.ZHENWORK_OFFICE_PYTHON || '/opt/zhenwork-office/bin/python';
   if (!python.startsWith('/')) throw new Error('OFFICE_PYTHON_PATH_INVALID');
@@ -82,7 +86,10 @@ export async function summarizeJsonData(data: Buffer, operations: unknown, signa
       ['-c', script],
       { encoding: 'buffer', timeout: 10_000, maxBuffer: 256 * 1024, signal, killSignal: 'SIGKILL' },
       (error, stdout) => {
-        if(signal?.aborted){reject(new Error('JSON_SUMMARY_CANCELLED'));return;}
+        if (signal?.aborted) {
+          reject(new Error('JSON_SUMMARY_CANCELLED'));
+          return;
+        }
         try {
           const result = JSON.parse(stdout.toString()) as Record<string, unknown>;
           if (error || result.error)

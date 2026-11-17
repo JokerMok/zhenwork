@@ -3,13 +3,19 @@ import type { Dirent } from 'node:fs';
 import { lstat, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { EnterpriseActor } from './enterprise-gateway.js';
-import { BackgroundGrantRevokedError, EnterpriseBackgroundClient, type BackgroundGrant,
+import {
+  BackgroundGrantRevokedError,
+  EnterpriseBackgroundClient,
+  type BackgroundGrant,
 } from './enterprise-background-client.js';
 import { enterpriseManagedResourcePath } from './enterprise-resource-runtime.js';
 import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 
 type GrantIssuer = Rc2GatewayClient & {
-  request(path: string, options?: RequestInit): Promise<{ response: Response; body: { code?: number; data?: unknown } | null }>;
+  request(
+    path: string,
+    options?: RequestInit
+  ): Promise<{ response: Response; body: { code?: number; data?: unknown } | null }>;
 };
 
 function validJobId(jobId: string): boolean {
@@ -22,12 +28,18 @@ export class EnterpriseBackgroundGrants {
   private file = '';
   private sequence: Promise<void> = Promise.resolve();
 
-  constructor(private readonly root: string, private readonly actor: EnterpriseActor,
-    private readonly rc2Url: string, private readonly serviceToken: string,
+  constructor(
+    private readonly root: string,
+    private readonly actor: EnterpriseActor,
+    private readonly rc2Url: string,
+    private readonly serviceToken: string,
     private readonly kind: 'background-grants.json' | 'task-grants.json' = 'background-grants.json'
   ) {}
 
-  static async discoverActors(root: string, rc2Url: string, serviceToken: string,
+  static async discoverActors(
+    root: string,
+    rc2Url: string,
+    serviceToken: string,
     kind: 'background-grants.json' | 'task-grants.json' = 'background-grants.json'
   ): Promise<EnterpriseActor[]> {
     const control = path.join(root, 'control');
@@ -56,8 +68,10 @@ export class EnterpriseBackgroundGrants {
         const store = new EnterpriseBackgroundGrants(root, saved.actor, rc2Url, serviceToken, kind);
         await store.load();
         if (store.file !== file) throw new Error('Background grant actor path mismatch');
-        try { await store.client(); actors.push(saved.actor); }
-        catch (error) {
+        try {
+          await store.client();
+          actors.push(saved.actor);
+        } catch (error) {
           if (!(error instanceof BackgroundGrantRevokedError)) throw error;
           // A revoked or disabled account cannot resume scheduled work.
         }
@@ -76,8 +90,13 @@ export class EnterpriseBackgroundGrants {
     if (!entry.isFile() || entry.isSymbolicLink() || (entry.mode & 0o077) !== 0 || entry.size > 100_000)
       throw new Error('Background grant file is not private');
     const saved = JSON.parse(await readFile(this.file, 'utf8')) as { actor?: EnterpriseActor; grants?: unknown };
-    if (saved.actor?.serverId !== this.actor.serverId || saved.actor.userId !== this.actor.userId ||
-        !Array.isArray(saved.grants) || saved.grants.length > 100) throw new Error('Background grant store invalid');
+    if (
+      saved.actor?.serverId !== this.actor.serverId ||
+      saved.actor.userId !== this.actor.userId ||
+      !Array.isArray(saved.grants) ||
+      saved.grants.length > 100
+    )
+      throw new Error('Background grant store invalid');
     for (const value of saved.grants) {
       if (!value || typeof value !== 'object') throw new Error('Background grant store invalid');
       const grant = value as BackgroundGrant;
@@ -98,15 +117,22 @@ export class EnterpriseBackgroundGrants {
       throw new Error('Background grant file is not private');
     const temporary = `${this.file}.${randomBytes(12).toString('hex')}.tmp`;
     try {
-      await writeFile(temporary, JSON.stringify({ actor: this.actor, grants: [...this.grants.values()] }),
-        { mode: 0o600, flag: 'wx',
+      await writeFile(temporary, JSON.stringify({ actor: this.actor, grants: [...this.grants.values()] }), {
+        mode: 0o600,
+        flag: 'wx',
       });
       await rename(temporary, this.file);
-    } finally { await rm(temporary, { force: true }); }
+    } finally {
+      await rm(temporary, { force: true });
+    }
   }
 
-  hasJobs(): boolean { return this.grants.size > 0; }
-  jobIds(): string[] { return [...this.grants.keys()]; }
+  hasJobs(): boolean {
+    return this.grants.size > 0;
+  }
+  jobIds(): string[] {
+    return [...this.grants.keys()];
+  }
 
   /** Check every job separately; one valid grant must not keep revoked jobs active. */
   async inspect(): Promise<{ valid: string[]; revoked: Array<{ jobId: string; grantId: string }> }> {
@@ -134,14 +160,21 @@ export class EnterpriseBackgroundGrants {
       const prior = this.grants.get(jobId)!;
       await disable();
       this.grants.delete(jobId);
-      try { await this.persist(); }
-      catch (error) { this.grants.set(jobId, prior); throw error; }
+      try {
+        await this.persist();
+      } catch (error) {
+        this.grants.set(jobId, prior);
+        throw error;
+      }
     });
   }
 
   private serialized<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.sequence.then(operation);
-    this.sequence = result.then(() => {}, () => {});
+    this.sequence = result.then(
+      () => {},
+      () => {}
+    );
     return result;
   }
 
@@ -171,26 +204,37 @@ export class EnterpriseBackgroundGrants {
 
   async issue(issuer: GrantIssuer, jobId: string): Promise<void> {
     return this.serialized(async () => {
-    if (!validJobId(jobId)) throw new Error('Invalid background job ID');
-    if (this.grants.has(jobId)) throw new Error('Background grant already stored');
-    const { response, body } = await issuer.request(`/ai/background/jobs/${jobId}/grant`, {
-      method: 'POST', headers: { Authorization: `Bearer ${this.serviceToken}` },
-    });
-    const data = body?.data as { id?: string; jobId?: string; secret?: string } | undefined;
-    if (!response.ok || body?.code !== 200 || !data || data.jobId !== jobId ||
-        typeof data.id !== 'string' || typeof data.secret !== 'string')
-      throw new Error('RC2 background grant denied');
-    const grant = { id: data.id, jobId, secret: data.secret, userId: this.actor.userId };
-    new EnterpriseBackgroundClient(this.rc2Url, this.serviceToken, grant);
-    this.grants.set(jobId, grant);
-    try { await this.persist(); }
-    catch (error) {
-      this.grants.delete(jobId);
-      await issuer.request(`/ai/background/jobs/${jobId}/grant`, {
-        method: 'DELETE', headers: { Authorization: `Bearer ${this.serviceToken}` },
-      }).catch(() => {});
-      throw error;
-    }
+      if (!validJobId(jobId)) throw new Error('Invalid background job ID');
+      if (this.grants.has(jobId)) throw new Error('Background grant already stored');
+      const { response, body } = await issuer.request(`/ai/background/jobs/${jobId}/grant`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.serviceToken}` },
+      });
+      const data = body?.data as { id?: string; jobId?: string; secret?: string } | undefined;
+      if (
+        !response.ok ||
+        body?.code !== 200 ||
+        !data ||
+        data.jobId !== jobId ||
+        typeof data.id !== 'string' ||
+        typeof data.secret !== 'string'
+      )
+        throw new Error('RC2 background grant denied');
+      const grant = { id: data.id, jobId, secret: data.secret, userId: this.actor.userId };
+      new EnterpriseBackgroundClient(this.rc2Url, this.serviceToken, grant);
+      this.grants.set(jobId, grant);
+      try {
+        await this.persist();
+      } catch (error) {
+        this.grants.delete(jobId);
+        await issuer
+          .request(`/ai/background/jobs/${jobId}/grant`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${this.serviceToken}` },
+          })
+          .catch(() => {});
+        throw error;
+      }
     });
   }
 
@@ -206,15 +250,20 @@ export class EnterpriseBackgroundGrants {
 
   async revoke(issuer: GrantIssuer, jobId: string): Promise<void> {
     return this.serialized(async () => {
-    if (!validJobId(jobId)) throw new Error('Invalid background job ID');
-    const { response, body } = await issuer.request(`/ai/background/jobs/${jobId}/grant`, {
-      method: 'DELETE', headers: { Authorization: `Bearer ${this.serviceToken}` },
-    });
-    if (!response.ok || body?.code !== 200) throw new Error('RC2 background grant revocation unavailable');
-    const prior = this.grants.get(jobId);
-    this.grants.delete(jobId);
-    try { await this.persist(); }
-    catch (error) { if (prior) this.grants.set(jobId, prior); throw error; }
+      if (!validJobId(jobId)) throw new Error('Invalid background job ID');
+      const { response, body } = await issuer.request(`/ai/background/jobs/${jobId}/grant`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${this.serviceToken}` },
+      });
+      if (!response.ok || body?.code !== 200) throw new Error('RC2 background grant revocation unavailable');
+      const prior = this.grants.get(jobId);
+      this.grants.delete(jobId);
+      try {
+        await this.persist();
+      } catch (error) {
+        if (prior) this.grants.set(jobId, prior);
+        throw error;
+      }
     });
   }
 }

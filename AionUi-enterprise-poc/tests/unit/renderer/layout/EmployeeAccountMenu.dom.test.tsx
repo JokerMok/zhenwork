@@ -60,7 +60,12 @@ test('does not show another employee’s profile when the authenticated account 
   mocks.user = { id: 'a', username: 'alpha' };
   let finishOld: (value: unknown) => void = () => {};
   mocks.profile
-    .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOld = resolve;
+        })
+    )
     .mockResolvedValueOnce({ id: 'a', nickname: 'Unexpected old employee' });
   const view = render(<Footer logout={vi.fn()} />);
   expect(screen.getByRole('button', { name: 'alpha' })).toBeTruthy();

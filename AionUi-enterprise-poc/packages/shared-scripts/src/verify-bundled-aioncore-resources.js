@@ -235,8 +235,13 @@ function verifyManagedNodeFromContract(baseDir, runtimeKey, contract, checked, m
     checked.push(cliRelative);
     if (!isFile(cliPath)) {
       missing.push(cliRelative);
-      failures.push({ component: 'managed-node', reason: 'missing_file',
-        version: node.version, runtimeKey, path: cliRelative });
+      failures.push({
+        component: 'managed-node',
+        reason: 'missing_file',
+        version: node.version,
+        runtimeKey,
+        path: cliRelative,
+      });
     }
   }
 }

@@ -13,17 +13,35 @@ test('authorized RC2 document enters the native local-file lane; revoke stops la
     const path = new URL(url).pathname;
     calls.push({ path, cookie: options.headers?.Cookie });
     assert.equal(options.headers?.Cookie, '__Host-workspace-rc2=fixed');
-    if (path === `/ai/files/${fileId}/download`) return new Response('fixed office source', { status: allowed ? 200 : 403 });
-    const send = (data, status = 200) => new Response(JSON.stringify({ code: status, data }), {
-      status, headers: { 'Content-Type': 'application/json' },
-    });
-    if (path === `/ai/resources/${baseId}`) return send(allowed ? {
-      resourceType: 'KNOWLEDGE', actions: ['VIEW', 'USE'], version: 2, publishedVersion: 2,
-    } : null, allowed ? 200 : 403);
-    if (path === `/ai/knowledge/${baseId}/documents`) return send([{ id: documentId, title: '固定资料.txt', version: 2, file_id: fileId }]);
-    if (path === `/ai/knowledge/documents/${documentId}/versions/2`) return send({
-      documentId, version: 2, filename: '固定资料.txt', fileId, content: 'fixed office source',
-    });
+    if (path === `/ai/files/${fileId}/download`)
+      return new Response('fixed office source', { status: allowed ? 200 : 403 });
+    const send = (data, status = 200) =>
+      new Response(JSON.stringify({ code: status, data }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    if (path === `/ai/resources/${baseId}`)
+      return send(
+        allowed
+          ? {
+              resourceType: 'KNOWLEDGE',
+              actions: ['VIEW', 'USE'],
+              version: 2,
+              publishedVersion: 2,
+            }
+          : null,
+        allowed ? 200 : 403
+      );
+    if (path === `/ai/knowledge/${baseId}/documents`)
+      return send([{ id: documentId, title: '固定资料.txt', version: 2, file_id: fileId }]);
+    if (path === `/ai/knowledge/documents/${documentId}/versions/2`)
+      return send({
+        documentId,
+        version: 2,
+        filename: '固定资料.txt',
+        fileId,
+        content: 'fixed office source',
+      });
     throw new Error(`Unexpected path ${path}`);
   };
   const client = new Rc2Client('https://rc2.test', 'https://rc2.test', fetchImpl);

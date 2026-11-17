@@ -52,15 +52,19 @@ test('only an enabled and granted job near its next run is due', async () => {
 test('active-run wakeups are limited to granted jobs and retry horizon', async () => {
   const { root, database: file } = await fixture();
   const now = Date.now();
-  await database(file, [
-    ['cron_retrysoon', 1, now + 600_000],
-    ['cron_retrylate', 1, now + 600_000],
-    ['cron_running01', 1, now + 600_000],
-  ], [
-    ['cron_retrysoon', 'retrying', now + 60_000],
-    ['cron_retrylate', 'retrying', now + 600_000],
-    ['cron_running01', 'running', now + 600_000],
-  ]);
+  await database(
+    file,
+    [
+      ['cron_retrysoon', 1, now + 600_000],
+      ['cron_retrylate', 1, now + 600_000],
+      ['cron_running01', 1, now + 600_000],
+    ],
+    [
+      ['cron_retrysoon', 'retrying', now + 60_000],
+      ['cron_retrylate', 'retrying', now + 600_000],
+      ['cron_running01', 'running', now + 600_000],
+    ]
+  );
   expect(await backgroundDue(root, actor('17'), ['cron_retrysoon'])).toBe(true);
   expect(await backgroundDue(root, actor('17'), ['cron_retrylate'])).toBe(false);
   expect(await backgroundDue(root, actor('17'), ['cron_running01'])).toBe(true);

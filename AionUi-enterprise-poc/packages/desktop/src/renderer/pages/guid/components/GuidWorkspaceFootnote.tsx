@@ -67,7 +67,10 @@ const GuidWorkspaceFootnote: React.FC<GuidWorkspaceFootnoteProps> = ({
   const handleBrowseWorkspace = useCallback(() => {
     setOpen(false);
     ipcBridge.dialog.showOpen
-      .invoke({ properties: ['openDirectory', 'createDirectory'], defaultPath: enterprise ? workspaceDir || undefined : undefined })
+      .invoke({
+        properties: ['openDirectory', 'createDirectory'],
+        defaultPath: enterprise ? workspaceDir || undefined : undefined,
+      })
       .then((dirs) => {
         if (dirs && dirs[0]) {
           if (!enterprise) addRecentWorkspace(dirs[0]);
@@ -233,12 +236,14 @@ const GuidWorkspaceFootnote: React.FC<GuidWorkspaceFootnoteProps> = ({
               >
                 <FolderIcon size={14} />
                 <span className={styles.workspacePillName}>{workspaceName}</span>
-                {!enterprise && <Down
-                  theme='outline'
-                  size='12'
-                  fill='currentColor'
-                  style={{ flexShrink: 0, transform: 'translateY(1px)' }}
-                />}
+                {!enterprise && (
+                  <Down
+                    theme='outline'
+                    size='12'
+                    fill='currentColor'
+                    style={{ flexShrink: 0, transform: 'translateY(1px)' }}
+                  />
+                )}
               </button>
               <span
                 role='button'

@@ -7,7 +7,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Alert, Button, Message, Switch, Popconfirm, Spin, Empty, Tooltip, Checkbox, Modal } from '@arco-design/web-react';
+import {
+  Alert,
+  Button,
+  Message,
+  Switch,
+  Popconfirm,
+  Spin,
+  Empty,
+  Tooltip,
+  Checkbox,
+  Modal,
+} from '@arco-design/web-react';
 import { Left, Delete, Write, Attention, Robot } from '@icon-park/react';
 import { ipcBridge } from '@/common';
 import type { ICronJob } from '@/common/adapter/ipcBridge';
@@ -56,8 +67,12 @@ const TaskDetailPage: React.FC = () => {
   const isNewConversationMode = job?.target.execution_mode === 'new_conversation';
   const isManualOnly = job?.schedule.kind === 'cron' && !job.schedule.expr;
   const hostedWeb = isEnterpriseWeb();
-  const { conversations, loading: loadingHistory, loadError: historyError, refetch: refetchConversations } =
-    useCronJobConversations(job_id);
+  const {
+    conversations,
+    loading: loadingHistory,
+    loadError: historyError,
+    refetch: refetchConversations,
+  } = useCronJobConversations(job_id);
   const { presetAssistants } = useConversationAssistants(!hostedWeb);
   const logos = useAgentLogos(!hostedWeb);
   const assistantIdentity = job ? getJobAgentMeta(job, presetAssistants, logos) : null;
@@ -320,7 +335,9 @@ const TaskDetailPage: React.FC = () => {
                 content={t('workspace.errors.load', { code: 'SCHEDULE_READ_UNAVAILABLE' })}
                 action={<Button onClick={() => void fetchJob()}>{t('common.retry')}</Button>}
               />
-            ) : <Empty description={t('cron.detail.notFound')} />}
+            ) : (
+              <Empty description={t('cron.detail.notFound')} />
+            )}
           </div>
         </div>
       </div>

@@ -25,8 +25,12 @@ export type DependencyProbeResult = DependencyProbeEvaluation & {
 
 export type CoreDependencyProbeRequest = {
   core: { port: number; host?: string; networkMode?: 'container' };
-  skills: Array<{ id: string; version: number; packageSha256: string;
-    files: Array<{ path: string; content: string; encoding: 'utf8' | 'base64' }> }>;
+  skills: Array<{
+    id: string;
+    version: number;
+    packageSha256: string;
+    files: Array<{ path: string; content: string; encoding: 'utf8' | 'base64' }>;
+  }>;
 };
 
 /**
@@ -49,7 +53,11 @@ export function createDockerCoreDependencyProbe(transport: DockerCoreDependencyT
   };
 }
 
-const normalizeName = (value: string): string => value.trim().toLowerCase().replace(/[-_.]+/g, '-');
+const normalizeName = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[-_.]+/g, '-');
 
 export function validateCoreDependencyInventory(value: unknown): CoreDependencyInventory {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Core dependency inventory invalid');
@@ -89,8 +97,11 @@ function requirements(content: string, source: string): DependencyDeclaration[] 
   for (const raw of content.split(/\r?\n/)) {
     const line = raw.replace(/\s+#.*$/, '').trim();
     if (!line) continue;
-    if (/^(?:-r|--requirement|-e|--editable|--index-url|--extra-index-url|--find-links)\b/i.test(line) ||
-        /(?:git\+|https?:|\s@\s)/i.test(line)) return null;
+    if (
+      /^(?:-r|--requirement|-e|--editable|--index-url|--extra-index-url|--find-links)\b/i.test(line) ||
+      /(?:git\+|https?:|\s@\s)/i.test(line)
+    )
+      return null;
     const match = /^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[A-Za-z0-9_,.-]+\])?\s*(.*)$/.exec(line);
     if (!match || !match[1]) return null;
     result.push({ ecosystem: 'python', name: normalizeName(match[1]), requested: match[2].trim() || '*', source });
@@ -106,20 +117,33 @@ function packageJson(content: string, source: string): DependencyDeclaration[] |
     if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) return null;
     const result: DependencyDeclaration[] = [];
     for (const [name, requested] of Object.entries(dependencies)) {
-      if (!/^@?[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(name) || typeof requested !== 'string' || !requested.trim()) return null;
+      if (!/^@?[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(name) || typeof requested !== 'string' || !requested.trim())
+        return null;
       result.push({ ecosystem: 'node', name: normalizeName(name), requested: requested.trim(), source });
     }
     return result;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
-export function dependencyDeclarations(files: CoreDependencyProbeRequest['skills'][number]['files']):
-  { declarations: DependencyDeclaration[]; unsupported: string[] } {
+export function dependencyDeclarations(files: CoreDependencyProbeRequest['skills'][number]['files']): {
+  declarations: DependencyDeclaration[];
+  unsupported: string[];
+} {
   const declarations: DependencyDeclaration[] = [];
   const unsupported: string[] = [];
   for (const file of files) {
-    const dependencyFile = ['requirements.txt', 'requirements.lock', 'pyproject.toml', 'uv.lock',
-      'package.json', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'].includes(file.path);
+    const dependencyFile = [
+      'requirements.txt',
+      'requirements.lock',
+      'pyproject.toml',
+      'uv.lock',
+      'package.json',
+      'package-lock.json',
+      'pnpm-lock.yaml',
+      'yarn.lock',
+    ].includes(file.path);
     if (file.encoding !== 'utf8') {
       if (dependencyFile) unsupported.push(file.path);
       continue;
@@ -160,9 +184,12 @@ function oneConstraint(installed: number[], raw: string, ecosystem: DependencyEc
   if (!requested) return null;
   if (ecosystem === 'node' && requested.length > 3) return null;
   const operator = match[1] || '=';
-  if (ecosystem === 'python' && (operator === '^' || operator === '~') ||
-      ecosystem === 'node' && operator === '~=' ||
-      ecosystem === 'python' && operator === '~=' && requested.length < 2) return null;
+  if (
+    (ecosystem === 'python' && (operator === '^' || operator === '~')) ||
+    (ecosystem === 'node' && operator === '~=') ||
+    (ecosystem === 'python' && operator === '~=' && requested.length < 2)
+  )
+    return null;
   const order = compare(installed, requested);
   if (operator === '=' || operator === '==' || operator === '===') return order === 0;
   if (operator === '!=') return order !== 0;
@@ -174,12 +201,19 @@ function oneConstraint(installed: number[], raw: string, ecosystem: DependencyEc
   if (operator === '^') {
     const pivot = requested.findIndex((part) => part !== 0);
     const index = pivot < 0 ? 0 : pivot;
-    upper[index] += 1; upper.splice(index + 1);
+    upper[index] += 1;
+    upper.splice(index + 1);
   } else if (operator === '~' || operator === '~=') {
-    const index = operator === '~=' && ecosystem === 'python'
-      ? (requested.length > 1 ? requested.length - 2 : 0)
-      : (requested.length > 1 ? 1 : 0);
-    upper[index] += 1; upper.splice(index + 1);
+    const index =
+      operator === '~=' && ecosystem === 'python'
+        ? requested.length > 1
+          ? requested.length - 2
+          : 0
+        : requested.length > 1
+          ? 1
+          : 0;
+    upper[index] += 1;
+    upper.splice(index + 1);
   }
   return order >= 0 && compare(installed, upper) < 0;
 }
@@ -204,7 +238,8 @@ const severity: Record<DependencyProbeState, number> = { READY: 0, UNVERIFIED: 1
 
 /** Pure classification of declared versions against metadata read from the actual Core. */
 export function evaluateCoreDependencies(
-  files: CoreDependencyProbeRequest['skills'][number]['files'], inventory: CoreDependencyInventory
+  files: CoreDependencyProbeRequest['skills'][number]['files'],
+  inventory: CoreDependencyInventory
 ): DependencyProbeEvaluation {
   const parsed = dependencyDeclarations(files);
   const results: DependencyProbeEvaluation['declarations'] = parsed.declarations.map((item) => {
@@ -216,12 +251,22 @@ export function evaluateCoreDependencies(
     return { ...item, installed, state: compatible === null ? 'UNVERIFIED' : compatible ? 'READY' : 'INCOMPATIBLE' };
   });
   if (parsed.unsupported.length) {
-    results.push(...parsed.unsupported.map((source) => ({
-      ecosystem: source.includes('package') || source.includes('pnpm') || source.includes('yarn') ? 'node' as const : 'python' as const,
-      name: '*', requested: '*', source, state: 'UNVERIFIED' as const,
-    })));
+    results.push(
+      ...parsed.unsupported.map((source) => ({
+        ecosystem:
+          source.includes('package') || source.includes('pnpm') || source.includes('yarn')
+            ? ('node' as const)
+            : ('python' as const),
+        name: '*',
+        requested: '*',
+        source,
+        state: 'UNVERIFIED' as const,
+      }))
+    );
   }
-  const state = results.reduce<DependencyProbeState>((current, item) =>
-    severity[item.state] > severity[current] ? item.state : current, 'READY');
+  const state = results.reduce<DependencyProbeState>(
+    (current, item) => (severity[item.state] > severity[current] ? item.state : current),
+    'READY'
+  );
   return { state, declarations: results };
 }

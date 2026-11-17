@@ -29,7 +29,7 @@ describe('resolveFeedbackModule', () => {
     ['/settings/skills/import-history', 'skills-plugin'],
     ['/settings/tools', 'mcp-tools'],
     ['/settings/appearance', 'display-desktop'],
-    ['/settings/pet', 'display-desktop'],
+    ['/settings/pet', 'system-settings'],
     ['/settings/webui', 'webui-remote'],
     ['/settings/ext/telegram', 'channel'],
     ['/settings/system', 'system-settings'],
@@ -41,6 +41,7 @@ describe('resolveFeedbackModule', () => {
 
   it('returns undefined for the home page and unknown routes', () => {
     expect(resolveFeedbackModule('/guid')).toBeUndefined();
+    expect(resolveFeedbackModule('/workspace')).toBeUndefined();
     expect(resolveFeedbackModule('/login')).toBeUndefined();
     expect(resolveFeedbackModule('/')).toBeUndefined();
   });
@@ -58,7 +59,7 @@ describe('resolveFeedbackModule', () => {
     );
     // Pages where preselecting a module makes no sense (multi-purpose or
     // pre-auth surfaces where the user picks the module themselves).
-    const moduleLess = new Set(['/guid', '/login', '/test/components']);
+    const moduleLess = new Set(['/guid', '/workspace', '/login', '/test/components']);
     const paths = [...routerSrc.matchAll(/path='([^*'][^']*)'/g)].map((m) => m[1]);
     expect(paths.length).toBeGreaterThan(10);
     for (const routePath of paths) {

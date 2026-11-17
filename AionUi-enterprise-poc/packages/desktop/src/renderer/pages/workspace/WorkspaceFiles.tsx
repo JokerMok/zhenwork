@@ -128,11 +128,14 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
     : undefined;
   const requestedVersion = params.get('fileVersion');
   const requestedFile = files.find((item) => item.path === requestedPath);
-  const fileVersion = requestedVersion ? requestedFile?.versions?.find((version) => version.id === requestedVersion) : undefined;
+  const fileVersion = requestedVersion
+    ? requestedFile?.versions?.find((version) => version.id === requestedVersion)
+    : undefined;
   const matchesPreview = preview?.file.path === requestedPath && (preview?.version?.id ?? null) === requestedVersion;
-  const previewLookupError = requestedPath && !loading && (
-    errorCode || (!requestedFile ? 'FILE_NOT_FOUND' : requestedVersion && !fileVersion ? 'VERSION_NOT_FOUND' : null)
-  );
+  const previewLookupError =
+    requestedPath &&
+    !loading &&
+    (errorCode || (!requestedFile ? 'FILE_NOT_FOUND' : requestedVersion && !fileVersion ? 'VERSION_NOT_FOUND' : null));
 
   const fileListRequest = useRef<AbortController | null>(null);
   const loadFiles = useCallback(async () => {
@@ -230,13 +233,20 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
     setContinuingPath(file.path);
     try {
       const response = await fetch(`/enterprise/files/download?${query}`, {
-        credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error(`HTTP_${response.status}`);
       const bytes = await response.blob();
       if (controller.signal.aborted) return;
-      const attachment = await uploadFileViaHttp(new File([bytes], file.name, { type: bytes.type }),
-        undefined, undefined, undefined, { signal: controller.signal });
+      const attachment = await uploadFileViaHttp(
+        new File([bytes], file.name, { type: bytes.type }),
+        undefined,
+        undefined,
+        undefined,
+        { signal: controller.signal }
+      );
       if (controller.signal.aborted) return;
       navigate('/guid', {
         state: {
@@ -357,7 +367,7 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
       onSuccess?.({});
       message.success(t('workspace.files.uploaded'));
       await loadFiles();
-      if(/\.(xlsx|csv)$/i.test(result.uploaded[0]))setDataPath(result.uploaded[0]);
+      if (/\.(xlsx|csv)$/i.test(result.uploaded[0])) setDataPath(result.uploaded[0]);
     } catch (error) {
       onError?.(error as Error);
       message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
@@ -369,97 +379,109 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
     ? { role: 'dialog', 'aria-modal': true, 'aria-label': visiblePreview?.file.name || t('workspace.files.preview') }
     : {};
   const previewDrawer = (
-      <Drawer
-        width='min(900px, 100vw)'
-        visible={Boolean(requestedPath)}
-        focusLock
-        autoFocus
-        mountOnEnter
-        unmountOnExit
-        {...previewDialogAttributes}
-        title={visiblePreview
-          ? visiblePreview.file.name + (visiblePreview.version ? ' · ' + formatDate(visiblePreview.version.createdAt) : '')
-          : t('workspace.files.preview')}
-        footer={
-          <Space wrap>
-            <Button onClick={closePreview}>{t('common.close')}</Button>
-            {visiblePreview && (
-              <Button icon={<Download />} onClick={() => downloadWorkspaceFile(visiblePreview.file, visiblePreview.version)}>
-                {t('workspace.files.download')}
-              </Button>
-            )}
-          </Space>
-        }
-        onCancel={closePreview}
-      >
-        {previewLookupError ? (
-          <Alert type='error' showIcon content={t('workspace.errors.action', { code: previewLookupError })} />
-        ) : !visiblePreview ? (
-          <div className='flex min-h-240px items-center justify-center'>
-            <Spin loading />
-          </div>
-        ) : visiblePreview.kind === 'office' && /\.(xlsx|docx|pptx)$/i.test(visiblePreview.file.name) ? (
-          <OfficePreview
-            path={visiblePreview.file.path}
-            version={visiblePreview.version?.id}
-            revision={visiblePreview.version?.sha256 || visiblePreview.file.modifiedAt}
-            onContinue={previewOnly ? undefined : () => void continueWithFile(visiblePreview.file, visiblePreview.version)}
-            continueBusy={continuingPath === visiblePreview.file.path}
-          />
-        ) : visiblePreview.loading ? (
-          <div className='flex min-h-240px items-center justify-center'>
-            <Spin loading />
-          </div>
-        ) : visiblePreview.errorCode ? (
-          <Space direction='vertical'>
-            <Alert type='error' showIcon content={t('workspace.errors.action', { code: visiblePreview.errorCode })} />
+    <Drawer
+      width='min(900px, 100vw)'
+      visible={Boolean(requestedPath)}
+      focusLock
+      autoFocus
+      mountOnEnter
+      unmountOnExit
+      {...previewDialogAttributes}
+      title={
+        visiblePreview
+          ? visiblePreview.file.name +
+            (visiblePreview.version ? ' · ' + formatDate(visiblePreview.version.createdAt) : '')
+          : t('workspace.files.preview')
+      }
+      footer={
+        <Space wrap>
+          <Button onClick={closePreview}>{t('common.close')}</Button>
+          {visiblePreview && (
             <Button
-              onClick={() =>
-                setPreview((current) =>
-                  current
-                    ? { ...current, loading: true, errorCode: undefined, retry: (current.retry || 0) + 1 }
-                    : current
-                )
-              }
+              icon={<Download />}
+              onClick={() => downloadWorkspaceFile(visiblePreview.file, visiblePreview.version)}
             >
-              {t('workspace.preview.retry')}
+              {t('workspace.files.download')}
+            </Button>
+          )}
+        </Space>
+      }
+      onCancel={closePreview}
+    >
+      {previewLookupError ? (
+        <Alert type='error' showIcon content={t('workspace.errors.action', { code: previewLookupError })} />
+      ) : !visiblePreview ? (
+        <div className='flex min-h-240px items-center justify-center'>
+          <Spin loading />
+        </div>
+      ) : visiblePreview.kind === 'office' && /\.(xlsx|docx|pptx)$/i.test(visiblePreview.file.name) ? (
+        <OfficePreview
+          path={visiblePreview.file.path}
+          version={visiblePreview.version?.id}
+          revision={visiblePreview.version?.sha256 || visiblePreview.file.modifiedAt}
+          onContinue={
+            previewOnly ? undefined : () => void continueWithFile(visiblePreview.file, visiblePreview.version)
+          }
+          continueBusy={continuingPath === visiblePreview.file.path}
+        />
+      ) : visiblePreview.loading ? (
+        <div className='flex min-h-240px items-center justify-center'>
+          <Spin loading />
+        </div>
+      ) : visiblePreview.errorCode ? (
+        <Space direction='vertical'>
+          <Alert type='error' showIcon content={t('workspace.errors.action', { code: visiblePreview.errorCode })} />
+          <Button
+            onClick={() =>
+              setPreview((current) =>
+                current ? { ...current, loading: true, errorCode: undefined, retry: (current.retry || 0) + 1 } : current
+              )
+            }
+          >
+            {t('workspace.preview.retry')}
+          </Button>
+        </Space>
+      ) : visiblePreview.kind === 'text' ? (
+        <pre className='m-0 max-h-[72vh] overflow-auto whitespace-pre-wrap break-words bg-fill-1 p-12px text-12px'>
+          {visiblePreview.text || t('workspace.preview.empty')}
+        </pre>
+      ) : visiblePreview.kind === 'image' && visiblePreview.objectUrl ? (
+        <div className='flex max-h-[72vh] justify-center overflow-auto bg-fill-1 p-12px'>
+          <img src={visiblePreview.objectUrl} alt={visiblePreview.file.name} className='max-w-full object-contain' />
+        </div>
+      ) : visiblePreview.kind === 'pdf' && visiblePreview.objectUrl ? (
+        <iframe title={visiblePreview.file.name} src={visiblePreview.objectUrl} className='h-[72vh] w-full border-0' />
+      ) : (
+        <div className='min-w-0 flex flex-col gap-12px'>
+          <Alert
+            type={visiblePreview.kind === 'office' ? 'info' : 'warning'}
+            showIcon
+            content={
+              visiblePreview.kind === 'office'
+                ? t('workspace.files.officePreviewHint')
+                : t('workspace.files.unsupportedPreviewHint')
+            }
+          />
+          <Space wrap>
+            {visiblePreview.kind === 'office' && !previewOnly ? (
+              <Button
+                type='primary'
+                loading={continuingPath === visiblePreview.file.path}
+                onClick={() => void continueWithFile(visiblePreview.file, visiblePreview.version)}
+              >
+                {t('workspace.files.continueInNewTask')}
+              </Button>
+            ) : null}
+            <Button
+              icon={<Download />}
+              onClick={() => downloadWorkspaceFile(visiblePreview.file, visiblePreview.version)}
+            >
+              {t('workspace.files.download')}
             </Button>
           </Space>
-        ) : visiblePreview.kind === 'text' ? (
-          <pre className='m-0 max-h-[72vh] overflow-auto whitespace-pre-wrap break-words bg-fill-1 p-12px text-12px'>
-            {visiblePreview.text || t('workspace.preview.empty')}
-          </pre>
-        ) : visiblePreview.kind === 'image' && visiblePreview.objectUrl ? (
-          <div className='flex max-h-[72vh] justify-center overflow-auto bg-fill-1 p-12px'>
-            <img src={visiblePreview.objectUrl} alt={visiblePreview.file.name} className='max-w-full object-contain' />
-          </div>
-        ) : visiblePreview.kind === 'pdf' && visiblePreview.objectUrl ? (
-          <iframe title={visiblePreview.file.name} src={visiblePreview.objectUrl} className='h-[72vh] w-full border-0' />
-        ) : (
-          <div className='min-w-0 flex flex-col gap-12px'>
-            <Alert
-              type={visiblePreview.kind === 'office' ? 'info' : 'warning'}
-              showIcon
-              content={
-                visiblePreview.kind === 'office'
-                  ? t('workspace.files.officePreviewHint')
-                  : t('workspace.files.unsupportedPreviewHint')
-              }
-            />
-            <Space wrap>
-              {visiblePreview.kind === 'office' && !previewOnly ? (
-                <Button type='primary' loading={continuingPath === visiblePreview.file.path}
-                  onClick={() => void continueWithFile(visiblePreview.file, visiblePreview.version)}>
-                  {t('workspace.files.continueInNewTask')}
-                </Button>
-              ) : null}
-              <Button icon={<Download />} onClick={() => downloadWorkspaceFile(visiblePreview.file, visiblePreview.version)}>
-                {t('workspace.files.download')}
-              </Button>
-            </Space>
-          </div>
-        )}
-      </Drawer>
+        </div>
+      )}
+    </Drawer>
   );
   if (previewOnly) return previewDrawer;
 
@@ -477,10 +499,10 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
             {['all', 'task', 'personal', 'shared', 'generated', 'result']
               .filter((value) => value !== 'result' || files.some((file) => file.kind.toLowerCase() === value))
               .map((value) => (
-              <Select.Option key={value} value={value}>
-                {t(`workspace.fileKind.${value}`)}
-              </Select.Option>
-            ))}
+                <Select.Option key={value} value={value}>
+                  {t(`workspace.fileKind.${value}`)}
+                </Select.Option>
+              ))}
           </Select>
           <Upload multiple showUploadList={false} customRequest={upload}>
             <Button type='primary' icon={<UploadOne />}>
@@ -497,7 +519,11 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
           type='error'
           showIcon
           content={t('workspace.errors.load', { code: errorCode })}
-          action={<Button size='small' onClick={() => void loadFiles()}>{t('common.retry')}</Button>}
+          action={
+            <Button size='small' onClick={() => void loadFiles()}>
+              {t('common.retry')}
+            </Button>
+          }
         />
       )}
       {warnings.length > 0 ? (
@@ -505,10 +531,19 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
       ) : null}
       <Spin loading={loading} className='w-full'>
         {visibleFiles.length === 0 ? (
-          !loading && !errorCode && (
-            <Empty description={kind === 'all' ? t('workspace.files.empty') : (
-              <Button type='text' onClick={() => setKind('all')}>{t('workspace.fileKind.all')}</Button>
-            )} />
+          !loading &&
+          !errorCode && (
+            <Empty
+              description={
+                kind === 'all' ? (
+                  t('workspace.files.empty')
+                ) : (
+                  <Button type='text' onClick={() => setKind('all')}>
+                    {t('workspace.fileKind.all')}
+                  </Button>
+                )
+              }
+            />
           )
         ) : (
           <List
@@ -518,16 +553,22 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
                 key={file.path}
                 className='!flex-wrap gap-y-8px [&_.arco-list-item-main]:min-w-0 [&_.arco-list-item-main]:flex-1 [&_.arco-list-item-action]:flex-wrap [&_.arco-list-item-action]:!ml-0'
                 actions={[
-                  /\.(xlsx|csv)$/i.test(file.path) ? <DataAnalysisControl key='data-analysis' filePath={file.path} /> : null,
+                  /\.(xlsx|csv)$/i.test(file.path) ? (
+                    <DataAnalysisControl key='data-analysis' filePath={file.path} />
+                  ) : null,
                   <Button key='preview' type='text' icon={<PreviewOpen />} onClick={() => openPreview(file)}>
                     {t('workspace.files.preview')}
                   </Button>,
                   <Button key='download' type='text' icon={<Download />} onClick={() => downloadWorkspaceFile(file)}>
                     {t('workspace.files.download')}
                   </Button>,
-                  <Button key='continue' type='text' loading={continuingPath === file.path}
+                  <Button
+                    key='continue'
+                    type='text'
+                    loading={continuingPath === file.path}
                     disabled={Boolean(continuingPath) && continuingPath !== file.path}
-                    onClick={() => void continueWithFile(file)}>
+                    onClick={() => void continueWithFile(file)}
+                  >
                     {t('workspace.files.continueInNewTask')}
                   </Button>,
                   <Button
@@ -543,13 +584,10 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
                 <List.Item.Meta
                   title={
                     <div className='min-w-0 flex flex-wrap items-center gap-8px'>
-                      <span className='min-w-0 break-all' title={file.name}>{file.name}</span>
-                      <Tag>
-                        {t(
-                          `workspace.fileKind.${file.kind.toLowerCase()}`,
-                          { defaultValue: file.kind }
-                        )}
-                      </Tag>
+                      <span className='min-w-0 break-all' title={file.name}>
+                        {file.name}
+                      </span>
+                      <Tag>{t(`workspace.fileKind.${file.kind.toLowerCase()}`, { defaultValue: file.kind })}</Tag>
                     </div>
                   }
                   description={`${formatFileSize(file.byteSize)} · ${formatDate(file.modifiedAt)}`}

@@ -2,12 +2,12 @@
 
 ## Supported Providers
 
-| Provider | Auth Method | Notes |
-|----------|------------|-------|
-| Anthropic | API Key / OAuth | Prompt caching, streaming, vision |
-| OpenAI | API Key | Compatible with DeepSeek, Qwen, Ollama, vLLM |
-| AWS Bedrock | SigV4 | Regional endpoints, AWS credential chain |
-| Google Vertex AI | GCP OAuth2 / Service Account | Metadata server auto-detection |
+| Provider         | Auth Method                  | Notes                                        |
+| ---------------- | ---------------------------- | -------------------------------------------- |
+| Anthropic        | API Key / OAuth              | Prompt caching, streaming, vision            |
+| OpenAI           | API Key                      | Compatible with DeepSeek, Qwen, Ollama, vLLM |
+| AWS Bedrock      | SigV4                        | Regional endpoints, AWS credential chain     |
+| Google Vertex AI | GCP OAuth2 / Service Account | Metadata server auto-detection               |
 
 ---
 
@@ -221,11 +221,11 @@ model = "claude-sonnet-4@20250514"
 
 ### Auth Methods
 
-| Method | Use Case |
-|--------|----------|
-| Service Account Key | CI/CD, server-side apps |
-| Application Default Credentials | Local development (requires gcloud CLI) |
-| Metadata Server | GCE/GKE/Cloud Run and other GCP environments |
+| Method                          | Use Case                                     |
+| ------------------------------- | -------------------------------------------- |
+| Service Account Key             | CI/CD, server-side apps                      |
+| Application Default Credentials | Local development (requires gcloud CLI)      |
+| Metadata Server                 | GCE/GKE/Cloud Run and other GCP environments |
 
 ---
 

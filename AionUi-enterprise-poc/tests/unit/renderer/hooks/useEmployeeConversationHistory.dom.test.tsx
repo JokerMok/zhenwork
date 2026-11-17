@@ -23,11 +23,12 @@ vi.mock('@/common', () => ({
 
 test('history retries a failed page and appends one bounded window without duplicate rows', async () => {
   const request = vi.mocked(ipcBridge.database.getUserConversations.invoke);
-  const page = (ids: string[], hasMore: boolean) => ({
-    items: ids.map((id) => ({ id, name: id })),
-    total: 3,
-    has_more: hasMore,
-  }) as Awaited<ReturnType<typeof request>>;
+  const page = (ids: string[], hasMore: boolean) =>
+    ({
+      items: ids.map((id) => ({ id, name: id })),
+      total: 3,
+      has_more: hasMore,
+    }) as Awaited<ReturnType<typeof request>>;
   request
     .mockRejectedValueOnce(new Error('network'))
     .mockResolvedValueOnce(page(['aaaaaaaa', 'bbbbbbbb'], true))
@@ -58,18 +59,25 @@ test('switching employees clears rendered history before the new read and ignore
   const request = vi.mocked(ipcBridge.database.getUserConversations.invoke);
   let resolveOld: (value: Awaited<ReturnType<typeof request>>) => void = () => {};
   request
-    .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        })
+    )
     .mockResolvedValueOnce({ items: [], total: 0, has_more: false });
   const { result } = renderHook(() => useConversationListSync());
   act(() => setConversationListEmployee('a'));
   act(() => setConversationListEmployee('b'));
   expect(result.current.conversations).toEqual([]);
   await waitFor(() => expect(result.current.historyLoading).toBe(false));
-  await act(async () => resolveOld({
-    items: [{ id: 'aaaaaaaa', name: 'Previous employee' }],
-    total: 1,
-    has_more: false,
-  } as Awaited<ReturnType<typeof request>>));
+  await act(async () =>
+    resolveOld({
+      items: [{ id: 'aaaaaaaa', name: 'Previous employee' }],
+      total: 1,
+      has_more: false,
+    } as Awaited<ReturnType<typeof request>>)
+  );
   expect(result.current.conversations).toEqual([]);
   act(() => setConversationListEmployee(null));
 });

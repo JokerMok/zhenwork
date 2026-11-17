@@ -135,7 +135,11 @@ function seedRuntimeKey(
   mkdirSync(join(resourcesDir, 'bundled-aioncore', runtimeKey), { recursive: true });
   writeFile(join(resourcesDir, 'bundled-aioncore', runtimeKey, platform === 'win32' ? 'aioncore.exe' : 'aioncore'));
   writeJson(join(resourcesDir, 'bundled-aioncore', runtimeKey, 'manifest.json'), { platform, arch });
-  writeFile(join(managedResourcesDir, ...nodeRoot.split('/'), ...nodeExecutable.split('/')));
+  const nodeDir = join(managedResourcesDir, ...nodeRoot.split('/'));
+  writeFile(join(nodeDir, ...nodeExecutable.split('/')));
+  const npmDir = platform === 'win32' ? nodeDir : join(nodeDir, 'lib');
+  writeFile(join(npmDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'));
+  writeFile(join(npmDir, 'node_modules', 'npm', 'bin', 'npx-cli.js'));
   createManagedCliFixture({ managedResourcesDir, name: 'claude', version: CLAUDE_VERSION, runtimeKey });
   createManagedCliFixture({ managedResourcesDir, name: 'codex', version: CODEX_VERSION, runtimeKey });
   writeManagedResourcesContract(managedResourcesDir, { runtimeKey, nodeRoot, nodeExecutable });

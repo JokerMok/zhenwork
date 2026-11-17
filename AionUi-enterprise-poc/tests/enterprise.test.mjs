@@ -214,9 +214,12 @@ test('RC2 cookie contract, stable IDs, disable, logout and A/B profile isolation
       new Rc2Client(base, 'https://wrong-origin.example').login({ username: 'alpha', password: 'stub-alpha' }),
       /ORIGIN/
     );
-    const actorA = await a.login({ username: 'alpha', password: 'stub-alpha',
+    const actorA = await a.login({
+      username: 'alpha',
+      password: 'stub-alpha',
       clientMetadata: { ipAddress: '2001:db8::25', userAgent: 'Mozilla/5.0 Test Chrome/120' },
-      edgeToken: 'fixed-edge-token-for-enterprise-unit-tests' });
+      edgeToken: 'fixed-edge-token-for-enterprise-unit-tests',
+    });
     const actorB = await b.login({ username: 'beta', password: 'stub-beta' });
     assert.equal(actorA.userId, '101');
     assert.equal(actorB.userId, '202');
@@ -387,7 +390,9 @@ test('worker receives Core and proxy capabilities only after IPC bootstrap', asy
   let workerEnv;
   let child;
   const sent = [];
-  const lifecycle = new EnterpriseLifecycle({ executable: 'electron', appEntry: 'index.js',
+  const lifecycle = new EnterpriseLifecycle({
+    executable: 'electron',
+    appEntry: 'index.js',
     spawnImpl: (_exe, _args, options) => {
       workerEnv = options.env;
       child = new EventEmitter();
@@ -396,25 +401,29 @@ test('worker receives Core and proxy capabilities only after IPC bootstrap', asy
       child.connected = true;
       child.send = (message) => {
         sent.push(message);
-        if (message.type === 'enterprise:stop') queueMicrotask(() => {
-          child.exitCode = 0;
-          child.emit('exit', 0);
-        });
+        if (message.type === 'enterprise:stop')
+          queueMicrotask(() => {
+            child.exitCode = 0;
+            child.emit('exit', 0);
+          });
       };
       return child;
-    } });
+    },
+  });
   const localToken = 'a'.repeat(64);
   const modelKey = 'b'.repeat(64);
   const mcpKey = 'c'.repeat(64);
-  lifecycle.start({ profileDir: '/employee-profile', localToken,
+  lifecycle.start({
+    profileDir: '/employee-profile',
+    localToken,
     model: { port: 32123, key: modelKey, id: 'model', code: 'model', name: 'Model' },
-    mcp: { port: 32124, key: mcpKey, resourceId: 'resource', version: 1 } });
+    mcp: { port: 32124, key: mcpKey, resourceId: 'resource', version: 1 },
+  });
   assert.equal(workerEnv.AION_ENTERPRISE_LOCAL_TOKEN, undefined);
   assert.equal(workerEnv.AION_ENTERPRISE_MODEL_PROXY_KEY, undefined);
   assert.equal(workerEnv.AION_ENTERPRISE_MCP_PROXY_KEY, undefined);
   child.emit('message', { type: 'enterprise:bootstrap-request' });
-  assert.deepEqual(sent[0], { type: 'enterprise:bootstrap', localToken,
-    modelProxyKey: modelKey, mcpProxyKey: mcpKey });
+  assert.deepEqual(sent[0], { type: 'enterprise:bootstrap', localToken, modelProxyKey: modelKey, mcpProxyKey: mcpKey });
   child.emit('message', { type: 'enterprise:bootstrap-request' });
   assert.equal(sent.length, 1);
   await lifecycle.stop();

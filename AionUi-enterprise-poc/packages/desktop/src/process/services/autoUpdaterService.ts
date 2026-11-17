@@ -158,7 +158,14 @@ class AutoUpdaterService extends EventEmitter {
   configureEnterpriseFeed(feedUrl: string, channel: string): void {
     if (process.env.AION_ENTERPRISE_ROLE !== 'supervisor') throw new Error('Enterprise updater requires supervisor');
     const url = new URL(feedUrl);
-    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/')) {
+    if (
+      url.protocol !== 'https:' ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      !url.pathname.endsWith('/')
+    ) {
       throw new Error('Enterprise update feed must be a fixed HTTPS URL');
     }
     if (!/^(pilot|stable)$/.test(channel)) throw new Error('Invalid enterprise update channel');
@@ -171,9 +178,13 @@ class AutoUpdaterService extends EventEmitter {
         ? `${channel}-${process.platform === 'win32' ? 'win-' : ''}arm64`
         : channel;
     const configPath = path.join(app.getPath('userData'), 'enterprise-app-update.yml');
-    fs.writeFileSync(configPath, `provider: generic\nurl: ${url.toString()}\nupdaterCacheDirName: com.aionui.enterprise.pilot\n`, {
-      mode: 0o600,
-    });
+    fs.writeFileSync(
+      configPath,
+      `provider: generic\nurl: ${url.toString()}\nupdaterCacheDirName: com.aionui.enterprise.pilot\n`,
+      {
+        mode: 0o600,
+      }
+    );
     autoUpdater.updateConfigPath = configPath;
     autoUpdater.setFeedURL({ provider: 'generic', url: url.toString() });
     this.initialize();

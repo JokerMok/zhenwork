@@ -1013,13 +1013,20 @@ const SkillsHubSettings: React.FC<SkillsHubSettingsProps> = ({ withWrapper = tru
         })}
         actions={
           <>
-            {isEnterpriseWeb() && <input ref={webSkillArchiveRef} type='file' accept='.zip,application/zip'
-              className='hidden' aria-label={t('settings.skillsHub.webZipSelect')}
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                event.currentTarget.value = '';
-                void handleWebSkillArchive(file);
-              }} />}
+            {isEnterpriseWeb() && (
+              <input
+                ref={webSkillArchiveRef}
+                type='file'
+                accept='.zip,application/zip'
+                className='hidden'
+                aria-label={t('settings.skillsHub.webZipSelect')}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = '';
+                  void handleWebSkillArchive(file);
+                }}
+              />
+            )}
             {/* Mobile: the actions row is too crowded — drop the search box entirely. */}
             {!isMobile && searchBox('input-search-my-skills')}
             <Button
@@ -1035,9 +1042,11 @@ const SkillsHubSettings: React.FC<SkillsHubSettingsProps> = ({ withWrapper = tru
               label={t('settings.skillsHub.addSkill', { defaultValue: 'Add Skill' })}
               chatLabel={t('settings.talkToButler.addViaChat', { defaultValue: 'Add via chat' })}
               onManual={handleManualImport}
-              manualLabel={isEnterpriseWeb()
-                ? t('settings.skillsHub.webZipSelect')
-                : t('settings.skillsHub.manualImport', { defaultValue: 'Import Skills' })}
+              manualLabel={
+                isEnterpriseWeb()
+                  ? t('settings.skillsHub.webZipSelect')
+                  : t('settings.skillsHub.manualImport', { defaultValue: 'Import Skills' })
+              }
               prompt={t('settings.talkToButler.prompt.addSkill', {
                 defaultValue: 'Help me import a skill and attach it to an assistant.',
               })}

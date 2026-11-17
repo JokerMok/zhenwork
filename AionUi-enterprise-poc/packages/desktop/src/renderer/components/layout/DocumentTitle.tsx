@@ -26,7 +26,9 @@ export function titleForPath(pathname: string, t: (key: string) => string, brand
 const DocumentTitle: React.FC = () => {
   const { pathname } = useLocation();
   const { t, i18n } = useTranslation();
-  const [brandName, setBrandName] = useState(() => isEnterpriseWeb() ? document.title.trim() || 'ZhenWork' : 'AionUi');
+  const [brandName, setBrandName] = useState(() =>
+    isEnterpriseWeb() ? document.title.trim() || 'ZhenWork' : 'AionUi'
+  );
 
   useEffect(() => {
     let active = true;

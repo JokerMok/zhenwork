@@ -1,13 +1,8 @@
-import { createHash } from "node:crypto";
-import { z } from "zod";
-import type { GenerateOfficeArtifactInput } from "../generate.js";
-import type { VerifiedSourceEvidence } from "../source-evidence.js";
-import {
-  buildOfficeSources,
-  metricValueError,
-  type OfficeReport,
-  type OfficeMetric,
-} from "./presentation.js";
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+import type { GenerateOfficeArtifactInput } from '../generate.js';
+import type { VerifiedSourceEvidence } from '../source-evidence.js';
+import { buildOfficeSources, metricValueError, type OfficeReport, type OfficeMetric } from './presentation.js';
 
 const reference = z
   .object({
@@ -18,17 +13,17 @@ const reference = z
   .strict()
   .refine(
     (value) => (value.quote !== undefined) !== (value.quoteIndex !== undefined),
-    "Provide exactly one of quote or quoteIndex",
+    'Provide exactly one of quote or quoteIndex'
   );
 const row = z
   .object({
     topic: z.string().min(1).max(300),
-    rowType: z.enum(["requirement", "context"]).default("requirement"),
+    rowType: z.enum(['requirement', 'context']).default('requirement'),
     source: reference,
     requirement: reference.optional(),
-    assessment: z.enum(["符合", "不符合", "部分符合", "证据不足"]).default("证据不足"),
-    analysis: z.string().max(2000).default(""),
-    missing: z.string().max(2000).default(""),
+    assessment: z.enum(['符合', '不符合', '部分符合', '证据不足']).default('证据不足'),
+    analysis: z.string().max(2000).default(''),
+    missing: z.string().max(2000).default(''),
     metric: z
       .object({
         object: z.string().min(1).max(200),
@@ -38,10 +33,10 @@ const row = z
           .union([z.number().finite(), z.string().trim().min(1).max(2000)])
           .nullable()
           .optional(),
-        valueType: z.enum(["number", "text", "enum", "date"]).optional(),
+        valueType: z.enum(['number', 'text', 'enum', 'date']).optional(),
         calculation: z
           .object({
-            operation: z.enum(["sum", "difference", "ratio"]),
+            operation: z.enum(['sum', 'difference', 'ratio']),
             rows: z.array(z.number().int().min(1).max(32)).min(1).max(32),
           })
           .strict()
@@ -59,7 +54,7 @@ const input = z
     docxPath: z.string().min(1).max(240).optional(),
     xlsxPath: z.string().min(1).max(240).optional(),
     scope: z.string().min(1).max(2000),
-    purpose: z.enum(["research", "compliance"]).default("compliance"),
+    purpose: z.enum(['research', 'compliance']).default('compliance'),
     rows: z.array(row).min(1).max(32),
     overwrite: z.boolean().optional(),
   })
@@ -69,77 +64,69 @@ export function parseEvidenceDelivery(value: unknown): EvidenceDeliveryInput {
   const result = input.safeParse(value);
   if (!result.success)
     throw new Error(
-      "OFFICE_DELIVERY_INPUT_INVALID " +
+      'OFFICE_DELIVERY_INPUT_INVALID ' +
         result.error.issues
-          .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-          .join("; ")
-          .slice(0, 900),
+          .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+          .join('; ')
+          .slice(0, 900)
     );
   if (/\.(xlsx|docx|pdf|pptx)$/i.test(result.data.basePath))
-    throw new Error("OFFICE_DELIVERY_BASE_PATH_WITHOUT_EXTENSION_REQUIRED");
+    throw new Error('OFFICE_DELIVERY_BASE_PATH_WITHOUT_EXTENSION_REQUIRED');
   if (result.data.rows.reduce((count, item) => count + (item.requirement ? 2 : 1), 0) > 32)
     throw new Error(
-      "OFFICE_DELIVERY_REFERENCE_LIMIT_32: at most 32 source-only rows or 16 rows with paired requirements; select the findings needed for this scope.",
+      'OFFICE_DELIVERY_REFERENCE_LIMIT_32: at most 32 source-only rows or 16 rows with paired requirements; select the findings needed for this scope.'
     );
   for (const [key, extension] of [
-    ["docxPath", ".docx"],
-    ["xlsxPath", ".xlsx"],
+    ['docxPath', '.docx'],
+    ['xlsxPath', '.xlsx'],
   ] as const) {
     if (result.data[key] && !result.data[key]!.toLowerCase().endsWith(extension))
-      throw new Error("OFFICE_DELIVERY_PATH_FORMAT_MISMATCH");
+      throw new Error('OFFICE_DELIVERY_PATH_FORMAT_MISMATCH');
   }
   result.data.rows.forEach((item) => {
     if (item.metric) {
       const error = metricValueError(item.metric as OfficeMetric);
       if (error)
         throw new Error(
-          "OFFICE_DELIVERY_METRIC_INVALID: " +
+          'OFFICE_DELIVERY_METRIC_INVALID: ' +
             error +
-            "; preserve text values; dates require YYYY-MM-DD; calculations require numbers.",
+            '; preserve text values; dates require YYYY-MM-DD; calculations require numbers.'
         );
       if (item.metric.value == null && !item.metric.calculation && !item.missing.trim())
         throw new Error(
-          "OFFICE_DELIVERY_METRIC_MISSING_REASON_REQUIRED: use missing to explain an unknown value; conversion failures are errors, not missing evidence.",
+          'OFFICE_DELIVERY_METRIC_MISSING_REASON_REQUIRED: use missing to explain an unknown value; conversion failures are errors, not missing evidence.'
         );
     }
     if (
       item.metric?.calculation &&
       (item.metric.value != null ||
         item.metric.calculation.rows.some((index) => index > result.data.rows.length) ||
-        (item.metric.calculation.operation !== "sum" && item.metric.calculation.rows.length !== 2))
+        (item.metric.calculation.operation !== 'sum' && item.metric.calculation.rows.length !== 2))
     )
-      throw new Error("OFFICE_DELIVERY_CALCULATION_INVALID");
+      throw new Error('OFFICE_DELIVERY_CALCULATION_INVALID');
   });
   return result.data;
 }
 export function deliveryReferences(value: EvidenceDeliveryInput) {
-  return value.rows.flatMap((item) =>
-    item.requirement ? [item.source, item.requirement] : [item.source],
-  );
+  return value.rows.flatMap((item) => (item.requirement ? [item.source, item.requirement] : [item.source]));
 }
-function independentRequirements(
-  source: VerifiedSourceEvidence,
-  requirement?: VerifiedSourceEvidence,
-): boolean {
+function independentRequirements(source: VerifiedSourceEvidence, requirement?: VerifiedSourceEvidence): boolean {
   if (!requirement || source.ref === requirement.ref) return false;
   const left = source.locator as Record<string, unknown>,
     right = requirement.locator as Record<string, unknown>;
   if (!left || !right) return false;
-  if (typeof left.sha256 === "string" && left.sha256 && left.sha256 === right.sha256) return false;
-  const identity =
-    source.kind === "knowledge" ? "documentId" : source.kind === "web" ? "url" : "path";
-  if (source.kind === requirement.kind && left[identity] && left[identity] === right[identity])
-    return false;
+  if (typeof left.sha256 === 'string' && left.sha256 && left.sha256 === right.sha256) return false;
+  const identity = source.kind === 'knowledge' ? 'documentId' : source.kind === 'web' ? 'url' : 'path';
+  if (source.kind === requirement.kind && left[identity] && left[identity] === right[identity]) return false;
   // A different ref alone may be a re-read of the same document; require an actual distinct source identity.
   return Boolean(left[identity] && (right.documentId || right.url || right.path));
 }
 
 export function buildEvidenceDeliverables(
   value: EvidenceDeliveryInput,
-  sources: VerifiedSourceEvidence[],
+  sources: VerifiedSourceEvidence[]
 ): { dataSha256: string; files: Array<{ path: string; content: GenerateOfficeArtifactInput }> } {
-  if (sources.length !== deliveryReferences(value).length)
-    throw new Error("OFFICE_DELIVERY_SOURCE_COUNT_MISMATCH");
+  if (sources.length !== deliveryReferences(value).length) throw new Error('OFFICE_DELIVERY_SOURCE_COUNT_MISMATCH');
   const catalog = buildOfficeSources(sources);
   let cursor = 0;
   const findings = value.rows.map((item) => {
@@ -154,19 +141,17 @@ export function buildEvidenceDeliverables(
       source,
       requirement,
       assessment:
-        item.rowType === "context"
-          ? "背景说明"
-          : value.purpose === "research"
-            ? "原文声明"
+        item.rowType === 'context'
+          ? '背景说明'
+          : value.purpose === 'research'
+            ? '原文声明'
             : independent
               ? item.assessment
-              : "证据不足",
+              : '证据不足',
       analysis: item.analysis,
       missing:
-        value.purpose !== "research" && item.requirement && !independent
-          ? [item.missing, "需求与佐证来自同一资料或缺少独立来源身份，不能据此确认符合性。"]
-              .filter(Boolean)
-              .join(" ")
+        value.purpose !== 'research' && item.requirement && !independent
+          ? [item.missing, '需求与佐证来自同一资料或缺少独立来源身份，不能据此确认符合性。'].filter(Boolean).join(' ')
           : item.missing,
       metric: item.metric as OfficeMetric | undefined,
     };
@@ -176,17 +161,17 @@ export function buildEvidenceDeliverables(
     scope: value.scope,
     conclusion:
       value.conclusion ||
-      `已整理 ${findings.length} 项资料记录。${value.purpose === "research" ? "以下对比以引用原文及其适用条件为限。" : `正式核查 ${findings.filter((item) => item.rowType !== "context").length} 项，其中 ${findings.filter((item) => item.rowType !== "context" && item.assessment === "证据不足").length} 项证据不足，需补充依据后判断；背景与版本说明不计入。`}`,
+      `已整理 ${findings.length} 项资料记录。${value.purpose === 'research' ? '以下对比以引用原文及其适用条件为限。' : `正式核查 ${findings.filter((item) => item.rowType !== 'context').length} 项，其中 ${findings.filter((item) => item.rowType !== 'context' && item.assessment === '证据不足').length} 项证据不足，需补充依据后判断；背景与版本说明不计入。`}`,
     findings,
   };
-  const dataSha256 = createHash("sha256")
+  const dataSha256 = createHash('sha256')
     .update(
       JSON.stringify({
         report,
         sources: sources.map(({ kind, locator, quote }) => ({ kind, locator, quote })),
-      }),
+      })
     )
-    .digest("hex");
+    .digest('hex');
   const content = {
     title: value.title,
     report,
@@ -196,111 +181,111 @@ export function buildEvidenceDeliverables(
   return {
     dataSha256,
     files: [
-      { path: value.docxPath || value.basePath + ".docx", content: { ...content, format: "docx" } },
-      { path: value.xlsxPath || value.basePath + ".xlsx", content: { ...content, format: "xlsx" } },
+      { path: value.docxPath || value.basePath + '.docx', content: { ...content, format: 'docx' } },
+      { path: value.xlsxPath || value.basePath + '.xlsx', content: { ...content, format: 'xlsx' } },
     ],
   };
 }
 
 const referenceSchema = {
-  type: "object",
+  type: 'object',
   properties: {
-    ref: { type: "string", minLength: 1 },
-    quote: { type: "string", minLength: 2, maxLength: 2000 },
-    quoteIndex: { type: "integer", minimum: 0, maximum: 15 },
+    ref: { type: 'string', minLength: 1 },
+    quote: { type: 'string', minLength: 2, maxLength: 2000 },
+    quoteIndex: { type: 'integer', minimum: 0, maximum: 15 },
   },
-  required: ["ref"],
+  required: ['ref'],
   oneOf: [
-    { required: ["quote"], not: { required: ["quoteIndex"] } },
-    { required: ["quoteIndex"], not: { required: ["quote"] } },
+    { required: ['quote'], not: { required: ['quoteIndex'] } },
+    { required: ['quoteIndex'], not: { required: ['quote'] } },
   ],
   additionalProperties: false,
 };
 export const evidenceDeliveryTool = {
-  name: "create_evidence_deliverables",
+  name: 'create_evidence_deliverables',
   description:
     'Create BOTH a real Word report and Excel comparison from ONE shared evidence dataset. Preferred for research/compliance multi-deliverable tasks. Each row accepts ONLY topic, rowType, source, requirement, assessment, analysis, missing, metric. Use rowType:"context" for background/version differences; exclude them from formal conformity statistics. References MUST be nested source:{ref,quoteIndex} and optional requirement:{ref,quoteIndex}; flat ref/quoteIndex/claim/status are a different tool contract and are rejected. Each row needs a valid source reference. The server inserts actual quotes and a deduplicated readable reference catalog with native hyperlinks. Word uses conclusion and prose; Excel uses typed metric values and separate notes. Internal provenance is hidden, never put locator JSON/hash/URL in analysis. Provide metric {object,parameter,value:number|string,unit,valueType?:number|text|enum|date} for numeric AND textual facts. Preserve IP ratings, versions and identifiers as actual text. date requires valid YYYY-MM-DD. Unknown is null and requires a concrete missing reason. Never treat a parsing/conversion failure as verified missing data. Optional metric.calculation {operation:sum|difference|ratio,rows:[1-based row numbers]} computes Decimal results and native formulas, never model arithmetic. Optional docxPath/xlsxPath are exact requested filenames. Use revise_office_document for narrow continuation, not full regeneration. analysis is explicitly labelled inference; never put unsourced facts in it. Requirement references are optional; without independent requirements the status is forced to insufficient evidence. Read files with read_document (not native Read) or read_web/search_knowledge first, then copy returned sourceRef and quoteIndex. File paths are not sourceRefs. This creates a NEW evidence report/table, never fills or edits a company template. Returns per-file validation and downloads; partial means an output failed, never claim completion. Use basePath WITHOUT extension. All rows require source; put data gaps in missing, not an empty ref. Set purpose:"research" for factual research (source-location status, not customer conformity); default compliance enforces independent requirements. Max 32 total references: 32 source-only rows or 16 source/requirement pairs. Minimal shape: {basePath:"report",title:"title",scope:"scope",purpose:"research",rows:[{topic:"finding",source:{ref:"returned sourceRef",quoteIndex:0},analysis:"inference",missing:"gaps"}]}. Check units/conditions/date/version before choosing assessment.',
   inputSchema: {
-    type: "object",
+    type: 'object',
     additionalProperties: false,
     properties: {
-      basePath: { type: "string" },
-      title: { type: "string" },
-      scope: { type: "string" },
+      basePath: { type: 'string' },
+      title: { type: 'string' },
+      scope: { type: 'string' },
       conclusion: {
-        type: "string",
-        description: "Concise evidence-supported conclusion, before details.",
+        type: 'string',
+        description: 'Concise evidence-supported conclusion, before details.',
       },
       docxPath: {
-        type: "string",
-        description: "Exact requested .docx filename; otherwise basePath.docx.",
+        type: 'string',
+        description: 'Exact requested .docx filename; otherwise basePath.docx.',
       },
       xlsxPath: {
-        type: "string",
-        description: "Exact requested .xlsx filename; otherwise basePath.xlsx.",
+        type: 'string',
+        description: 'Exact requested .xlsx filename; otherwise basePath.xlsx.',
       },
-      purpose: { type: "string", enum: ["research", "compliance"] },
-      overwrite: { type: "boolean" },
+      purpose: { type: 'string', enum: ['research', 'compliance'] },
+      overwrite: { type: 'boolean' },
       rows: {
-        type: "array",
+        type: 'array',
         minItems: 1,
         maxItems: 32,
         items: {
-          type: "object",
+          type: 'object',
           additionalProperties: false,
           properties: {
-            topic: { type: "string" },
+            topic: { type: 'string' },
             rowType: {
-              type: "string",
-              enum: ["requirement", "context"],
+              type: 'string',
+              enum: ['requirement', 'context'],
               description:
-                "requirement (default) is a formal checklist item. Use context for version differences/background; these are excluded from conformity counts.",
+                'requirement (default) is a formal checklist item. Use context for version differences/background; these are excluded from conformity counts.',
             },
             source: referenceSchema,
             requirement: referenceSchema,
-            assessment: { type: "string", enum: ["符合", "不符合", "部分符合", "证据不足"] },
-            analysis: { type: "string" },
-            missing: { type: "string" },
+            assessment: { type: 'string', enum: ['符合', '不符合', '部分符合', '证据不足'] },
+            analysis: { type: 'string' },
+            missing: { type: 'string' },
             metric: {
-              type: "object",
+              type: 'object',
               additionalProperties: false,
               properties: {
-                object: { type: "string" },
-                parameter: { type: "string" },
-                unit: { type: "string" },
+                object: { type: 'string' },
+                parameter: { type: 'string' },
+                unit: { type: 'string' },
                 value: {
-                  type: ["number", "string", "null"],
+                  type: ['number', 'string', 'null'],
                   description:
-                    "Actual sourced number or text (e.g. IP54, v2). Unknown is null and requires missing. Never discard text because it is not numeric.",
+                    'Actual sourced number or text (e.g. IP54, v2). Unknown is null and requires missing. Never discard text because it is not numeric.',
                 },
                 valueType: {
-                  type: "string",
-                  enum: ["number", "text", "enum", "date"],
+                  type: 'string',
+                  enum: ['number', 'text', 'enum', 'date'],
                   description:
-                    "Optional explicit scalar type. date requires a valid YYYY-MM-DD. Do not coerce numeric-looking identifiers or text into numbers.",
+                    'Optional explicit scalar type. date requires a valid YYYY-MM-DD. Do not coerce numeric-looking identifiers or text into numbers.',
                 },
                 calculation: {
-                  type: "object",
+                  type: 'object',
                   additionalProperties: false,
                   properties: {
-                    operation: { type: "string", enum: ["sum", "difference", "ratio"] },
+                    operation: { type: 'string', enum: ['sum', 'difference', 'ratio'] },
                     rows: {
-                      type: "array",
+                      type: 'array',
                       minItems: 1,
                       maxItems: 32,
-                      items: { type: "integer", minimum: 1, maximum: 32 },
+                      items: { type: 'integer', minimum: 1, maximum: 32 },
                     },
                   },
-                  required: ["operation", "rows"],
+                  required: ['operation', 'rows'],
                 },
               },
-              required: ["object", "parameter", "unit"],
+              required: ['object', 'parameter', 'unit'],
             },
           },
-          required: ["topic", "source"],
+          required: ['topic', 'source'],
         },
       },
     },
-    required: ["basePath", "title", "scope", "rows"],
+    required: ['basePath', 'title', 'scope', 'rows'],
   },
 };

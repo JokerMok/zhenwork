@@ -110,11 +110,16 @@ export class EnterpriseModelProxy {
           return;
         }
         const id = `pause-${crypto.randomUUID()}`;
-        const envelope = { id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: payload.model };
+        const envelope = {
+          id,
+          object: 'chat.completion.chunk',
+          created: Math.floor(Date.now() / 1000),
+          model: payload.model,
+        };
         response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store' });
         response.end(
           `data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: { content: question }, finish_reason: null }] })}\n\n` +
-          `data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`
+            `data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`
         );
         console.info('[Enterprise model]', JSON.stringify({ event: 'task_waiting_finalized', conversationId }));
         return;

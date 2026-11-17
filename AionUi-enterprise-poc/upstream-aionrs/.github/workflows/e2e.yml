@@ -10,29 +10,29 @@ on:
   workflow_dispatch:
     inputs:
       provider:
-        description: "Provider to test (anthropic / openai / all)"
+        description: 'Provider to test (anthropic / openai / all)'
         required: false
-        default: "all"
+        default: 'all'
         type: choice
         options: [all, anthropic, openai]
   push:
     branches: [main]
     paths:
-      - "crates/aion-providers/**"
-      - "crates/aion-agent/**"
-      - "crates/aion-config/**"
-      - "crates/aion-types/**"
-      - "crates/aion-skills/**"
-      - ".github/workflows/e2e.yml"
+      - 'crates/aion-providers/**'
+      - 'crates/aion-agent/**'
+      - 'crates/aion-config/**'
+      - 'crates/aion-types/**'
+      - 'crates/aion-skills/**'
+      - '.github/workflows/e2e.yml'
   pull_request:
     branches: [main]
     paths:
-      - "crates/aion-providers/**"
-      - "crates/aion-agent/**"
-      - "crates/aion-config/**"
-      - "crates/aion-types/**"
-      - "crates/aion-skills/**"
-      - ".github/workflows/e2e.yml"
+      - 'crates/aion-providers/**'
+      - 'crates/aion-agent/**'
+      - 'crates/aion-config/**'
+      - 'crates/aion-types/**'
+      - 'crates/aion-skills/**'
+      - '.github/workflows/e2e.yml'
 
 permissions:
   contents: read
@@ -51,10 +51,10 @@ jobs:
         include:
           - provider: anthropic
             secret_name: ANTHROPIC_API_KEY
-            filter: "test(anthropic)"
+            filter: 'test(anthropic)'
           - provider: openai
             secret_name: OPENAI_API_KEY
-            filter: "test(openai)"
+            filter: 'test(openai)'
 
     steps:
       - name: Check provider filter
@@ -101,7 +101,7 @@ jobs:
         if: steps.check_key.outputs.available == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ matrix.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
-          OPENAI_API_KEY:    ${{ matrix.provider == 'openai'    && secrets.OPENAI_API_KEY    || '' }}
+          OPENAI_API_KEY: ${{ matrix.provider == 'openai'    && secrets.OPENAI_API_KEY    || '' }}
         run: |
           vx cargo nextest run \
             -p aion-agent \

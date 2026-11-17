@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest';
 
-test('enterprise browser sockets wait for user activity after idle Core reclamation', async () => {
+test('enterprise realtime and Core sockets wake only on their respective triggers after idle reclamation', async () => {
   const sockets: FakeWebSocket[] = [];
   class FakeWebSocket extends EventTarget {
     static readonly CONNECTING = 0;
@@ -13,13 +13,24 @@ test('enterprise browser sockets wait for user activity after idle Core reclamat
       sockets.push(this);
     }
     send(): void {}
-    close(): void { this.readyState = FakeWebSocket.CLOSED; }
+    close(): void {
+      this.readyState = FakeWebSocket.CLOSED;
+    }
   }
   (window as typeof window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__ = true;
+  vi.stubGlobal('electronAPI', undefined);
   vi.stubGlobal('WebSocket', FakeWebSocket);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      new Response(null, {
+        headers: { 'x-zhenwork-core-ready': '1' },
+      })
+    )
+  );
   try {
     await import('../../packages/desktop/src/common/adapter/browser');
-    const { wsEmitter } = await import('../../packages/desktop/src/common/adapter/httpBridge');
+    const { httpRequest, wsEmitter } = await import('../../packages/desktop/src/common/adapter/httpBridge');
     const unsubscribe = wsEmitter('test').on(() => {});
     expect(sockets).toHaveLength(2);
     for (const socket of sockets) {
@@ -30,6 +41,8 @@ test('enterprise browser sockets wait for user activity after idle Core reclamat
     }
     expect(sockets).toHaveLength(2);
     window.dispatchEvent(new MouseEvent('pointerdown'));
+    expect(sockets).toHaveLength(3);
+    await httpRequest('GET', '/api/system/info');
     expect(sockets).toHaveLength(4);
     unsubscribe();
   } finally {

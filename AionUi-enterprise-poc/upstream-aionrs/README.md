@@ -109,24 +109,24 @@ aionrs --max-tool-call-failure-turns 2 "Run the task"
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Getting Started](docs/getting-started.md) | Installation, CLI reference, configuration, usage examples |
-| [Built-in Tools](docs/tools.md) | Detailed reference for bundled local and agent tools |
-| [MCP Integration](docs/mcp.md) | Model Context Protocol client setup and usage |
-| [Providers & Auth](docs/providers.md) | Multi-provider config, profiles, Bedrock, Vertex, OAuth |
-| [Advanced Features](docs/advanced.md) | Sub-agents, hooks, prompt caching, VCR, AGENTS.md |
-| [Troubleshooting](docs/troubleshooting.md) | Common errors and solutions |
-| [JSON Stream Protocol](docs/json-stream-protocol.md) | Host integration protocol (`--json-stream` mode) |
+| Document                                             | Description                                                |
+| ---------------------------------------------------- | ---------------------------------------------------------- |
+| [Getting Started](docs/getting-started.md)           | Installation, CLI reference, configuration, usage examples |
+| [Built-in Tools](docs/tools.md)                      | Detailed reference for bundled local and agent tools       |
+| [MCP Integration](docs/mcp.md)                       | Model Context Protocol client setup and usage              |
+| [Providers & Auth](docs/providers.md)                | Multi-provider config, profiles, Bedrock, Vertex, OAuth    |
+| [Advanced Features](docs/advanced.md)                | Sub-agents, hooks, prompt caching, VCR, AGENTS.md          |
+| [Troubleshooting](docs/troubleshooting.md)           | Common errors and solutions                                |
+| [JSON Stream Protocol](docs/json-stream-protocol.md) | Host integration protocol (`--json-stream` mode)           |
 
 ## Supported Providers
 
-| Provider | Auth | Notes |
-|----------|------|-------|
-| Anthropic | API Key / OAuth | Prompt caching, streaming, vision |
-| OpenAI | API Key | Reasoning models (`o1`/`o3`), compatible with DeepSeek, Qwen, Ollama, Gemini, vLLM |
-| AWS Bedrock | SigV4 | Regional endpoints, AWS credential chain, schema sanitization, actionable error hints |
-| Google Vertex AI | GCP OAuth2 / Service Account | Metadata server auto-detection |
+| Provider         | Auth                         | Notes                                                                                 |
+| ---------------- | ---------------------------- | ------------------------------------------------------------------------------------- |
+| Anthropic        | API Key / OAuth              | Prompt caching, streaming, vision                                                     |
+| OpenAI           | API Key                      | Reasoning models (`o1`/`o3`), compatible with DeepSeek, Qwen, Ollama, Gemini, vLLM    |
+| AWS Bedrock      | SigV4                        | Regional endpoints, AWS credential chain, schema sanitization, actionable error hints |
+| Google Vertex AI | GCP OAuth2 / Service Account | Metadata server auto-detection                                                        |
 
 ## ProviderCompat
 

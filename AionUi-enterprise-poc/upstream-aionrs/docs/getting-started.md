@@ -26,33 +26,33 @@ aionrs [OPTIONS] [PROMPT]...
 Management operations live under noun subcommands instead of flat flags. A
 subcommand runs its action and exits — it does not start the agent main flow.
 
-| Subcommand | Description |
-|------------|--------------|
-| `aionrs config init` | Generate a default global config file |
-| `aionrs config path` | Print the global config file path |
-| `aionrs auth login` | Login with Anthropic account (OAuth device flow) |
-| `aionrs auth logout` | Logout (remove saved OAuth credentials) |
-| `aionrs session list` | List saved sessions |
-| `aionrs skills path` | Print skill directory paths |
+| Subcommand            | Description                                      |
+| --------------------- | ------------------------------------------------ |
+| `aionrs config init`  | Generate a default global config file            |
+| `aionrs config path`  | Print the global config file path                |
+| `aionrs auth login`   | Login with Anthropic account (OAuth device flow) |
+| `aionrs auth logout`  | Logout (remove saved OAuth credentials)          |
+| `aionrs session list` | List saved sessions                              |
+| `aionrs skills path`  | Print skill directory paths                      |
 
 ### Key Parameters
 
-| Parameter | Description |
-|-----------|-------------|
-| `--provider <name>` | Provider: `anthropic`, `openai`, `bedrock`, `vertex`, or a custom alias |
-| `--model <id>` | Model name |
-| `--profile <name>` | Named profile from config file |
-| `--compaction <level>` | Output compaction: `off`, `safe` (default), `full` |
-| `--toon` | Enable TOON tabular encoding (with `full` compaction) |
-| `--max-turns <n>` | Broad model-turn limit per run; unset by default, `0` disables |
-| `--max-tool-call-malformed-turns <n>` | Stop after repeated same tool-call-malformed rounds; `0` disables |
-| `--max-tool-call-failure-turns <n>` | Stop after repeated tool-call-failure rounds; `0` disables |
-| `--auto-approve` | Skip all tool confirmations |
-| `--json-stream` | JSON Lines mode for host integration |
-| `--resume <id>` | Resume a previous session |
-| `--fork-session` | With `--resume`: fork into a new session id, leaving the original untouched |
-| `--log-dir <path>` | Enable file logging to the given directory |
-| `--log-level <filter>` | Log level filter (e.g. `debug`, `info`, `aion_providers=debug`) |
+| Parameter                             | Description                                                                 |
+| ------------------------------------- | --------------------------------------------------------------------------- |
+| `--provider <name>`                   | Provider: `anthropic`, `openai`, `bedrock`, `vertex`, or a custom alias     |
+| `--model <id>`                        | Model name                                                                  |
+| `--profile <name>`                    | Named profile from config file                                              |
+| `--compaction <level>`                | Output compaction: `off`, `safe` (default), `full`                          |
+| `--toon`                              | Enable TOON tabular encoding (with `full` compaction)                       |
+| `--max-turns <n>`                     | Broad model-turn limit per run; unset by default, `0` disables              |
+| `--max-tool-call-malformed-turns <n>` | Stop after repeated same tool-call-malformed rounds; `0` disables           |
+| `--max-tool-call-failure-turns <n>`   | Stop after repeated tool-call-failure rounds; `0` disables                  |
+| `--auto-approve`                      | Skip all tool confirmations                                                 |
+| `--json-stream`                       | JSON Lines mode for host integration                                        |
+| `--resume <id>`                       | Resume a previous session                                                   |
+| `--fork-session`                      | With `--resume`: fork into a new session id, leaving the original untouched |
+| `--log-dir <path>`                    | Enable file logging to the given directory                                  |
+| `--log-level <filter>`                | Log level filter (e.g. `debug`, `info`, `aion_providers=debug`)             |
 
 ---
 
@@ -281,12 +281,12 @@ Destructive tools (Write, Edit, ExecCommand) prompt for confirmation before exec
 Allow? [y]es / [n]o / [a]lways / [q]uit > y
 ```
 
-| Option | Description |
-|--------|-------------|
-| `y` / `yes` / Enter | Allow this execution |
-| `n` / `no` | Deny — LLM receives a "denied" error |
-| `a` / `always` | Auto-approve this tool for the rest of the session |
-| `q` / `quit` | Abort the entire agent run |
+| Option              | Description                                        |
+| ------------------- | -------------------------------------------------- |
+| `y` / `yes` / Enter | Allow this execution                               |
+| `n` / `no`          | Deny — LLM receives a "denied" error               |
+| `a` / `always`      | Auto-approve this tool for the rest of the session |
+| `q` / `quit`        | Abort the entire agent run                         |
 
 - Read-only tools (Read, Grep, Glob) are auto-approved by default
 - `--auto-approve` skips all confirmations

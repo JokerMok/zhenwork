@@ -1,6 +1,12 @@
 import { EventEmitter } from 'node:events';
 import { beforeEach, expect, test, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ lookup: vi.fn(), request: vi.fn(), body: '', bodies: [] as string[], options: {} as Record<string,unknown> }));
+const mocks = vi.hoisted(() => ({
+  lookup: vi.fn(),
+  request: vi.fn(),
+  body: '',
+  bodies: [] as string[],
+  options: {} as Record<string, unknown>,
+}));
 vi.mock('node:dns/promises', () => ({ lookup: mocks.lookup }));
 vi.mock('node:https', () => ({ request: mocks.request }));
 import { readWeb, searchWeb, selectWebText } from './research.js';
@@ -13,10 +19,17 @@ beforeEach(() => {
     mocks.options = options;
     const req = new EventEmitter() as EventEmitter & { end: () => void; destroy: () => void };
     req.destroy = () => {};
-    req.end = () => queueMicrotask(() => {
-      const res = Object.assign(new EventEmitter(), { statusCode: 200, headers: { 'content-type': 'text/html' }, destroy() {} });
-      callback(res); res.emit('data', Buffer.from(mocks.bodies.shift() ?? mocks.body)); res.emit('end');
-    });
+    req.end = () =>
+      queueMicrotask(() => {
+        const res = Object.assign(new EventEmitter(), {
+          statusCode: 200,
+          headers: { 'content-type': 'text/html' },
+          destroy() {},
+        });
+        callback(res);
+        res.emit('data', Buffer.from(mocks.bodies.shift() ?? mocks.body));
+        res.emit('end');
+      });
     return req;
   });
 });
@@ -38,9 +51,13 @@ test('refuses a private DNS result before opening a connection', async () => {
 });
 
 test('keeps search provider dates separate from original publication dates', async () => {
-  mocks.body = '<rss><item><title>Article</title><link>https://example.com/source</link><description>Lead</description><pubDate>20 Oct 2026</pubDate></item></rss>';
+  mocks.body =
+    '<rss><item><title>Article</title><link>https://example.com/source</link><description>Lead</description><pubDate>20 Oct 2026</pubDate></item></rss>';
   const found = await searchWeb('office AI');
-  expect((found.results as Array<Record<string,unknown>>)[0]).toMatchObject({ publishedAt: null, providerDate: '20 Oct 2026' });
+  expect((found.results as Array<Record<string, unknown>>)[0]).toMatchObject({
+    publishedAt: null,
+    providerDate: '20 Oct 2026',
+  });
 });
 
 test('uses one naturalized fallback and preserves the original site constraint', async () => {
@@ -50,20 +67,22 @@ test('uses one naturalized fallback and preserves the original site constraint',
   ];
   const found = await searchWeb('site:dify.ai "Knowledge Pipeline"');
   expect(found).toMatchObject({ fallbackUsed: true, fallbackQuery: 'dify.ai Knowledge Pipeline' });
-  expect((found.results as Array<Record<string,unknown>>).map(item => item.url)).toEqual([
+  expect((found.results as Array<Record<string, unknown>>).map((item) => item.url)).toEqual([
     'https://docs.dify.ai/knowledge/pipeline',
   ]);
   expect(mocks.request).toHaveBeenCalledTimes(2);
 });
 
 test('does not add a fallback request for a query without operators', async () => {
-  mocks.body = '<rss><item><title>Dify Knowledge Pipeline</title><link>https://dify.ai/</link><description>Official page</description></item></rss>';
+  mocks.body =
+    '<rss><item><title>Dify Knowledge Pipeline</title><link>https://dify.ai/</link><description>Official page</description></item></rss>';
   const found = await searchWeb('Dify Knowledge Pipeline');
   expect(found).toMatchObject({ fallbackUsed: false, executedQueries: ['Dify Knowledge Pipeline'] });
   expect(mocks.request).toHaveBeenCalledTimes(1);
 });
 test('reads explicitly identified article metadata without executing webpage scripts', async () => {
-  mocks.body = '<title>Source</title><meta content="Official overview" name="description"><main>Semantic HTML body</main><script type="application/ld+json">{"articleBody":"Original documented capabilities", "description":"Declared summary", "datePublished":"2026-01-02"}</script><script>throw Error("never execute")</script>';
+  mocks.body =
+    '<title>Source</title><meta content="Official overview" name="description"><main>Semantic HTML body</main><script type="application/ld+json">{"articleBody":"Original documented capabilities", "description":"Declared summary", "datePublished":"2026-01-02"}</script><script>throw Error("never execute")</script>';
   const source = await readWeb('https://example.com/source');
   expect(source.publishedAt).toBe('2026-01-02');
   expect(source.text).toMatch(/^Original documented capabilities\nSemantic HTML body/);
@@ -82,7 +101,8 @@ test('places semantic main content before long navigation and removes page chrom
 });
 
 test('uses cleaned HTML as an explicit fallback when no semantic body exists', async () => {
-  mocks.body = '<html><head><title>Fallback page</title></head><body><nav>Menu noise</nav><div><h2>Fallback heading</h2><p>Original fallback content remains available.</p></div><footer>Footer noise</footer></body></html>';
+  mocks.body =
+    '<html><head><title>Fallback page</title></head><body><nav>Menu noise</nav><div><h2>Fallback heading</h2><p>Original fallback content remains available.</p></div><footer>Footer noise</footer></body></html>';
   const source = await readWeb('https://example.com/source');
   expect(source.text).toBe('Fallback heading\nOriginal fallback content remains available.');
   expect(source.contentSelection).toBe('html_fallback');
@@ -90,7 +110,8 @@ test('uses cleaned HTML as an explicit fallback when no semantic body exists', a
 });
 
 test('does not treat a JSON-LD description as structured article body', async () => {
-  mocks.body = '<script type="application/ld+json">{"@type":"Product","description":"Promotional metadata summary only"}</script>';
+  mocks.body =
+    '<script type="application/ld+json">{"@type":"Product","description":"Promotional metadata summary only"}</script>';
   const source = await readWeb('https://example.com/source');
   expect(source.text).toBe('Promotional metadata summary only');
   expect(source.contentSelection).toBe('metadata_only');
@@ -107,35 +128,40 @@ test('bounds malformed repeated semantic blocks and falls back without rescannin
   expect(source.evidence).toContain('No semantic article/main body was available');
 });
 
-
 test('reads a real long-page tail by exact query or pagination without inventing whole-page coverage', async () => {
   mocks.body = '<main><p>' + '前文'.repeat(30000) + '</p><p>第一千二百四十二条 生效与废止原文。</p></main>';
   const initial = await readWeb('https://example.com/source');
   expect(initial.text).not.toContain('生效与废止');
-  const tail = await readWeb('https://example.com/source', undefined, {query: '第一千二百四十二条', maxChars: 1000});
+  const tail = await readWeb('https://example.com/source', undefined, { query: '第一千二百四十二条', maxChars: 1000 });
   expect(tail.text).toContain('生效与废止原文');
   expect(Number(tail.start)).toBeGreaterThan(45000);
   expect(tail.fullTextSha256).toBe(initial.fullTextSha256);
   expect(tail.sha256).not.toBe(initial.sha256);
-  const next = await readWeb('https://example.com/source', undefined, {start: Number(initial.nextStart)});
+  const next = await readWeb('https://example.com/source', undefined, { start: Number(initial.nextStart) });
   expect(next.text).toContain('生效与废止原文');
-  expect(selectWebText('原文', {query:'不存在'})).toMatchObject({status:'no_match',text:'',matches:[],totalChars:2});
-  expect(() => selectWebText('原文', {start:-1})).toThrow('WEB_READ_WINDOW_INVALID');
+  expect(selectWebText('原文', { query: '不存在' })).toMatchObject({
+    status: 'no_match',
+    text: '',
+    matches: [],
+    totalChars: 2,
+  });
+  expect(() => selectWebText('原文', { start: -1 })).toThrow('WEB_READ_WINDOW_INVALID');
 });
 
-
-test('rejects a soft-404 destination despite HTTP200 before issuing source evidence', async () => { await expect(readWeb('https://example.com/404/index.html')).rejects.toThrow('WEB_SOURCE_NOT_FOUND'); });
+test('rejects a soft-404 destination despite HTTP200 before issuing source evidence', async () => {
+  await expect(readWeb('https://example.com/404/index.html')).rejects.toThrow('WEB_SOURCE_NOT_FOUND');
+});
 
 test('a literal miss on a fetched page is no-match data without fabricated evidence', async () => {
   mocks.body = '<main><p>Actual original statement.</p></main>';
-  const result = await readWeb('https://example.com/source', undefined, {query: 'invented phrase'});
-  expect(result).toMatchObject({status: 'no_match', text: '', matches: []});
+  const result = await readWeb('https://example.com/source', undefined, { query: 'invented phrase' });
+  expect(result).toMatchObject({ status: 'no_match', text: '', matches: [] });
   expect(result).not.toHaveProperty('sourceRef');
 });
 
 test('exact lookup starts at its own original paragraph rather than a previous article', () => {
-  const text='前一条完全无关的内容。\n目标条文 这里是所需原文。\n后续条文。';
-  const result=selectWebText(text,{query:'目标条文',maxChars:1000});
+  const text = '前一条完全无关的内容。\n目标条文 这里是所需原文。\n后续条文。';
+  const result = selectWebText(text, { query: '目标条文', maxChars: 1000 });
   expect(result.text.startsWith('目标条文')).toBe(true);
-  expect(text.slice(result.start,result.end)).toBe(result.text);
+  expect(text.slice(result.start, result.end)).toBe(result.text);
 });

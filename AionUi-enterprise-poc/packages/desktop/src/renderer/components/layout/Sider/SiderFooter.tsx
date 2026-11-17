@@ -91,7 +91,8 @@ function EmployeeAccountMenu({
     };
   }, [id]);
 
-  const displayName = typeof profile?.nickname === 'string' && profile.nickname.trim() ? profile.nickname.trim() : username;
+  const displayName =
+    typeof profile?.nickname === 'string' && profile.nickname.trim() ? profile.nickname.trim() : username;
   const avatar = typeof profile?.avatarUrl === 'string' ? avatarSource(profile.avatarUrl) : undefined;
   const getItems = useCallback(
     () => Array.from(document.getElementById(menuId)?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []),
@@ -124,8 +125,12 @@ function EmployeeAccountMenu({
     }
     const items = getItems();
     const index = items.indexOf(document.activeElement as HTMLElement);
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 :
-      (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
     items[next]?.focus();
   };
 
@@ -142,7 +147,9 @@ function EmployeeAccountMenu({
         }
       }}
     >
-      <Menu.Item key='profile'>{t('settings.enterpriseAccount.profile', { defaultValue: 'Personal profile' })}</Menu.Item>
+      <Menu.Item key='profile'>
+        {t('settings.enterpriseAccount.profile', { defaultValue: 'Personal profile' })}
+      </Menu.Item>
       <Menu.Item key='personalization'>
         {t('settings.enterpriseAccount.personalization', { defaultValue: 'Personalization' })}
       </Menu.Item>
@@ -177,7 +184,9 @@ function EmployeeAccountMenu({
             <Avatar size={28} className='shrink-0' aria-hidden='true'>
               {avatar && avatar !== failedAvatar ? (
                 <img src={avatar} alt='' referrerPolicy='no-referrer' onError={() => setFailedAvatar(avatar)} />
-              ) : Array.from(displayName.trim())[0]?.toLocaleUpperCase()}
+              ) : (
+                Array.from(displayName.trim())[0]?.toLocaleUpperCase()
+              )}
             </Avatar>
             {!collapsed && (
               <>
@@ -220,15 +229,22 @@ const SiderFooter: React.FC<SiderFooterProps> = ({
     ) : null;
   }
 
-  const enterprise = (window as Window & { enterpriseContext?: {
-    username: string;
-    userId: string;
-    serverUrl: string;
-    modelName: string;
-  } }).enterpriseContext;
+  const enterprise = (
+    window as Window & {
+      enterpriseContext?: {
+        username: string;
+        userId: string;
+        serverUrl: string;
+        modelName: string;
+      };
+    }
+  ).enterpriseContext;
   const enterpriseHost = (() => {
-    try { return enterprise?.serverUrl ? new URL(enterprise.serverUrl).host : ''; }
-    catch { return ''; }
+    try {
+      return enterprise?.serverUrl ? new URL(enterprise.serverUrl).host : '';
+    } catch {
+      return '';
+    }
   })();
 
   const settingsIcon = isSettings ? (
@@ -254,12 +270,21 @@ const SiderFooter: React.FC<SiderFooterProps> = ({
   return (
     <div className={footerClasses}>
       {enterprise && !collapsed && (
-        <div className='px-10px pb-8px text-11px text-t-secondary leading-18px' role='status'
-          title={`${enterprise.serverUrl} · ${enterprise.userId}`}>
+        <div
+          className='px-10px pb-8px text-11px text-t-secondary leading-18px'
+          role='status'
+          title={`${enterprise.serverUrl} · ${enterprise.userId}`}
+        >
           <div className='font-[600] text-t-primary'>{t('login.enterpriseConnected')}</div>
-          <div className='truncate'>{t('login.enterpriseAccountLabel')}：{enterprise.username || enterprise.userId}</div>
-          <div className='truncate'>{t('login.enterpriseServerLabel')}：{enterpriseHost}</div>
-          <div className='truncate'>{t('login.enterpriseModelLabel')}：{enterprise.modelName}</div>
+          <div className='truncate'>
+            {t('login.enterpriseAccountLabel')}：{enterprise.username || enterprise.userId}
+          </div>
+          <div className='truncate'>
+            {t('login.enterpriseServerLabel')}：{enterpriseHost}
+          </div>
+          <div className='truncate'>
+            {t('login.enterpriseModelLabel')}：{enterprise.modelName}
+          </div>
         </div>
       )}
       <div className={classNames('flex', collapsed ? 'flex-col gap-2px' : 'items-center gap-2px')}>

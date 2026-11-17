@@ -434,9 +434,10 @@ export const ProcessEnv = envFile;
 
 export const getSystemDir = () => {
   // electron-log writes to the platform-standard logs directory
-  const logDir = process.env.AION_ENTERPRISE_ROLE === 'worker'
-    ? path.join(getPlatformServices().paths.getDataDir(), 'logs')
-    : dirConfig?.logDir || getPlatformServices().paths.getLogsDir();
+  const logDir =
+    process.env.AION_ENTERPRISE_ROLE === 'worker'
+      ? path.join(getPlatformServices().paths.getDataDir(), 'logs')
+      : dirConfig?.logDir || getPlatformServices().paths.getLogsDir();
 
   return {
     cacheDir: cacheDir,

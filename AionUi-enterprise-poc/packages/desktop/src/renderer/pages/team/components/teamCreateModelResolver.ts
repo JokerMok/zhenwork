@@ -110,10 +110,14 @@ async function resolveAionrsDefaultModel(preferred?: string, fixed = false): Pro
   const providers = await fetchProviders();
   const models = providers
     .filter((provider) => provider.enabled !== false)
-    .flatMap((provider) => provider.models
-      .filter((model) => provider.model_enabled?.[model] !== false &&
-        hasSpecificModelCapability(provider, model, 'function_calling') !== false &&
-        hasSpecificModelCapability(provider, model, 'excludeFromPrimary') !== true));
+    .flatMap((provider) =>
+      provider.models.filter(
+        (model) =>
+          provider.model_enabled?.[model] !== false &&
+          hasSpecificModelCapability(provider, model, 'function_calling') !== false &&
+          hasSpecificModelCapability(provider, model, 'excludeFromPrimary') !== true
+      )
+    );
   if (preferred && preferred !== 'default') {
     if (models.includes(preferred)) return preferred;
     if (fixed) throw new Error(`The assistant's fixed model is unavailable: ${preferred}`);

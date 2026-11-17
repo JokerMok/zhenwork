@@ -97,10 +97,11 @@ async function authorizedQueryCatalog(client: Rc2GatewayClient, conversation: st
   const sources = await Promise.all(
     catalog.slice(0, 8).map(async (item) => {
       try {
-        const resource = await client.authorizedResource(item.id, 'MCP') as { config?: Record<string, unknown> };
+        const resource = (await client.authorizedResource(item.id, 'MCP')) as { config?: Record<string, unknown> };
         const config = resource.config || {};
         const effects = config.toolEffects as Record<string, unknown> | undefined;
-        if (config.managedProfile !== 'external-query' || !Array.isArray(config.allowedTools)) throw new Error('Read query unavailable');
+        if (config.managedProfile !== 'external-query' || !Array.isArray(config.allowedTools))
+          throw new Error('Read query unavailable');
         const allowedTools = config.allowedTools;
         const connection = await client.readyMcpConnection(item.id);
         const response = await client.relayMcp(
@@ -121,8 +122,10 @@ async function authorizedQueryCatalog(client: Rc2GatewayClient, conversation: st
           status: 'available',
           callWith: 'query_enterprise_data',
           tools: body.result.tools.slice(0, 64).flatMap((tool) =>
-            typeof tool.name === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(tool.name) &&
-            allowedTools.includes(tool.name) && effects?.[tool.name] === 'READ'
+            typeof tool.name === 'string' &&
+            /^[A-Za-z0-9_.-]{1,100}$/.test(tool.name) &&
+            allowedTools.includes(tool.name) &&
+            effects?.[tool.name] === 'READ'
               ? [
                   {
                     name: tool.name,
@@ -387,7 +390,8 @@ const tools = [
     description:
       'Execute a current employee-authorized READ business query, including ledger or companyData, through this office connection. Call this tool directly; do not search for it with ToolSearch. First refresh office_context.enterpriseQueries for source resourceId, exact toolName and inputSchema. It works in existing expert conversations without a separate business MCP mount. Never guess a source or mix enterprises. Each call rechecks resource, connection, READ allowlist and current task authorization. No writes or submissions.',
     inputSchema: {
-      type: 'object', additionalProperties: false,
+      type: 'object',
+      additionalProperties: false,
       properties: {
         resourceId: { type: 'string', pattern: '^[0-9a-fA-F-]{36}$' },
         toolName: { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,100}$' },
@@ -1081,24 +1085,52 @@ export async function startOfficeTools(
             );
           } else value = await data.analysis(String(args.analysisId));
         } else if (tool === 'query_enterprise_data') {
-          const resourceId = String(args.resourceId || ''), toolName = String(args.toolName || '');
-          if (!/^[0-9a-f-]{36}$/i.test(resourceId) || !/^[A-Za-z0-9_.-]{1,100}$/.test(toolName) ||
-              !args.arguments || typeof args.arguments !== 'object' || Array.isArray(args.arguments))
+          const resourceId = String(args.resourceId || ''),
+            toolName = String(args.toolName || '');
+          if (
+            !/^[0-9a-f-]{36}$/i.test(resourceId) ||
+            !/^[A-Za-z0-9_.-]{1,100}$/.test(toolName) ||
+            !args.arguments ||
+            typeof args.arguments !== 'object' ||
+            Array.isArray(args.arguments)
+          )
             throw new Error('BUSINESS_QUERY_ARGUMENTS_INVALID');
-          const resource = await client.authorizedResource(resourceId, 'MCP') as { name?: string; version?: number; config?: Record<string, unknown> };
-          const config = resource.config || {}, effects = config.toolEffects as Record<string, unknown> | undefined;
-          if (config.managedProfile !== 'external-query' || !Array.isArray(config.allowedTools) ||
-              !config.allowedTools.includes(toolName) || effects?.[toolName] !== 'READ')
+          const resource = (await client.authorizedResource(resourceId, 'MCP')) as {
+            name?: string;
+            version?: number;
+            config?: Record<string, unknown>;
+          };
+          const config = resource.config || {},
+            effects = config.toolEffects as Record<string, unknown> | undefined;
+          if (
+            config.managedProfile !== 'external-query' ||
+            !Array.isArray(config.allowedTools) ||
+            !config.allowedTools.includes(toolName) ||
+            effects?.[toolName] !== 'READ'
+          )
             throw new Error('BUSINESS_QUERY_READ_ONLY_REQUIRED');
           const connection = await client.readyMcpConnection(resourceId);
           await client.authorizedMcpConnection(connection.id, resourceId);
-          const response = await client.relayMcp(connection.id, JSON.stringify({
-            jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: toolName, arguments: args.arguments },
-          }), {}, abort.signal, conversation);
-          const result = await response.json() as { error?: unknown; result?: { isError?: boolean } };
+          const response = await client.relayMcp(
+            connection.id,
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'tools/call',
+              params: { name: toolName, arguments: args.arguments },
+            }),
+            {},
+            abort.signal,
+            conversation
+          );
+          const result = (await response.json()) as { error?: unknown; result?: { isError?: boolean } };
           if (!response.ok || result.error || !result.result || result.result.isError)
             throw new Error('BUSINESS_QUERY_UPSTREAM_FAILED');
-          value = { source: { resourceId, name: resource.name, version: resource.version }, toolName, result: result.result };
+          value = {
+            source: { resourceId, name: resource.name, version: resource.version },
+            toolName,
+            result: result.result,
+          };
         } else if (tool === 'office_context') {
           const knowledge = await knowledgeContext(conversation, client);
           const taskContext = record(await taskOfficeContext(profileRoot, actor, conversation));
@@ -1400,8 +1432,11 @@ export async function startOfficeTools(
             ? (args.methods as string[])
             : (p.preferences.methods as string[]);
           const comparison = selectedMethods.some((m) => m === 'intensity' || m === 'cost_change');
-          const taskContext = (await taskOfficeContext(profileRoot, actor, conversation)) as { selectedInput?: { description?: string } } | null;
-          const comparisonIntent = comparison || requestsPeriodComparison(taskContext?.selectedInput?.description || '');
+          const taskContext = (await taskOfficeContext(profileRoot, actor, conversation)) as {
+            selectedInput?: { description?: string };
+          } | null;
+          const comparisonIntent =
+            comparison || requestsPeriodComparison(taskContext?.selectedInput?.description || '');
           if (args.revision && (args.periods !== undefined || args.cutoff !== undefined))
             throw Error('METHOD_REVISION_USES_ORIGINAL_TIME');
           const revision = args.revision
@@ -1428,12 +1463,7 @@ export async function startOfficeTools(
             const input = await readInput(String(args.path || ''), conversation);
             let parameters = revision?.snapshot.parameters;
             if (!revision && (comparisonIntent || args.periods !== undefined || args.cutoff !== undefined)) {
-              const requested = methodTime(
-                p.preferences,
-                args.periods,
-                args.cutoff,
-                comparisonIntent
-              );
+              const requested = methodTime(p.preferences, args.periods, args.cutoff, comparisonIntent);
               const scope = await currentTaskScope(profileRoot, actor, conversation);
               parameters = await pinMethodTime(
                 store,

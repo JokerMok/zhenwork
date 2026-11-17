@@ -34,7 +34,8 @@ const artifacts = [1, 2].map((version) => ({
   sha256: String(version).repeat(64),
   versionId: 'stock-v' + version,
   version,
-  previewUrl: '/#/workspace?section=files&previewPath=' + encodeURIComponent(filePath) + '&fileVersion=stock-v' + version,
+  previewUrl:
+    '/#/workspace?section=files&previewPath=' + encodeURIComponent(filePath) + '&fileVersion=stock-v' + version,
 }));
 const tasks = Array.from({ length: 20 }, (_, i) => {
   const number = i + 1;
@@ -42,39 +43,86 @@ const tasks = Array.from({ length: 20 }, (_, i) => {
     id: 'badc' + String(number).padStart(4, '0'),
     title: '库存周报 ' + number,
     updatedAt: Date.parse(date),
-    attempts: [{
-      id: 'attempt-' + number,
-      state: 'partial',
-      phase: 'finished',
-      steps: [],
-      ...(number === 1 ? { progress: 'query_enterprise_data' } : {}),
-      artifacts: number === 20 ? artifacts : number === 19 ? [{
-        path: 'outputs/other.txt', valid: true, sha256: '3'.repeat(64), version: 1,
-      }] : [],
-    }],
+    attempts: [
+      {
+        id: 'attempt-' + number,
+        state: 'partial',
+        phase: 'finished',
+        steps: [],
+        ...(number === 1 ? { progress: 'query_enterprise_data' } : {}),
+        artifacts:
+          number === 20
+            ? artifacts
+            : number === 19
+              ? [
+                  {
+                    path: 'outputs/other.txt',
+                    valid: true,
+                    sha256: '3'.repeat(64),
+                    version: 1,
+                  },
+                ]
+              : [],
+      },
+    ],
   };
 });
-const files = [...Array.from({ length: 20 }, (_, i) => ({
-  path: 'outputs/other-' + i + '.txt', name: '任务附件 ' + i + '.txt',
-  byteSize: 16, modifiedAt: date, kind: 'generated', versions: [],
-})), {
-  path: filePath, name: 'stock-weekly.xlsx', byteSize: 320, modifiedAt: date, kind: 'generated',
-  currentVersionId: 'stock-v2',
-  versions: artifacts.map(({ versionId, sha256, version }) => ({
-    id: versionId, sha256, createdAt: version === 1 ? '2026-11-10T00:00:00Z' : date, byteSize: 320,
+const files = [
+  ...Array.from({ length: 20 }, (_, i) => ({
+    path: 'outputs/other-' + i + '.txt',
+    name: '任务附件 ' + i + '.txt',
+    byteSize: 16,
+    modifiedAt: date,
+    kind: 'generated',
+    versions: [],
   })),
-}, {
-  path: 'outputs/calculation-notes.json', name: 'calculation-notes.json',
-  byteSize: 30, modifiedAt: date, kind: 'result', versions: [],
-}];
+  {
+    path: filePath,
+    name: 'stock-weekly.xlsx',
+    byteSize: 320,
+    modifiedAt: date,
+    kind: 'generated',
+    currentVersionId: 'stock-v2',
+    versions: artifacts.map(({ versionId, sha256, version }) => ({
+      id: versionId,
+      sha256,
+      createdAt: version === 1 ? '2026-11-10T00:00:00Z' : date,
+      byteSize: 320,
+    })),
+  },
+  {
+    path: 'outputs/calculation-notes.json',
+    name: 'calculation-notes.json',
+    byteSize: 30,
+    modifiedAt: date,
+    kind: 'result',
+    versions: [],
+  },
+];
 const models = [
-  { id: 'fixture-model-a', name: 'GPT-6.1-Terra', code: 'terra', isDefault: true, streaming: true, source: 'ORGANIZATION' },
+  {
+    id: 'fixture-model-a',
+    name: 'GPT-6.1-Terra',
+    code: 'terra',
+    isDefault: true,
+    streaming: true,
+    source: 'ORGANIZATION',
+  },
   { id: 'fixture-model-b', name: '测试模型 B', code: 'fixture-b', streaming: true },
 ];
 const officeAssistant = {
-  id: 'zhenwork-general-office', name: '通用办公助手', enabled: true, agent_id: 'agent-office',
-  agent: { type: 'aionrs' }, preset_agent_type: 'aionrs', agent_status: 'online',
-  source: 'custom', models: [], prompts: [], sort_order: 1, team_selectable: false,
+  id: 'zhenwork-general-office',
+  name: '通用办公助手',
+  enabled: true,
+  agent_id: 'agent-office',
+  agent: { type: 'aionrs' },
+  preset_agent_type: 'aionrs',
+  agent_status: 'online',
+  source: 'custom',
+  models: [],
+  prompts: [],
+  sort_order: 1,
+  team_selectable: false,
 };
 const previews = [];
 const downloaded = [];
@@ -92,32 +140,63 @@ async function stubApi(route) {
   const method = request.method();
   if (url.pathname === '/api/auth/user') return json({ success: true, user: { id: account, username: account } });
   if (url.pathname === '/api/settings/client') return json({ success: true, data: {} });
-  if (url.pathname === '/api/assistants') return json({ success: true, data: [
-    officeAssistant, { ...officeAssistant, id: 'builtin-aion-cli', name: 'Aion CLI' },
-    { ...officeAssistant, id: 'builtin-aionui', name: 'AionUi 管家' },
-  ] });
-  if (url.pathname === '/api/assistants/' + officeAssistant.id) return json({ success: true, data: {
-    ...officeAssistant,
-    prompts: { recommended: [], recommended_i18n: {} },
-    defaults: { model: { mode: 'auto' }, permission: { mode: 'auto' }, skills: { mode: 'auto' }, mcps: { mode: 'auto' } },
-    preferences: {}, capabilities: {},
-  } });
-  if (url.pathname === '/api/providers') return json({ success: true, data: [{
-    id: 'rc2-enterprise-model', name: '企业模型', platform: 'openai', enabled: true,
-    models: models.map((model) => 'rc2-' + model.id),
-  }] });
+  if (url.pathname === '/api/assistants')
+    return json({
+      success: true,
+      data: [
+        officeAssistant,
+        { ...officeAssistant, id: 'builtin-aion-cli', name: 'Aion CLI' },
+        { ...officeAssistant, id: 'builtin-aionui', name: 'AionUi 管家' },
+      ],
+    });
+  if (url.pathname === '/api/assistants/' + officeAssistant.id)
+    return json({
+      success: true,
+      data: {
+        ...officeAssistant,
+        prompts: { recommended: [], recommended_i18n: {} },
+        defaults: {
+          model: { mode: 'auto' },
+          permission: { mode: 'auto' },
+          skills: { mode: 'auto' },
+          mcps: { mode: 'auto' },
+        },
+        preferences: {},
+        capabilities: {},
+      },
+    });
+  if (url.pathname === '/api/providers')
+    return json({
+      success: true,
+      data: [
+        {
+          id: 'rc2-enterprise-model',
+          name: '企业模型',
+          platform: 'openai',
+          enabled: true,
+          models: models.map((model) => 'rc2-' + model.id),
+        },
+      ],
+    });
   if (url.pathname === '/enterprise/control/ai/models/available') return json(models);
   if (url.pathname === '/enterprise/resources/status') return json({ state: 'ready' });
   if (url.pathname === '/api/system/info') return json({ success: true, data: { work_dir: '/fixture/workspace' } });
-  if (url.pathname === '/api/fs/dir') return json({ success: true, data:
-    ['资料', '.versions', 'conversations'].map((name) => ({ name, is_dir: true, full_path: '/fixture/workspace/' + name })),
-  });
+  if (url.pathname === '/api/fs/dir')
+    return json({
+      success: true,
+      data: ['资料', '.versions', 'conversations'].map((name) => ({
+        name,
+        is_dir: true,
+        full_path: '/fixture/workspace/' + name,
+      })),
+    });
   if (url.pathname === '/enterprise/control/ai/resources') return json({ items: [], hasMore: false });
   if (url.pathname === '/enterprise/control/ai/resources/runtime-issues') return json([]);
   if (url.pathname === '/enterprise/files/download') {
     const name = url.searchParams.get('path');
     const version = url.searchParams.get('version');
-    if (name !== filePath || !artifacts.some((item) => item.versionId === version)) return json({ error: 'FORBIDDEN' }, 403);
+    if (name !== filePath || !artifacts.some((item) => item.versionId === version))
+      return json({ error: 'FORBIDDEN' }, 403);
     downloaded.push({ name, version });
     return route.fulfill({ status: 200, body: 'snapshot-bytes:' + version });
   }
@@ -148,12 +227,28 @@ async function stubApi(route) {
       format: 'xlsx',
       sourceSha256: artifacts.find((item) => item.versionId === version).sha256,
       sourceName: 'stock-weekly.xlsx',
-      sheets: ['库存'], sheet: '库存', widths: [160],
-      rows: [{ number: 1, cells: [{
-        reference: 'A1', column: 1, text: version === 'stock-v1' ? '固定历史版本一' : '固定版本二',
-        colSpan: 1, rowSpan: 1, style: {},
-      }] }],
-      start: 0, rowCount: 1, columnCount: 1, nextStart: null,
+      sheets: ['库存'],
+      sheet: '库存',
+      widths: [160],
+      rows: [
+        {
+          number: 1,
+          cells: [
+            {
+              reference: 'A1',
+              column: 1,
+              text: version === 'stock-v1' ? '固定历史版本一' : '固定版本二',
+              colSpan: 1,
+              rowSpan: 1,
+              style: {},
+            },
+          ],
+        },
+      ],
+      start: 0,
+      rowCount: 1,
+      columnCount: 1,
+      nextStart: null,
     });
   }
   if (url.pathname === '/enterprise/preferences') {
@@ -172,7 +267,9 @@ async function stubApi(route) {
   }
   if (url.pathname === '/enterprise/ready') return json({ ready: true, phase: 'ready' });
   if (url.pathname.startsWith('/enterprise/') || url.pathname.startsWith('/api/')) {
-    return method === 'GET' ? json({ success: true, data: [], items: [] }) : json({ error: 'FIXTURE_WRITE_DENIED' }, 403);
+    return method === 'GET'
+      ? json({ success: true, data: [], items: [] })
+      : json({ error: 'FIXTURE_WRITE_DENIED' }, 403);
   }
   return route.continue();
 }
@@ -180,22 +277,34 @@ async function stubApi(route) {
 const taskUrl = '/#/workspace?section=tasks';
 const settingsUrl = '/#/settings/personalization';
 const listScroller = '.overflow-y-auto.bg-bg-1';
-const readScroll = (page) => page.locator(listScroller).filter({ has: page.getByRole('tab', { name: '任务', exact: true }) })
-  .evaluate((element) => element.scrollTop);
+const readScroll = (page) =>
+  page
+    .locator(listScroller)
+    .filter({ has: page.getByRole('tab', { name: '任务', exact: true }) })
+    .evaluate((element) => element.scrollTop);
 const detail = (page) => page.locator('#workspace-task-detail-title');
 const assertTitleInView = async (page, name) => {
   await detail(page).filter({ hasText: name }).waitFor();
   const metrics = await detail(page).evaluate((heading) => {
     const rect = heading.getBoundingClientRect();
     const pane = heading.closest('.overflow-y-auto.bg-bg-1').getBoundingClientRect();
-    return { top: rect.top, bottom: rect.bottom, min: pane.top, max: pane.bottom, focused: document.activeElement === heading };
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      min: pane.top,
+      max: pane.bottom,
+      focused: document.activeElement === heading,
+    };
   });
   assert.ok(metrics.top >= metrics.min && metrics.bottom <= metrics.max, JSON.stringify(metrics));
   assert.equal(metrics.focused, true);
   return Math.round(metrics.top);
 };
-const taskButton = (page, number) => page.locator('.arco-list-item')
-  .filter({ has: page.getByText('库存周报 ' + number, { exact: true }) }).getByRole('button', { name: '任务详情' });
+const taskButton = (page, number) =>
+  page
+    .locator('.arco-list-item')
+    .filter({ has: page.getByText('库存周报 ' + number, { exact: true }) })
+    .getByRole('button', { name: '任务详情' });
 const clickTab = (page, name) => page.getByRole('tab', { name, exact: true }).click();
 
 let browser;
@@ -244,11 +353,17 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 5300));
   assert.ok(pollCount > pollStart);
   assert.equal(await readScroll(page), scrollBeforePoll);
-  assert.equal(await card.getByRole('button', { name: '继续任务' }).evaluate((item) => document.activeElement === item), true);
-  await page.locator('section[aria-labelledby="workspace-task-detail-title"]').getByRole('button', { name: '关闭' }).click();
+  assert.equal(
+    await card.getByRole('button', { name: '继续任务' }).evaluate((item) => document.activeElement === item),
+    true
+  );
+  await page
+    .locator('section[aria-labelledby="workspace-task-detail-title"]')
+    .getByRole('button', { name: '关闭' })
+    .click();
   await page.waitForURL((value) => !value.hash.includes('task='));
   await detail(page).waitFor({ state: 'hidden' });
-  assert.ok(Math.abs(await readScroll(page) - originalTop) <= 2, 'Closing must restore the filtered list position');
+  assert.ok(Math.abs((await readScroll(page)) - originalTop) <= 2, 'Closing must restore the filtered list position');
   assert.equal(await rowA.evaluate((item) => document.activeElement === item), true);
   assert.ok((await page.getByRole('combobox', { name: '状态' }).locator('..').innerText()).includes('部分完成'));
   await page.goBack();
@@ -259,8 +374,16 @@ try {
   await detail(page).waitFor({ state: 'hidden' });
   await rowA.click();
   await page.waitForURL(/task=badc0020/);
-  console.log(JSON.stringify({ scenario: 'UX-01', originalListScrollTop: originalTop, detailViewportTop: openedTop,
-    switchBackForward: true, focusAndFilterRestored: true, pollingKeptPosition: true }));
+  console.log(
+    JSON.stringify({
+      scenario: 'UX-01',
+      originalListScrollTop: originalTop,
+      detailViewportTop: openedTop,
+      switchBackForward: true,
+      focusAndFilterRestored: true,
+      pollingKeptPosition: true,
+    })
+  );
 
   const previewAction = card.getByRole('button', { name: '预览 · stock-weekly.xlsx · v1', exact: true });
   await previewAction.click();
@@ -285,7 +408,9 @@ try {
   await drawer.getByRole('button', { name: '关闭', exact: true }).click();
   await drawer.waitFor({ state: 'hidden' });
   assert.equal(await readScroll(page), fileScroll);
-  assert.ok((await page.getByRole('combobox', { name: '文件', exact: true }).locator('..').innerText()).includes('生成文件'));
+  assert.ok(
+    (await page.getByRole('combobox', { name: '文件', exact: true }).locator('..').innerText()).includes('生成文件')
+  );
 
   const denied = 'other-employee-private.xlsx';
   const beforeDenied = previews.length;
@@ -295,8 +420,16 @@ try {
   assert.equal(previews.length, beforeDenied, 'A path outside the authorized file list must not be fetched');
   await unavailable.getByRole('button', { name: '关闭', exact: true }).click();
   await page.waitForURL((value) => value.hash.includes('task=badc0020') && !value.hash.includes('previewPath'));
-  console.log(JSON.stringify({ scenario: 'UX-02', taskSourcePreserved: true, fileSourcePreserved: true,
-    fixedVersions: ['stock-v1', 'stock-v2'], fileListScrollTop: fileScroll, unauthorizedLinkRejected: true }));
+  console.log(
+    JSON.stringify({
+      scenario: 'UX-02',
+      taskSourcePreserved: true,
+      fileSourcePreserved: true,
+      fixedVersions: ['stock-v1', 'stock-v2'],
+      fileListScrollTop: fileScroll,
+      unauthorizedLinkRejected: true,
+    })
+  );
 
   await page.goto(url(settingsUrl));
   const instructions = page.getByRole('textbox', { name: '自定义指令', exact: true });
@@ -326,8 +459,15 @@ try {
   await instructions.waitFor();
   assert.equal(await instructions.inputValue(), '');
   assert.equal(saved.length, 1);
-  console.log(JSON.stringify({ scenario: 'UX-03', navigationAndReloadRestored: true, discardDidNotWrite: true,
-    explicitSaveCount: saved.length, secondAccountIsolated: true }));
+  console.log(
+    JSON.stringify({
+      scenario: 'UX-03',
+      navigationAndReloadRestored: true,
+      discardDidNotWrite: true,
+      explicitSaveCount: saved.length,
+      secondAccountIsolated: true,
+    })
+  );
 
   await page.goto(url('/#/guid'));
   const draft = page.getByTestId('guid-input');
@@ -355,8 +495,15 @@ try {
   await expand.click();
   await model.getByText('测试模型 B', { exact: true }).waitFor();
   assert.equal(await draft.inputValue(), '展开设置前的任务草稿');
-  console.log(JSON.stringify({ scenario: 'UX-04', examplesAndDraftStable: true,
-    governedAssistantVisible: true, internalPresetsHidden: true, namedModelSelectionRestored: true }));
+  console.log(
+    JSON.stringify({
+      scenario: 'UX-04',
+      examplesAndDraftStable: true,
+      governedAssistantVisible: true,
+      internalPresetsHidden: true,
+      namedModelSelectionRestored: true,
+    })
+  );
 
   await page.goto(url('/#/workspace'));
   await page.getByRole('button', { name: '新建空白任务' }).waitFor();
@@ -369,9 +516,13 @@ try {
   assert.equal(await page.getByText('暂无数据', { exact: true }).count(), 0);
 
   await page.goto(url('/#/workspace?section=files'));
-  const unknownFile = page.locator('.arco-list-item').filter({ has: page.getByText('calculation-notes.json', { exact: true }) });
+  const unknownFile = page
+    .locator('.arco-list-item')
+    .filter({ has: page.getByText('calculation-notes.json', { exact: true }) });
   await unknownFile.getByText('工作区文件', { exact: true }).waitFor();
-  await page.goto(url('/#/workspace?section=files&previewPath=' + encodeURIComponent(filePath) + '&fileVersion=stock-v1'));
+  await page.goto(
+    url('/#/workspace?section=files&previewPath=' + encodeURIComponent(filePath) + '&fileVersion=stock-v1')
+  );
   await drawer.getByText('固定历史版本一', { exact: true }).waitFor();
   await drawer.getByRole('button', { name: '基于文件新建任务', exact: true }).click();
   await page.waitForURL(/#\/guid/);
@@ -418,17 +569,38 @@ try {
   await draft.waitFor();
   assert.equal(await draft.inputValue(), '');
   assert.equal(await versionAttachment.count(), 0);
-  console.log(JSON.stringify({ scenario: 'employee-draft', versionEditSurvivesBackAndReload: true,
-    removedVersionDoesNotReappear: true, workingDirectoryRestored: true, discardedDraftStaysEmpty: true }));
-  console.log(JSON.stringify({ scenario: 'P2', duplicateNavigationRemoved: true, rawToolCodeHidden: true,
-    availableAssistantHasNoContradictoryEmptyState: true, neutralWorkspaceFileLabel: true,
-    exactSnapshotAttachedToNewDraft: true, physicalDirectoryHidden: true }));
+  console.log(
+    JSON.stringify({
+      scenario: 'employee-draft',
+      versionEditSurvivesBackAndReload: true,
+      removedVersionDoesNotReappear: true,
+      workingDirectoryRestored: true,
+      discardedDraftStaysEmpty: true,
+    })
+  );
+  console.log(
+    JSON.stringify({
+      scenario: 'P2',
+      duplicateNavigationRemoved: true,
+      rawToolCodeHidden: true,
+      availableAssistantHasNoContradictoryEmptyState: true,
+      neutralWorkspaceFileLabel: true,
+      exactSnapshotAttachedToNewDraft: true,
+      physicalDirectoryHidden: true,
+    })
+  );
 } catch (error) {
-  console.error(JSON.stringify({
-    url: page?.url(),
-    pageErrors: pageErrors.slice(-5),
-    body: await page?.locator('body').innerText({ timeout: 2000 }).then(text => text.slice(-900)).catch(() => undefined),
-  }));
+  console.error(
+    JSON.stringify({
+      url: page?.url(),
+      pageErrors: pageErrors.slice(-5),
+      body: await page
+        ?.locator('body')
+        .innerText({ timeout: 2000 })
+        .then((text) => text.slice(-900))
+        .catch(() => undefined),
+    })
+  );
   throw error;
 } finally {
   await browser?.close();

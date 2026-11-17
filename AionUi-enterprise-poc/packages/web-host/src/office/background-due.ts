@@ -24,6 +24,9 @@ export async function backgroundDue(root: string, actor: EnterpriseActor, jobs: 
   const profile = await realpath(enterpriseProfilePath(root, actor));
   const file = await realpath(path.join(profile, 'aionui-backend.db'));
   if (!file.startsWith(profile + path.sep)) throw new Error('BACKGROUND_DATABASE_PATH_DENIED');
-  const result = await execute('python3', ['-c', inspect, file, JSON.stringify(jobs), String(Date.now())], { timeout: 5000, maxBuffer: 4096 });
+  const result = await execute('python3', ['-c', inspect, file, JSON.stringify(jobs), String(Date.now())], {
+    timeout: 5000,
+    maxBuffer: 4096,
+  });
   return JSON.parse(result.stdout) === true;
 }

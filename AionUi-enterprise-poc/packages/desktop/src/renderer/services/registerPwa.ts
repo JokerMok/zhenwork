@@ -35,11 +35,15 @@ export async function registerPwa(): Promise<ServiceWorkerRegistration | undefin
       const names = await caches.keys().catch((): string[] => []);
       const webuiNames = names.filter((name) => name.startsWith('aionui-webui-'));
       if (webuiNames.length && 'serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations()
+        const registrations = await navigator.serviceWorker
+          .getRegistrations()
           .catch((): ServiceWorkerRegistration[] => []);
         const scriptUrl = new URL(SERVICE_WORKER_URL, window.location.href).href;
-        await Promise.all(registrations.filter((registration) => registration.active?.scriptURL === scriptUrl)
-          .map((registration) => registration.unregister()));
+        await Promise.all(
+          registrations
+            .filter((registration) => registration.active?.scriptURL === scriptUrl)
+            .map((registration) => registration.unregister())
+        );
       }
       await Promise.all(webuiNames.map((name) => caches.delete(name)));
     }

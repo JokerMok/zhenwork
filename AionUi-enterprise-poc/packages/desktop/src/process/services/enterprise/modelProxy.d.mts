@@ -1,7 +1,8 @@
 export class EnterpriseModelProxy {
   constructor(options: {
-    client: { relayModel(modelId: string, raw: string, signal: AbortSignal,
-      conversationId?: string): Promise<Response> };
+    client: {
+      relayModel(modelId: string, raw: string, signal: AbortSignal, conversationId?: string): Promise<Response>;
+    };
     model: { id: string; code: string; name: string; upstreamCode?: string };
     models?: Array<{ id: string; code: string; name: string; upstreamCode?: string }>;
     onRevoked?: () => void;

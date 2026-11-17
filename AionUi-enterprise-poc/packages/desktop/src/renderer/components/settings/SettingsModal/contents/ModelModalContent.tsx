@@ -127,8 +127,11 @@ const ModelModalContent: React.FC = () => {
       if (api_key_configured && !body.api_key) delete body.api_key;
       if (base_url_configured && !body.base_url) delete body.base_url;
       if (body.bedrock_config) {
-        const { access_key_id_configured: _accessConfigured,
-          secret_access_key_configured, ...config } = body.bedrock_config;
+        const {
+          access_key_id_configured: _accessConfigured,
+          secret_access_key_configured,
+          ...config
+        } = body.bedrock_config;
         if (secret_access_key_configured && !config.secret_access_key) delete body.bedrock_config;
         else body.bedrock_config = config;
       }
@@ -480,11 +483,13 @@ const ModelModalContent: React.FC = () => {
                               className='cursor-pointer hover:text-t-primary transition-colors'
                               onClick={() => editModalCtrl.open({ data: platform })}
                             >
-                              {t('settings.apiKeyCount')}（{platform.api_key_count ?? getApiKeyCount(platform.api_key)}）
+                              {t('settings.apiKeyCount')}（{platform.api_key_count ?? getApiKeyCount(platform.api_key)}
+                              ）
                             </span>
                           </span>
                           <span className='text-12px text-t-secondary whitespace-nowrap md:hidden'>
-                            {(platform.models ?? []).length} / {platform.api_key_count ?? getApiKeyCount(platform.api_key)}
+                            {(platform.models ?? []).length} /{' '}
+                            {platform.api_key_count ?? getApiKeyCount(platform.api_key)}
                           </span>
                           {/* 供应商启用开关 / Provider enable switch */}
                           <Switch

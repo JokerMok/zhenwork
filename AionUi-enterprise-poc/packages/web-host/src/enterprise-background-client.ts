@@ -3,15 +3,24 @@ import type { Rc2GatewayClient } from './enterprise-rc2-login.mjs';
 export type BackgroundGrant = { id: string; jobId: string; secret: string; userId: string };
 
 export class BackgroundGrantRevokedError extends Error {
-  constructor() { super('Background grant revoked'); }
+  constructor() {
+    super('Background grant revoked');
+  }
 }
 
-export async function verifyBackgroundService(baseUrl: string, serviceToken: string,
-  fetchImpl: typeof fetch = fetch): Promise<void> {
-  if ((new URL(baseUrl).protocol !== 'https:' && !baseUrl.startsWith('http://127.0.0.1:')) ||
-      !/^[A-Za-z0-9_-]{32,128}$/.test(serviceToken)) throw new Error('Invalid background service configuration');
+export async function verifyBackgroundService(
+  baseUrl: string,
+  serviceToken: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<void> {
+  if (
+    (new URL(baseUrl).protocol !== 'https:' && !baseUrl.startsWith('http://127.0.0.1:')) ||
+    !/^[A-Za-z0-9_-]{32,128}$/.test(serviceToken)
+  )
+    throw new Error('Invalid background service configuration');
   const response = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/internal/rc2/background/health`, {
-    headers: { Authorization: `Bearer ${serviceToken}` }, signal: AbortSignal.timeout(10_000),
+    headers: { Authorization: `Bearer ${serviceToken}` },
+    signal: AbortSignal.timeout(10_000),
   });
   const body = (await response.json().catch((): null => null)) as { code?: number; data?: { ready?: boolean } } | null;
   if (!response.ok || body?.code !== 200 || body.data?.ready !== true) {
@@ -23,14 +32,22 @@ export async function verifyBackgroundService(baseUrl: string, serviceToken: str
 export class EnterpriseBackgroundClient implements Rc2GatewayClient {
   private readonly prefix: string;
 
-  constructor(private readonly baseUrl: string, private readonly serviceToken: string,
-    private readonly grant: BackgroundGrant, private readonly fetchImpl: typeof fetch = fetch) {
+  constructor(
+    private readonly baseUrl: string,
+    private readonly serviceToken: string,
+    private readonly grant: BackgroundGrant,
+    private readonly fetchImpl: typeof fetch = fetch
+  ) {
     if (new URL(baseUrl).protocol !== 'https:' && !baseUrl.startsWith('http://127.0.0.1:')) {
       throw new Error('Background RC2 requires HTTPS');
     }
-    if (!/^[0-9a-f-]{36}$/i.test(grant.id) || !/^(?:cron|task)_[A-Za-z0-9_-]{8,80}$/.test(grant.jobId) ||
-        !/^[0-9a-f]{64}$/.test(grant.secret) || !/^[0-9]{1,20}$/.test(grant.userId) ||
-        !/^[A-Za-z0-9_-]{32,128}$/.test(serviceToken)) {
+    if (
+      !/^[0-9a-f-]{36}$/i.test(grant.id) ||
+      !/^(?:cron|task)_[A-Za-z0-9_-]{8,80}$/.test(grant.jobId) ||
+      !/^[0-9a-f]{64}$/.test(grant.secret) ||
+      !/^[0-9]{1,20}$/.test(grant.userId) ||
+      !/^[A-Za-z0-9_-]{32,128}$/.test(serviceToken)
+    ) {
       throw new Error('Invalid background grant');
     }
     this.prefix = `/internal/rc2/background/grants/${grant.id}`;
@@ -39,7 +56,9 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
   private fetchRc2(path: string, init: RequestInit = {}): Promise<Response> {
     return this.fetchImpl(`${this.baseUrl.replace(/\/$/, '')}${this.prefix}${path}`, {
       ...init,
-      headers: { Authorization: `Bearer ${this.serviceToken}`, 'X-Aion-Background-Secret': this.grant.secret,
+      headers: {
+        Authorization: `Bearer ${this.serviceToken}`,
+        'X-Aion-Background-Secret': this.grant.secret,
         ...init.headers,
       },
       signal: init.signal || AbortSignal.timeout(10_000),
@@ -58,29 +77,50 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
 
   async revoke(): Promise<void> {
     const response = await this.fetchRc2('', { method: 'DELETE' });
-    const body = await response.json().catch((): null => null) as {code?: number} | null;
-    if ([401,403].includes(response.status) || [401,403].includes(body?.code || 0)) return;
+    const body = (await response.json().catch((): null => null)) as { code?: number } | null;
+    if ([401, 403].includes(response.status) || [401, 403].includes(body?.code || 0)) return;
     if (!response.ok || body?.code !== 200) throw new Error('Background grant revocation unavailable');
   }
 
   /** Exact read-only knowledge routes needed to verify fixed-version evidence. No arbitrary RC2 forwarding. */
-  async request(route: string, init: RequestInit = {}): Promise<{response: Response; body: {code?:number;data?:unknown}|null}> {
-    if (init.method === 'POST' && /^\/ai\/tools\/[0-9a-f-]{36}\/calculate$/i.test(route) &&
-        typeof init.body === 'string' && init.body.length <= 512) {
-      const response = await this.fetchRc2(route.slice(3), { method: 'POST',
-        headers: { 'Content-Type': 'application/json' }, body: init.body, signal: init.signal });
-      const body = await response.json().catch((): null => null) as {code?:number;data?:unknown}|null;
-      if ([401,403].includes(response.status) || [401,403].includes(body?.code || 0)) throw new BackgroundGrantRevokedError();
-      return {response,body};
+  async request(
+    route: string,
+    init: RequestInit = {}
+  ): Promise<{ response: Response; body: { code?: number; data?: unknown } | null }> {
+    if (
+      init.method === 'POST' &&
+      /^\/ai\/tools\/[0-9a-f-]{36}\/calculate$/i.test(route) &&
+      typeof init.body === 'string' &&
+      init.body.length <= 512
+    ) {
+      const response = await this.fetchRc2(route.slice(3), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: init.body,
+        signal: init.signal,
+      });
+      const body = (await response.json().catch((): null => null)) as { code?: number; data?: unknown } | null;
+      if ([401, 403].includes(response.status) || [401, 403].includes(body?.code || 0))
+        throw new BackgroundGrantRevokedError();
+      return { response, body };
     }
     if (init.method && init.method !== 'GET') throw new Error('Background knowledge is read only');
     const parsed = new URL(route, 'https://internal.invalid');
-    if (parsed.origin !== 'https://internal.invalid' || !/^\/ai\/knowledge\/(?:[0-9a-f-]{36}\/search|documents\/[0-9a-f-]{36}\/versions\/[1-9][0-9]{0,6})$/i.test(parsed.pathname) ||
-        [...parsed.searchParams.keys()].some(key => !['query','documentId','version'].includes(key))) throw new Error('Background route denied');
-    const response = await this.fetchRc2(parsed.pathname.slice(3) + parsed.search, {signal:init.signal || undefined});
-    const body = await response.json().catch((): null => null) as {code?:number;data?:unknown}|null;
-    if ([401,403].includes(response.status) || [401,403].includes(body?.code || 0)) throw new BackgroundGrantRevokedError();
-    return {response,body};
+    if (
+      parsed.origin !== 'https://internal.invalid' ||
+      !/^\/ai\/knowledge\/(?:[0-9a-f-]{36}\/search|documents\/[0-9a-f-]{36}\/versions\/[1-9][0-9]{0,6})$/i.test(
+        parsed.pathname
+      ) ||
+      [...parsed.searchParams.keys()].some((key) => !['query', 'documentId', 'version'].includes(key))
+    )
+      throw new Error('Background route denied');
+    const response = await this.fetchRc2(parsed.pathname.slice(3) + parsed.search, {
+      signal: init.signal || undefined,
+    });
+    const body = (await response.json().catch((): null => null)) as { code?: number; data?: unknown } | null;
+    if ([401, 403].includes(response.status) || [401, 403].includes(body?.code || 0))
+      throw new BackgroundGrantRevokedError();
+    return { response, body };
   }
 
   async me(signal?: AbortSignal): Promise<{ userId: string }> {
@@ -93,37 +133,59 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
   async availableModels(): Promise<Array<{ id: string; code: string; name: string; streaming: boolean }>> {
     const data = await this.read('/models/available');
     if (!Array.isArray(data)) throw new Error('Background models unavailable');
-    return data.filter((model): model is { id: string; code: string; name: string; streaming: boolean } =>
-      !!model && typeof model.id === 'string' && typeof model.code === 'string' &&
-      typeof model.name === 'string' && model.streaming === true);
+    return data.filter(
+      (model): model is { id: string; code: string; name: string; streaming: boolean } =>
+        !!model &&
+        typeof model.id === 'string' &&
+        typeof model.code === 'string' &&
+        typeof model.name === 'string' &&
+        model.streaming === true
+    );
   }
 
   relayModel(modelId: string, raw: string, signal: AbortSignal, conversationId?: string): Promise<Response> {
     return this.fetchRc2(`/models/${encodeURIComponent(modelId)}/chat/completions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...(conversationId ? { 'X-Aion-Conversation-Id': conversationId } : {}),
-      }, body: raw, signal,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(conversationId ? { 'X-Aion-Conversation-Id': conversationId } : {}),
+      },
+      body: raw,
+      signal,
     });
   }
 
   async resources(type: string): Promise<unknown> {
-    if (!['ASSISTANT', 'SKILL', 'MCP', 'KNOWLEDGE', 'TOOL'].includes(type)) throw new Error('Invalid background resource type');
+    if (!['ASSISTANT', 'SKILL', 'MCP', 'KNOWLEDGE', 'TOOL'].includes(type))
+      throw new Error('Invalid background resource type');
     const items = new Map<string, Record<string, unknown>>();
     for (let page = 1; page <= 100; page++) {
-      const data = (await this.read(`/resources?type=${type}&scope=available&page=${page}&paged=true`)) as {
-        items?: unknown;
-        hasMore?: boolean;
-      } | unknown[];
+      const data = (await this.read(`/resources?type=${type}&scope=available&page=${page}&paged=true`)) as
+        | {
+            items?: unknown;
+            hasMore?: boolean;
+          }
+        | unknown[];
       const legacy = Array.isArray(data);
       const rows = legacy ? data : data?.items;
       if (!Array.isArray(rows) || (!legacy && typeof data.hasMore !== 'boolean')) {
         throw new Error('Background resources unavailable');
       }
       for (const item of rows) {
-        if (!item || typeof item.id !== 'string' || !item.actions?.includes('USE') ||
-            !Number.isInteger(item.publishedVersion)) continue;
-        items.set(item.id, { id: item.id, name: item.name, description: item.description,
+        if (
+          !item ||
+          typeof item.id !== 'string' ||
+          !item.actions?.includes('USE') ||
+          !Number.isInteger(item.publishedVersion)
+        )
+          continue;
+        items.set(item.id, {
+          id: item.id,
+          name: item.name,
+          description: item.description,
           version: item.publishedVersion,
-          source: item.source === 'ORGANIZATION' ? 'enterprise' : 'personal', type,
+          source: item.source === 'ORGANIZATION' ? 'enterprise' : 'personal',
+          type,
         });
       }
       if (legacy ? rows.length < 30 : !data.hasMore) return [...items.values()];
@@ -133,8 +195,13 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
 
   async authorizedResource(id: string, type: string): Promise<unknown> {
     const data = (await this.read(`/resources/${encodeURIComponent(id)}`)) as Record<string, unknown>;
-    if (data?.resourceType !== type || !Array.isArray(data.actions) || !data.actions.includes('USE') ||
-        data.publishedVersion !== data.version) throw new Error('Background resource unavailable');
+    if (
+      data?.resourceType !== type ||
+      !Array.isArray(data.actions) ||
+      !data.actions.includes('USE') ||
+      data.publishedVersion !== data.version
+    )
+      throw new Error('Background resource unavailable');
     return data;
   }
 
@@ -153,7 +220,8 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
 
   async readyMcpConnection(resourceId: string): Promise<{ id: string }> {
     const data = await this.connections(resourceId);
-    const connection = data.find((item) => item.enabled === true && item.status === 'READY' && item.scope === 'ENTERPRISE') ||
+    const connection =
+      data.find((item) => item.enabled === true && item.status === 'READY' && item.scope === 'ENTERPRISE') ||
       data.find((item) => item.enabled === true && item.status === 'READY');
     if (typeof connection?.id !== 'string') throw new Error('Background MCP connection unavailable');
     return { id: connection.id };
@@ -166,16 +234,28 @@ export class EnterpriseBackgroundClient implements Rc2GatewayClient {
     return connection;
   }
 
-  relayMcp(connectionId: string, raw: string, headers: Record<string, unknown>, signal: AbortSignal, conversationId?: string): Promise<Response> {
+  relayMcp(
+    connectionId: string,
+    raw: string,
+    headers: Record<string, unknown>,
+    signal: AbortSignal,
+    conversationId?: string
+  ): Promise<Response> {
     return this.fetchRc2(`/mcp/connections/${encodeURIComponent(connectionId)}/relay`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
         ...(conversationId ? { 'X-Aion-Conversation-Id': conversationId } : {}),
         ...(typeof headers['mcp-session-id'] === 'string' ? { 'Mcp-Session-Id': headers['mcp-session-id'] } : {}),
-        ...(typeof headers['mcp-protocol-version'] === 'string' ?
-          { 'MCP-Protocol-Version': headers['mcp-protocol-version'] } : {}),
-        ...(typeof headers['x-zhenwork-idempotency-key'] === 'string' ?
-          { 'X-ZhenWork-Idempotency-Key': headers['x-zhenwork-idempotency-key'] } : {}),
-      }, body: raw, signal,
+        ...(typeof headers['mcp-protocol-version'] === 'string'
+          ? { 'MCP-Protocol-Version': headers['mcp-protocol-version'] }
+          : {}),
+        ...(typeof headers['x-zhenwork-idempotency-key'] === 'string'
+          ? { 'X-ZhenWork-Idempotency-Key': headers['x-zhenwork-idempotency-key'] }
+          : {}),
+      },
+      body: raw,
+      signal,
     });
   }
 }

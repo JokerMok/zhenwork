@@ -29,6 +29,11 @@ test('multiple months and unknown or invalid periods cannot use a comparison tit
 });
 
 test('a single explicit month is allowed for a monthly task but never substitutes for a comparison pair', () => {
- expect(methodTime({cutoff:'2026-11-02'}, ['2026-11'], '2026-11-02', false)).toEqual({periods:['2026-11'],cutoff:'2026-11-02'});
- expect(() => methodTime({cutoff:'2026-11-02'}, ['2026-11'], '2026-11-02', true)).toThrow('METHOD_TWO_ORDERED_PERIODS_REQUIRED');
+  expect(methodTime({ cutoff: '2026-11-02' }, ['2026-11'], '2026-11-02', false)).toEqual({
+    periods: ['2026-11'],
+    cutoff: '2026-11-02',
+  });
+  expect(() => methodTime({ cutoff: '2026-11-02' }, ['2026-11'], '2026-11-02', true)).toThrow(
+    'METHOD_TWO_ORDERED_PERIODS_REQUIRED'
+  );
 });

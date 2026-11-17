@@ -48,8 +48,8 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
   const showEnterpriseWorkspace = isEnterpriseWeb();
   const workspaceParams = new URLSearchParams(search);
   const isWorkspace = pathname === '/workspace';
-  const isEnterpriseAssistant = isWorkspace &&
-    workspaceParams.get('section') === 'abilities' && workspaceParams.get('capability') === 'ASSISTANT';
+  const isEnterpriseAssistant =
+    isWorkspace && workspaceParams.get('section') === 'abilities' && workspaceParams.get('capability') === 'ASSISTANT';
 
   useEffect(() => {
     if (!pathname.startsWith('/settings')) {
@@ -127,7 +127,9 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
     blurActiveElement();
     closePreview();
     setIsBatchMode(false);
-    Promise.resolve(navigate(showEnterpriseWorkspace ? '/workspace?section=abilities&capability=ASSISTANT' : '/assistants')).catch((error) => {
+    Promise.resolve(
+      navigate(showEnterpriseWorkspace ? '/workspace?section=abilities&capability=ASSISTANT' : '/assistants')
+    ).catch((error) => {
       console.error('Navigation failed:', error);
     });
     if (onSessionClick) {
@@ -259,13 +261,17 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
             />
             {/* Scrollable content: pinned → team (slot) → projects → conversations */}
             <div className={classNames('flex-1 min-h-0 overflow-y-auto', siderStyles.scrollArea)}>
-              <Suspense fallback={
-                showEnterpriseWorkspace ? (
-                  <div className='flex justify-center py-16px' role='status' aria-label={t('common.loading')}>
-                    <Spin size={16} />
-                  </div>
-                ) : <div className='min-h-200px' />
-              }>
+              <Suspense
+                fallback={
+                  showEnterpriseWorkspace ? (
+                    <div className='flex justify-center py-16px' role='status' aria-label={t('common.loading')}>
+                      <Spin size={16} />
+                    </div>
+                  ) : (
+                    <div className='min-h-200px' />
+                  )
+                }
+              >
                 <WorkspaceGroupedHistory
                   {...workspaceHistoryProps}
                   afterPinnedContent={

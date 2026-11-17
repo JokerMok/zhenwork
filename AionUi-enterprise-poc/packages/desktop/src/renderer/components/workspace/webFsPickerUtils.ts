@@ -63,8 +63,7 @@ const normalizePosixPath = (value: string): string | null => {
 export const isWithinPosixRoot = (candidate: string, root: string): boolean => {
   const normalized = normalizePosixPath(candidate);
   const base = normalizePosixPath(root);
-  return Boolean(normalized && base &&
-    (normalized === base || normalized.startsWith(`${base === '/' ? '' : base}/`)));
+  return Boolean(normalized && base && (normalized === base || normalized.startsWith(`${base === '/' ? '' : base}/`)));
 };
 
 /**

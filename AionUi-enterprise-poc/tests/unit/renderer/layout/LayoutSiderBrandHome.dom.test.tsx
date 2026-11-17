@@ -65,7 +65,10 @@ vi.mock('@renderer/hooks/ui/useConversationShortcuts', () => ({
     shortcutMocks.params = params;
   },
 }));
-vi.mock('@renderer/utils/platform', () => ({ isElectronDesktop: platformMocks.isElectronDesktopMock }));
+vi.mock('@renderer/utils/platform', () => ({
+  isEnterpriseWeb: () => false,
+  isElectronDesktop: platformMocks.isElectronDesktopMock,
+}));
 vi.mock('@renderer/pages/conversation/Preview/context/PreviewContext', () => ({
   usePreviewContext: () => ({ closePreview: () => {} }),
 }));

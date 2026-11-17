@@ -36,11 +36,11 @@ headers = { Authorization = "Bearer xxx" }
 
 ## Transport Types
 
-| Transport | Description | Use Case |
-|-----------|-------------|----------|
-| `stdio` | Launch local subprocess, communicate via stdin/stdout | Local MCP servers (npx, uvx) |
-| `sse` | GET for SSE event stream, POST for requests | Remote MCP servers |
-| `streamable-http` | HTTP POST, supports SSE streaming responses | Remote MCP servers |
+| Transport         | Description                                           | Use Case                     |
+| ----------------- | ----------------------------------------------------- | ---------------------------- |
+| `stdio`           | Launch local subprocess, communicate via stdin/stdout | Local MCP servers (npx, uvx) |
+| `sse`             | GET for SSE event stream, POST for requests           | Remote MCP servers           |
+| `streamable-http` | HTTP POST, supports SSE streaming responses           | Remote MCP servers           |
 
 ## Startup Timeout
 
@@ -71,10 +71,10 @@ args = ["-y", "my-mcp-server"]
 deferred = true    # Don't load tool schemas at startup
 ```
 
-| `deferred` | Behavior |
-|------------|----------|
-| `false` (default for config servers) | Tool schemas included in system prompt at startup |
-| `true` | Tools registered but schemas loaded on-demand via ToolSearch |
+| `deferred`                           | Behavior                                                     |
+| ------------------------------------ | ------------------------------------------------------------ |
+| `false` (default for config servers) | Tool schemas included in system prompt at startup            |
+| `true`                               | Tools registered but schemas loaded on-demand via ToolSearch |
 
 Use `deferred = true` for MCP servers with many tools to keep the initial system prompt small.
 

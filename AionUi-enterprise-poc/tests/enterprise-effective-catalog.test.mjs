@@ -12,26 +12,30 @@ test('RC2 resource catalog uses the server-authoritative available scope across 
     publishedVersion: index + 1,
     source: index === 0 ? 'PERSONAL' : 'ORGANIZATION',
   }));
-  const secondPage = [{
-    id: 'resource-30',
-    name: 'Resource 30',
-    description: 'last page',
-    actions: ['USE'],
-    publishedVersion: 31,
-    source: 'ORGANIZATION',
-  }, {
-    id: 'view-only',
-    name: 'View only',
-    actions: ['VIEW'],
-    publishedVersion: 1,
-    source: 'ORGANIZATION',
-  }, {
-    id: 'draft',
-    name: 'Draft',
-    actions: ['USE'],
-    publishedVersion: null,
-    source: 'ORGANIZATION',
-  }];
+  const secondPage = [
+    {
+      id: 'resource-30',
+      name: 'Resource 30',
+      description: 'last page',
+      actions: ['USE'],
+      publishedVersion: 31,
+      source: 'ORGANIZATION',
+    },
+    {
+      id: 'view-only',
+      name: 'View only',
+      actions: ['VIEW'],
+      publishedVersion: 1,
+      source: 'ORGANIZATION',
+    },
+    {
+      id: 'draft',
+      name: 'Draft',
+      actions: ['USE'],
+      publishedVersion: null,
+      source: 'ORGANIZATION',
+    },
+  ];
   const client = new Rc2Client('http://127.0.0.1:3580', 'https://workspace.test', async (url) => {
     const parsed = new URL(url);
     requests.push(parsed.pathname + parsed.search);
@@ -60,5 +64,8 @@ test('RC2 resource catalog uses the server-authoritative available scope across 
   });
   assert.equal(resources.at(-1).id, 'resource-30');
   assert.equal(resources.at(-1).source, 'enterprise');
-  assert.equal(resources.some((item) => item.id === 'view-only' || item.id === 'draft'), false);
+  assert.equal(
+    resources.some((item) => item.id === 'view-only' || item.id === 'draft'),
+    false
+  );
 });

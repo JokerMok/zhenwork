@@ -70,7 +70,8 @@ function runWorkbookOperation<T extends Record<string, unknown>>(
 
   return new Promise((resolve, reject) => {
     const child = spawn(python, ['-c', WORKBOOK_PYTHON_SCRIPT], {
-      signal, killSignal: 'SIGKILL',
+      signal,
+      killSignal: 'SIGKILL',
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         PATH: process.env.PATH || '',
@@ -95,7 +96,15 @@ function runWorkbookOperation<T extends Record<string, unknown>>(
     }, PROCESS_TIMEOUT_MS);
 
     child.on('error', (error: NodeJS.ErrnoException) => {
-      finish(new Error(signal?.aborted ? 'WORKBOOK_PROCESS_CANCELLED' : error.code === 'ENOENT' ? 'WORKBOOK_PYTHON_UNAVAILABLE' : 'WORKBOOK_PYTHON_START_FAILED'));
+      finish(
+        new Error(
+          signal?.aborted
+            ? 'WORKBOOK_PROCESS_CANCELLED'
+            : error.code === 'ENOENT'
+              ? 'WORKBOOK_PYTHON_UNAVAILABLE'
+              : 'WORKBOOK_PYTHON_START_FAILED'
+        )
+      );
     });
     child.stdout.on('data', (chunk: Buffer) => {
       outputBytes += chunk.length;

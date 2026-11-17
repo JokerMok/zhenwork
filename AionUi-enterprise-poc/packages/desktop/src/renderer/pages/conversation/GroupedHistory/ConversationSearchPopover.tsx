@@ -31,10 +31,19 @@ const RECENT_SEARCH_STORAGE_KEY = 'conversation.historySearch.recentKeywords';
 const SNIPPET_MAX_LENGTH = 110;
 const SNIPPET_PREFIX_CONTEXT_LENGTH = 34;
 const SNIPPET_SUFFIX_CONTEXT_LENGTH = 58;
-type WebSearchItem = { key: string; source: 'enterprise_web'; conversation_id: string; name: string;
-  message_id: string; message_created_at: number; preview_text: string };
-type EnterpriseSearchWindow = Window & { enterpriseContext?: { webOrigin?: string };
-  enterpriseResources?: { request: (action: string, args?: unknown) => Promise<unknown> } };
+type WebSearchItem = {
+  key: string;
+  source: 'enterprise_web';
+  conversation_id: string;
+  name: string;
+  message_id: string;
+  message_created_at: number;
+  preview_text: string;
+};
+type EnterpriseSearchWindow = Window & {
+  enterpriseContext?: { webOrigin?: string };
+  enterpriseResources?: { request: (action: string, args?: unknown) => Promise<unknown> };
+};
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -157,7 +166,9 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
   const [localError, setLocalError] = useState(false);
   const [recentKeywords, setRecentKeywords] = useState<string[]>([]);
   const enterprise = window as EnterpriseSearchWindow;
-  const enterpriseDesktop = Boolean(enterprise.enterpriseResources && enterprise.enterpriseContext?.webOrigin?.startsWith('https://'));
+  const enterpriseDesktop = Boolean(
+    enterprise.enterpriseResources && enterprise.enterpriseContext?.webOrigin?.startsWith('https://')
+  );
   const [sourceFilter, setSourceFilter] = useState<'all' | 'desktop' | 'web'>('all');
   const [webItems, setWebItems] = useState<WebSearchItem[]>([]);
   const [webPage, setWebPage] = useState(1);
@@ -259,7 +270,8 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
     setWebLoading(true);
     setWebError(false);
     setWebItems([]);
-    void enterprise.enterpriseResources!.request('web-search', { keyword: debouncedKeyword, page: 1 })
+    void enterprise
+      .enterpriseResources!.request('web-search', { keyword: debouncedKeyword, page: 1 })
       .then((value) => {
         if (!active || seq !== webSearchSeq.current) return;
         const result = value as { items?: WebSearchItem[]; has_more?: boolean };
@@ -267,11 +279,19 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
         setWebHasMore(result.has_more === true);
         setWebPage(1);
       })
-      .catch(() => { if (active && seq === webSearchSeq.current) {
-        setWebItems([]); setWebHasMore(false); setWebError(true);
-      } })
-      .finally(() => { if (active && seq === webSearchSeq.current) setWebLoading(false); });
-    return () => { active = false; };
+      .catch(() => {
+        if (active && seq === webSearchSeq.current) {
+          setWebItems([]);
+          setWebHasMore(false);
+          setWebError(true);
+        }
+      })
+      .finally(() => {
+        if (active && seq === webSearchSeq.current) setWebLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [visible, enterpriseDesktop, debouncedKeyword, sourceFilter, enterprise.enterpriseResources]);
 
   const loadMoreWeb = useCallback(async () => {
@@ -279,14 +299,22 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
     const seq = webSearchSeq.current;
     setWebLoading(true);
     try {
-      const value = await enterprise.enterpriseResources.request('web-search',
-        { keyword: debouncedKeyword, page: webPage + 1 }) as { items?: WebSearchItem[]; has_more?: boolean };
+      const value = (await enterprise.enterpriseResources.request('web-search', {
+        keyword: debouncedKeyword,
+        page: webPage + 1,
+      })) as { items?: WebSearchItem[]; has_more?: boolean };
       if (seq !== webSearchSeq.current) return;
       setWebItems((current) => [...current, ...(Array.isArray(value.items) ? value.items : [])]);
       setWebHasMore(value.has_more === true);
       setWebPage((current) => current + 1);
-    } catch { if (seq === webSearchSeq.current) { setWebHasMore(false); setWebError(true); } }
-    finally { if (seq === webSearchSeq.current) setWebLoading(false); }
+    } catch {
+      if (seq === webSearchSeq.current) {
+        setWebHasMore(false);
+        setWebError(true);
+      }
+    } finally {
+      if (seq === webSearchSeq.current) setWebLoading(false);
+    }
   }, [debouncedKeyword, enterprise.enterpriseResources, webHasMore, webLoading, webPage]);
 
   useEffect(() => {
@@ -361,16 +389,21 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
     [navigate, onConversationSelect, onSessionClick, resetSearchState]
   );
 
-  const handleWebResultClick = useCallback(async (item: WebSearchItem) => {
-    try {
-      await enterprise.enterpriseResources?.request('web-open', { id: item.conversation_id });
-      blockMobileInputFocus();
-      blurActiveElement();
-      flushSync(() => resetSearchState());
-      onConversationSelect?.();
-      onSessionClick?.();
-    } catch { setWebError(true); }
-  }, [enterprise.enterpriseResources, onConversationSelect, onSessionClick, resetSearchState]);
+  const handleWebResultClick = useCallback(
+    async (item: WebSearchItem) => {
+      try {
+        await enterprise.enterpriseResources?.request('web-open', { id: item.conversation_id });
+        blockMobileInputFocus();
+        blurActiveElement();
+        flushSync(() => resetSearchState());
+        onConversationSelect?.();
+        onSessionClick?.();
+      } catch {
+        setWebError(true);
+      }
+    },
+    [enterprise.enterpriseResources, onConversationSelect, onSessionClick, resetSearchState]
+  );
 
   const handleClose = useCallback(() => {
     resetSearchState();
@@ -470,8 +503,12 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
       if (failedSearch) return failedSearch;
       return (
         <div className='conversation-search-modal__state'>
-          <Empty className='py-2px' description={t(webError
-            ? 'conversation.history.webConversationsUnavailable' : 'conversation.historySearch.empty')} />
+          <Empty
+            className='py-2px'
+            description={t(
+              webError ? 'conversation.history.webConversationsUnavailable' : 'conversation.historySearch.empty'
+            )}
+          />
         </div>
       );
     }
@@ -488,17 +525,26 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
       >
         <div className='conversation-search-modal__results flex flex-col'>
           {failedSearch}
-          {webError && <div role='alert' className='px-12px py-8px text-12px text-t-secondary'>
-            {t('conversation.history.webConversationsUnavailable')}
-          </div>}
+          {webError && (
+            <div role='alert' className='px-12px py-8px text-12px text-t-secondary'>
+              {t('conversation.history.webConversationsUnavailable')}
+            </div>
+          )}
           {visibleWebItems.map((item) => (
-            <button key={`web:${item.message_id}:${item.message_created_at}`} type='button'
+            <button
+              key={`web:${item.message_id}:${item.message_created_at}`}
+              type='button'
               className='conversation-search-modal__result w-full text-start cursor-pointer transition-all duration-150 focus:outline-none'
-              onClick={() => { void handleWebResultClick(item); }}>
+              onClick={() => {
+                void handleWebResultClick(item);
+              }}
+            >
               <div className='flex items-start justify-between gap-8px mb-6px'>
                 <div className='min-w-0 flex-1 flex items-center gap-8px'>
                   <span className='truncate text-15px font-600 text-t-primary'>{item.name}</span>
-                  <span className='text-11px text-t-tertiary shrink-0'>{t('conversation.history.webConversationSource')}</span>
+                  <span className='text-11px text-t-tertiary shrink-0'>
+                    {t('conversation.history.webConversationSource')}
+                  </span>
                 </div>
                 <span className='shrink-0 text-11px text-t-secondary'>
                   {formatTime(item.message_created_at, i18n.language)}
@@ -509,10 +555,18 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
               </div>
             </button>
           ))}
-          {webHasMore && <button type='button' className='py-8px text-12px text-t-secondary cursor-pointer'
-            disabled={webLoading} onClick={() => { void loadMoreWeb(); }}>
-            {t('conversation.historySearch.loadingMore')}
-          </button>}
+          {webHasMore && (
+            <button
+              type='button'
+              className='py-8px text-12px text-t-secondary cursor-pointer'
+              disabled={webLoading}
+              onClick={() => {
+                void loadMoreWeb();
+              }}
+            >
+              {t('conversation.historySearch.loadingMore')}
+            </button>
+          )}
           {visibleLocalItems.map((item) => {
             const snippet = buildSnippet(item.preview_text, debouncedKeyword);
             return (
@@ -534,9 +588,11 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
                       <div className='conversation-search-modal__result-title text-15px font-600 text-t-primary truncate'>
                         {item.conversation.name || t('conversation.historySearch.untitled')}
                       </div>
-                      {enterpriseDesktop && <span className='text-11px text-t-tertiary shrink-0'>
-                        {t('conversation.history.desktopConversationSource')}
-                      </span>}
+                      {enterpriseDesktop && (
+                        <span className='text-11px text-t-tertiary shrink-0'>
+                          {t('conversation.history.desktopConversationSource')}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span className='shrink-0 text-11px text-t-secondary'>
@@ -559,9 +615,27 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
         </div>
       </div>
     );
-  }, [debouncedKeyword, enterpriseDesktop, handleLoadMore, handleResultClick, handleWebResultClick, i18n.language,
-    visibleLocalItems, visibleWebItems, visibleLocalLoading, visibleWebLoading,
-    loadMoreWeb, loadingMore, localError, page, recentKeywords, runSearch, t, webError, webHasMore]);
+  }, [
+    debouncedKeyword,
+    enterpriseDesktop,
+    handleLoadMore,
+    handleResultClick,
+    handleWebResultClick,
+    i18n.language,
+    visibleLocalItems,
+    visibleWebItems,
+    visibleLocalLoading,
+    visibleWebLoading,
+    loadMoreWeb,
+    loadingMore,
+    localError,
+    page,
+    recentKeywords,
+    runSearch,
+    t,
+    webError,
+    webHasMore,
+  ]);
 
   const hasSearchResults = visibleLocalItems.length > 0 || visibleWebItems.length > 0;
   const useCompactHeight = !debouncedKeyword || (!visibleLocalLoading && !visibleWebLoading && !hasSearchResults);
@@ -676,17 +750,27 @@ const ConversationSearchPopover: React.FC<ConversationSearchPopoverProps> = ({
             />
           </div>
 
-          {enterpriseDesktop && <div className='flex gap-6px mb-8px px-2px'>
-            {(['all', 'desktop', 'web'] as const).map((source) => (
-              <button key={source} type='button' onClick={() => setSourceFilter(source)}
-                className={classNames('px-10px py-4px rounded-12px text-12px border-0 cursor-pointer',
-                  sourceFilter === source ? 'bg-fill-3 text-t-primary' : 'bg-transparent text-t-secondary')}>
-                {source === 'all' ? t('conversation.history.allSources') :
-                  source === 'web' ? t('conversation.history.webConversationSource') :
-                    t('conversation.history.desktopConversationSource')}
-              </button>
-            ))}
-          </div>}
+          {enterpriseDesktop && (
+            <div className='flex gap-6px mb-8px px-2px'>
+              {(['all', 'desktop', 'web'] as const).map((source) => (
+                <button
+                  key={source}
+                  type='button'
+                  onClick={() => setSourceFilter(source)}
+                  className={classNames(
+                    'px-10px py-4px rounded-12px text-12px border-0 cursor-pointer',
+                    sourceFilter === source ? 'bg-fill-3 text-t-primary' : 'bg-transparent text-t-secondary'
+                  )}
+                >
+                  {source === 'all'
+                    ? t('conversation.history.allSources')
+                    : source === 'web'
+                      ? t('conversation.history.webConversationSource')
+                      : t('conversation.history.desktopConversationSource')}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className='flex-1 min-h-0'>{resultContent}</div>
         </div>

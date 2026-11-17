@@ -63,6 +63,7 @@ vi.mock('@/renderer/hooks/chat/useSendBoxFiles', () => ({
   createSetUploadFile: () => vi.fn(),
 }));
 vi.mock('@/renderer/hooks/chat/useAutoTitle', () => ({ useAutoTitle: () => ({ checkAndUpdateTitle: vi.fn() }) }));
+vi.mock('@/renderer/hooks/context/AuthContext', () => ({ useAuth: () => ({ user: null }) }));
 vi.mock('@/renderer/hooks/context/ConversationContext', () => ({ useConversationContextSafe: () => null }));
 vi.mock('@/renderer/hooks/context/LayoutContext', () => ({ useLayoutContext: () => ({ isMobile: false }) }));
 vi.mock('@/renderer/hooks/file/useOpenFileSelector', () => ({
@@ -105,6 +106,7 @@ vi.mock('@/renderer/pages/conversation/runtime/useConversationRuntimeView', () =
     markSendAccepted: vi.fn(),
     markSendFailed: vi.fn(),
     hydrated: true,
+    view: { pendingConfirmations: 0 },
     canSendMessage: true,
     isProcessing: false,
     state: 'idle',

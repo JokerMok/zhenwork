@@ -284,13 +284,15 @@ export function usePresetAssistantInfo(
   const logos = useAgentLogos(useRuntimeCatalog);
 
   // Merged assistant catalog (builtin + user) from backend
-  const { data: assistantsList, isLoading: isLoadingAssistants } = useSWR(useRuntimeCatalog ? 'assistants.list' : null, () =>
-    ipcBridge.assistants.list.invoke().catch(() => [] as Assistant[])
+  const { data: assistantsList, isLoading: isLoadingAssistants } = useSWR(
+    useRuntimeCatalog ? 'assistants.list' : null,
+    () => ipcBridge.assistants.list.invoke().catch(() => [] as Assistant[])
   );
 
   // Extension-contributed ACP adapters (for ext:{extensionName}:{adapterId} conversations)
-  const { data: extensionAcpAdapters, isLoading: isLoadingExtAdapters } = useSWR(useRuntimeCatalog ? 'extensions.acpAdapters' : null, () =>
-    ipcBridge.extensions.getAcpAdapters.invoke().catch(() => [] as Record<string, unknown>[])
+  const { data: extensionAcpAdapters, isLoading: isLoadingExtAdapters } = useSWR(
+    useRuntimeCatalog ? 'extensions.acpAdapters' : null,
+    () => ipcBridge.extensions.getAcpAdapters.invoke().catch(() => [] as Record<string, unknown>[])
   );
 
   // Remote agent for remote conversations

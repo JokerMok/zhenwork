@@ -99,7 +99,9 @@ const operationClauses = (content: string): string[] =>
         )
     );
 export const requestsPeriodComparison = (content: string): boolean =>
-  operationClauses(content).some((clause) => /比较|对比|环比|同比|\bcompar(?:e|ison)\b|\bmonth.over.month\b/i.test(clause));
+  operationClauses(content).some((clause) =>
+    /比较|对比|环比|同比|\bcompar(?:e|ison)\b|\bmonth.over.month\b/i.test(clause)
+  );
 export function requiredFormats(content: string): string[] {
   content = operationClauses(content)
     .filter((c) => !/^(?:请问|请)?(?:什么是|如何|怎么|为什么|解释|介绍|what is|how|explain|why)/i.test(c))

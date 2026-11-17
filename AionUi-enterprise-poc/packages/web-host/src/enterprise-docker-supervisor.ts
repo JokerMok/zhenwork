@@ -33,8 +33,10 @@ export type EnterpriseDockerSupervisor = {
 };
 
 /** Docker's unique container name is the host-wide mutex for one profile root. */
-export async function acquireEnterpriseDockerSupervisor(root: string, gatewayImage: string):
-  Promise<EnterpriseDockerSupervisor> {
+export async function acquireEnterpriseDockerSupervisor(
+  root: string,
+  gatewayImage: string
+): Promise<EnterpriseDockerSupervisor> {
   if (!path.isAbsolute(root) || !IMAGE.test(gatewayImage) || process.getuid?.() === 0) {
     throw new Error('Enterprise Docker supervisor configuration invalid');
   }
@@ -46,16 +48,29 @@ export async function acquireEnterpriseDockerSupervisor(root: string, gatewayIma
   const name = `aionui-host-${rootKey}`;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const id = await docker(['create', '--name', name,
-        '--label', 'aionui.enterprise=supervisor', '--label', `aionui.root=${rootKey}`,
-        '--label', `aionui.pid=${process.pid}`, gatewayImage]);
+      const id = await docker([
+        'create',
+        '--name',
+        name,
+        '--label',
+        'aionui.enterprise=supervisor',
+        '--label',
+        `aionui.root=${rootKey}`,
+        '--label',
+        `aionui.pid=${process.pid}`,
+        gatewayImage,
+      ]);
       if (!/^[a-f0-9]{64}$/.test(id)) throw new Error('Docker supervisor ID invalid');
       let closed = false;
-      return { rootKey, id, close: async () => {
-        if (closed) return;
-        await docker(['rm', '-f', id]);
-        closed = true;
-      } };
+      return {
+        rootKey,
+        id,
+        close: async () => {
+          if (closed) return;
+          await docker(['rm', '-f', id]);
+          closed = true;
+        },
+      };
     } catch (error) {
       const prior = await inspect(name).catch((): null => null);
       if (!prior) throw error;

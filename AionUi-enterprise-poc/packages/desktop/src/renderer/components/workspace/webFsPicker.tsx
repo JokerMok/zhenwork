@@ -110,7 +110,9 @@ export const WebFsPicker: React.FC<PickerProps> = ({ options, onDone }) => {
         try {
           const last = localStorage.getItem(LAST_DIR_KEY);
           if (last && isWithinPosixRoot(last, info.workDir)) return last;
-        } catch { /* storage unavailable */ }
+        } catch {
+          /* storage unavailable */
+        }
         return info.workDir;
       }
       if (options?.defaultPath) return options.defaultPath;
@@ -128,11 +130,14 @@ export const WebFsPicker: React.FC<PickerProps> = ({ options, onDone }) => {
       }
       return '/';
     };
-    void resolveStart().then((dir) => {
-      if (!cancelled) void load(dir);
-    }).catch(() => {
-      if (!cancelled) setError(t('fileSelection.webFsPicker.loadFailed', { defaultValue: 'Cannot open this directory' }));
-    });
+    void resolveStart()
+      .then((dir) => {
+        if (!cancelled) void load(dir);
+      })
+      .catch(() => {
+        if (!cancelled)
+          setError(t('fileSelection.webFsPicker.loadFailed', { defaultValue: 'Cannot open this directory' }));
+      });
     return () => {
       cancelled = true;
     };
@@ -140,10 +145,13 @@ export const WebFsPicker: React.FC<PickerProps> = ({ options, onDone }) => {
   }, []);
 
   const visibleEntries = useMemo(() => {
-    const visible = enterprise ? entries.filter((entry) =>
-      !entry.name.startsWith('.') && (currentDir !== enterpriseRootRef.current ||
-        !['conversations', 'node_modules'].includes(entry.name))
-    ) : entries;
+    const visible = enterprise
+      ? entries.filter(
+          (entry) =>
+            !entry.name.startsWith('.') &&
+            (currentDir !== enterpriseRootRef.current || !['conversations', 'node_modules'].includes(entry.name))
+        )
+      : entries;
     return visible.filter((entry) => entry.isDir || (fileMode && matchesFilters(entry.name, options?.filters)));
   }, [currentDir, enterprise, entries, fileMode, options?.filters]);
 
@@ -171,9 +179,10 @@ export const WebFsPicker: React.FC<PickerProps> = ({ options, onDone }) => {
   const title = wantsDirectory
     ? t(enterprise ? 'workspace.files.workDirectory' : 'fileSelection.webFsPicker.titleDirectory')
     : t('fileSelection.webFsPicker.titleFile', { defaultValue: 'Select a file on the server' });
-  const relativeDirectory = currentDir && enterpriseRootRef.current
-    ? currentDir.slice(enterpriseRootRef.current.length).replace(/^\//, '')
-    : '';
+  const relativeDirectory =
+    currentDir && enterpriseRootRef.current
+      ? currentDir.slice(enterpriseRootRef.current.length).replace(/^\//, '')
+      : '';
   const displayDirectory = enterprise ? relativeDirectory || t('workspace.title') : currentDir;
 
   return (
@@ -209,13 +218,20 @@ export const WebFsPicker: React.FC<PickerProps> = ({ options, onDone }) => {
       }
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <Button onClick={() => void load(parentOf(currentDir))}
-          disabled={loading || currentDir === '/' ||
-            (enterprise && !isWithinPosixRoot(parentOf(currentDir), enterpriseRootRef.current))}>
+        <Button
+          onClick={() => void load(parentOf(currentDir))}
+          disabled={
+            loading ||
+            currentDir === '/' ||
+            (enterprise && !isWithinPosixRoot(parentOf(currentDir), enterpriseRootRef.current))
+          }
+        >
           {t('fileSelection.webFsPicker.up', { defaultValue: 'Up' })}
         </Button>
         {enterprise ? (
-          <span className='min-w-0 self-center truncate' title={displayDirectory}>{displayDirectory}</span>
+          <span className='min-w-0 self-center truncate' title={displayDirectory}>
+            {displayDirectory}
+          </span>
         ) : (
           <>
             <Input

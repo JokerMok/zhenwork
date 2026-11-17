@@ -16,19 +16,19 @@ Tech stack: Rust 2021 edition, stable toolchain, Cargo workspace under `crates/`
 
 Dependencies flow **downward** — never introduce circular or upward references.
 
-| Layer | Crate | Responsibility |
-|-------|-------|----------------|
-| Bottom | `aion-types` | Shared provider-neutral data types (LLM, message, tool) — zero internal deps |
-| Bottom | `aion-compact` | Context compression algorithms (folding, sanitization, tokenization) |
-| Mid | `aion-config` | Configuration, ProviderCompat, auth, hooks, logging (`create_file_layer`), **cross-platform shell helpers** |
-| Mid | `aion-protocol` | JSON stream protocol (events, commands, approval manager) for host integration |
-| Mid | `aion-providers` | LLM provider implementations (Anthropic, OpenAI, Bedrock, Vertex) |
-| Mid | `aion-tools` | Local tools (Read, Write, Edit, ExecCommand, Grep, Glob, ViewImage, ToolSearch) |
-| Mid | `aion-mcp` | MCP (Model Context Protocol) client |
-| Mid | `aion-skills` | Skills system (prompt snippets, hooks, permissions, shell expansion) |
-| Mid | `aion-memory` | Long-term cross-session memory (user prefs, feedback, project context) |
-| Top | `aion-agent` | Agent engine, session management, orchestration, and agent-level tools such as Spawn |
-| Top | `aion-cli` | CLI binary entry point |
+| Layer  | Crate            | Responsibility                                                                                              |
+| ------ | ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| Bottom | `aion-types`     | Shared provider-neutral data types (LLM, message, tool) — zero internal deps                                |
+| Bottom | `aion-compact`   | Context compression algorithms (folding, sanitization, tokenization)                                        |
+| Mid    | `aion-config`    | Configuration, ProviderCompat, auth, hooks, logging (`create_file_layer`), **cross-platform shell helpers** |
+| Mid    | `aion-protocol`  | JSON stream protocol (events, commands, approval manager) for host integration                              |
+| Mid    | `aion-providers` | LLM provider implementations (Anthropic, OpenAI, Bedrock, Vertex)                                           |
+| Mid    | `aion-tools`     | Local tools (Read, Write, Edit, ExecCommand, Grep, Glob, ViewImage, ToolSearch)                             |
+| Mid    | `aion-mcp`       | MCP (Model Context Protocol) client                                                                         |
+| Mid    | `aion-skills`    | Skills system (prompt snippets, hooks, permissions, shell expansion)                                        |
+| Mid    | `aion-memory`    | Long-term cross-session memory (user prefs, feedback, project context)                                      |
+| Top    | `aion-agent`     | Agent engine, session management, orchestration, and agent-level tools such as Spawn                        |
+| Top    | `aion-cli`       | CLI binary entry point                                                                                      |
 
 When adding new functionality, place it in the **lowest crate where it
 semantically belongs**. Don't create a new crate just for one shared function.
@@ -109,6 +109,7 @@ against this section. Do not rely on tests or review to catch style drift.
 ## Logging
 
 When changing a critical path, explicitly evaluate whether logs are needed for development diagnosis and production troubleshooting. Add structured logs with appropriate levels:
+
 - `debug` for detailed, high-frequency internal flow that helps verify behavior and diagnose issues in development
 - `info` for low-volume lifecycle boundaries useful in production
 - `warn` for malformed or unexpected data that is safely handled
@@ -144,6 +145,7 @@ body[field] = json!(request.max_tokens);
 ```
 
 If you need a new compat behavior:
+
 1. Add an `Option<T>` field to `ProviderCompat`
 2. Set its default in the appropriate preset function (e.g. `openai_defaults()`)
 3. Use it in provider code via `self.compat.field_name`
@@ -201,10 +203,10 @@ verified by CI alone.
 
 ## Test Organization
 
-| Location | What goes there |
-|----------|----------------|
+| Location                                                                                                              | What goes there                        |
+| --------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
 | Same-directory `*_test.rs` mounted from each `.rs` file with `#[cfg(test)]` + `#[path = "..._test.rs"] mod ..._test;` | Unit tests for that module's internals |
-| `crates/<crate>/tests/` | Integration tests for that crate |
+| `crates/<crate>/tests/`                                                                                               | Integration tests for that crate       |
 
 Unit tests target internal logic and code paths.
 Integration tests target functional requirements and public API —
@@ -218,13 +220,13 @@ error conditions, or non-obvious logic.
 
 Key references in `docs/` (don't duplicate their content here):
 
-| Document | Covers |
-|----------|--------|
-| [getting-started.md](docs/getting-started.md) | Installation, CLI usage, config format and cascading precedence |
-| [providers.md](docs/providers.md) | Provider setup, auth, ProviderCompat, custom aliases, profiles |
-| [tools.md](docs/tools.md) | Built-in tool reference and execution flow |
-| [skills.md](docs/skills.md) | Writing skills, front matter, shell expansion, conditional activation |
-| [mcp.md](docs/mcp.md) | MCP server integration, transport types, deferred loading |
-| [advanced.md](docs/advanced.md) | Sub-agents, hooks, logging, memory, plan mode, context compression |
-| [json-stream-protocol.md](docs/json-stream-protocol.md) | JSON Lines protocol spec for host integration (e.g. AionUI) |
-| [troubleshooting.md](docs/troubleshooting.md) | Common errors and solutions |
+| Document                                                | Covers                                                                |
+| ------------------------------------------------------- | --------------------------------------------------------------------- |
+| [getting-started.md](docs/getting-started.md)           | Installation, CLI usage, config format and cascading precedence       |
+| [providers.md](docs/providers.md)                       | Provider setup, auth, ProviderCompat, custom aliases, profiles        |
+| [tools.md](docs/tools.md)                               | Built-in tool reference and execution flow                            |
+| [skills.md](docs/skills.md)                             | Writing skills, front matter, shell expansion, conditional activation |
+| [mcp.md](docs/mcp.md)                                   | MCP server integration, transport types, deferred loading             |
+| [advanced.md](docs/advanced.md)                         | Sub-agents, hooks, logging, memory, plan mode, context compression    |
+| [json-stream-protocol.md](docs/json-stream-protocol.md) | JSON Lines protocol spec for host integration (e.g. AionUI)           |
+| [troubleshooting.md](docs/troubleshooting.md)           | Common errors and solutions                                           |

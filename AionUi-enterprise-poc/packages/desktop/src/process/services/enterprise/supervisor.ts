@@ -41,9 +41,12 @@ import faIRLogin from '@renderer/services/i18n/locales/fa-IR/login.json';
 const defaultProfileRoot = path.join(os.homedir(), '.aionui-enterprise');
 const requestedProfileRoot = process.env.AION_ENTERPRISE_PROFILE_ROOT;
 const isolatedE2E = process.env.AIONUI_E2E_TEST === '1';
-if (isolatedE2E &&
-    (!requestedProfileRoot || !path.isAbsolute(requestedProfileRoot) ||
-      path.resolve(requestedProfileRoot) === defaultProfileRoot)) {
+if (
+  isolatedE2E &&
+  (!requestedProfileRoot ||
+    !path.isAbsolute(requestedProfileRoot) ||
+    path.resolve(requestedProfileRoot) === defaultProfileRoot)
+) {
   throw new Error('Enterprise E2E requires an isolated absolute profile root');
 }
 const profileRoot = requestedProfileRoot || defaultProfileRoot;
@@ -117,7 +120,9 @@ const selectedDocuments = new Map<string, { version: number; baseId: string }>()
 const lifecycle = new EnterpriseLifecycle({
   executable: process.execPath,
   appEntry: app.isPackaged ? null : app.getAppPath(),
-  onCoreReady: (port: number) => { workerCorePort = port; },
+  onCoreReady: (port: number) => {
+    workerCorePort = port;
+  },
   onExit: (reason: string) => {
     if (reason === 'exit') void endSession();
   },
@@ -135,7 +140,13 @@ const lifecycle = new EnterpriseLifecycle({
       const query = args as { keyword?: unknown; page?: unknown } | null;
       const keyword = typeof query?.keyword === 'string' ? query.keyword.trim() : '';
       const page = query?.page;
-      if (!keyword || keyword.length > 200 || !Number.isInteger(page) || (page as number) < 1 || (page as number) > 1000) {
+      if (
+        !keyword ||
+        keyword.length > 200 ||
+        !Number.isInteger(page) ||
+        (page as number) < 1 ||
+        (page as number) > 1000
+      ) {
         throw new Error('Invalid web search');
       }
       return fetchWebSearch(keyword, page as number);
@@ -147,7 +158,10 @@ const lifecycle = new EnterpriseLifecycle({
       let found = false;
       for (let page = 0; page < 100; page += 1) {
         const result = await fetchWebConversations(cursor || undefined);
-        if (result.items.some((item) => item.id === id)) { found = true; break; }
+        if (result.items.some((item) => item.id === id)) {
+          found = true;
+          break;
+        }
         if (!result.next_cursor || result.next_cursor === cursor) break;
         cursor = result.next_cursor;
       }
@@ -166,12 +180,18 @@ const lifecycle = new EnterpriseLifecycle({
     if (['web-rename', 'web-pin', 'web-archive', 'web-delete'].includes(action)) {
       const request = args as { id?: unknown; name?: unknown; pinned?: unknown } | null;
       if (!isWebConversationId(request?.id)) throw new Error('Invalid web conversation');
-      if (action === 'web-rename' && (typeof request?.name !== 'string' ||
-          !request.name.trim() || request.name.trim().length > 200)) throw new Error('Invalid web conversation name');
+      if (
+        action === 'web-rename' &&
+        (typeof request?.name !== 'string' || !request.name.trim() || request.name.trim().length > 200)
+      )
+        throw new Error('Invalid web conversation name');
       if (action === 'web-pin' && typeof request?.pinned !== 'boolean') throw new Error('Invalid web pin state');
       if (transition || lifecycle.worker !== child) throw new Error('Session closed');
-      return mutateWebConversation(action as 'web-rename' | 'web-pin' | 'web-archive' | 'web-delete',
-        request.id, request);
+      return mutateWebConversation(
+        action as 'web-rename' | 'web-pin' | 'web-archive' | 'web-delete',
+        request.id,
+        request
+      );
     }
     if (action.startsWith('update-')) {
       if (!updateServerId || updateServerId !== client.serverId || !autoUpdaterService.isInitialized) {
@@ -188,11 +208,16 @@ const lifecycle = new EnterpriseLifecycle({
         }
         return {
           success: result.success,
-          data: result.updateInfo ? { updateInfo: {
-            version: result.updateInfo.version,
-            releaseDate: result.updateInfo.releaseDate,
-            releaseNotes: typeof result.updateInfo.releaseNotes === 'string' ? result.updateInfo.releaseNotes : undefined,
-          } } : undefined,
+          data: result.updateInfo
+            ? {
+                updateInfo: {
+                  version: result.updateInfo.version,
+                  releaseDate: result.updateInfo.releaseDate,
+                  releaseNotes:
+                    typeof result.updateInfo.releaseNotes === 'string' ? result.updateInfo.releaseNotes : undefined,
+                },
+              }
+            : undefined,
           msg: result.error,
         };
       }
@@ -229,7 +254,9 @@ const lifecycle = new EnterpriseLifecycle({
           throw error;
         }
         quitting = true;
-        autoUpdaterService.setBeforeQuitAndInstall(async () => { await endSession(); });
+        autoUpdaterService.setBeforeQuitAndInstall(async () => {
+          await endSession();
+        });
         try {
           await autoUpdaterService.quitAndInstall();
           return { success: true };
@@ -334,22 +361,44 @@ function loginHtml(labels: {
   </script></body></html>`;
 }
 
-type WebConversationCatalogItem = { key: string; id: string; source: 'enterprise_web'; name: string;
-  modified_at: number | null; status: string | null; pinned: boolean };
-const isWebConversationId = (value: unknown): value is string => typeof value === 'string' &&
+type WebConversationCatalogItem = {
+  key: string;
+  id: string;
+  source: 'enterprise_web';
+  name: string;
+  modified_at: number | null;
+  status: string | null;
+  pinned: boolean;
+};
+const isWebConversationId = (value: unknown): value is string =>
+  typeof value === 'string' &&
   (/^[0-9a-f]{8}$/i.test(value) || /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value));
-type WebSearchItem = { key: string; source: 'enterprise_web'; conversation_id: string; name: string;
-  message_id: string; message_created_at: number; preview_text: string };
+type WebSearchItem = {
+  key: string;
+  source: 'enterprise_web';
+  conversation_id: string;
+  name: string;
+  message_id: string;
+  message_created_at: number;
+  preview_text: string;
+};
 
-async function fetchWebConversations(cursor?: string): Promise<{ items: WebConversationCatalogItem[]; next_cursor: string | null }> {
+async function fetchWebConversations(
+  cursor?: string
+): Promise<{ items: WebConversationCatalogItem[]; next_cursor: string | null }> {
   if (cursor && !isWebConversationId(cursor)) throw new Error('Invalid web conversation cursor');
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const cookie = await ensureWebSession();
     const route = `/enterprise/conversations${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`;
     const response = await fetch(`${webOrigin}${route}`, {
-      headers: { Cookie: cookie }, redirect: 'error', signal: AbortSignal.timeout(10_000),
+      headers: { Cookie: cookie },
+      redirect: 'error',
+      signal: AbortSignal.timeout(10_000),
     });
-    if (response.status === 401 && attempt === 0) { webSessionCookie = null; continue; }
+    if (response.status === 401 && attempt === 0) {
+      webSessionCookie = null;
+      continue;
+    }
     if (!response.ok || Number(response.headers.get('content-length') || 0) > 2_000_000) {
       throw new Error('Enterprise web conversations unavailable');
     }
@@ -358,45 +407,78 @@ async function fetchWebConversations(cursor?: string): Promise<{ items: WebConve
     const value = JSON.parse(raw) as { items?: Array<Partial<WebConversationCatalogItem>>; next_cursor?: unknown };
     if (!Array.isArray(value.items)) throw new Error('Enterprise web conversations invalid');
     const actor = `${server.serverId}:${client.userId}`;
-    const items = value.items.filter((item): item is WebConversationCatalogItem => item.source === 'enterprise_web' &&
-      isWebConversationId(item.id) &&
-      item.key === `enterprise_web:${actor}:${item.id}` && typeof item.name === 'string' &&
-      item.name.length <= 500 && (item.modified_at === null || typeof item.modified_at === 'number') &&
-      (item.status === null || typeof item.status === 'string') && typeof item.pinned === 'boolean');
-    const nextCursor = isWebConversationId(value.next_cursor)
-      ? value.next_cursor : null;
+    const items = value.items.filter(
+      (item): item is WebConversationCatalogItem =>
+        item.source === 'enterprise_web' &&
+        isWebConversationId(item.id) &&
+        item.key === `enterprise_web:${actor}:${item.id}` &&
+        typeof item.name === 'string' &&
+        item.name.length <= 500 &&
+        (item.modified_at === null || typeof item.modified_at === 'number') &&
+        (item.status === null || typeof item.status === 'string') &&
+        typeof item.pinned === 'boolean'
+    );
+    const nextCursor = isWebConversationId(value.next_cursor) ? value.next_cursor : null;
     return { items, next_cursor: nextCursor };
   }
   throw new Error('Enterprise web session unavailable');
 }
 
-async function mutateWebConversation(action: 'web-rename' | 'web-pin' | 'web-archive' | 'web-delete',
-  id: string, request: { name?: unknown; pinned?: unknown }): Promise<{ updated: true }> {
-  const route = action === 'web-rename' ? `/api/conversations/${id}`
-    : action === 'web-pin' ? `/api/order/pinned/conversation/${id}`
-      : action === 'web-archive' ? `/api/sidebar/conversation/${id}/archive`
-        : `/api/conversations/${id}`;
-  const method = action === 'web-rename' ? 'PATCH'
-    : action === 'web-pin' ? (request.pinned ? 'PUT' : 'DELETE')
-      : action === 'web-archive' ? 'POST' : 'DELETE';
-  const body = action === 'web-rename' ? JSON.stringify({ name: (request.name as string).trim(), name_source: 'user' }) : undefined;
+async function mutateWebConversation(
+  action: 'web-rename' | 'web-pin' | 'web-archive' | 'web-delete',
+  id: string,
+  request: { name?: unknown; pinned?: unknown }
+): Promise<{ updated: true }> {
+  const route =
+    action === 'web-rename'
+      ? `/api/conversations/${id}`
+      : action === 'web-pin'
+        ? `/api/order/pinned/conversation/${id}`
+        : action === 'web-archive'
+          ? `/api/sidebar/conversation/${id}/archive`
+          : `/api/conversations/${id}`;
+  const method =
+    action === 'web-rename'
+      ? 'PATCH'
+      : action === 'web-pin'
+        ? request.pinned
+          ? 'PUT'
+          : 'DELETE'
+        : action === 'web-archive'
+          ? 'POST'
+          : 'DELETE';
+  const body =
+    action === 'web-rename'
+      ? JSON.stringify({ name: (request.name as string).trim(), name_source: 'user' })
+      : undefined;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const cookie = await ensureWebSession();
     // The user-order pin route accepts an item ID; first ask this employee's
     // Core for the conversation so an arbitrary foreign or stale ID cannot be pinned.
     if (action === 'web-pin') {
       const owned = await fetch(`${webOrigin}/api/conversations/${id}`, {
-        headers: { Cookie: cookie }, redirect: 'error', signal: AbortSignal.timeout(10_000),
+        headers: { Cookie: cookie },
+        redirect: 'error',
+        signal: AbortSignal.timeout(10_000),
       });
-      if (owned.status === 401 && attempt === 0) { webSessionCookie = null; continue; }
+      if (owned.status === 401 && attempt === 0) {
+        webSessionCookie = null;
+        continue;
+      }
       if (!owned.ok) throw new Error('Web conversation unavailable');
       await owned.body?.cancel();
     }
     const response = await fetch(`${webOrigin}${route}`, {
-      method, headers: { Origin: webOrigin!, Cookie: cookie, ...(body ? { 'content-type': 'application/json' } : {}) },
-      body, redirect: 'error', signal: AbortSignal.timeout(10_000),
+      method,
+      headers: { Origin: webOrigin!, Cookie: cookie, ...(body ? { 'content-type': 'application/json' } : {}) },
+      body,
+      redirect: 'error',
+      signal: AbortSignal.timeout(10_000),
     });
-    if (response.status === 401 && attempt === 0) { webSessionCookie = null; continue; }
+    if (response.status === 401 && attempt === 0) {
+      webSessionCookie = null;
+      continue;
+    }
     if (!response.ok || Number(response.headers.get('content-length') || 0) > 2_000_000) {
       throw new Error('Enterprise web conversation update unavailable');
     }
@@ -414,9 +496,14 @@ async function fetchWebSearch(keyword: string, page: number): Promise<{ items: W
     const cookie = await ensureWebSession();
     const route = `/enterprise/search?keyword=${encodeURIComponent(keyword)}&page=${page}`;
     const response = await fetch(`${webOrigin}${route}`, {
-      headers: { Cookie: cookie }, redirect: 'error', signal: AbortSignal.timeout(10_000),
+      headers: { Cookie: cookie },
+      redirect: 'error',
+      signal: AbortSignal.timeout(10_000),
     });
-    if (response.status === 401 && attempt === 0) { webSessionCookie = null; continue; }
+    if (response.status === 401 && attempt === 0) {
+      webSessionCookie = null;
+      continue;
+    }
     if (!response.ok || Number(response.headers.get('content-length') || 0) > 2_000_000) {
       throw new Error('Enterprise web search unavailable');
     }
@@ -425,13 +512,19 @@ async function fetchWebSearch(keyword: string, page: number): Promise<{ items: W
     const value = JSON.parse(raw) as { items?: Array<Partial<WebSearchItem>>; has_more?: unknown };
     if (!Array.isArray(value.items)) throw new Error('Enterprise web search invalid');
     const actor = `${server.serverId}:${client.userId}`;
-    const items = value.items.filter((item): item is WebSearchItem => item.source === 'enterprise_web' &&
-      isWebConversationId(item.conversation_id) &&
-      item.key === `enterprise_web:${actor}:${item.conversation_id}` &&
-      typeof item.name === 'string' && item.name.length <= 500 &&
-      typeof item.message_id === 'string' && item.message_id.length <= 100 &&
-      typeof item.message_created_at === 'number' && typeof item.preview_text === 'string' &&
-      item.preview_text.length <= 500);
+    const items = value.items.filter(
+      (item): item is WebSearchItem =>
+        item.source === 'enterprise_web' &&
+        isWebConversationId(item.conversation_id) &&
+        item.key === `enterprise_web:${actor}:${item.conversation_id}` &&
+        typeof item.name === 'string' &&
+        item.name.length <= 500 &&
+        typeof item.message_id === 'string' &&
+        item.message_id.length <= 100 &&
+        typeof item.message_created_at === 'number' &&
+        typeof item.preview_text === 'string' &&
+        item.preview_text.length <= 500
+    );
     return { items, has_more: value.has_more === true };
   }
   throw new Error('Enterprise web session unavailable');
@@ -589,13 +682,21 @@ async function ensureWebSession(): Promise<string> {
   const response = await fetch(`${webOrigin}/enterprise/desktop-session`, {
     method: 'POST',
     headers: { Origin: webOrigin, 'x-aion-rc2-session': client.cookie },
-    redirect: 'error', signal: AbortSignal.timeout(10_000),
+    redirect: 'error',
+    signal: AbortSignal.timeout(10_000),
   });
   const rawCookie = response.headers.getSetCookie?.().find((item) => item.startsWith('__Host-aion-enterprise-web='));
   const cookie = rawCookie?.split(';', 1)[0];
-  const value = await response.json().catch((): null => null) as { actor?: { serverId?: string; userId?: string } } | null;
-  if (!response.ok || !cookie || !/^__Host-aion-enterprise-web=[a-f0-9]{64}$/.test(cookie) ||
-      value?.actor?.serverId !== server.serverId || value.actor.userId !== client.userId) {
+  const value = (await response.json().catch((): null => null)) as {
+    actor?: { serverId?: string; userId?: string };
+  } | null;
+  if (
+    !response.ok ||
+    !cookie ||
+    !/^__Host-aion-enterprise-web=[a-f0-9]{64}$/.test(cookie) ||
+    value?.actor?.serverId !== server.serverId ||
+    value.actor.userId !== client.userId
+  ) {
     throw new Error('Enterprise web session unavailable');
   }
   webSessionCookie = cookie;
@@ -610,23 +711,46 @@ async function openWebPage(route: string, cookie: string): Promise<void> {
   if (!webOrigin) throw new Error('Enterprise web unavailable');
   const origin = webOrigin;
   if (!webWindow || webWindow.isDestroyed()) {
-    const window = new BrowserWindow({ width: 1150, height: 800, minWidth: 800, minHeight: 600,
-      title: '网页对话', webPreferences: { partition: `enterprise-web-${randomUUID()}`,
-        nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
+    const window = new BrowserWindow({
+      width: 1150,
+      height: 800,
+      minWidth: 800,
+      minHeight: 600,
+      title: '网页对话',
+      webPreferences: {
+        partition: `enterprise-web-${randomUUID()}`,
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        webSecurity: true,
+      },
+    });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     const blockExternalNavigation = (event: Electron.Event, url: string) => {
-      try { if (new URL(url).origin !== origin) event.preventDefault(); }
-      catch { event.preventDefault(); }
+      try {
+        if (new URL(url).origin !== origin) event.preventDefault();
+      } catch {
+        event.preventDefault();
+      }
     };
     window.webContents.on('will-navigate', blockExternalNavigation);
     window.webContents.on('will-redirect', blockExternalNavigation);
-    window.on('closed', () => { if (webWindow === window) webWindow = null; });
+    window.on('closed', () => {
+      if (webWindow === window) webWindow = null;
+    });
     webWindow = window;
   }
   const [name, value] = cookie.split('=', 2);
-  await webWindow.webContents.session.cookies.set({ url: origin, name, value,
-    path: '/', secure: true, httpOnly: true, sameSite: 'strict' });
+  await webWindow.webContents.session.cookies.set({
+    url: origin,
+    name,
+    value,
+    path: '/',
+    secure: true,
+    httpOnly: true,
+    sameSite: 'strict',
+  });
   await webWindow.loadURL(`${origin}/#${route}`);
   webWindow.show();
   webWindow.focus();
@@ -639,9 +763,12 @@ async function endSession(): Promise<void> {
     webWindow?.destroy();
     webWindow = null;
     if (webSessionCookie && webOrigin) {
-      await fetch(`${webOrigin}/enterprise/logout`, { method: 'POST',
+      await fetch(`${webOrigin}/enterprise/logout`, {
+        method: 'POST',
         headers: { Origin: webOrigin, Cookie: webSessionCookie },
-        redirect: 'error', signal: AbortSignal.timeout(3000) }).catch(() => {});
+        redirect: 'error',
+        signal: AbortSignal.timeout(3000),
+      }).catch(() => {});
     }
     webSessionCookie = null;
     webOrigin = null;
@@ -682,7 +809,9 @@ async function endSession(): Promise<void> {
 async function verifyEnterpriseRelease(version: string): Promise<void> {
   if (!updateFeedUrl || !updateChannel || !updateServerId) throw new Error('Enterprise update feed unavailable');
   const response = await fetch(new URL('enterprise-release.json', updateFeedUrl), {
-    cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(5000),
+    cache: 'no-store',
+    redirect: 'error',
+    signal: AbortSignal.timeout(5000),
   });
   if (!response.ok || Number(response.headers.get('content-length') || 0) > 16_384) {
     throw new Error('Enterprise release metadata unavailable');
@@ -690,7 +819,10 @@ async function verifyEnterpriseRelease(version: string): Promise<void> {
   const payload = await response.text();
   if (payload.length > 16_384) throw new Error('Enterprise release metadata too large');
   const release = parseEnterpriseReleaseManifest(JSON.parse(payload), {
-    serverId: updateServerId, channel: updateChannel, platform: process.platform, arch: process.arch,
+    serverId: updateServerId,
+    channel: updateChannel,
+    platform: process.platform,
+    arch: process.arch,
   });
   if (release.version !== version) throw new Error('Enterprise release version changed');
 }
@@ -795,7 +927,8 @@ ipcMain.handle(
         });
       }
       const pilotModelId = models.some((item: { id: string }) => item.id === pilotPointers.modelId)
-        ? pilotPointers.modelId : undefined;
+        ? pilotPointers.modelId
+        : undefined;
       const requestedModelId =
         process.env.AION_ENTERPRISE_MODEL_ID ||
         assistantCandidates.find((item) => models.some((model: { id: string }) => model.id === item.modelId))
@@ -883,9 +1016,12 @@ ipcMain.handle(
       await saveServerConfig(profileRoot, server);
       webOrigin = null;
       try {
-        const webConfig = await loadEnterpriseWebConfig(app.isPackaged
-          ? path.join(process.resourcesPath, 'enterprise-web.json')
-          : path.join(app.getAppPath(), 'resources/enterprise/web.json'), actor.serverId);
+        const webConfig = await loadEnterpriseWebConfig(
+          app.isPackaged
+            ? path.join(process.resourcesPath, 'enterprise-web.json')
+            : path.join(app.getAppPath(), 'resources/enterprise/web.json'),
+          actor.serverId
+        );
         if (webConfig && webConfig.publicOrigin === new URL(server.baseUrl).origin) {
           throw new Error('Enterprise web origin must differ from RC2');
         }

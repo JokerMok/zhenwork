@@ -13,5 +13,6 @@ export function syncEnterpriseResources(
   issues: Array<{ type: 'SKILL' | 'MCP' | 'ASSISTANT'; id: string; code: string }>;
 }>;
 
-export function mcpCoreFailureCode(stage: 'register' | 'verify' | 'enable'):
-  'CORE_REGISTRATION_FAILED' | 'CORE_REGISTRATION_INVALID' | 'CORE_ENABLE_FAILED';
+export function mcpCoreFailureCode(
+  stage: 'register' | 'verify' | 'enable'
+): 'CORE_REGISTRATION_FAILED' | 'CORE_REGISTRATION_INVALID' | 'CORE_ENABLE_FAILED';

@@ -43,8 +43,22 @@ export function installEnterpriseWorkerRpc(ipcMain, currentWindow) {
       !currentWindow() ||
       event.sender !== currentWindow().webContents ||
       !process.connected ||
-      !['brand', 'resources', 'documents', 'preview', 'download', 'save',
-        'web-conversations', 'web-search', 'web-open', 'web-open-archive', 'web-rename', 'web-pin', 'web-archive', 'web-delete'].includes(action)
+      ![
+        'brand',
+        'resources',
+        'documents',
+        'preview',
+        'download',
+        'save',
+        'web-conversations',
+        'web-search',
+        'web-open',
+        'web-open-archive',
+        'web-rename',
+        'web-pin',
+        'web-archive',
+        'web-delete',
+      ].includes(action)
     )
       throw new Error('Enterprise request denied');
     return requestEnterpriseSupervisor(action, args);

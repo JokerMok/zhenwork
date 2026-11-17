@@ -20,7 +20,7 @@ vi.mock('@/common', () => ({
     },
   },
 }));
-vi.mock('@/renderer/utils/platform', () => ({ isElectronDesktop: () => false }));
+vi.mock('@/renderer/utils/platform', () => ({ isElectronDesktop: () => false, isEnterpriseWeb: () => false }));
 vi.mock('@/common/config/configService', () => ({ configService: { get: () => true } }));
 const navigate = vi.fn();
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));

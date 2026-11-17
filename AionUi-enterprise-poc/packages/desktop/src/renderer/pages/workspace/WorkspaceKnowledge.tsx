@@ -231,7 +231,11 @@ const WorkspaceKnowledge: React.FC = () => {
     setPreview(null);
     setPreviewError(undefined);
     if (!sourceId) return;
-    if (!/^[0-9a-f-]{36}$/i.test(sourceId) || !Number.isInteger(sourceVersion) || sourceVersion < 1) { setPreviewError('INVALID_DOCUMENT_VERSION');setPreviewLoading(false);return; }
+    if (!/^[0-9a-f-]{36}$/i.test(sourceId) || !Number.isInteger(sourceVersion) || sourceVersion < 1) {
+      setPreviewError('INVALID_DOCUMENT_VERSION');
+      setPreviewLoading(false);
+      return;
+    }
     setPreviewLoading(true);
     void enterpriseControl<Preview>(`/ai/knowledge/documents/${sourceId}/versions/${sourceVersion}`)
       .then((value) => {
@@ -498,10 +502,14 @@ const WorkspaceKnowledge: React.FC = () => {
       </Card>
       <Spin loading={loading || documentsLoading} className='w-full'>
         {documents.length === 0 ? (
-          !loading && !documentsLoading && !errorCode && (
+          !loading &&
+          !documentsLoading &&
+          !errorCode && (
             <Empty
               description={
-                !baseId && scope === 'available' ? t('workspace.knowledge.availableEmpty') : t('workspace.knowledge.empty')
+                !baseId && scope === 'available'
+                  ? t('workspace.knowledge.availableEmpty')
+                  : t('workspace.knowledge.empty')
               }
             />
           )
@@ -610,7 +618,10 @@ const WorkspaceKnowledge: React.FC = () => {
               border
               data={[
                 { label: t('workspace.knowledge.version'), value: `v${preview.version}` },
-                { label: t('workspace.knowledge.title'), value: t(`workspace.knowledge.status.${preview.status}`, { defaultValue: preview.status }) },
+                {
+                  label: t('workspace.knowledge.title'),
+                  value: t(`workspace.knowledge.status.${preview.status}`, { defaultValue: preview.status }),
+                },
                 { label: 'SHA-256', value: preview.sha256 },
               ]}
             />

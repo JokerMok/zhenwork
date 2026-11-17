@@ -191,11 +191,27 @@ const VoiceInputSection: React.FC = () => {
   );
 
   const clearSavedApiKey = useCallback(() => {
-    updateConfig((current) => isDeepgram
-      ? { ...current, deepgram: { ...DEFAULT_SPEECH_TO_TEXT_CONFIG.deepgram, ...current.deepgram,
-        api_key: '', api_key_configured: false } }
-      : { ...current, openai: { ...DEFAULT_SPEECH_TO_TEXT_CONFIG.openai, ...current.openai,
-        api_key: '', api_key_configured: false } });
+    updateConfig((current) =>
+      isDeepgram
+        ? {
+            ...current,
+            deepgram: {
+              ...DEFAULT_SPEECH_TO_TEXT_CONFIG.deepgram,
+              ...current.deepgram,
+              api_key: '',
+              api_key_configured: false,
+            },
+          }
+        : {
+            ...current,
+            openai: {
+              ...DEFAULT_SPEECH_TO_TEXT_CONFIG.openai,
+              ...current.openai,
+              api_key: '',
+              api_key_configured: false,
+            },
+          }
+    );
   }, [isDeepgram, updateConfig]);
 
   return (
@@ -243,8 +259,12 @@ const VoiceInputSection: React.FC = () => {
                 <FieldLabel labelKey='settings.speechToTextApiKey' requirement={isCustom ? 'optional' : 'required'} />
               }
             >
-              <Input.Password value={activeApiKey} visibilityToggle onChange={handleApiKeyChange}
-                placeholder={savedApiKeyConfigured ? t('settings.speechToTextSavedKeyPlaceholder') : undefined} />
+              <Input.Password
+                value={activeApiKey}
+                visibilityToggle
+                onChange={handleApiKeyChange}
+                placeholder={savedApiKeyConfigured ? t('settings.speechToTextSavedKeyPlaceholder') : undefined}
+              />
               {savedApiKeyConfigured && !activeApiKey && (
                 <Button type='text' size='mini' onClick={clearSavedApiKey}>
                   {t('settings.speechToTextClearSavedKey')}

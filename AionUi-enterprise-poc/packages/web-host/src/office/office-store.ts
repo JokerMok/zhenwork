@@ -206,7 +206,9 @@ export class OfficeStore {
 
   async clearKnowledge(conversation: string): Promise<void> {
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(conversation)) throw new Error('INVALID_CONVERSATION');
-    await this.transaction(async (state) => { delete state.knowledgeScopes?.[conversation]; });
+    await this.transaction(async (state) => {
+      delete state.knowledgeScopes?.[conversation];
+    });
   }
 
   async selectKnowledge(conversation: string, value: unknown): Promise<void> {

@@ -20,7 +20,9 @@ export class EnterpriseMcpProxy {
   async start(listenHost = '127.0.0.1') {
     if (this.server) throw new Error('MCP proxy already started');
     if (!validProxyBindHost(listenHost)) throw new Error('MCP proxy bind address invalid');
-    this.server = http.createServer((req, res) => { void this.handle(req, res); });
+    this.server = http.createServer((req, res) => {
+      void this.handle(req, res);
+    });
     await new Promise((resolve, reject) => {
       this.server.once('error', reject);
       this.server.listen(0, listenHost, resolve);
@@ -36,12 +38,19 @@ export class EnterpriseMcpProxy {
 
   idempotencyKey(raw, headers, conversationId) {
     let message;
-    try { message = JSON.parse(raw); } catch { return null; }
+    try {
+      message = JSON.parse(raw);
+    } catch {
+      return null;
+    }
     if (message?.method !== 'tools/call') return null;
     const session = typeof headers['mcp-session-id'] === 'string' ? headers['mcp-session-id'] : '';
-    const hex = crypto.createHash('sha256').update([
-      this.connectionId, conversationId || '', session, raw,
-    ].join('\n')).digest('hex').slice(0, 32).split('');
+    const hex = crypto
+      .createHash('sha256')
+      .update([this.connectionId, conversationId || '', session, raw].join('\n'))
+      .digest('hex')
+      .slice(0, 32)
+      .split('');
     hex[12] = '4';
     hex[16] = '8';
     return `${hex.slice(0, 8).join('')}-${hex.slice(8, 12).join('')}-${hex.slice(12, 16).join('')}-${hex.slice(16, 20).join('')}-${hex.slice(20).join('')}`;
@@ -51,9 +60,13 @@ export class EnterpriseMcpProxy {
     res.setHeader('Cache-Control', 'no-store');
     const conversationId = /^\/conversations\/([A-Za-z0-9_-]{1,100})\/mcp$/.exec(req.url || '')?.[1];
     if (req.method !== 'POST' || (!conversationId && (this.requireConversationId || req.url !== '/mcp'))) {
-      res.writeHead(404).end(); return;
+      res.writeHead(404).end();
+      return;
     }
-    if (!this.authorized(req.headers.authorization)) { res.writeHead(401).end(); return; }
+    if (!this.authorized(req.headers.authorization)) {
+      res.writeHead(401).end();
+      return;
+    }
     const controller = new AbortController();
     this.pending.add(controller);
     res.once('close', () => controller.abort());
@@ -62,27 +75,52 @@ export class EnterpriseMcpProxy {
       const chunks = [];
       for await (const chunk of req) {
         length += chunk.length;
-        if (length > MAX_BYTES) { res.writeHead(413).end(); return; }
+        if (length > MAX_BYTES) {
+          res.writeHead(413).end();
+          return;
+        }
         chunks.push(chunk);
       }
       const raw = Buffer.concat(chunks).toString('utf8');
-      try { JSON.parse(raw); } catch { res.writeHead(400).end(); return; }
+      try {
+        JSON.parse(raw);
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
       const idempotencyKey = this.idempotencyKey(raw, req.headers, conversationId);
-      const relayHeaders = idempotencyKey ? { ...req.headers,
-        'x-zhenwork-idempotency-key': idempotencyKey } : req.headers;
-      const upstream = await this.client.relayMcp(this.connectionId, raw, relayHeaders, controller.signal, conversationId);
+      const relayHeaders = idempotencyKey
+        ? { ...req.headers, 'x-zhenwork-idempotency-key': idempotencyKey }
+        : req.headers;
+      const upstream = await this.client.relayMcp(
+        this.connectionId,
+        raw,
+        relayHeaders,
+        controller.signal,
+        conversationId
+      );
       const data = Buffer.from(await upstream.arrayBuffer());
-      if (data.length > MAX_BYTES) { res.writeHead(502).end(); return; }
+      if (data.length > MAX_BYTES) {
+        res.writeHead(502).end();
+        return;
+      }
       let revoked = upstream.status === 401 || upstream.status === 403;
       if (!revoked && upstream.headers.get('content-type')?.includes('application/json')) {
-        try { revoked = [401, 403].includes(JSON.parse(data.toString()).code); } catch { /* JSON-RPC body */ }
+        try {
+          revoked = [401, 403].includes(JSON.parse(data.toString()).code);
+        } catch {
+          /* JSON-RPC body */
+        }
       }
       if (revoked) {
         res.writeHead(401).end();
         queueMicrotask(this.onRevoked);
         return;
       }
-      if (!upstream.ok) { res.writeHead(502).end(); return; }
+      if (!upstream.ok) {
+        res.writeHead(502).end();
+        return;
+      }
       // Preserve empty Streamable HTTP notification acknowledgments; there is
       // no JSON-RPC response body to wrap as a successful 200 JSON message.
       if ([202, 204].includes(upstream.status) && data.length === 0) {
@@ -91,15 +129,20 @@ export class EnterpriseMcpProxy {
       }
       const type = upstream.headers.get('content-type') || 'application/json';
       if (!type.startsWith('application/json') && !type.startsWith('text/event-stream')) {
-        res.writeHead(502).end(); return;
+        res.writeHead(502).end();
+        return;
       }
-      res.writeHead(200, { 'Content-Type': type,
-        ...(upstream.headers.get('mcp-session-id') ? { 'Mcp-Session-Id': upstream.headers.get('mcp-session-id') } : {}) });
+      res.writeHead(200, {
+        'Content-Type': type,
+        ...(upstream.headers.get('mcp-session-id') ? { 'Mcp-Session-Id': upstream.headers.get('mcp-session-id') } : {}),
+      });
       res.end(data);
     } catch {
       if (!controller.signal.aborted && !res.headersSent) res.writeHead(502).end();
       else if (!res.destroyed) res.destroy();
-    } finally { this.pending.delete(controller); }
+    } finally {
+      this.pending.delete(controller);
+    }
   }
 
   async stop() {

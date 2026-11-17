@@ -249,8 +249,10 @@ if (win.electronAPI) {
       }
       connectedAt = 0;
 
-      if (event.code === 4001 &&
-          (window as typeof window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__) {
+      if (
+        event.code === 4001 &&
+        (window as typeof window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__
+      ) {
         idleSuspended = true;
         shouldReconnect = false;
         return;

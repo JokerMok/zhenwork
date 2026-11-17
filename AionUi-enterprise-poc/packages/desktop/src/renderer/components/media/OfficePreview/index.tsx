@@ -7,7 +7,11 @@ import { previewErrorKey, type OfficePreviewData } from './types';
 import styles from './OfficePreview.module.css';
 
 export type OfficePreviewProps = {
-  path: string; version?: string; revision?: string; onContinue?: () => void; continueBusy?: boolean;
+  path: string;
+  version?: string;
+  revision?: string;
+  onContinue?: () => void;
+  continueBusy?: boolean;
 };
 const table = (rows: unknown[][], key: string) => (
   <Table
@@ -118,7 +122,11 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
         <Button icon={<Download />} onClick={download}>
           {t('workspace.files.download')}
         </Button>
-        {onContinue ? <Button onClick={onContinue} loading={continueBusy}>{t('workspace.files.continueInNewTask')}</Button> : null}
+        {onContinue ? (
+          <Button onClick={onContinue} loading={continueBusy}>
+            {t('workspace.files.continueInNewTask')}
+          </Button>
+        ) : null}
         {data ? <Tag>{data.sourceSha256.slice(0, 12)}</Tag> : null}
       </Space>
       {!path.toLowerCase().endsWith('.pptx') && data?.visualMode !== 'libreoffice' ? (
@@ -150,17 +158,36 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
                 <img
                   key={page.slide}
                   src={page.image}
-                  alt={data.slideTitles?.find(s => s.value === page.slide - 1)?.label || t('workspace.preview.location.slide', { count: page.slide })}
+                  alt={
+                    data.slideTitles?.find((s) => s.value === page.slide - 1)?.label ||
+                    t('workspace.preview.location.slide', { count: page.slide })
+                  }
                   className='w-full object-contain'
                 />
               ) : null
             )}
           </div>
           <div className={styles.transcript} data-testid='slide-transcript'>
-            {data.locations?.map((location, index) => <section key={index}>
-              {location.texts?.map((item, row) => <p key={row}>{item.text}</p>)}
-              {location.tables?.map((item, tableIndex) => <table key={tableIndex}><tbody>{item.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, column) => <td key={column}>{String(cell ?? '')}</td>)}</tr>)}</tbody></table>)}
-            </section>)}
+            {data.locations?.map((location, index) => (
+              <section key={index}>
+                {location.texts?.map((item, row) => (
+                  <p key={row}>{item.text}</p>
+                ))}
+                {location.tables?.map((item, tableIndex) => (
+                  <table key={tableIndex}>
+                    <tbody>
+                      {item.rows.map((row, rowIndex) => (
+                        <tr key={rowIndex}>
+                          {row.map((cell, column) => (
+                            <td key={column}>{String(cell ?? '')}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ))}
+              </section>
+            ))}
           </div>
         </>
       ) : data?.format === 'xlsx' ? (

@@ -202,12 +202,23 @@ const EditModeModal = ModalHOC<{ data?: IProvider; onChange(data: IProvider): vo
                   )}
                 </span>
               }
-              required={data?.platform !== 'gemini' && data?.platform !== 'gemini-vertex-ai' && !isBedrock && !data?.base_url_configured}
-              rules={[{ required: data?.platform !== 'gemini' && data?.platform !== 'gemini-vertex-ai' && !isBedrock && !data?.base_url_configured }]}
+              required={
+                data?.platform !== 'gemini' &&
+                data?.platform !== 'gemini-vertex-ai' &&
+                !isBedrock &&
+                !data?.base_url_configured
+              }
+              rules={[
+                {
+                  required:
+                    data?.platform !== 'gemini' &&
+                    data?.platform !== 'gemini-vertex-ai' &&
+                    !isBedrock &&
+                    !data?.base_url_configured,
+                },
+              ]}
               field={'base_url'}
-              extra={data?.base_url_configured
-                ? t('settings.enterpriseWebEndpointConfigured')
-                : undefined}
+              extra={data?.base_url_configured ? t('settings.enterpriseWebEndpointConfigured') : undefined}
             >
               <Input onBlur={handleBaseUrlBlur} />
             </Form.Item>
@@ -223,11 +234,17 @@ const EditModeModal = ModalHOC<{ data?: IProvider; onChange(data: IProvider): vo
               required={!isBedrock && !data?.api_key_configured}
               rules={[{ required: !isBedrock && !data?.api_key_configured }]}
               field={'api_key'}
-              extra={<div className='text-11px text-t-secondary mt-2'>
-                {data?.api_key_configured
-                  ? t('settings.enterpriseWebKeyConfigured', { defaultValue: 'Key configured. Leave blank to keep it; enter a new key to replace it.' })
-                  : <>💡 {t('settings.multiApiKeyEditTip')}</>}
-              </div>}
+              extra={
+                <div className='text-11px text-t-secondary mt-2'>
+                  {data?.api_key_configured ? (
+                    t('settings.enterpriseWebKeyConfigured', {
+                      defaultValue: 'Key configured. Leave blank to keep it; enter a new key to replace it.',
+                    })
+                  ) : (
+                    <>💡 {t('settings.multiApiKeyEditTip')}</>
+                  )}
+                </div>
+              }
             >
               <Input.TextArea rows={4} placeholder={t('settings.apiKeyPlaceholder')} />
             </Form.Item>

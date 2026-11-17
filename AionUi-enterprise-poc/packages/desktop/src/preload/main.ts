@@ -56,17 +56,20 @@ if (process.env.AION_ENTERPRISE_ROLE === 'worker') {
   contextBridge.exposeInMainWorld('enterpriseResources', {
     request: (action: string, args: unknown) => ipcRenderer.invoke('enterprise:rpc', action, args),
   });
-  contextBridge.exposeInMainWorld('enterpriseContext', Object.freeze({
-    userId: process.env.AION_ENTERPRISE_USER_ID || '',
-    username: process.env.AION_ENTERPRISE_USERNAME || '',
-    serverId: process.env.AION_ENTERPRISE_SERVER_ID || '',
-    serverUrl: process.env.AION_ENTERPRISE_SERVER_URL || '',
-    webOrigin: process.env.AION_ENTERPRISE_WEB_ORIGIN || '',
-    modelName: process.env.AION_ENTERPRISE_MODEL_NAME || '',
-    skillName: process.env.AION_ENTERPRISE_SKILL_NAME || '',
-    skillVersion: Number(process.env.AION_ENTERPRISE_SKILL_VERSION || 0),
-    mcpVersion: Number(process.env.AION_ENTERPRISE_MCP_VERSION || 0),
-  }));
+  contextBridge.exposeInMainWorld(
+    'enterpriseContext',
+    Object.freeze({
+      userId: process.env.AION_ENTERPRISE_USER_ID || '',
+      username: process.env.AION_ENTERPRISE_USERNAME || '',
+      serverId: process.env.AION_ENTERPRISE_SERVER_ID || '',
+      serverUrl: process.env.AION_ENTERPRISE_SERVER_URL || '',
+      webOrigin: process.env.AION_ENTERPRISE_WEB_ORIGIN || '',
+      modelName: process.env.AION_ENTERPRISE_MODEL_NAME || '',
+      skillName: process.env.AION_ENTERPRISE_SKILL_NAME || '',
+      skillVersion: Number(process.env.AION_ENTERPRISE_SKILL_VERSION || 0),
+      mcpVersion: Number(process.env.AION_ENTERPRISE_MCP_VERSION || 0),
+    })
+  );
 }
 
 // Synchronously fetch the aioncore port and expose it to the renderer

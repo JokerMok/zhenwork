@@ -20,7 +20,8 @@ import { applyGpuRecoveryFlags } from './gpuRecovery';
 // migration. Guarded by AIONUI_E2E_TEST so it never affects dev/production.
 // 仅 E2E：把 userData 指向一次性沙箱目录，避免测试读写真实数据库。
 const e2eUserDataDir = process.env.AIONUI_E2E_TEST === '1' ? process.env.AIONUI_E2E_USER_DATA_DIR : undefined;
-const enterpriseProfileDir = process.env.AION_ENTERPRISE_ROLE === 'worker' ? process.env.AION_ENTERPRISE_PROFILE_DIR : undefined;
+const enterpriseProfileDir =
+  process.env.AION_ENTERPRISE_ROLE === 'worker' ? process.env.AION_ENTERPRISE_PROFILE_DIR : undefined;
 if (enterpriseProfileDir) {
   fs.mkdirSync(enterpriseProfileDir, { recursive: true, mode: 0o700 });
   app.setPath('userData', enterpriseProfileDir);

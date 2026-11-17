@@ -290,7 +290,7 @@ function recordPrepareCall(options) {
   const calls = fs.existsSync(callsPath) ? JSON.parse(fs.readFileSync(callsPath, 'utf8')) : [];
   calls.push(options ?? null);
   fs.writeFileSync(callsPath, JSON.stringify(calls));
-  return { prepared: true, dir: 'mock-bundled-aioncore', sourceType: 'mock' };
+  return { prepared: true, dir: 'mock-bundled-aioncore', sourceType: 'local-bundle' };
 }
 
 Module._load = function patchedLoad(request, parent, isMain) {
@@ -345,12 +345,15 @@ childProcess.execSync = function mockedExecSync(command) {
         movedExistingOut = true;
       }
 
+      const coreName = process.platform === 'win32' ? 'aioncore.exe' : 'aioncore';
+      writeFileSync(join(tempDir, coreName), 'x-aion-enterprise-local-token');
       const result = spawnSync(process.execPath, ['scripts/build-with-builder.js', ...args], {
         cwd: repoRoot,
         encoding: 'utf8',
         env: {
           ...process.env,
           AIONUI_PREPARE_CALLS_FILE: callsPath,
+          AIONUI_BACKEND_LOCAL_BUNDLE_DIR: tempDir,
           NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${hookPath}`].filter(Boolean).join(' '),
         },
       });

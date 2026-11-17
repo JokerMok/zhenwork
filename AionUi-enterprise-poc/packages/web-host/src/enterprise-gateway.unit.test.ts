@@ -540,7 +540,9 @@ test('employee Web cookie survives a Host restart, expires after 30 days and can
     sessionCredential: credential,
     username,
     validate: async () => active.has(credential),
-    close: async () => { active.delete(credential); },
+    close: async () => {
+      active.delete(credential);
+    },
   });
   const start = async () => {
     const gateway = await startEnterpriseGateway({
@@ -560,7 +562,9 @@ test('employee Web cookie survives a Host restart, expires after 30 days and can
         if (!active.has(credential)) throw new Error('RC2 session revoked');
         return loginSession(credential);
       },
-      startCore: async () => { throw new Error('Login must not start a Core'); },
+      startCore: async () => {
+        throw new Error('Login must not start a Core');
+      },
     });
     port = gateway.port;
     return gateway;
@@ -1567,9 +1571,9 @@ test('password setup refuses weak format and foreign origins', async () => {
   ).toBe(403);
 });
 
-test('a second employee gets a bounded preparation page instead of a blank SPA at Core capacity', async () => {
+test('a second employee can load the workspace shell while the Core capacity queue is full', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'enterprise-ready-'));
-  await writeFile(path.join(dir, 'index.html'), '<html><head></head><body>Workspace</body></html>');
+  await writeFile(path.join(dir, 'index.html'), '<html><head></head><body><div id="root"></div></body></html>');
   const gateway = await startEnterpriseGateway({
     staticDir: dir,
     publicOrigin: 'https://workspace.example',
@@ -1622,8 +1626,8 @@ test('a second employee gets a bounded preparation page instead of a blank SPA a
     expect((await call('GET', '/enterprise/ready', first)).status).toBe(200);
     const page = await call('GET', '/', second);
     expect(page.status).toBe(200);
-    expect(page.body).toContain('data-enterprise-readiness');
-    expect(page.body).toContain('180000');
+    expect(page.body).toContain('data-enterprise-bootstrap');
+    expect(page.body).toContain('window.__AION_ENTERPRISE_WEB__=true');
     expect(page.body).toContain('<title>ZhenWork');
     expect(page.body).toContain('data:image/svg+xml');
     const queued = await call('GET', '/enterprise/ready', second);
@@ -2236,7 +2240,6 @@ test('real Host login remembers only successful accounts and preserves the conve
   expect(JSON.stringify([...values])).not.toContain('synthetic-test-password');
   expect(replace).toHaveBeenCalledWith('/#/conversation/abcd1234');
 });
-
 
 test('knowledge default reset requires the owning actor and same origin without starting execution', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'knowledge-default-reset-'));

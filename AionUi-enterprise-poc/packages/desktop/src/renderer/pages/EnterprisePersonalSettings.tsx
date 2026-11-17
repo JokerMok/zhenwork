@@ -136,7 +136,9 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
             throw new Error('INVALID_PREFERENCES');
           }
           if (current === generation.current) {
-            const changes = retained ? preferenceChanges(retained.original, retained.draft) : restorePreferences(draftKey);
+            const changes = retained
+              ? preferenceChanges(retained.original, retained.draft)
+              : restorePreferences(draftKey);
             setData({ section, draftKey, original, draft: { ...original, ...changes } });
           }
         }
@@ -175,9 +177,14 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
 
   const update = (next: PersonalData) => {
     const changes = next.section === 'personalization' ? preferenceChanges(next.original, next.draft) : null;
-    const value = next.section === 'profile'
-      ? (next.nickname === next.profile.nickname ? null : next.nickname)
-      : changes && Object.keys(changes).length ? JSON.stringify(changes) : null;
+    const value =
+      next.section === 'profile'
+        ? next.nickname === next.profile.nickname
+          ? null
+          : next.nickname
+        : changes && Object.keys(changes).length
+          ? JSON.stringify(changes)
+          : null;
     storeDraft(draftKey, value);
     setData(next);
     setSaved(false);
@@ -206,11 +213,13 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
       if (active.section === 'profile') {
         const profile = await send<Profile>(profileRoute, 'PUT', { nickname: active.nickname.trim() });
         window.dispatchEvent(new CustomEvent('enterprise-profile-updated'));
-        if (current === generation.current) setData({ section: 'profile', draftKey, profile, nickname: profile.nickname });
+        if (current === generation.current)
+          setData({ section: 'profile', draftKey, profile, nickname: profile.nickname });
       } else {
         const { version: expectedVersion, ...draft } = active.draft;
         const original = await send<Preferences>(preferencesRoute, 'PUT', { ...draft, expectedVersion });
-        if (current === generation.current) setData({ section: 'personalization', draftKey, original, draft: original });
+        if (current === generation.current)
+          setData({ section: 'personalization', draftKey, original, draft: original });
       }
       if (readDraft(draftKey) === submittedDraft) storeDraft(draftKey, null);
       if (current === generation.current) setSaved(true);
@@ -432,7 +441,9 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
               <Button disabled={loading || saving} onClick={discardDraft}>
                 {t('settings.enterpriseAccount.discard')}
               </Button>
-              <span role='status' className='text-t-secondary'>{t('settings.enterpriseAccount.unsaved')}</span>
+              <span role='status' className='text-t-secondary'>
+                {t('settings.enterpriseAccount.unsaved')}
+              </span>
             </>
           )}
           {saved && (

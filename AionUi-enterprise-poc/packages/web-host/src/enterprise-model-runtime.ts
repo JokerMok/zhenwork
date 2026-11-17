@@ -1,14 +1,29 @@
-import { applyEmployeePreferences, nativeRelayCanOmitPreferences, nativeRunPreferences } from './read-model/preferences.js';
+import {
+  applyEmployeePreferences,
+  nativeRelayCanOmitPreferences,
+  nativeRunPreferences,
+} from './read-model/preferences.js';
 import { currentTaskScope } from './tasks/protocol.js';
 import { captureTaskFeedbackProvenance } from './tasks/feedback.js';
 import { createDockerCoreDependencyProbe } from './maintenance/core-dependency-probe.js';
-import type { EnterpriseResourceState, EnterpriseActor, EnterpriseClientMetadata, EnterpriseCore, EnterpriseGatewayOptions,
+import type {
+  EnterpriseResourceState,
+  EnterpriseActor,
+  EnterpriseClientMetadata,
+  EnterpriseCore,
+  EnterpriseGatewayOptions,
 } from './enterprise-gateway.js';
 import { EnterpriseModelProxy } from '../../desktop/src/process/services/enterprise/modelProxy.mjs';
-import { removeEnterpriseModelProvider, syncEnterpriseModelProvider,
+import {
+  removeEnterpriseModelProvider,
+  syncEnterpriseModelProvider,
 } from '../../desktop/src/process/services/enterprise/modelProvider.mjs';
 import type { Rc2GatewayClient, Rc2GatewayLogin } from './enterprise-rc2-login.mjs';
-import { syncEnterpriseWebResources, closeEnterpriseMcpCache, type EnterpriseMcpCache } from './enterprise-resource-runtime.js';
+import {
+  syncEnterpriseWebResources,
+  closeEnterpriseMcpCache,
+  type EnterpriseMcpCache,
+} from './enterprise-resource-runtime.js';
 import type { RuntimeResourceIssue } from './enterprise-resource-runtime.js';
 import { EnterpriseBackgroundGrants } from './enterprise-background-grants.js';
 import { verifyBackgroundService } from './enterprise-background-client.js';
@@ -27,18 +42,31 @@ function key(actor: EnterpriseActor): string {
 export function createEnterpriseModelRuntime(
   rc2Login: (username: string, password: string, client: EnterpriseClientMetadata) => Promise<Rc2GatewayLogin>,
   startIsolatedCore: (actor: EnterpriseActor) => Promise<EnterpriseCore>,
-  options: { profileRoot?: string; publicOrigin?: string; rc2Resume?: (cookie: string, owned?: boolean) => Promise<Rc2GatewayLogin>;
+  options: {
+    profileRoot?: string;
+    publicOrigin?: string;
+    rc2Resume?: (cookie: string, owned?: boolean) => Promise<Rc2GatewayLogin>;
     background?: { rc2Url: string; serviceToken: string };
   } = {}
-): Pick<EnterpriseGatewayOptions,
-  | 'login' | 'startCore' | 'resume' | 'authorizeBackground' | 'controlRequest' | 'taskFeedbackRequest' | 'backgroundDue' | 'refreshResources' | 'resourceStatus'> &
+): Pick<
+  EnterpriseGatewayOptions,
+  | 'login'
+  | 'startCore'
+  | 'resume'
+  | 'authorizeBackground'
+  | 'controlRequest'
+  | 'taskFeedbackRequest'
+  | 'backgroundDue'
+  | 'refreshResources'
+  | 'resourceStatus'
+> &
   TaskRuntime & {
-  syncCronGrant: (actor: EnterpriseActor, jobId: string, enabled: boolean) => Promise<void>;
-  hasBackgroundJobs: (actor: EnterpriseActor) => boolean;
-  authorizeCronJob: (actor: EnterpriseActor, jobId: string) => Promise<boolean>;
-  backgroundActors: () => Promise<EnterpriseActor[]>;
-  reconcileCronJobs: (actor: EnterpriseActor) => Promise<void>;
-} {
+    syncCronGrant: (actor: EnterpriseActor, jobId: string, enabled: boolean) => Promise<void>;
+    hasBackgroundJobs: (actor: EnterpriseActor) => boolean;
+    authorizeCronJob: (actor: EnterpriseActor, jobId: string) => Promise<boolean>;
+    backgroundActors: () => Promise<EnterpriseActor[]>;
+    reconcileCronJobs: (actor: EnterpriseActor) => Promise<void>;
+  } {
   const taskBindings = new Map<string, Map<string, string>>();
   const officeTrust = new Map<string, (c: Record<string, unknown>) => Promise<boolean>>();
   const grantStore = async (actor: EnterpriseActor) => {
@@ -72,9 +100,10 @@ export function createEnterpriseModelRuntime(
         if (revoked.jobId.startsWith('task_')) continue;
         await store.disableRevoked(revoked.jobId, revoked.grantId, async () => {
           const response = await fetch(`${enterpriseCoreBase(core)}/api/cron/jobs/${revoked.jobId}`, {
-            method: 'PUT', headers: { 'content-type': 'application/json',
-              'x-aion-enterprise-local-token': core.localToken },
-            body: JSON.stringify({ enabled: false }), signal: AbortSignal.timeout(5_000),
+            method: 'PUT',
+            headers: { 'content-type': 'application/json', 'x-aion-enterprise-local-token': core.localToken },
+            body: JSON.stringify({ enabled: false }),
+            signal: AbortSignal.timeout(5_000),
           });
           if (response.status !== 404) {
             if (!response.ok || Number(response.headers.get('content-length') || 0) > 10_000)
@@ -106,7 +135,9 @@ export function createEnterpriseModelRuntime(
     for (const client of clients.get(key(actor)) || []) {
       try {
         if ((await client.me()).userId === actor.userId) return client;
-      } catch { /* revoked session; try another active device */ }
+      } catch {
+        /* revoked session; try another active device */
+      }
     }
     const store = grants.get(key(actor));
     if (store?.hasJobs()) return store.client();
@@ -118,13 +149,26 @@ export function createEnterpriseModelRuntime(
     const method = (init.method || 'GET').toUpperCase();
     const feedback = /^\/ai\/me\/feedback(?:\/provenance)?(?:\?|$)/.test(route);
     const dependency = /^\/ai\/skills\/[a-f0-9-]{36}\/dependency-checks$/.test(route);
-    if (!options.background || !(feedback && ['GET', 'POST'].includes(method) || dependency && method === 'POST')) throw new Error('HOST_RECEIPT_ROUTE_UNAVAILABLE');
-    const client = (await interactiveClient(actor)) as Rc2GatewayClient & { baseUrl: string; cookie: string; clientId: string; origin: string };
+    if (!options.background || !((feedback && ['GET', 'POST'].includes(method)) || (dependency && method === 'POST')))
+      throw new Error('HOST_RECEIPT_ROUTE_UNAVAILABLE');
+    const client = (await interactiveClient(actor)) as Rc2GatewayClient & {
+      baseUrl: string;
+      cookie: string;
+      clientId: string;
+      origin: string;
+    };
     if ((await client.me()).userId !== actor.userId) throw new Error('IDENTITY_REVOKED');
     const headers = new Headers(init.headers);
     if (method === 'POST') headers.set('X-ZhenWork-Host-Service', `Bearer ${options.background.serviceToken}`);
-    headers.set('Cookie', client.cookie);headers.set('clientid', client.clientId);headers.set('Origin', client.origin);
-    const response = await fetch(client.baseUrl + route, { ...init, headers, redirect: 'error', signal: init.signal || AbortSignal.timeout(15_000) });
+    headers.set('Cookie', client.cookie);
+    headers.set('clientid', client.clientId);
+    headers.set('Origin', client.origin);
+    const response = await fetch(client.baseUrl + route, {
+      ...init,
+      headers,
+      redirect: 'error',
+      signal: init.signal || AbortSignal.timeout(15_000),
+    });
     await client.me();
     return response;
   };
@@ -137,7 +181,7 @@ export function createEnterpriseModelRuntime(
     });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error('PREFS_EXECUTION_UNAVAILABLE');
-    const body = await response.json() as { success?: boolean; data?: { runtime?: { turn_id?: string | null } } };
+    const body = (await response.json()) as { success?: boolean; data?: { runtime?: { turn_id?: string | null } } };
     if (body.success !== true || !body.data) throw new Error('PREFS_EXECUTION_UNAVAILABLE');
     const turnId = body.data.runtime?.turn_id;
     if (turnId == null) return null;
@@ -173,17 +217,20 @@ export function createEnterpriseModelRuntime(
     const taskJob = taskBindings.get(key(actor))?.get(conversationId);
     if (taskJob) {
       const taskClient = await (await grantStore(actor)).clientFor(taskJob);
-      const originalMe=taskClient.me.bind(taskClient);
-      taskClient.me=async(signal?:AbortSignal)=>{
-        if(taskBindings.get(key(actor))?.get(conversationId)!==taskJob)throw new Error('Task execution changed');
-        if(options.profileRoot){const current=await currentTaskScope(options.profileRoot,actor,conversationId);if(!current.active||current.jobId!==taskJob)throw new Error('Task execution stopped');}
+      const originalMe = taskClient.me.bind(taskClient);
+      taskClient.me = async (signal?: AbortSignal) => {
+        if (taskBindings.get(key(actor))?.get(conversationId) !== taskJob) throw new Error('Task execution changed');
+        if (options.profileRoot) {
+          const current = await currentTaskScope(options.profileRoot, actor, conversationId);
+          if (!current.active || current.jobId !== taskJob) throw new Error('Task execution stopped');
+        }
         return originalMe(signal);
       };
 
       if (options.profileRoot) {
-        const taskState = await currentTaskScope(options.profileRoot,actor,conversationId);
-        if(!taskState.active)throw new Error('Task execution is no longer active');
-        if(taskState.waiting)throw new Error('TASK_EXECUTION_PAUSED');
+        const taskState = await currentTaskScope(options.profileRoot, actor, conversationId);
+        if (!taskState.active) throw new Error('Task execution is no longer active');
+        if (taskState.waiting) throw new Error('TASK_EXECUTION_PAUSED');
         const scope = taskState.scope;
         for (const baseId of new Set([...(scope?.baseIds || []), ...(scope?.documents.map((d) => d.baseId) || [])]))
           await taskClient.authorizedResource(baseId, 'KNOWLEDGE');
@@ -201,34 +248,48 @@ export function createEnterpriseModelRuntime(
     }
     if (options.profileRoot) {
       const task = await currentTaskScope(options.profileRoot, actor, conversationId);
-      if (task.waiting && ['running','waiting_input','waiting_confirmation'].includes(task.state || '')) {
+      if (task.waiting && ['running', 'waiting_input', 'waiting_confirmation'].includes(task.state || '')) {
         throw new Error('TASK_EXECUTION_PAUSED');
       }
     }
     for (const candidate of clients.get(key(actor)) || []) {
-      try { if ((await candidate.me()).userId === actor.userId) return candidate; }
-      catch { /* A revoked device cannot authorize this call. */ }
+      try {
+        if ((await candidate.me()).userId === actor.userId) return candidate;
+      } catch {
+        /* A revoked device cannot authorize this call. */
+      }
     }
     throw new Error('No active RC2 session for conversation');
   };
   const interactiveClient = async (actor: EnterpriseActor): Promise<Rc2GatewayClient> => {
     for (const client of clients.get(key(actor)) || []) {
-      try { if ((await client.me()).userId === actor.userId) return client; }
-      catch { /* try another signed-in device */ }
+      try {
+        if ((await client.me()).userId === actor.userId) return client;
+      } catch {
+        /* try another signed-in device */
+      }
     }
     throw new Error('Employee session required to change scheduled jobs');
   };
   const register = async (session: Rc2GatewayLogin) => {
     const actorKey = key(session.actor);
     let group = clients.get(actorKey);
-    if (!group) { group = new Set(); clients.set(actorKey, group); }
+    if (!group) {
+      group = new Set();
+      clients.set(actorKey, group);
+    }
     group.add(session.client);
     const detach = () => {
       group.delete(session.client);
       if (group.size === 0 && clients.get(actorKey) === group) clients.delete(actorKey);
     };
-    return { actor: session.actor, username: session.username, validate: session.validate,
-      sessionCredential: session.sessionCredential, brand: session.brand, detach,
+    return {
+      actor: session.actor,
+      username: session.username,
+      validate: session.validate,
+      sessionCredential: session.sessionCredential,
+      brand: session.brand,
+      detach,
       close: async () => {
         detach();
         await session.close();
@@ -262,7 +323,7 @@ export function createEnterpriseModelRuntime(
         taskBindings.set(key(actor), bindings);
       }
       if (jobId) bindings.set(conversation, jobId);
-      else if(!expectedJobId || bindings.get(conversation)===expectedJobId) bindings.delete(conversation);
+      else if (!expectedJobId || bindings.get(conversation) === expectedJobId) bindings.delete(conversation);
     },
     trustedTaskConfirmation: async (actor, c) => officeTrust.get(key(actor))?.(c) || false,
     taskActors: async () => {
@@ -286,39 +347,63 @@ export function createEnterpriseModelRuntime(
       const store = grants.get(key(actor));
       if (taskBindings.get(key(actor))?.size) return true;
       if (!store || !options.profileRoot) return false;
-      return backgroundDue(options.profileRoot, actor, store.jobIds().filter((id) => id.startsWith('cron_'))
+      return backgroundDue(
+        options.profileRoot,
+        actor,
+        store.jobIds().filter((id) => id.startsWith('cron_'))
       );
     },
     taskFeedbackRequest: trustedHostRequest,
     controlRequest: async (actor, route, init) => {
       const client = (await interactiveClient(actor)) as Rc2GatewayClient & {
-        baseUrl: string; cookie: string; clientId: string; origin: string;
+        baseUrl: string;
+        cookie: string;
+        clientId: string;
+        origin: string;
       };
       if ((await client.me()).userId !== actor.userId) throw new Error('IDENTITY_REVOKED');
       if (route === '/ai/resources/runtime-issues' && (init.method || 'GET') === 'GET') {
         return new Response(JSON.stringify(resourceIssues.get(key(actor)) || []), {
-          status: 200, headers: { 'content-type': 'application/json' },
+          status: 200,
+          headers: { 'content-type': 'application/json' },
         });
       }
-      const response = await fetch(client.baseUrl + route, { ...init, redirect: 'error', headers: {
-        ...init.headers, Cookie: client.cookie, clientid: client.clientId, Origin: client.origin,
-      },
+      const response = await fetch(client.baseUrl + route, {
+        ...init,
+        redirect: 'error',
+        headers: {
+          ...init.headers,
+          Cookie: client.cookie,
+          clientid: client.clientId,
+          Origin: client.origin,
+        },
       });
       await client.me();
-      if (response.ok && !['GET', 'HEAD', 'OPTIONS'].includes(init.method || 'GET') && /^\/ai\/(resources|mcp)/.test(route)) {
+      if (
+        response.ok &&
+        !['GET', 'HEAD', 'OPTIONS'].includes(init.method || 'GET') &&
+        /^\/ai\/(resources|mcp)/.test(route)
+      ) {
         // The write already committed. A busy Core must not turn that success into a retryable failure.
-        await refreshers.get(key(actor))?.().catch((error: Error) => console.info('[Enterprise Office] resource refresh deferred:', error.message));
+        await refreshers
+          .get(key(actor))?.()
+          .catch((error: Error) => console.info('[Enterprise Office] resource refresh deferred:', error.message));
       }
       return response;
     },
     login: async (username, password, client) => register(await rc2Login(username, password, client)),
     resume: options.rc2Resume ? async (cookie, owned) => register(await options.rc2Resume!(cookie, owned)) : undefined,
-    hasBackgroundJobs: (actor) => grants.get(key(actor))?.hasJobs() === true || taskGrants.get(key(actor))?.hasJobs() === true,
+    hasBackgroundJobs: (actor) =>
+      grants.get(key(actor))?.hasJobs() === true || taskGrants.get(key(actor))?.hasJobs() === true,
     authorizeCronJob: async (actor, jobId) => {
       const store = grants.get(key(actor));
       if (!store) return false;
-      try { await store.clientFor(jobId); return true; }
-      catch { return false; }
+      try {
+        await store.clientFor(jobId);
+        return true;
+      } catch {
+        return false;
+      }
     },
     authorizeBackground: async (actor) => {
       const store = grants.get(key(actor));
@@ -326,18 +411,27 @@ export function createEnterpriseModelRuntime(
       try {
         if (taskStore?.hasJobs() && (await taskStore.inspect()).valid.length > 0) return true;
         if (!store?.hasJobs()) return false;
-        return await auditBackground(actor, store); }
-      catch { return false; }
+        return await auditBackground(actor, store);
+      } catch {
+        return false;
+      }
     },
     backgroundActors: async () => {
       if (!options.background || !options.profileRoot) return [];
       await verifyBackgroundService(options.background.rc2Url, options.background.serviceToken);
-      const actors = await EnterpriseBackgroundGrants.discoverActors(options.profileRoot,
-        options.background.rc2Url, options.background.serviceToken);
+      const actors = await EnterpriseBackgroundGrants.discoverActors(
+        options.profileRoot,
+        options.background.rc2Url,
+        options.background.serviceToken
+      );
       for (const actor of actors) {
         if (grants.has(key(actor))) continue;
-        const store = new EnterpriseBackgroundGrants(options.profileRoot, actor,
-          options.background.rc2Url, options.background.serviceToken);
+        const store = new EnterpriseBackgroundGrants(
+          options.profileRoot,
+          actor,
+          options.background.rc2Url,
+          options.background.serviceToken
+        );
         await store.load();
         grants.set(key(actor), store);
       }
@@ -361,11 +455,17 @@ export function createEnterpriseModelRuntime(
       const body = JSON.parse(raw) as { success?: boolean; data?: Array<{ id?: string; enabled?: boolean }> };
       if (!body.success || !Array.isArray(body.data) || body.data.length > 100)
         throw new Error('Core cron catalog invalid');
-      const enabled = new Set(body.data.filter((job) => job.enabled === true &&
-        typeof job.id === 'string' && /^cron_[A-Za-z0-9_-]{8,80}$/.test(job.id)).map((job) => job.id!));
+      const enabled = new Set(
+        body.data
+          .filter(
+            (job) => job.enabled === true && typeof job.id === 'string' && /^cron_[A-Za-z0-9_-]{8,80}$/.test(job.id)
+          )
+          .map((job) => job.id!)
+      );
       const client = issuer as Parameters<EnterpriseBackgroundGrants['issue']>[0];
       for (const jobId of enabled) if (!store.jobIds().includes(jobId)) await store.issue(client, jobId);
-      for (const jobId of store.jobIds()) if (jobId.startsWith('cron_') && !enabled.has(jobId)) await store.revoke(client, jobId);
+      for (const jobId of store.jobIds())
+        if (jobId.startsWith('cron_') && !enabled.has(jobId)) await store.revoke(client, jobId);
     },
     syncCronGrant: async (actor, jobId, enabled) => {
       const store = grants.get(key(actor));
@@ -380,7 +480,10 @@ export function createEnterpriseModelRuntime(
     },
     startCore: async (actor) => {
       const client = await activeClient(actor);
-      const models = (await client.availableModels()).map((item) => ({ ...item, upstreamCode: item.code, code: 'rc2-' + item.id,
+      const models = (await client.availableModels()).map((item) => ({
+        ...item,
+        upstreamCode: item.code,
+        code: 'rc2-' + item.id,
       }));
       const model = models.find((item) => item.streaming && item.id && item.code && item.name);
       let store: EnterpriseBackgroundGrants | null = null;
@@ -388,8 +491,12 @@ export function createEnterpriseModelRuntime(
       try {
         if (options.background) {
           if (!options.profileRoot) throw new Error('Background grants require a profile root');
-          store = new EnterpriseBackgroundGrants(options.profileRoot, actor,
-            options.background.rc2Url, options.background.serviceToken);
+          store = new EnterpriseBackgroundGrants(
+            options.profileRoot,
+            actor,
+            options.background.rc2Url,
+            options.background.serviceToken
+          );
           await store.load();
           grants.set(key(actor), store);
         }
@@ -413,25 +520,51 @@ export function createEnterpriseModelRuntime(
         await Promise.allSettled(cleanup.map((fn) => fn()));
         if (coreResult[0].status === 'rejected') throw coreResult[0].reason;
       };
-      const dependencyProbe = core.readDependencyInventory ? createDockerCoreDependencyProbe({ installedPackages: async (identity) => {
-        if (identity.port !== core.port || identity.host !== core.host) throw new Error('CORE_DEPENDENCY_IDENTITY_CHANGED');
-        return core.readDependencyInventory!();
-      } }) : undefined;
+      const dependencyProbe = core.readDependencyInventory
+        ? createDockerCoreDependencyProbe({
+            installedPackages: async (identity) => {
+              if (identity.port !== core.port || identity.host !== core.host)
+                throw new Error('CORE_DEPENDENCY_IDENTITY_CHANGED');
+              return core.readDependencyInventory!();
+            },
+          })
+        : undefined;
       const persistDependencyChecks = async (value: Awaited<ReturnType<typeof syncEnterpriseWebResources>> | null) => {
         if (!value || !core.runtimeFingerprint) return;
         for (const result of Object.values(value.dependencyProbes)) {
           try {
-            const response = await trustedHostRequest(actor, `/ai/skills/${result.resourceId}/dependency-checks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ resourceVersion: result.resourceVersion, packageSha256: result.packageSha256, state: result.state, declarations: result.declarations, runtimeFingerprint: core.runtimeFingerprint }) });
-            const envelope = await response.json() as { code?: number };
+            const response = await trustedHostRequest(actor, `/ai/skills/${result.resourceId}/dependency-checks`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                resourceVersion: result.resourceVersion,
+                packageSha256: result.packageSha256,
+                state: result.state,
+                declarations: result.declarations,
+                runtimeFingerprint: core.runtimeFingerprint,
+              }),
+            });
+            const envelope = (await response.json()) as { code?: number };
             if (!response.ok || envelope.code !== 200) throw new Error('DEPENDENCY_RECEIPT_REJECTED');
-          } catch { console.warn('[Skill dependencies] verified runtime receipt unavailable'); }
+          } catch {
+            console.warn('[Skill dependencies] verified runtime receipt unavailable');
+          }
         }
       };
       if (!model) {
         try {
           if (!options.profileRoot) throw new Error('Enterprise resource profile root required');
-          const resources = await syncEnterpriseWebResources(actor, core, options.profileRoot, null,
-            () => activeClient(actor), (conversationId) => relayClient(actor, conversationId), undefined, mcpCache, dependencyProbe);
+          const resources = await syncEnterpriseWebResources(
+            actor,
+            core,
+            options.profileRoot,
+            null,
+            () => activeClient(actor),
+            (conversationId) => relayClient(actor, conversationId),
+            undefined,
+            mcpCache,
+            dependencyProbe
+          );
           resourceIssues.set(key(actor), resources.issues);
           await persistDependencyChecks(resources);
           await removeEnterpriseModelProvider(core, core.localToken);
@@ -445,88 +578,137 @@ export function createEnterpriseModelRuntime(
           throw error;
         }
       }
-      const proxy = new EnterpriseModelProxy({ model, models, requireConversationId: true, client: {
-        relayModel: async (modelId, raw, signal, conversationId) => {
-          try {
-            const current = await relayClient(actor, conversationId);
-            if (!(await current.availableModels()).some((item) => item.id === modelId)) {
-              return new Response(null, { status: 403 });
-            }
-            if (options.profileRoot && conversationId) {
-              const task = await currentTaskScope(options.profileRoot, actor, conversationId);
-              const boundTask = task.active && task.jobId && taskBindings.get(key(actor))?.get(conversationId) === task.jobId;
-              if (boundTask) {
-                if (task.preferences) raw = applyEmployeePreferences(raw, task.preferences);
-              } else {
-                // Native direct and scheduled turns already carry a Core-owned execution ID.
-                const root = options.profileRoot;
-                const activeTurn = (id: string) => readNativeTurn(core, id);
-                const turnId = await activeTurn(conversationId).catch(async (error): Promise<null> => {
-                  if (!(await nativeRelayCanOmitPreferences(root, actor, conversationId))) throw error;
-                  // An auxiliary relay or a failed metadata read must not
-                  // block an otherwise authorized, unpersonalized call.
-                  return null;
-                });
-                if (turnId) {
-                  const preferences = await nativeRunPreferences(root, actor, conversationId, turnId, activeTurn);
-                  raw = applyEmployeePreferences(raw, preferences);
+      const proxy = new EnterpriseModelProxy({
+        model,
+        models,
+        requireConversationId: true,
+        client: {
+          relayModel: async (modelId, raw, signal, conversationId) => {
+            try {
+              const current = await relayClient(actor, conversationId);
+              if (!(await current.availableModels()).some((item) => item.id === modelId)) {
+                return new Response(null, { status: 403 });
+              }
+              if (options.profileRoot && conversationId) {
+                const task = await currentTaskScope(options.profileRoot, actor, conversationId);
+                const boundTask =
+                  task.active && task.jobId && taskBindings.get(key(actor))?.get(conversationId) === task.jobId;
+                if (boundTask) {
+                  if (task.preferences) raw = applyEmployeePreferences(raw, task.preferences);
+                } else {
+                  // Native direct and scheduled turns already carry a Core-owned execution ID.
+                  const root = options.profileRoot;
+                  const activeTurn = (id: string) => readNativeTurn(core, id);
+                  const turnId = await activeTurn(conversationId).catch(async (error): Promise<null> => {
+                    if (!(await nativeRelayCanOmitPreferences(root, actor, conversationId))) throw error;
+                    // An auxiliary relay or a failed metadata read must not
+                    // block an otherwise authorized, unpersonalized call.
+                    return null;
+                  });
+                  if (turnId) {
+                    const preferences = await nativeRunPreferences(root, actor, conversationId, turnId, activeTurn);
+                    raw = applyEmployeePreferences(raw, preferences);
+                  }
+                }
+                const captureKey = `${key(actor)}:${task.attemptId || ''}`;
+                if (task.active && task.attemptId && !capturedProvenance.has(captureKey)) {
+                  try {
+                    const identityResponse = await fetch(
+                      `${enterpriseCoreBase(core)}/api/conversations/${conversationId}`,
+                      {
+                        headers: { 'x-aion-enterprise-local-token': core.localToken },
+                        signal: AbortSignal.timeout(5000),
+                      }
+                    );
+                    if (!identityResponse.ok) throw new Error('TASK_IDENTITY_UNAVAILABLE');
+                    const identity = (await identityResponse.json()) as { data?: { assistant?: { id?: string } } };
+                    const assistantId = identity.data?.assistant?.id;
+                    if (assistantId?.startsWith('rc2-'))
+                      await captureTaskFeedbackProvenance(
+                        options.profileRoot,
+                        actor,
+                        conversationId,
+                        assistantId,
+                        trustedHostRequest,
+                        modelId
+                      );
+                    capturedProvenance.add(captureKey);
+                    if (capturedProvenance.size > 1024)
+                      capturedProvenance.delete(capturedProvenance.values().next().value!);
+                  } catch {
+                    console.warn('[Task feedback] execution provenance unavailable');
+                  }
                 }
               }
-              const captureKey = `${key(actor)}:${task.attemptId || ''}`;
-              if (task.active && task.attemptId && !capturedProvenance.has(captureKey)) {
-                try {
-                  const identityResponse = await fetch(`${enterpriseCoreBase(core)}/api/conversations/${conversationId}`, { headers: { 'x-aion-enterprise-local-token': core.localToken }, signal: AbortSignal.timeout(5000) });
-                  if (!identityResponse.ok) throw new Error('TASK_IDENTITY_UNAVAILABLE');
-                  const identity = await identityResponse.json() as { data?: { assistant?: { id?: string } } };
-                  const assistantId = identity.data?.assistant?.id;
-                  if (assistantId?.startsWith('rc2-')) await captureTaskFeedbackProvenance(options.profileRoot, actor, conversationId, assistantId, trustedHostRequest, modelId);
-                  capturedProvenance.add(captureKey);
-                  if (capturedProvenance.size > 1024) capturedProvenance.delete(capturedProvenance.values().next().value!);
-                } catch { console.warn('[Task feedback] execution provenance unavailable'); }
+              return current.relayModel(modelId, raw, signal, conversationId);
+            } catch (error) {
+              if (error instanceof Error && error.message === 'TASK_EXECUTION_PAUSED') {
+                const task =
+                  options.profileRoot && conversationId
+                    ? await currentTaskScope(options.profileRoot, actor, conversationId)
+                    : undefined;
+                return new Response(JSON.stringify({ question: task?.question }), {
+                  status: 409,
+                  headers: { 'X-Aion-Execution-State': 'paused', 'Content-Type': 'application/json' },
+                });
               }
-            }
-            return current.relayModel(modelId, raw, signal, conversationId);
-          } catch (error) {
-            if (error instanceof Error && error.message === 'TASK_EXECUTION_PAUSED') {
-              const task = options.profileRoot && conversationId
-                ? await currentTaskScope(options.profileRoot, actor, conversationId) : undefined;
-              return new Response(JSON.stringify({ question: task?.question }), {
-                status: 409, headers: { 'X-Aion-Execution-State': 'paused', 'Content-Type': 'application/json' },
+              if (error instanceof Error && /^PREFS_[A-Z_]+$/.test(error.message))
+                return new Response(null, { status: 503 });
+              console.warn('[Enterprise model] relay authorization rejected', {
+                code: 'EXECUTION_AUTHORIZATION_DENIED',
+                conversationId,
+                modelId,
               });
+              return new Response(null, { status: 403 });
             }
-            if (error instanceof Error && /^PREFS_[A-Z_]+$/.test(error.message))
-              return new Response(null, { status: 503 });
-            console.warn('[Enterprise model] relay authorization rejected', { code: 'EXECUTION_AUTHORIZATION_DENIED', conversationId, modelId });
-            return new Response(null, { status: 403 });
-          }
+          },
         },
-      },
       });
       let office: Awaited<ReturnType<typeof startOfficeTools>> | null = null;
       let resources: Awaited<ReturnType<typeof syncEnterpriseWebResources>> | null = null;
       let stopRefreshTimer = (): void => {};
       let refreshPending = false;
-      const markPending = () => { refreshPending = true;resourceStates.set(key(actor), { state: 'pending' }); };
+      const markPending = () => {
+        refreshPending = true;
+        resourceStates.set(key(actor), { state: 'pending' });
+      };
       try {
         const proxyHost = enterpriseProxyHost(core);
         const { port, key: proxyKey } = await proxy.start(enterpriseProxyBindHost(core));
         await core.registerProxyPort?.(port);
         await syncEnterpriseModelProvider(core, core.localToken, {
-          AION_ENTERPRISE_MODEL_PROXY_PORT: String(port), AION_ENTERPRISE_MODEL_PROXY_KEY: proxyKey,
+          AION_ENTERPRISE_MODEL_PROXY_PORT: String(port),
+          AION_ENTERPRISE_MODEL_PROXY_KEY: proxyKey,
           AION_ENTERPRISE_MODEL_PROXY_HOST: proxyHost,
-          AION_ENTERPRISE_MODEL_CODE: model.code, AION_ENTERPRISE_MODEL_NAME: model.name,
+          AION_ENTERPRISE_MODEL_CODE: model.code,
+          AION_ENTERPRISE_MODEL_NAME: model.name,
           AION_ENTERPRISE_MODELS_JSON: JSON.stringify(models),
         });
         resources = options.profileRoot
-          ? await syncEnterpriseWebResources(actor, core, options.profileRoot, { ...model, availableModels: models },
-            () => activeClient(actor), (conversationId) => relayClient(actor, conversationId), markPending, mcpCache, dependencyProbe)
+          ? await syncEnterpriseWebResources(
+              actor,
+              core,
+              options.profileRoot,
+              { ...model, availableModels: models },
+              () => activeClient(actor),
+              (conversationId) => relayClient(actor, conversationId),
+              markPending,
+              mcpCache,
+              dependencyProbe
+            )
           : null;
         resourceIssues.set(key(actor), resources?.issues || []);
         await persistDependencyChecks(resources);
         let invalidate: () => void = () => {};
-        const invalidated = new Promise<void>((resolve) => { invalidate = resolve; });
-        let generation = 0, refreshing: Promise<EnterpriseResourceState> | null = null, stoppingResources = false;
-        resources?.invalidated.then(() => { if (generation === 0) invalidate(); });
+        const invalidated = new Promise<void>((resolve) => {
+          invalidate = resolve;
+        });
+        let generation = 0,
+          refreshing: Promise<EnterpriseResourceState> | null = null,
+          stoppingResources = false;
+        resources?.invalidated.then(() => {
+          if (generation === 0) invalidate();
+        });
         resourceStates.set(key(actor), { state: 'ready' });
         const refresh = (): Promise<EnterpriseResourceState> => {
           if (stoppingResources) return Promise.reject(new Error('RESOURCE_REFRESH_UNAVAILABLE'));
@@ -537,7 +719,8 @@ export function createEnterpriseModelRuntime(
             let ready: { success?: boolean; data?: { idle?: boolean } };
             try {
               const response = await fetch(`${enterpriseCoreBase(core)}/api/cron/internal/idle-ready`, {
-                headers: { 'x-aion-enterprise-local-token': core.localToken, 'x-aionui-internal': '1' }, signal: AbortSignal.timeout(3000),
+                headers: { 'x-aion-enterprise-local-token': core.localToken, 'x-aionui-internal': '1' },
+                signal: AbortSignal.timeout(3000),
               });
               if (!response.ok) throw new Error('RESOURCE_REFRESH_CHECK_FAILED');
               ready = (await response.json()) as typeof ready;
@@ -558,56 +741,114 @@ export function createEnterpriseModelRuntime(
             generation += 1;
             const currentGeneration = generation;
             try {
-              const available = (await (await activeClient(actor)).availableModels()).map((item) => ({ ...item, upstreamCode: item.code, code: 'rc2-' + item.id,
+              const available = (await (await activeClient(actor)).availableModels()).map((item) => ({
+                ...item,
+                upstreamCode: item.code,
+                code: 'rc2-' + item.id,
               }));
               const chosen = available.find((item) => item.streaming);
               if (!chosen || !options.profileRoot) throw new Error('DEFAULT_MODEL_UNAVAILABLE');
-              await resources?.stop();resources = null;
+              await resources?.stop();
+              resources = null;
               models.splice(0, models.length, ...available);
               await syncEnterpriseModelProvider(core, core.localToken, {
-                AION_ENTERPRISE_MODEL_PROXY_PORT: String(port), AION_ENTERPRISE_MODEL_PROXY_KEY: proxyKey,
+                AION_ENTERPRISE_MODEL_PROXY_PORT: String(port),
+                AION_ENTERPRISE_MODEL_PROXY_KEY: proxyKey,
                 AION_ENTERPRISE_MODEL_PROXY_HOST: proxyHost,
-                AION_ENTERPRISE_MODEL_CODE: chosen.code, AION_ENTERPRISE_MODEL_NAME: chosen.name,
+                AION_ENTERPRISE_MODEL_CODE: chosen.code,
+                AION_ENTERPRISE_MODEL_NAME: chosen.name,
                 AION_ENTERPRISE_MODELS_JSON: JSON.stringify(available),
               });
-              resources = await syncEnterpriseWebResources(actor, core, options.profileRoot, { ...chosen, availableModels: available },
-                () => activeClient(actor), (conversationId) => relayClient(actor, conversationId), markPending, mcpCache, dependencyProbe);
+              resources = await syncEnterpriseWebResources(
+                actor,
+                core,
+                options.profileRoot,
+                { ...chosen, availableModels: available },
+                () => activeClient(actor),
+                (conversationId) => relayClient(actor, conversationId),
+                markPending,
+                mcpCache,
+                dependencyProbe
+              );
               resourceIssues.set(key(actor), resources.issues);
               await persistDependencyChecks(resources);
-              resources.invalidated.then(() => { if (generation === currentGeneration) invalidate(); });
+              resources.invalidated.then(() => {
+                if (generation === currentGeneration) invalidate();
+              });
               if (office) await ensureOfficeAssistant(core, office.mcpId, chosen);
               const state = { state: refreshPending ? 'pending' : 'ready' } as EnterpriseResourceState;
               resourceStates.set(key(actor), state);
               return state;
-            } catch (error) { invalidate();throw error; }
-          })().finally(() => { refreshing = null; });
+            } catch (error) {
+              invalidate();
+              throw error;
+            }
+          })().finally(() => {
+            refreshing = null;
+          });
           return refreshing;
         };
         refreshers.set(key(actor), refresh);
-        const refreshTimer = setInterval(() => { if (refreshPending && !stoppingResources) void refresh().catch(() => {}); }, 15000);
+        const refreshTimer = setInterval(() => {
+          if (refreshPending && !stoppingResources) void refresh().catch(() => {});
+        }, 15000);
         refreshTimer.unref();
         stopRefreshTimer = () => clearInterval(refreshTimer);
         let stopHistory = (): void => {};
         if (options.profileRoot) {
-          office = await startOfficeTools(actor, core, options.profileRoot, (conversationId) => relayClient(actor, conversationId), options.publicOrigin);
-          officeTrust.set(key(actor), async c => (await office?.trustedConfirmation(c)) === true || (await resources?.trustedConfirmation(c)) === true);
+          office = await startOfficeTools(
+            actor,
+            core,
+            options.profileRoot,
+            (conversationId) => relayClient(actor, conversationId),
+            options.publicOrigin
+          );
+          officeTrust.set(
+            key(actor),
+            async (c) =>
+              (await office?.trustedConfirmation(c)) === true || (await resources?.trustedConfirmation(c)) === true
+          );
           await ensureOfficeAssistant(core, office.mcpId, model);
           if (core.workspaceRoot) {
-            const store = await OfficeStore.create(options.profileRoot, actor), workspace = core.workspaceRoot;
+            const store = await OfficeStore.create(options.profileRoot, actor),
+              workspace = core.workspaceRoot;
             await store.files(workspace);
             let pending: ReturnType<typeof setTimeout> | undefined;
             try {
               const watcher = watch(workspace, { recursive: true }, () => {
                 if (pending) clearTimeout(pending);
-                pending = setTimeout(() => { void store.files(workspace).catch((error: Error) => console.warn('[Enterprise Office] version snapshot deferred:', error.message)); }, 1000);
+                pending = setTimeout(() => {
+                  void store
+                    .files(workspace)
+                    .catch((error: Error) =>
+                      console.warn('[Enterprise Office] version snapshot deferred:', error.message)
+                    );
+                }, 1000);
                 pending.unref();
               });
-              stopHistory = () => { watcher.close();if (pending) clearTimeout(pending); };
-            } catch { console.warn('[Enterprise Office] automatic file watcher unavailable; versions are captured when files are listed'); }
+              stopHistory = () => {
+                watcher.close();
+                if (pending) clearTimeout(pending);
+              };
+            } catch {
+              console.warn(
+                '[Enterprise Office] automatic file watcher unavailable; versions are captured when files are listed'
+              );
+            }
           }
         }
-        return { ...core, invalidated,
-          stop: async () => { stoppingResources = true;clearInterval(refreshTimer);refreshers.delete(key(actor));stopHistory();await refreshing?.catch(() => {});resourceStates.delete(key(actor));return stop(...(resources ? [resources.stop] : []), ...(office ? [office.stop] : []), () => proxy.stop()); },
+        return {
+          ...core,
+          invalidated,
+          stop: async () => {
+            stoppingResources = true;
+            clearInterval(refreshTimer);
+            refreshers.delete(key(actor));
+            stopHistory();
+            await refreshing?.catch(() => {});
+            resourceStates.delete(key(actor));
+            return stop(...(resources ? [resources.stop] : []), ...(office ? [office.stop] : []), () => proxy.stop());
+          },
         };
       } catch (error) {
         stopRefreshTimer();

@@ -168,8 +168,12 @@ const ScheduledTasksPage: React.FC = () => {
             isMobile ? 'gap-14px' : 'gap-16px'
           )}
         >
-          <div className={classNames('w-full box-border items-center gap-x-12px gap-y-10px rounded-12px border border-solid border-[var(--color-border-2)] bg-fill-2 px-14px py-12px sm:rounded-14px sm:px-16px',
-            !hostedWeb && 'grid grid-cols-[minmax(0,1fr)_auto] max-[520px]:grid-cols-1')}>
+          <div
+            className={classNames(
+              'w-full box-border items-center gap-x-12px gap-y-10px rounded-12px border border-solid border-[var(--color-border-2)] bg-fill-2 px-14px py-12px sm:rounded-14px sm:px-16px',
+              !hostedWeb && 'grid grid-cols-[minmax(0,1fr)_auto] max-[520px]:grid-cols-1'
+            )}
+          >
             <span
               className={classNames(
                 'min-w-0 text-t-primary',
@@ -178,14 +182,16 @@ const ScheduledTasksPage: React.FC = () => {
             >
               {t(hostedWeb ? 'cron.page.serverBanner' : 'cron.page.awakeBanner')}
             </span>
-            {!hostedWeb && <div className='justify-self-end max-[520px]:justify-self-start'>
-              <Tooltip content={t('cron.page.keepAwakeTooltip')}>
-                <div className='flex items-center gap-8px text-t-secondary text-12px leading-18px sm:text-13px'>
-                  <span>{t('cron.page.keepAwake')}</span>
-                  <Switch size='small' checked={keepAwake} onChange={handleKeepAwakeChange} />
-                </div>
-              </Tooltip>
-            </div>}
+            {!hostedWeb && (
+              <div className='justify-self-end max-[520px]:justify-self-start'>
+                <Tooltip content={t('cron.page.keepAwakeTooltip')}>
+                  <div className='flex items-center gap-8px text-t-secondary text-12px leading-18px sm:text-13px'>
+                    <span>{t('cron.page.keepAwake')}</span>
+                    <Switch size='small' checked={keepAwake} onChange={handleKeepAwakeChange} />
+                  </div>
+                </Tooltip>
+              </div>
+            )}
           </div>
 
           {loading ? (

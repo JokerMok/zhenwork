@@ -123,15 +123,24 @@ export class Rc2Client {
     }
   }
 
-  async login({ username, password, code = undefined, uuid = undefined,
-    clientMetadata = undefined, edgeToken = undefined }) {
+  async login({
+    username,
+    password,
+    code = undefined,
+    uuid = undefined,
+    clientMetadata = undefined,
+    edgeToken = undefined,
+  }) {
     if (!this.clientId) await this.bootstrap();
     const { clientId } = this;
-    const forwardedHeaders = clientMetadata && edgeToken ? {
-      'X-ZhenWork-Edge-Token': edgeToken,
-      'X-ZhenWork-Client-IP': clientMetadata.ipAddress,
-      'X-ZhenWork-Client-User-Agent': clientMetadata.userAgent,
-    } : {};
+    const forwardedHeaders =
+      clientMetadata && edgeToken
+        ? {
+            'X-ZhenWork-Edge-Token': edgeToken,
+            'X-ZhenWork-Client-IP': clientMetadata.ipAddress,
+            'X-ZhenWork-Client-User-Agent': clientMetadata.userAgent,
+          }
+        : {};
     const { response, body } = await this.request('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...forwardedHeaders },
@@ -171,8 +180,8 @@ export class Rc2Client {
         body?.code !== 200 ||
         !/^[0-9]+$/.test(String(body?.data?.userId ?? ''))
       ) {
-      throw new Error('RC2 session revoked or user disabled');
-    }
+        throw new Error('RC2 session revoked or user disabled');
+      }
       return { userId: String(body.data.userId), mustChangePassword: body.data.mustChangePassword === true };
     })();
     this.mePending = { identity, promise };
@@ -188,7 +197,8 @@ export class Rc2Client {
     const { response, body } = await this.request('/ai/models/available');
     if (response.status === 401 || body?.code === 401) throw new Rc2ConnectionError('AUTHENTICATION_REQUIRED');
     if (response.status === 403 || body?.code === 403) throw new Rc2ConnectionError('CAPABILITY_FORBIDDEN');
-    if (!response.ok || body?.code !== 200 || !Array.isArray(body.data)) throw new Rc2ConnectionError('CAPABILITY_SERVICE_UNAVAILABLE');
+    if (!response.ok || body?.code !== 200 || !Array.isArray(body.data))
+      throw new Rc2ConnectionError('CAPABILITY_SERVICE_UNAVAILABLE');
     return body.data.filter(
       (model) =>
         typeof model.id === 'string' &&
@@ -249,15 +259,22 @@ export class Rc2Client {
       }
       const legacy = Array.isArray(body?.data);
       const rows = legacy ? body.data : body?.data?.items;
-      if (!response.ok || body?.code !== 200 || !Array.isArray(rows) ||
-          (!legacy && typeof body.data.hasMore !== 'boolean'))
+      if (
+        !response.ok ||
+        body?.code !== 200 ||
+        !Array.isArray(rows) ||
+        (!legacy && typeof body.data.hasMore !== 'boolean')
+      )
         throw new Error('RC2 resources unavailable');
       for (const item of rows)
         if (item?.actions?.includes('USE') && Number.isInteger(item.publishedVersion)) {
           items.set(item.id, {
-            id: item.id, name: item.name, description: item.description,
+            id: item.id,
+            name: item.name,
+            description: item.description,
             version: item.publishedVersion,
-            source: item.source === 'ORGANIZATION' ? 'enterprise' : 'personal', type,
+            source: item.source === 'ORGANIZATION' ? 'enterprise' : 'personal',
+            type,
           });
         }
       if (legacy ? rows.length < 30 : !body.data.hasMore) return [...items.values()];
@@ -325,8 +342,9 @@ export class Rc2Client {
         clientid: this.clientId,
         ...(headers['mcp-session-id'] ? { 'Mcp-Session-Id': headers['mcp-session-id'] } : {}),
         ...(headers['mcp-protocol-version'] ? { 'MCP-Protocol-Version': headers['mcp-protocol-version'] } : {}),
-        ...(headers['x-zhenwork-idempotency-key'] ?
-          { 'X-ZhenWork-Idempotency-Key': headers['x-zhenwork-idempotency-key'] } : {}),
+        ...(headers['x-zhenwork-idempotency-key']
+          ? { 'X-ZhenWork-Idempotency-Key': headers['x-zhenwork-idempotency-key'] }
+          : {}),
       },
       body: raw,
       signal,

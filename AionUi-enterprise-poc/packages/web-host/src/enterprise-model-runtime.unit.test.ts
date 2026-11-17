@@ -25,7 +25,10 @@ test('enterprise model proxy keeps serving an actor through another valid RC2 de
       else if (req.method === 'POST' && req.url === '/api/providers') {
         provider = JSON.parse(Buffer.concat(chunks).toString('utf8'));
         res.end(JSON.stringify({ success: true, data: { id: 'rc2-enterprise-model' } }));
-      } else { res.statusCode = 404; res.end('{}'); }
+      } else {
+        res.statusCode = 404;
+        res.end('{}');
+      }
     });
   });
   await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
@@ -34,36 +37,58 @@ test('enterprise model proxy keeps serving an actor through another valid RC2 de
   const session = async () => {
     const device = ++issued;
     let active = true;
-    return { actor: { serverId: 'rc2', userId: '17' }, username: 'employee',
+    return {
+      actor: { serverId: 'rc2', userId: '17' },
+      username: 'employee',
       client: {
-        me: async () => { if (!active) throw new Error('revoked'); return { userId: '17' }; },
+        me: async () => {
+          if (!active) throw new Error('revoked');
+          return { userId: '17' };
+        },
         availableModels: async () => [{ id: 'model-1', code: 'enterprise-model', name: 'Enterprise', streaming: true }],
-        relayModel: async () => new Response(`data: device-${device}\n\n`, { headers: { 'content-type': 'text/event-stream' } }),
-        resources: async () => [], authorizedResource: async () => null,
+        relayModel: async () =>
+          new Response(`data: device-${device}\n\n`, { headers: { 'content-type': 'text/event-stream' } }),
+        resources: async () => [],
+        authorizedResource: async () => null,
       },
       validate: async () => active,
-      close: async () => { active = false; },
+      close: async () => {
+        active = false;
+      },
     };
   };
-  const runtime = createEnterpriseModelRuntime(session,
+  const runtime = createEnterpriseModelRuntime(
+    session,
     async () => ({ port: corePort, localToken: 'local-test-token', stop: async () => {} }),
-    { rc2Resume: async (cookie) => {
-      if (cookie !== 'valid-rc2-cookie') throw new Error('Invalid cookie');
-      return session();
-    } });
+    {
+      rc2Resume: async (cookie) => {
+        if (cookie !== 'valid-rc2-cookie') throw new Error('Invalid cookie');
+        return session();
+      },
+    }
+  );
   let handle: Awaited<ReturnType<typeof runtime.startCore>> | undefined;
   try {
     const first = await runtime.login('employee', 'test');
     handle = await runtime.startCore(first.actor);
     expect(provider).not.toBeNull();
-    const endpoint = (provider as unknown as { base_url: string; api_key: string });
-    const relay = () => fetch(`${endpoint.base_url}/conversations/a1b2c3d4/chat/completions`, { method: 'POST',
-      headers: { authorization: `Bearer ${endpoint.api_key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'enterprise-model', stream: true }) });
+    const endpoint = provider as unknown as { base_url: string; api_key: string };
+    const relay = () =>
+      fetch(`${endpoint.base_url}/conversations/a1b2c3d4/chat/completions`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${endpoint.api_key}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'enterprise-model', stream: true }),
+      });
     expect(await (await relay()).text()).toContain('device-1');
-    expect((await fetch(`${endpoint.base_url}/chat/completions`, { method: 'POST',
-      headers: { authorization: `Bearer ${endpoint.api_key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'enterprise-model', stream: true }) })).status).toBe(404);
+    expect(
+      (
+        await fetch(`${endpoint.base_url}/chat/completions`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${endpoint.api_key}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ model: 'enterprise-model', stream: true }),
+        })
+      ).status
+    ).toBe(404);
     const second = await runtime.resume!('valid-rc2-cookie');
     await first.close();
     expect(await (await relay()).text()).toContain('device-2');
@@ -72,64 +97,108 @@ test('enterprise model proxy keeps serving an actor through another valid RC2 de
     await handle?.stop();
     if (provider) {
       const endpoint = provider as { base_url: string; api_key: string };
-      await expect(fetch(`${endpoint.base_url}/chat/completions`, { method: 'POST',
-        headers: { authorization: `Bearer ${endpoint.api_key}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model: 'enterprise-model', stream: true }),
-        signal: AbortSignal.timeout(1000) })).rejects.toThrow();
+      await expect(
+        fetch(`${endpoint.base_url}/chat/completions`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${endpoint.api_key}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ model: 'enterprise-model', stream: true }),
+          signal: AbortSignal.timeout(1000),
+        })
+      ).rejects.toThrow();
     }
     await new Promise<void>((resolve) => core.close(() => resolve()));
   }
 });
 
-test('personal-only web Core removes prior RC2 resources and preserves personal resources', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'enterprise-personal-only-'));
-  const actor = { serverId: 'rc2', userId: '17' };
-  await mkdir(enterpriseProfilePath(root, actor), { recursive: true });
-  const managed = await enterpriseManagedResourcePath(root, actor);
-  const assistantId = 'rc2-11111111-1111-4111-8111-111111111111';
-  await writeFile(managed, JSON.stringify({ skills: ['rc2-skill'], mcpIds: ['enterprise-mcp'],
-    assistantIds: [assistantId] }));
-  const deleted: string[] = [];
-  const core = http.createServer((req, res) => {
-    res.setHeader('content-type', 'application/json');
-    if (req.method === 'DELETE') { deleted.push(req.url || ''); res.end(JSON.stringify({ success: true })); return; }
-    const data = req.url === '/api/providers' ? [
-      { id: 'rc2-enterprise-model', platform: 'custom', base_url: 'http://127.0.0.1:4444' },
-      { id: 'personal-model', platform: 'custom', base_url: 'https://personal.example' },
-    ] : req.url === '/api/mcp/servers' ? [
-      { id: 'enterprise-mcp', name: 'rc2-enterprise-11111111-1111-4111-8111-111111111111',
-        description: 'RC2 authorized enterprise MCP', transport: { type: 'http', url: 'http://127.0.0.1:5555/mcp' } },
-      { id: 'personal-mcp', name: 'personal-mcp' },
-    ] : req.url === '/api/assistants' ? [
-      { id: assistantId, agent_id: 'agent-1', agent: { type: 'aionrs' } },
-      { id: 'personal-assistant', agent_id: 'agent-1' },
-    ] : [];
-    res.end(JSON.stringify({ success: true, data }));
-  });
-  await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
-  const port = (core.address() as { port: number }).port;
-  const runtime = createEnterpriseModelRuntime(async () => ({ actor, username: 'employee',
-    client: { me: async () => ({ userId: '17' }), availableModels: async () => [],
-      resources: async () => [], authorizedResource: async () => null },
-    validate: async () => true, close: async () => {},
-  }), async () => ({ port, localToken: 'local-test-token', stop: async () => {} }), { profileRoot: root });
-  let handle: Awaited<ReturnType<typeof runtime.startCore>> | undefined;
-  try {
-    const login = await runtime.login('employee', 'secret');
-    handle = await runtime.startCore(login.actor);
-    expect(deleted).toEqual(expect.arrayContaining([
-      `/api/assistants/${assistantId}`, '/api/skills/rc2-skill',
-      '/api/mcp/servers/enterprise-mcp', '/api/providers/rc2-enterprise-model',
-    ]));
-    expect(deleted.some((route) => route.includes('personal'))).toBe(false);
-    expect(JSON.parse(await readFile(managed, 'utf8'))).toEqual({ skills: [], mcpIds: [], assistantIds: [] });
-    await login.close();
-  } finally {
-    await handle?.stop();
-    await new Promise<void>((resolve) => core.close(() => resolve()));
-    await rm(root, { recursive: true, force: true });
+test.runIf(process.platform === 'linux')(
+  'personal-only web Core removes prior RC2 resources and preserves personal resources',
+  async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'enterprise-personal-only-'));
+    const actor = { serverId: 'rc2', userId: '17' };
+    await mkdir(enterpriseProfilePath(root, actor), { recursive: true });
+    const managed = await enterpriseManagedResourcePath(root, actor);
+    const assistantId = 'rc2-11111111-1111-4111-8111-111111111111';
+    await writeFile(
+      managed,
+      JSON.stringify({ skills: ['rc2-skill'], mcpIds: ['enterprise-mcp'], assistantIds: [assistantId] })
+    );
+    const deleted: string[] = [];
+    const core = http.createServer((req, res) => {
+      res.setHeader('content-type', 'application/json');
+      if (req.method === 'DELETE') {
+        deleted.push(req.url || '');
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+      const data =
+        req.url === '/api/providers'
+          ? [
+              { id: 'rc2-enterprise-model', platform: 'custom', base_url: 'http://127.0.0.1:4444' },
+              { id: 'personal-model', platform: 'custom', base_url: 'https://personal.example' },
+            ]
+          : req.url === '/api/mcp/servers'
+            ? [
+                {
+                  id: 'enterprise-mcp',
+                  name: 'rc2-enterprise-11111111-1111-4111-8111-111111111111',
+                  description: 'RC2 authorized enterprise MCP',
+                  transport: { type: 'http', url: 'http://127.0.0.1:5555/mcp' },
+                },
+                { id: 'personal-mcp', name: 'personal-mcp' },
+              ]
+            : req.url === '/api/assistants'
+              ? [
+                  { id: assistantId, agent_id: 'agent-1', agent: { type: 'aionrs' } },
+                  { id: 'personal-assistant', agent_id: 'agent-1' },
+                ]
+              : [];
+      res.end(JSON.stringify({ success: true, data }));
+    });
+    await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
+    const port = (core.address() as { port: number }).port;
+    const runtime = createEnterpriseModelRuntime(
+      async () => ({
+        actor,
+        username: 'employee',
+        client: {
+          me: async () => ({ userId: '17' }),
+          availableModels: async () => [],
+          resources: async () => [],
+          authorizedResource: async () => null,
+        },
+        validate: async () => true,
+        close: async () => {},
+      }),
+      async () => ({ port, localToken: 'local-test-token', stop: async () => {} }),
+      { profileRoot: root }
+    );
+    let handle: Awaited<ReturnType<typeof runtime.startCore>> | undefined;
+    try {
+      const login = await runtime.login('employee', 'secret');
+      handle = await runtime.startCore(login.actor);
+      expect(deleted).toEqual(
+        expect.arrayContaining([
+          `/api/assistants/${assistantId}`,
+          '/api/skills/rc2-skill',
+          '/api/mcp/servers/enterprise-mcp',
+          '/api/providers/rc2-enterprise-model',
+        ])
+      );
+      expect(deleted.some((route) => route.includes('personal'))).toBe(false);
+      expect(JSON.parse(await readFile(managed, 'utf8'))).toEqual({
+        skills: [],
+        skillResources: [],
+        mcpIds: [],
+        assistantIds: [],
+      });
+      await login.close();
+    } finally {
+      await handle?.stop();
+      await new Promise<void>((resolve) => core.close(() => resolve()));
+      await rm(root, { recursive: true, force: true });
+    }
   }
-});
+);
 
 test('resource refresh stays actor-scoped, defers while busy, and preserves committed control writes', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'enterprise-refresh-'));
@@ -150,74 +219,118 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
   let settings: Record<string, unknown> = {};
   let mcpSequence = 0;
   const mcps: Array<Record<string, unknown>> = [];
-  const coreServer = http.createServer((req, res) => { void (async () => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(chunk as Buffer);
-    const raw = Buffer.concat(chunks).toString('utf8');
-    const body = raw ? JSON.parse(raw) as Record<string, unknown> : undefined;
-    const route = req.url || '';
-    coreCalls.push({ method: req.method || 'GET', route, body });
-    res.setHeader('content-type', 'application/json');
-    const send = (data: unknown, status = 200) => { res.statusCode = status;res.end(JSON.stringify(data)); };
-    if (req.method === 'GET' && route === '/api/providers') return send({ success: true, data: providers });
-    if (req.method === 'POST' && route === '/api/providers') {
-      const saved = { ...body, id: String(body?.id) };providers.push(saved);return send({ success: true, data: saved }, 201);
-    }
-    if (req.method === 'PUT' && route === '/api/providers/rc2-enterprise-model') {
-      Object.assign(providers.find((item) => item.id === 'rc2-enterprise-model')!, body);return send({ success: true, data: { id: 'rc2-enterprise-model' } });
-    }
-    if (req.method === 'GET' && route === '/api/mcp/servers') return send({ success: true, data: mcps });
-    if (req.method === 'POST' && route === '/api/mcp/servers') {
-      const saved = { ...body, id: `mcp-${++mcpSequence}`, enabled: true };mcps.push(saved);return send({ success: true, data: saved }, 201);
-    }
-    if (req.method === 'DELETE' && route.startsWith('/api/mcp/servers/')) {
-      const id = route.split('/').at(-1);const index = mcps.findIndex((item) => item.id === id);if (index >= 0) mcps.splice(index, 1);
-      return send({ success: true, data: { ok: true } });
-    }
-    if (req.method === 'GET' && route === '/api/assistants') return send({ success: true, data: assistants });
-    if (req.method === 'POST' && route === '/api/assistants') {
-      assistants.push(body!);return send({ success: true, data: body }, 201);
-    }
-    if (req.method === 'GET' && route === '/api/skills') return send({ success: true, data: [] });
-    if (req.method === 'PUT' && route === '/api/assistants/zhenwork-general-office') {
-      Object.assign(assistants.find((item) => item.id === 'zhenwork-general-office')!, body);return send({ success: true, data: body });
-    }
-    if (req.method === 'POST' && route === '/api/skills/assistant-rule/write') return send({ success: true, data: { ok: true } });
-    if (req.method === 'GET' && route === '/api/settings/client') return send({ success: true, data: settings });
-    if (req.method === 'PUT' && route === '/api/settings/client') { settings = { ...settings, ...body };return send({ success: true, data: settings }); }
-    if (req.method === 'GET' && route === '/api/cron/internal/idle-ready' && checkFailed) return send({}, 503);
-    if (req.method === 'GET' && route === '/api/cron/internal/idle-ready') return send({ success: true, data: { idle } });
-    return send({ success: false }, 404);
-  })().catch(() => { res.statusCode = 500;res.end('{}'); }); });
+  const coreServer = http.createServer((req, res) => {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk as Buffer);
+      const raw = Buffer.concat(chunks).toString('utf8');
+      const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
+      const route = req.url || '';
+      coreCalls.push({ method: req.method || 'GET', route, body });
+      res.setHeader('content-type', 'application/json');
+      const send = (data: unknown, status = 200) => {
+        res.statusCode = status;
+        res.end(JSON.stringify(data));
+      };
+      if (req.method === 'GET' && route === '/api/providers') return send({ success: true, data: providers });
+      if (req.method === 'POST' && route === '/api/providers') {
+        const saved = { ...body, id: String(body?.id) };
+        providers.push(saved);
+        return send({ success: true, data: saved }, 201);
+      }
+      if (req.method === 'PUT' && route === '/api/providers/rc2-enterprise-model') {
+        Object.assign(providers.find((item) => item.id === 'rc2-enterprise-model')!, body);
+        return send({ success: true, data: { id: 'rc2-enterprise-model' } });
+      }
+      if (req.method === 'GET' && route === '/api/mcp/servers') return send({ success: true, data: mcps });
+      if (req.method === 'POST' && route === '/api/mcp/servers') {
+        const saved = { ...body, id: `mcp-${++mcpSequence}`, enabled: true };
+        mcps.push(saved);
+        return send({ success: true, data: saved }, 201);
+      }
+      if (req.method === 'DELETE' && route.startsWith('/api/mcp/servers/')) {
+        const id = route.split('/').at(-1);
+        const index = mcps.findIndex((item) => item.id === id);
+        if (index >= 0) mcps.splice(index, 1);
+        return send({ success: true, data: { ok: true } });
+      }
+      if (req.method === 'GET' && route === '/api/assistants') return send({ success: true, data: assistants });
+      if (req.method === 'POST' && route === '/api/assistants') {
+        assistants.push(body!);
+        return send({ success: true, data: body }, 201);
+      }
+      if (req.method === 'GET' && route === '/api/skills') return send({ success: true, data: [] });
+      if (req.method === 'PUT' && route === '/api/assistants/zhenwork-general-office') {
+        Object.assign(assistants.find((item) => item.id === 'zhenwork-general-office')!, body);
+        return send({ success: true, data: body });
+      }
+      if (req.method === 'POST' && route === '/api/skills/assistant-rule/write')
+        return send({ success: true, data: { ok: true } });
+      if (req.method === 'GET' && route === '/api/settings/client') return send({ success: true, data: settings });
+      if (req.method === 'PUT' && route === '/api/settings/client') {
+        settings = { ...settings, ...body };
+        return send({ success: true, data: settings });
+      }
+      if (req.method === 'GET' && route === '/api/cron/internal/idle-ready' && checkFailed) return send({}, 503);
+      if (req.method === 'GET' && route === '/api/cron/internal/idle-ready')
+        return send({ success: true, data: { idle } });
+      return send({ success: false }, 404);
+    })().catch(() => {
+      res.statusCode = 500;
+      res.end('{}');
+    });
+  });
   await new Promise<void>((resolve) => coreServer.listen(0, '127.0.0.1', resolve));
   const corePort = (coreServer.address() as { port: number }).port;
 
   let controlWrites = 0;
   const rc2Server = http.createServer((_req, res) => {
-    controlWrites += 1;res.setHeader('content-type', 'application/json');res.end(JSON.stringify({ code: 200, data: { committed: true } }));
+    controlWrites += 1;
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ code: 200, data: { committed: true } }));
   });
   await new Promise<void>((resolve) => rc2Server.listen(0, '127.0.0.1', resolve));
   const rc2Port = (rc2Server.address() as { port: number }).port;
   const client = {
-    baseUrl: `http://127.0.0.1:${rc2Port}`, cookie: 'session=actor-17', clientId: 'client-17', origin: 'https://work.example',
+    baseUrl: `http://127.0.0.1:${rc2Port}`,
+    cookie: 'session=actor-17',
+    clientId: 'client-17',
+    origin: 'https://work.example',
     me: async () => ({ userId: '17' }),
     availableModels: async () => models,
     relayModel: async () => new Response('data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } }),
-    resources: async () => [], authorizedResource: async () => null,
+    resources: async () => [],
+    authorizedResource: async () => null,
   };
-  const runtime = createEnterpriseModelRuntime(async () => ({ actor, username: 'employee', client: client as never,
-    validate: async () => true, close: async () => {},
-  }), async () => ({ port: corePort, localToken: 'core-token', stop: async () => {},
-    networkMode: 'container', proxyHost: 'model-gateway',
-    registerProxyPort: async () => {}, unregisterProxyPort: async () => {} }), { profileRoot: root });
+  const runtime = createEnterpriseModelRuntime(
+    async () => ({
+      actor,
+      username: 'employee',
+      client: client as never,
+      validate: async () => true,
+      close: async () => {},
+    }),
+    async () => ({
+      port: corePort,
+      localToken: 'core-token',
+      stop: async () => {},
+      networkMode: 'container',
+      proxyHost: 'model-gateway',
+      registerProxyPort: async () => {},
+      unregisterProxyPort: async () => {},
+    }),
+    { profileRoot: root }
+  );
   let handle: Awaited<ReturnType<typeof runtime.startCore>> | undefined;
   try {
     const login = await runtime.login('employee', 'secret');
     handle = await runtime.startCore(actor);
-    const createdProvider = coreCalls.find((call) => call.method === 'POST' && call.route === '/api/providers')?.body as { models: string[] };
+    const createdProvider = coreCalls.find((call) => call.method === 'POST' && call.route === '/api/providers')
+      ?.body as { models: string[] };
     expect(createdProvider.models).toEqual(['rc2-model-a', 'rc2-model-b']);
     const officeMcp = coreCalls.find((call) => call.method === 'POST' && call.route === '/api/mcp/servers')?.body as {
-      name: string; transport: { url: string };
+      name: string;
+      transport: { url: string };
     };
     expect(officeMcp.name).toBe('rc2-enterprise-zhenwork-office-tools');
     expect(officeMcp.transport.url).toMatch(/^http:\/\/model-gateway:\d+\/mcp$/);
@@ -230,9 +343,13 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
     await expect(runtime.refreshResources(actor)).resolves.toEqual({ state: 'pending', reason: 'CHECK_FAILED' });
     checkFailed = false;
     idle = false;
-    await expect(Promise.all([runtime.refreshResources(actor), runtime.refreshResources(actor), runtime.refreshResources(actor)])).resolves.toEqual(Array(3).fill({ state: 'pending', reason: 'TASK_ACTIVE' }));
+    await expect(
+      Promise.all([runtime.refreshResources(actor), runtime.refreshResources(actor), runtime.refreshResources(actor)])
+    ).resolves.toEqual(Array(3).fill({ state: 'pending', reason: 'TASK_ACTIVE' }));
     expect(runtime.resourceStatus?.(actor)).toEqual({ state: 'pending', reason: 'TASK_ACTIVE' });
-    expect(coreCalls.filter((call) => call.method === 'PUT' && call.route === '/api/providers/rc2-enterprise-model')).toHaveLength(0);
+    expect(
+      coreCalls.filter((call) => call.method === 'PUT' && call.route === '/api/providers/rc2-enterprise-model')
+    ).toHaveLength(0);
     const committed = await runtime.controlRequest(actor, '/ai/resources/example', { method: 'POST', body: '{}' });
     expect(committed.status).toBe(200);
     expect(controlWrites).toBe(1);
@@ -247,7 +364,9 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
     ];
     idle = true;
     await Promise.all([runtime.refreshResources(actor), runtime.refreshResources(actor)]);
-    const updates = coreCalls.filter((call) => call.method === 'PUT' && call.route === '/api/providers/rc2-enterprise-model');
+    const updates = coreCalls.filter(
+      (call) => call.method === 'PUT' && call.route === '/api/providers/rc2-enterprise-model'
+    );
     expect(updates).toHaveLength(1);
     expect(updates[0].body?.models).toEqual(['rc2-model-b', 'rc2-model-a']);
     expect(assistants.find((item) => item.id === 'zhenwork-general-office')?.defaults).toMatchObject({
@@ -266,27 +385,59 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
 test('gateway accepts one deferred update without treating an active task as a configuration failure', async () => {
   const staticDir = await mkdtemp(path.join(tmpdir(), 'enterprise-refresh-gateway-'));
   await writeFile(path.join(staticDir, 'index.html'), '<html></html>');
-  const coreServer = http.createServer((_req, res) => { res.setHeader('content-type', 'application/json');res.end('{}'); });
+  const coreServer = http.createServer((_req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end('{}');
+  });
   await new Promise<void>((resolve) => coreServer.listen(0, '127.0.0.1', resolve));
   const corePort = (coreServer.address() as { port: number }).port;
   const gateway = await startEnterpriseGateway({
-    staticDir, publicOrigin: 'https://workspace.example', port: 0,
-    login: async () => ({ actor: { serverId: 'rc2', userId: '17' }, validate: async () => true, close: async () => {} }),
+    staticDir,
+    publicOrigin: 'https://workspace.example',
+    port: 0,
+    login: async () => ({
+      actor: { serverId: 'rc2', userId: '17' },
+      validate: async () => true,
+      close: async () => {},
+    }),
     startCore: async () => ({ port: corePort, localToken: 'core-token', stop: async () => {} }),
     resourceStatus: () => ({ state: 'pending', reason: 'TASK_ACTIVE' }),
     refreshResources: async () => ({ state: 'pending', reason: 'TASK_ACTIVE' }),
   });
-  const request = (route: string, cookie?: string, payload?: unknown, method = 'POST') => new Promise<{
-    status: number; headers: http.IncomingHttpHeaders; body: string;
-  }>((resolve, reject) => {
-    const req = http.request({ hostname: '127.0.0.1', port: gateway.port, path: route, method, headers: {
-      host: 'workspace.example', origin: 'https://workspace.example', ...(cookie ? { cookie } : {}),
-      ...(payload ? { 'content-type': 'application/json' } : {}),
-    } }, (res) => { const chunks: Buffer[] = [];res.on('data', (chunk: Buffer) => chunks.push(chunk));res.on('end', () => resolve({
-      status: res.statusCode || 0, headers: res.headers, body: Buffer.concat(chunks).toString('utf8'),
-    })); });
-    req.once('error', reject);req.end(payload ? JSON.stringify(payload) : undefined);
-  });
+  const request = (route: string, cookie?: string, payload?: unknown, method = 'POST') =>
+    new Promise<{
+      status: number;
+      headers: http.IncomingHttpHeaders;
+      body: string;
+    }>((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: gateway.port,
+          path: route,
+          method,
+          headers: {
+            host: 'workspace.example',
+            origin: 'https://workspace.example',
+            ...(cookie ? { cookie } : {}),
+            ...(payload ? { 'content-type': 'application/json' } : {}),
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode || 0,
+              headers: res.headers,
+              body: Buffer.concat(chunks).toString('utf8'),
+            })
+          );
+        }
+      );
+      req.once('error', reject);
+      req.end(payload ? JSON.stringify(payload) : undefined);
+    });
   try {
     const login = await request('/enterprise/login', undefined, { username: 'employee', password: 'secret' });
     expect(login.status).toBe(200);
@@ -310,59 +461,123 @@ test('gateway accepts one deferred update without treating an active task as a c
   }
 });
 
-
 test('only trusted receipt callbacks attach the Host service credential', async () => {
   const seen: Array<{ route: string; service?: string }> = [];
   const server = http.createServer((req, res) => {
     seen.push({ route: req.url!, service: req.headers['x-zhenwork-host-service'] as string | undefined });
-    res.setHeader('content-type', 'application/json');res.end(JSON.stringify({ code: 200, data: {} }));
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ code: 200, data: {} }));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
   const actor = { serverId: 'receipt-test', userId: '17' };
-  const client = { baseUrl: `http://127.0.0.1:${port}`, cookie: 'session=17', clientId: 'qa', origin: 'https://work.example', me: async () => ({ userId: '17' }) };
-  const runtime = createEnterpriseModelRuntime(async () => ({ actor, client: client as never, validate: async () => true, close: async () => {} }), async () => { throw Error('unused'); }, { background: { rc2Url: client.baseUrl, serviceToken: 'a'.repeat(40) } });
+  const client = {
+    baseUrl: `http://127.0.0.1:${port}`,
+    cookie: 'session=17',
+    clientId: 'qa',
+    origin: 'https://work.example',
+    me: async () => ({ userId: '17' }),
+  };
+  const runtime = createEnterpriseModelRuntime(
+    async () => ({ actor, client: client as never, validate: async () => true, close: async () => {} }),
+    async () => {
+      throw Error('unused');
+    },
+    { background: { rc2Url: client.baseUrl, serviceToken: 'a'.repeat(40) } }
+  );
   const login = await runtime.login('qa', 'unused', { ipAddress: '127.0.0.1', userAgent: 'qa' });
   try {
     await runtime.taskFeedbackRequest!(actor, '/ai/me/feedback', { method: 'POST', body: '{}' });
     await runtime.controlRequest!(actor, '/ai/me/feedback', { method: 'POST', body: '{}' });
     expect(seen.map((request) => request.service)).toEqual(['Bearer ' + 'a'.repeat(40), undefined]);
-    await expect(runtime.taskFeedbackRequest!(actor, '/ai/models', { method: 'POST' })).rejects.toThrow('HOST_RECEIPT_ROUTE_UNAVAILABLE');
-    await expect(runtime.taskFeedbackRequest!(actor, '/ai/me/feedback', { method: 'DELETE' })).rejects.toThrow('HOST_RECEIPT_ROUTE_UNAVAILABLE');
+    await expect(runtime.taskFeedbackRequest!(actor, '/ai/models', { method: 'POST' })).rejects.toThrow(
+      'HOST_RECEIPT_ROUTE_UNAVAILABLE'
+    );
+    await expect(runtime.taskFeedbackRequest!(actor, '/ai/me/feedback', { method: 'DELETE' })).rejects.toThrow(
+      'HOST_RECEIPT_ROUTE_UNAVAILABLE'
+    );
     expect(seen).toHaveLength(2);
-  } finally { await login.close(); await new Promise<void>((resolve) => server.close(() => resolve())); }
+  } finally {
+    await login.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 test('a Core without a streaming model still probes and records version-bound dependencies', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'zhenwork-probe-no-model-'));
   const receipts: Array<Record<string, unknown>> = [];
   const server = http.createServer((req, res) => {
-    let body = '';req.on('data', (chunk) => { body += chunk; });req.on('end', () => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => {
       res.setHeader('content-type', 'application/json');
       if (req.url === '/api/providers') return res.end(JSON.stringify({ success: true, data: [] }));
-      receipts.push(JSON.parse(body));res.end(JSON.stringify({ code: 200, data: {} }));
+      receipts.push(JSON.parse(body));
+      res.end(JSON.stringify({ code: 200, data: {} }));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
-  const actor = { serverId: 'probe-test', userId: '17' }, id = '11111111-1111-4111-a111-111111111111';
-  const digest = 'a'.repeat(64), image = 'sha256:' + 'b'.repeat(64);
+  const actor = { serverId: 'probe-test', userId: '17' },
+    id = '11111111-1111-4111-a111-111111111111';
+  const digest = 'a'.repeat(64),
+    image = 'sha256:' + 'b'.repeat(64);
   const inventory = vi.fn(async () => ({ python: { openpyxl: '3.1.5' } }));
   const sync = vi.spyOn(resourceRuntime, 'syncEnterpriseWebResources').mockImplementation(async (...args) => {
-    const probe = args[8]!;expect(typeof probe).toBe('function');
+    const probe = args[8]!;
+    expect(typeof probe).toBe('function');
     await probe({ core: { port, host: '127.0.0.1', networkMode: 'container' }, skills: [] });
-    return { issues: [], dependencyProbes: { [id]: { resourceId: id, resourceVersion: 2, packageSha256: digest, state: 'READY', declarations: [] } }, invalidated: new Promise<void>(() => {}), stop: async () => {}, trustedConfirmation: async () => false };
+    return {
+      issues: [],
+      dependencyProbes: {
+        [id]: { resourceId: id, resourceVersion: 2, packageSha256: digest, state: 'READY', declarations: [] },
+      },
+      invalidated: new Promise<void>(() => {}),
+      stop: async () => {},
+      trustedConfirmation: async () => false,
+    };
   });
-  const client = { baseUrl: `http://127.0.0.1:${port}`, cookie: 'session=17', clientId: 'qa', origin: 'https://work.example', me: async () => ({ userId: '17' }), availableModels: async () => [] };
-  const runtime = createEnterpriseModelRuntime(async () => ({ actor, client: client as never, validate: async () => true, close: async () => {} }), async () => ({ port, host: '127.0.0.1', networkMode: 'container', runtimeFingerprint: image, readDependencyInventory: inventory, localToken: 'local', stop: async () => {} }), { profileRoot: root, background: { rc2Url: client.baseUrl, serviceToken: 'c'.repeat(40) } });
+  const client = {
+    baseUrl: `http://127.0.0.1:${port}`,
+    cookie: 'session=17',
+    clientId: 'qa',
+    origin: 'https://work.example',
+    me: async () => ({ userId: '17' }),
+    availableModels: async () => [],
+  };
+  const runtime = createEnterpriseModelRuntime(
+    async () => ({ actor, client: client as never, validate: async () => true, close: async () => {} }),
+    async () => ({
+      port,
+      host: '127.0.0.1',
+      networkMode: 'container',
+      runtimeFingerprint: image,
+      readDependencyInventory: inventory,
+      localToken: 'local',
+      stop: async () => {},
+    }),
+    { profileRoot: root, background: { rc2Url: client.baseUrl, serviceToken: 'c'.repeat(40) } }
+  );
   let core: Awaited<ReturnType<typeof runtime.startCore>> | undefined;
   try {
     await runtime.login('qa', 'unused', { ipAddress: '127.0.0.1', userAgent: 'qa' });
     core = await runtime.startCore(actor);
     expect(inventory).toHaveBeenCalledOnce();
-    expect(receipts[0]).toMatchObject({ resourceVersion: 2, packageSha256: digest, runtimeFingerprint: image, state: 'READY' });
+    expect(receipts[0]).toMatchObject({
+      resourceVersion: 2,
+      packageSha256: digest,
+      runtimeFingerprint: image,
+      state: 'READY',
+    });
     expect(receipts[0]).not.toHaveProperty('actorUserId');
-  } finally { await core?.stop();sync.mockRestore();await new Promise<void>((resolve) => server.close(() => resolve()));await rm(root, { recursive: true, force: true }); }
+  } finally {
+    await core?.stop();
+    sync.mockRestore();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('the authenticated relay applies one preference snapshot through selected models and background grants', async () => {
@@ -376,15 +591,32 @@ test('the authenticated relay applies one preference snapshot through selected m
   ];
   const cronGrant = { id: randomUUID(), jobId: cronJob, userId: actor.userId, secret: 'a'.repeat(64) };
   const taskStore = await TaskStore.create(root, actor);
-  const preferences = { expectedVersion: 0, enabled: true, style: 'direct', detail: 'brief', language: 'en-US', instructions: 'Use a clear heading named Controlled Context.' };
+  const preferences = {
+    expectedVersion: 0,
+    enabled: true,
+    style: 'direct',
+    detail: 'brief',
+    language: 'en-US',
+    instructions: 'Use a clear heading named Controlled Context.',
+  };
   await saveEmployeePreferences(root, actor, preferences);
-  const accepted = await taskStore.accept(conversation, randomUUID(), { content: 'Reply in Chinese.' }, false, false,
-    () => readEmployeePreferences(root, actor));
+  const accepted = await taskStore.accept(
+    conversation,
+    randomUUID(),
+    { content: 'Reply in Chinese.' },
+    false,
+    false,
+    () => readEmployeePreferences(root, actor)
+  );
   const attempt = currentAttempt(accepted.task);
   const taskGrant = { ...cronGrant, id: randomUUID(), jobId: attempt.jobId };
   const control = path.dirname(await enterpriseManagedResourcePath(root, actor));
-  await writeFile(path.join(control, 'background-grants.json'), JSON.stringify({ actor, grants: [cronGrant] }), { mode: 0o600 });
-  await writeFile(path.join(control, 'task-grants.json'), JSON.stringify({ actor, grants: [taskGrant] }), { mode: 0o600 });
+  await writeFile(path.join(control, 'background-grants.json'), JSON.stringify({ actor, grants: [cronGrant] }), {
+    mode: 0o600,
+  });
+  await writeFile(path.join(control, 'task-grants.json'), JSON.stringify({ actor, grants: [taskGrant] }), {
+    mode: 0o600,
+  });
 
   let provider: { base_url: string; api_key: string } | undefined;
   let turnId = 'turn_12345678';
@@ -430,23 +662,38 @@ test('the authenticated relay applies one preference snapshot through selected m
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
   const sync = vi.spyOn(resourceRuntime, 'syncEnterpriseWebResources').mockResolvedValue({
-    issues: [], dependencyProbes: {}, invalidated: new Promise(() => {}), stop: async () => {}, trustedConfirmation: async () => false,
+    issues: [],
+    dependencyProbes: {},
+    invalidated: new Promise(() => {}),
+    stop: async () => {},
+    trustedConfirmation: async () => false,
   } as Awaited<ReturnType<typeof resourceRuntime.syncEnterpriseWebResources>>);
   const office = vi.spyOn(officeTools, 'startOfficeTools').mockResolvedValue({
-    mcpId: 'office-test', stop: async () => {}, trustedConfirmation: async () => false,
+    mcpId: 'office-test',
+    stop: async () => {},
+    trustedConfirmation: async () => false,
   });
   const assistant = vi.spyOn(officeTools, 'ensureOfficeAssistant').mockResolvedValue(undefined);
-  const runtime = createEnterpriseModelRuntime(async () => ({
-    actor, validate: async () => true, close: async () => {}, client: {
-      me: async () => ({ userId: actor.userId }), availableModels: async () => models,
-      relayModel: async (model: string, raw: string) => {
-        received.push({ model, raw, via: 'interactive' });
-        return stream();
-      },
-    } as never,
-  }), async () => ({ port, localToken: 'core-token', stop: async () => {} }), {
-    profileRoot: root, background: { rc2Url: `http://127.0.0.1:${port}`, serviceToken: 's'.repeat(40) },
-  });
+  const runtime = createEnterpriseModelRuntime(
+    async () => ({
+      actor,
+      validate: async () => true,
+      close: async () => {},
+      client: {
+        me: async () => ({ userId: actor.userId }),
+        availableModels: async () => models,
+        relayModel: async (model: string, raw: string) => {
+          received.push({ model, raw, via: 'interactive' });
+          return stream();
+        },
+      } as never,
+    }),
+    async () => ({ port, localToken: 'core-token', stop: async () => {} }),
+    {
+      profileRoot: root,
+      background: { rc2Url: `http://127.0.0.1:${port}`, serviceToken: 's'.repeat(40) },
+    }
+  );
   const login = await runtime.login('employee', 'fixture', { ipAddress: '127.0.0.1', userAgent: 'test' });
   let core: Awaited<ReturnType<typeof runtime.startCore>> | undefined;
   try {
@@ -457,7 +704,8 @@ test('the authenticated relay applies one preference snapshot through selected m
     ];
     const relay = async (model: string, expectedStatus = 200) => {
       const response = await fetch(`${provider!.base_url}/conversations/${conversation}/chat/completions`, {
-        method: 'POST', headers: { authorization: `Bearer ${provider!.api_key}` },
+        method: 'POST',
+        headers: { authorization: `Bearer ${provider!.api_key}` },
         body: JSON.stringify({ model, stream: true, messages }),
       });
       expect(response.status).toBe(expectedStatus);
@@ -484,14 +732,18 @@ test('the authenticated relay applies one preference snapshot through selected m
     expect((await relay('rc2-model-a')).raw).not.toContain('Controlled Context');
     nativeReadFailure = false;
 
-    await taskStore.mutate(conversation, attempt.id, (record) => { record.state = 'running'; });
+    await taskStore.mutate(conversation, attempt.id, (record) => {
+      record.state = 'running';
+    });
     runtime.bindTask(actor, conversation, attempt.jobId);
     const selected = await relay('rc2-model-b');
     expect(selected).toMatchObject({ model: 'model-b', via: attempt.jobId });
     expect(selected.raw).toContain('Controlled Context');
 
     runtime.bindTask(actor, conversation, undefined, attempt.jobId);
-    await taskStore.mutate(conversation, attempt.id, (record) => { record.state = 'completed'; });
+    await taskStore.mutate(conversation, attempt.id, (record) => {
+      record.state = 'completed';
+    });
     cronActive = true;
     turnId = 'turn_11223344';
     await saveEmployeePreferences(root, actor, { ...preferences, expectedVersion: 2 });

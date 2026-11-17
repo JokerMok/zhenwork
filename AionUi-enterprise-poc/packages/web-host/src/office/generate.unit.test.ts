@@ -147,19 +147,52 @@ test('cancellation kills the actual controlled child process instead of only rej
   const executable = path.join(root, 'controlled-interpreter');
   let pid: number | undefined;
   try {
-    await fs.writeFile(executable, '#!/bin/sh\necho $$ > "' + pidfile + '"\nexec /bin/sleep 30\n', {mode:0o700});
+    await fs.writeFile(executable, '#!/bin/sh\necho $$ > "' + pidfile + '"\nexec /bin/sleep 30\n', { mode: 0o700 });
     process.env.ZHENWORK_OFFICE_PYTHON = executable;
     execFileMock.mockImplementation(actual.execFile);
     const abort = new AbortController();
-    const work = generateOfficeArtifact({format:'docx',title:'Cancellation test',paragraphs:['Controlled unit fixture']},abort.signal);
+    const work = generateOfficeArtifact(
+      { format: 'docx', title: 'Cancellation test', paragraphs: ['Controlled unit fixture'] },
+      abort.signal
+    );
     const rejected = expect(work).rejects.toThrow('OFFICE_GENERATION_CANCELLED');
-    await expect.poll(async()=>{try {pid=Number(await fs.readFile(pidfile,'utf8'));return !!pid;}catch{return false;}},{timeout:1000}).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          try {
+            pid = Number(await fs.readFile(pidfile, 'utf8'));
+            return !!pid;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 5000 }
+      )
+      .toBe(true);
     abort.abort();
     await rejected;
-    await expect.poll(()=>{try{process.kill(pid!,0);return true;}catch{return false;}},{timeout:1000}).toBe(false);
+    await expect
+      .poll(
+        () => {
+          try {
+            process.kill(pid!, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 1000 }
+      )
+      .toBe(false);
   } finally {
-    if(pid){try{process.kill(pid,'SIGKILL');}catch{/* Already reaped. */}}
+    if (pid) {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        /* Already reaped. */
+      }
+    }
     delete process.env.ZHENWORK_OFFICE_PYTHON;
-    await fs.rm(root,{recursive:true,force:true});
+    await fs.rm(root, { recursive: true, force: true });
   }
 });

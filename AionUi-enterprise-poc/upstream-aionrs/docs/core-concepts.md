@@ -6,12 +6,12 @@ different levels.
 
 ## Runtime Units
 
-| Term                        | Meaning                                                                                                                                          |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Run**                     | One user prompt or host `message` command, from `stream_start` to `stream_end`. This is one `AgentEngine::run(...)` execution.                   |
-| **Turn**                    | One LLM round trip inside a run: build request, call `provider.stream(...)`, consume the stream.                                                  |
-| **Tool round**              | The optional batch of tool work requested by one turn. A turn has either zero or one tool round.                                                  |
-| **Tool call + Tool result** | One tool request and the matching tool result returned to the model.                                                                              |
+| Term                        | Meaning                                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Run**                     | One user prompt or host `message` command, from `stream_start` to `stream_end`. This is one `AgentEngine::run(...)` execution. |
+| **Turn**                    | One LLM round trip inside a run: build request, call `provider.stream(...)`, consume the stream.                               |
+| **Tool round**              | The optional batch of tool work requested by one turn. A turn has either zero or one tool round.                               |
+| **Tool call + Tool result** | One tool request and the matching tool result returned to the model.                                                           |
 
 The multiplicity is:
 
@@ -135,9 +135,9 @@ quickly while still bounding the number of model round trips in one run.
 
 ## Public Names
 
-| Name                             | Meaning                                      |
-| -------------------------------- | -------------------------------------------- |
-| `max_turns`                      | Maximum model turns per run.                 |
-| `AgentResult.turns`              | Number of counted normal turns in the run.   |
-| `StopReason::MaxTurns`           | The run hit the turn limit.                  |
-| Terminal output `[turns: N ...]` | Number of model turns completed in the run.  |
+| Name                             | Meaning                                     |
+| -------------------------------- | ------------------------------------------- |
+| `max_turns`                      | Maximum model turns per run.                |
+| `AgentResult.turns`              | Number of counted normal turns in the run.  |
+| `StopReason::MaxTurns`           | The run hit the turn limit.                 |
+| Terminal output `[turns: N ...]` | Number of model turns completed in the run. |

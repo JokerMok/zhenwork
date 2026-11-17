@@ -14,6 +14,7 @@ const { layoutState } = vi.hoisted(() => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
+    i18n: { language: 'en' },
     t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key,
   }),
 }));

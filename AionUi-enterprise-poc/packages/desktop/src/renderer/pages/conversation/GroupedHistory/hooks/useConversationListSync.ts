@@ -303,9 +303,9 @@ let snapshotState: ConversationListSyncSnapshot = {
 const emitStoreChange = () => {
   snapshotState = {
     conversations: conversationsState,
-  historyLoading: historyLoadingState,
-  historyError: historyErrorState,
-  historyHasMore: Boolean(employeeNextCursor),
+    historyLoading: historyLoadingState,
+    historyError: historyErrorState,
+    historyHasMore: Boolean(employeeNextCursor),
     generatingConversationIds: generatingConversationIdsState,
     waitingConfirmationConversationIds: waitingConfirmationConversationIdsState,
     completionUnreadConversationIds: completionUnreadConversationIdsState,
@@ -475,8 +475,12 @@ const refreshConversations = () => {
     });
 };
 
-const loadMoreHistory = (): void => { void loadEmployeeConversations(true); };
-const retryHistory = (): void => { void loadEmployeeConversations(employeeErrorOnMore); };
+const loadMoreHistory = (): void => {
+  void loadEmployeeConversations(true);
+};
+const retryHistory = (): void => {
+  void loadEmployeeConversations(employeeErrorOnMore);
+};
 
 /** Source of a generating-state transition, logged for field diagnosis. */
 type GeneratingTransitionSource = 'stream' | 'reconcile' | 'reconnect' | 'terminal' | 'turnCompleted' | 'deleted';

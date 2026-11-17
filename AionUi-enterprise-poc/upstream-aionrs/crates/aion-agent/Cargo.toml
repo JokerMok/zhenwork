@@ -7,42 +7,42 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-aion-types.workspace     = true
-aion-protocol.workspace  = true
-aion-config.workspace    = true
+aion-types.workspace = true
+aion-protocol.workspace = true
+aion-config.workspace = true
 aion-providers.workspace = true
-aion-tools.workspace     = true
-aion-mcp.workspace       = true
-aion-skills.workspace    = true
-aion-memory.workspace    = true
-aion-compact.workspace   = true
+aion-tools.workspace = true
+aion-mcp.workspace = true
+aion-skills.workspace = true
+aion-memory.workspace = true
+aion-compact.workspace = true
 
-tracing.workspace     = true
-tokio.workspace       = true
-futures.workspace     = true
-serde.workspace       = true
-serde_json.workspace  = true
-shlex.workspace       = true
+tracing.workspace = true
+tokio.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shlex.workspace = true
 async-trait.workspace = true
-anyhow.workspace      = true
-thiserror.workspace   = true
-glob.workspace        = true
-chrono.workspace      = true
-uuid.workspace        = true
-dirs.workspace        = true
-crossterm.workspace   = true
+anyhow.workspace = true
+thiserror.workspace = true
+glob.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+dirs.workspace = true
+crossterm.workspace = true
 is-terminal.workspace = true
 workspace-hack.workspace = true
 
 [dev-dependencies]
 aion-mcp = { path = "../aion-mcp", features = ["test-utils"] }
-wiremock.workspace    = true
-tokio-test.workspace  = true
-tempfile.workspace    = true
-mockall.workspace     = true
-rstest.workspace      = true
+wiremock.workspace = true
+tokio-test.workspace = true
+tempfile.workspace = true
+mockall.workspace = true
+rstest.workspace = true
 serial_test.workspace = true
-base64.workspace    = true
+base64.workspace = true
 
 # ── Integration test binaries ──────────────────────────────────────────────
 [[test]]

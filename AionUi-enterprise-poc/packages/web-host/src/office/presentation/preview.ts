@@ -61,7 +61,14 @@ export async function previewPresentation(bytes: Buffer, start: number) {
       throw new Error('PPT_PREVIEW_IMAGE_INVALID');
     const slides = info.slides as Array<{
       title: string;
-      objects: Array<{ kind: string; text?: string; rows?: string[][]; title?: string; categories?: string[]; series?: Array<{ name: string; values: string[] }> }>;
+      objects: Array<{
+        kind: string;
+        text?: string;
+        rows?: string[][];
+        title?: string;
+        categories?: string[];
+        series?: Array<{ name: string; values: string[] }>;
+      }>;
     }>;
     return {
       format: 'pptx',
@@ -77,7 +84,17 @@ export async function previewPresentation(bytes: Buffer, start: number) {
           texts: slides[start].objects.filter((x) => x.kind === 'text').map((x) => ({ text: x.text || '' })),
           tables: [
             ...slides[start].objects.filter((x) => x.kind === 'table').map((x) => ({ rows: x.rows || [] })),
-            ...slides[start].objects.filter(x => x.kind === 'chart').map(x => ({ rows: [[x.title || '', ...(x.series || []).map(s => s.name)], ...(x.categories || []).map((category, index) => [category, ...(x.series || []).map(s => s.values[index])])] })),
+            ...slides[start].objects
+              .filter((x) => x.kind === 'chart')
+              .map((x) => ({
+                rows: [
+                  [x.title || '', ...(x.series || []).map((s) => s.name)],
+                  ...(x.categories || []).map((category, index) => [
+                    category,
+                    ...(x.series || []).map((s) => s.values[index]),
+                  ]),
+                ],
+              })),
           ],
         },
       ],

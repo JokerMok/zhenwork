@@ -73,10 +73,18 @@ export function setupApplicationMenu(): void {
   });
 
   if (process.env.AION_ENTERPRISE_ROLE === 'worker') {
-    template.push({ label: '企业账号', submenu: [{ label: '退出登录 / 切换账号', click: () => {
-      process.send?.({ type: 'enterprise:logout' });
-      app.quit();
-    } }] });
+    template.push({
+      label: '企业账号',
+      submenu: [
+        {
+          label: '退出登录 / 切换账号',
+          click: () => {
+            process.send?.({ type: 'enterprise:logout' });
+            app.quit();
+          },
+        },
+      ],
+    });
   }
 
   const menu = Menu.buildFromTemplate(template);

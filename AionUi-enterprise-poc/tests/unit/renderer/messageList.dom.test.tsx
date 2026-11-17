@@ -670,13 +670,37 @@ it('shows a saved approval in an initially empty chat and reconciles once per du
   workState.enterprise = true;
   workState.attempt = { id: 'attempt-1', state: 'waiting_confirmation' };
   const reload = vi.fn().mockResolvedValue([]);
-  const view = render(<Wrapper messages={[]}><MessageList emptySlot={<span>welcome</span>} activityFooter={<span>approval</span>} onExecutionSettled={reload}/></Wrapper>);
+  const view = render(
+    <Wrapper messages={[]}>
+      <MessageList
+        emptySlot={<span>welcome</span>}
+        activityFooter={<span>approval</span>}
+        onExecutionSettled={reload}
+      />
+    </Wrapper>
+  );
   expect(screen.queryByText('welcome')).toBeNull();
   expect(screen.getByText('approval')).toBeTruthy();
   expect(reload).toHaveBeenCalledTimes(1);
-  view.rerender(<Wrapper messages={[]}><MessageList emptySlot={<span>welcome</span>} activityFooter={<span>approval</span>} onExecutionSettled={reload}/></Wrapper>);
+  view.rerender(
+    <Wrapper messages={[]}>
+      <MessageList
+        emptySlot={<span>welcome</span>}
+        activityFooter={<span>approval</span>}
+        onExecutionSettled={reload}
+      />
+    </Wrapper>
+  );
   expect(reload).toHaveBeenCalledTimes(1);
   workState.attempt = { id: 'attempt-1', state: 'cancelled' };
-  view.rerender(<Wrapper messages={[]}><MessageList emptySlot={<span>welcome</span>} activityFooter={<span>cancelled</span>} onExecutionSettled={reload}/></Wrapper>);
+  view.rerender(
+    <Wrapper messages={[]}>
+      <MessageList
+        emptySlot={<span>welcome</span>}
+        activityFooter={<span>cancelled</span>}
+        onExecutionSettled={reload}
+      />
+    </Wrapper>
+  );
   expect(reload).toHaveBeenCalledTimes(2);
 });

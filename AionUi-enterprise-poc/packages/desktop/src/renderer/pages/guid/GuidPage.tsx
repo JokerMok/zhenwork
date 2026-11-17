@@ -429,14 +429,7 @@ const GuidPage: React.FC = () => {
     }
 
     return [t('guid.defaultPrompts.understand'), t('guid.defaultPrompts.cleanup'), t('guid.defaultPrompts.create')];
-  }, [
-    localeKey,
-    selectedAssistantDetail,
-    selectedAssistantRecord,
-    selectedAssistantId,
-    hostedEnterpriseWeb,
-    t,
-  ]);
+  }, [localeKey, selectedAssistantDetail, selectedAssistantRecord, selectedAssistantId, hostedEnterpriseWeb, t]);
 
   // Sync disabledBuiltinSkills + enabledSkills from assistant detail defaults.
   useEffect(() => {

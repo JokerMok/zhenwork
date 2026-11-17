@@ -63,7 +63,8 @@ vi.mock('@icon-park/react', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? (key === 'preview.copyPath' ? 'Copy' : key),
+    t: (key: string, options?: { defaultValue?: string }) =>
+      options?.defaultValue ?? (key === 'preview.copyPath' ? 'Copy' : key),
   }),
 }));
 
@@ -185,13 +186,15 @@ describe('MarkdownView local file links', () => {
   });
 
   it('allows an authenticated knowledge citation to open as a normal browser tab', () => {
-    const href=window.location.origin+'/#/workspace?section=knowledge&documentId=11111111-1111-4111-8111-111111111111&version=1';
+    const href =
+      window.location.origin +
+      '/#/workspace?section=knowledge&documentId=11111111-1111-4111-8111-111111111111&version=1';
     render(<MarkdownView>{`[source](${href})`}</MarkdownView>);
-    const link=screen.getByRole('link',{name:'source'});
-    const event=new MouseEvent('click',{bubbles:true,cancelable:true});
+    const link = screen.getByRole('link', { name: 'source' });
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
     link.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
-    expect(link).toHaveAttribute('target','_blank');
+    expect(link).toHaveAttribute('target', '_blank');
   });
 
   it('keeps ordinary http links as browser anchors', () => {

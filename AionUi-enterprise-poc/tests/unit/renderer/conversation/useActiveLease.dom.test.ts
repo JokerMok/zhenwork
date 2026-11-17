@@ -106,5 +106,7 @@ it('does not renew an enterprise worker for visible or hidden reading tabs', asy
     const hook = renderHook(() => useActiveLease({ type: 'conversation', id: 'conv-read-only' }));
     expect(conversationActiveLease).not.toHaveBeenCalled();
     hook.unmount();
-  } finally { delete (window as Window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__; }
+  } finally {
+    delete (window as Window & { __AION_ENTERPRISE_WEB__?: boolean }).__AION_ENTERPRISE_WEB__;
+  }
 });
