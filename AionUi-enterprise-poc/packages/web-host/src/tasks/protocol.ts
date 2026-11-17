@@ -233,7 +233,7 @@ export async function recordTool(
         if (
           prior.tool === tool &&
           prior.state === 'failed' &&
-          (prior.target === target || (!prior.target && /^OFFICE_ARGUMENT_/.test(prior.summary)))
+          (prior.target === target || (!prior.target && String(prior.summary).startsWith('OFFICE_ARGUMENT_')))
         )
           prior.summary = 'Recovered by a later successful call';
     const step = {

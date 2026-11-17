@@ -113,7 +113,8 @@ export class EnterpriseBackgroundGrants {
     const valid: string[] = [];
     const revoked: Array<{ jobId: string; grantId: string }> = [];
     const signal = AbortSignal.timeout(15_000);
-    for (const grant of [...this.grants.values()]) {
+    // Check the grants present when inspection starts, even if another request updates the store.
+    for (const grant of Array.from(this.grants.values())) {
       try {
         const client = new EnterpriseBackgroundClient(this.rc2Url, this.serviceToken, grant);
         if ((await client.me(signal)).userId !== this.actor.userId) throw new Error('Background grant actor mismatch');

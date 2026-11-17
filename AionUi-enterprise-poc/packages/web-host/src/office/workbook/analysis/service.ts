@@ -620,7 +620,8 @@ export class DataAnalysis {
         base.length > 180 ||
         base.startsWith('/') ||
         base.split('/').some((p) => !p || p === '.' || p === '..') ||
-        /[\\\x00-\x1f]/.test(base)
+        base.includes('\\') ||
+        [...base].some((character) => character.charCodeAt(0) < 32)
       )
         throw new Error('DATA_OUTPUT_PATH_INVALID');
       if (a.outputBase && a.outputBase !== base) {

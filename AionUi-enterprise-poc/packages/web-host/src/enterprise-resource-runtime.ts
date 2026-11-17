@@ -112,7 +112,7 @@ function assistantKnowledgeIds(value: unknown): string[] {
 function knowledgeBinding(id: string, resource: Resource): KnowledgeBinding {
   if (!Number.isInteger(resource.version) || typeof resource.name !== 'string' ||
       !resource.name.trim() || resource.name !== resource.name.trim() || resource.name.length > 200 ||
-      /[\r\n\0]/.test(resource.name)) {
+      /[\r\n]/.test(resource.name) || resource.name.includes('\0')) {
     throw new Error('RC2 assistant knowledge invalid');
   }
   return { baseId: id, version: resource.version, name: resource.name };

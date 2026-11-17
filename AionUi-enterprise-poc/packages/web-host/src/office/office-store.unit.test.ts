@@ -66,7 +66,9 @@ test.runIf(process.platform === 'linux')('file versions restore exact bytes and 
   expect((await store.download(workspace, '资料/report.txt')).toString()).toBe('version one');
   const after = await store.files(workspace);
   const restored = after.files.find((item) => item.path === '资料/report.txt');
-  expect((restored?.versions as Array<{ sha256: string }>).some((item) => item.sha256 === sha256('version two'))).toBe(true);
+  expect(restored?.versions).toEqual(
+    expect.arrayContaining([expect.objectContaining({ sha256: sha256('version two') })])
+  );
 });
 
 test.runIf(process.platform === 'linux')('ordinary symlink traversal is rejected for reads and writes', async () => {

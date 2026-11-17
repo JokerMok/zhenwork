@@ -66,7 +66,15 @@ export function validateCoreDependencyInventory(value: unknown): CoreDependencyI
     }
     const checked: Record<string, string> = {};
     for (const [name, version] of Object.entries(packages)) {
-      if (!name || name.length > 214 || typeof version !== 'string' || !version || version.length > 100 || /[\r\n\0]/.test(version)) {
+      if (
+        !name ||
+        name.length > 214 ||
+        typeof version !== 'string' ||
+        !version ||
+        version.length > 100 ||
+        /[\r\n]/.test(version) ||
+        version.includes('\0')
+      ) {
         throw new Error('Core dependency inventory invalid');
       }
       checked[name] = version;

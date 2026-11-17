@@ -15,7 +15,7 @@ function knowledgeRuleContext(value) {
     if (!item || typeof item !== 'object' || !resourceIdPattern.test(item.baseId || '') ||
         seen.has(item.baseId) || !Number.isInteger(item.version) || item.version < 1 ||
         typeof item.name !== 'string' || !item.name.trim() || item.name !== item.name.trim() ||
-        item.name.length > 200 || /[\r\n\0]/.test(item.name)) {
+        item.name.length > 200 || /[\r\n]/.test(item.name) || item.name.includes('\0')) {
       throw new Error('Enterprise assistant knowledge invalid');
     }
     seen.add(item.baseId);

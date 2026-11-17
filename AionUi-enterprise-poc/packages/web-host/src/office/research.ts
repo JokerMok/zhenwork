@@ -65,7 +65,7 @@ const semanticBodies = (value: string): string[] => {
   let token: RegExpExecArray | null;
   let active: { name: string; start: number; depth: number } | undefined;
   while ((token = tokens.exec(cleaned))) {
-    const name = token[1].toLowerCase(), closing = /^<\//.test(token[0]);
+    const name = token[1].toLowerCase(), closing = token[0].startsWith('</');
     if (active) {
       if (name !== active.name) continue;
       if (closing) active.depth -= 1;
@@ -135,7 +135,7 @@ async function bingResults(query: string, signal?: AbortSignal): Promise<SearchR
     const source = tag(match[1], 'link');
     return { title: tag(match[1], 'title'), url: source, snippet: tag(match[1], 'description').replace(/<[^>]+>/g, ''),
       publishedAt: null, providerDate: tag(match[1], 'pubDate') || null };
-  }).filter((item) => /^https:\/\//.test(item.url));
+  }).filter((item) => item.url.startsWith('https://'));
 }
 
 export async function searchWeb(query: string, signal?: AbortSignal): Promise<Record<string, unknown>> {

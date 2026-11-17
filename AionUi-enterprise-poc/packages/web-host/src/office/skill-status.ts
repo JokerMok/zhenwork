@@ -28,7 +28,16 @@ export async function checkEnterpriseSkill(client: Client, query: string, loaded
     let bytes = 0;
     const omittedFiles: string[] = [];
     for (const file of [{ path: 'SKILL.md', content: source, encoding: 'utf8' }, ...(Array.isArray(files) ? files : [])]) {
-      if (!file || typeof file.path !== 'string' || file.path.length > 240 || /[\\\0-\x1f]/.test(file.path) || file.path.split('/').some((part: string) => !part || part === '.' || part === '..') || file.path.startsWith('/')) return { ...result, available: false, reason: 'PACKAGE_INVALID' };
+      if (
+        !file ||
+        typeof file.path !== 'string' ||
+        file.path.length > 240 ||
+        file.path.includes('\\') ||
+        [...file.path].some((character) => character.charCodeAt(0) < 32) ||
+        file.path.split('/').some((part: string) => !part || part === '.' || part === '..') ||
+        file.path.startsWith('/')
+      )
+        return { ...result, available: false, reason: 'PACKAGE_INVALID' };
       const sha = typeof file.content === 'string' && file.encoding !== 'base64' ? createHash('sha256').update(file.content).digest('hex') : file.sha256;
       catalog.push({ path: file.path, sha256: sha, executable: !!file.executable });
       if (options.file ? file.path !== options.file : file.path !== 'SKILL.md' && !/^(references|templates)\//.test(file.path)) continue;

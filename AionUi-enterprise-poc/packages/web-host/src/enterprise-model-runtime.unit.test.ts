@@ -221,7 +221,9 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
     };
     expect(officeMcp.name).toBe('rc2-enterprise-zhenwork-office-tools');
     expect(officeMcp.transport.url).toMatch(/^http:\/\/model-gateway:\d+\/mcp$/);
-    expect((assistants.find((item) => item.id === 'zhenwork-general-office')?.defaults as { model: { value: string } }).model.value).toBe('rc2-model-a');
+    expect(assistants.find((item) => item.id === 'zhenwork-general-office')?.defaults).toMatchObject({
+      model: { value: 'rc2-model-a' },
+    });
 
     await expect(runtime.refreshResources(otherActor)).rejects.toThrow('RESOURCE_REFRESH_UNAVAILABLE');
     checkFailed = true;
@@ -248,7 +250,9 @@ test('resource refresh stays actor-scoped, defers while busy, and preserves comm
     const updates = coreCalls.filter((call) => call.method === 'PUT' && call.route === '/api/providers/rc2-enterprise-model');
     expect(updates).toHaveLength(1);
     expect(updates[0].body?.models).toEqual(['rc2-model-b', 'rc2-model-a']);
-    expect((assistants.find((item) => item.id === 'zhenwork-general-office')?.defaults as { model: { value: string } }).model.value).toBe('rc2-model-b');
+    expect(assistants.find((item) => item.id === 'zhenwork-general-office')?.defaults).toMatchObject({
+      model: { value: 'rc2-model-b' },
+    });
     expect(runtime.resourceStatus?.(actor)).toEqual({ state: 'ready' });
     await login.close();
   } finally {
