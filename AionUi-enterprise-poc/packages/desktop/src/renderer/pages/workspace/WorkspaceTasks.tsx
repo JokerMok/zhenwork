@@ -1,5 +1,5 @@
 import TaskWork from './TaskWork';
-import type { WorkTask } from './TaskWork/api';
+import type { WorkAttempt, WorkTask } from './TaskWork/api';
 import { Alert, Button, Empty, List, Select, Space, Spin, Tag } from '@arco-design/web-react';
 import { Refresh, Right } from '@icon-park/react';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -8,9 +8,30 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { enterpriseRequest, workspaceErrorCode } from './workspaceApi';
 import type { WebConversationTask } from './workspaceTypes';
 
-type Props = { scrollContainer?: React.RefObject<HTMLDivElement | null> };
+const isToolIdentifier = (value: string, attempt: WorkAttempt) =>
+  attempt.steps?.some((step) => step.tool === value) ||
+  /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(value) ||
+  /^(?:mcp__|mcp[.:/]|[\w-]+::)[\w./:-]+$/i.test(value);
 
-const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
+function waitingQuestion(question: string | undefined): string {
+  const text = question?.trim() ?? '';
+  if (!text.startsWith('[')) return text;
+  try {
+    const items: unknown = JSON.parse(text);
+    if (Array.isArray(items)) {
+      const questions = items.flatMap((item) => {
+        const label = item?.question || item?.header;
+        return typeof label === 'string' && label.trim() ? [label.trim()] : [];
+      });
+      if (questions.length) return questions.join(' ');
+    }
+  } catch {
+    // A bracketed label is valid employee-facing text.
+  }
+  return text;
+}
+
+const WorkspaceTasks: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<WebConversationTask[]>([]);
@@ -18,35 +39,23 @@ const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
   const [params, setParams] = useSearchParams();
   const selected = params.get('task');
   const active = params.get('section') === 'tasks';
-  const titleRef = useRef<HTMLHeadingElement>(null);
   const previousTask = useRef<string | null>(null);
-  const listPosition = useRef<{ top: number; trigger?: HTMLElement } | undefined>(undefined);
+  const listTrigger = useRef<HTMLElement | undefined>(undefined);
   const [detailTask, setDetailTask] = useState<WorkTask>();
   const selectTask = (id?: string, trigger?: HTMLElement) => {
-    if (id && !selected) listPosition.current = { top: scrollContainer?.current?.scrollTop ?? 0, trigger };
+    if (id && !selected) listTrigger.current = trigger;
     const next = new URLSearchParams(params);
     if (id) next.set('task', id);
     else next.delete('task');
     setParams(next);
   };
   useLayoutEffect(() => {
-    if (!active || selected === previousTask.current) return;
-    const scroll = scrollContainer?.current;
-    if (selected) {
-      if (!previousTask.current) listPosition.current ??= { top: scroll?.scrollTop ?? 0 };
-      const heading = titleRef.current;
-      heading?.focus({ preventScroll: true });
-      if (heading && scroll) {
-        scroll.scrollTop += heading.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 16;
-      }
-    } else if (listPosition.current) {
-      const { top, trigger } = listPosition.current;
-      if (scroll) scroll.scrollTop = top;
-      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
-      listPosition.current = undefined;
+    if (!active) return;
+    if (!selected && previousTask.current && listTrigger.current?.isConnected) {
+      listTrigger.current.focus({ preventScroll: true });
     }
     previousTask.current = selected;
-  }, [active, selected, scrollContainer]);
+  }, [active, selected]);
 
   const generation = useRef(0);
   const reading = useRef(false);
@@ -141,7 +150,11 @@ const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
       {selected && (
         <section aria-labelledby='workspace-task-detail-title'>
           <div className='mb-8px flex items-start justify-between gap-8px'>
-            <h3 id='workspace-task-detail-title' ref={titleRef} tabIndex={-1} className='m-0 min-w-0 break-words text-16px font-semibold'>
+            <h3
+              id='workspace-task-detail-title'
+              tabIndex={-1}
+              className='m-0 min-w-0 break-words text-16px font-semibold'
+            >
               {(detailTask?.id === selected ? detailTask.title : undefined) ||
                 workById.get(selected)?.title ||
                 tasks.find((task) => task.id === selected)?.name ||
@@ -189,11 +202,16 @@ const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
               const updated = execution?.updatedAt ?? task.modified_at;
               const date = new Date(updated ?? '');
               const time = Number.isNaN(date.getTime()) ? t('workspace.tasks.timeUnknown') : dateFormatter.format(date);
-              const progress = attempt?.progress
-                ? t(`workspace.work.progress.${attempt.progress}`, { defaultValue: '' })
+              const progress = attempt?.progress?.trim();
+              const summary =
+                progress && attempt
+                  ? t(`workspace.work.progress.${progress}`, { defaultValue: '' }) ||
+                    (isToolIdentifier(progress, attempt) ? '' : progress)
+                  : '';
+              const question = ['waiting_input', 'waiting_confirmation'].includes(attempt?.state || '')
+                ? waitingQuestion(attempt?.question)
                 : '';
-              const result = ['waiting_input', 'waiting_confirmation'].includes(attempt?.state || '') &&
-                !attempt?.question?.startsWith('[') ? attempt?.question || progress : progress;
+              const result = question || summary;
               const title = execution?.title || task.name;
               return (
                 <List.Item
@@ -204,7 +222,10 @@ const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
                       type='text'
                       onClick={(event) => {
                         if (execution) {
-                          selectTask(task.id, event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined);
+                          selectTask(
+                            task.id,
+                            event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined
+                          );
                         } else {
                           navigate(`/conversation/${task.id}`);
                         }
@@ -217,7 +238,9 @@ const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
                   <List.Item.Meta
                     title={
                       <div className='flex flex-wrap items-center gap-8px'>
-                        <span className='min-w-0 max-w-full truncate' title={title}>{title}</span>
+                        <span className='min-w-0 max-w-full truncate' title={title}>
+                          {title}
+                        </span>
                         {attempt ? (
                           <Tag>
                             {t(`workspace.work.states.${attempt.state}`, { defaultValue: t('workspace.work.unknown') })}
@@ -229,7 +252,11 @@ const WorkspaceTasks: React.FC<Props> = ({ scrollContainer }) => {
                     }
                     description={
                       <div className='flex min-w-0 flex-wrap items-center gap-x-8px'>
-                        {result && <span className='max-w-full truncate' title={result}>{result}</span>}
+                        {result && (
+                          <span className='max-w-full truncate' title={result}>
+                            {result}
+                          </span>
+                        )}
                         <span>{time}</span>
                       </div>
                     }
