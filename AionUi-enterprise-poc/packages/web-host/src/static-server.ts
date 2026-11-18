@@ -73,7 +73,12 @@ export function pickLanIP(nets: ReturnType<typeof networkInterfaces>): string | 
 }
 
 function getLanIP(): string | null {
-  return pickLanIP(networkInterfaces());
+  try {
+    return pickLanIP(networkInterfaces());
+  } catch {
+    // Interface discovery is only for advertising a LAN URL; serving can continue locally.
+    return null;
+  }
 }
 
 function forwardToBackend(req: IncomingMessage, res: ServerResponse, backendPort: number): void {

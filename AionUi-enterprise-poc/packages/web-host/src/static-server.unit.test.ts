@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import http from 'node:http';
+import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -419,5 +420,32 @@ describe('static-server', () => {
     // may still be undefined on CI machines without a LAN interface
     expect(typeof h2.networkUrl === 'string' || h2.networkUrl === undefined).toBe(true);
     await h2.stop();
+  });
+
+  it('keeps serving the local URL when network interface discovery is unavailable', async () => {
+    const backend = await startMockBackend((_req, res) => res.end('backend is available'));
+    stopBackend = backend.close;
+    const discover = vi.spyOn(os, 'networkInterfaces').mockImplementation(() => {
+      throw new Error('network interfaces unavailable');
+    });
+    syncBuiltinESMExports();
+    try {
+      handle = await startStaticServer({
+        staticDir,
+        backendPort: backend.port,
+        port: 0,
+        allowRemote: true,
+      });
+      expect(discover).toHaveBeenCalledOnce();
+      expect(handle.localUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+      expect(handle.url).toBe(handle.localUrl);
+      expect(handle.networkUrl).toBeUndefined();
+      expect(handle.lanIP).toBeUndefined();
+      expect(await (await fetch(`${handle.localUrl}/`)).text()).toContain('<title>root</title>');
+      expect(await (await fetch(`${handle.localUrl}/api/health`)).text()).toBe('backend is available');
+    } finally {
+      discover.mockRestore();
+      syncBuiltinESMExports();
+    }
   });
 });
