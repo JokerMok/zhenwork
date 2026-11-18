@@ -107,18 +107,19 @@ const removeBlock = (value: string, expression: RegExp): string => {
     current = next;
   }
 };
-const withoutPageChrome = (value: string): string => {
+const withoutPageChrome = (value: string, preserveHeader = false): string => {
   let cleaned = value.replace(/<!--[\s\S]*?-->/g, ' ');
   cleaned = removeBlock(cleaned, /<(script|style|noscript|template|svg|head)\b[^>]*>[\s\S]*?<\/\1>/gi);
-  cleaned = removeBlock(cleaned, /<(header|nav|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi);
+  if (!preserveHeader) cleaned = removeBlock(cleaned, /<header\b[^>]*>[\s\S]*?<\/header>/gi);
+  cleaned = removeBlock(cleaned, /<(nav|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi);
   return removeBlock(
     cleaned,
     /<([a-z][\w:-]*)\b(?=[^>]*\brole\s*=\s*(?:["'](?:navigation|banner|contentinfo|complementary)["']|(?:navigation|banner|contentinfo|complementary)\b))[^>]*>[\s\S]*?<\/\1>/gi
   );
 };
-const plain = (value: string): string =>
+const plain = (value: string, preserveHeader = false): string =>
   decode(
-    withoutPageChrome(value)
+    withoutPageChrome(value, preserveHeader)
       .replace(/<(br|p|div|section|article|main|h[1-6]|tr|li)\b[^>]*>/gi, '\n')
       .replace(/<[^>]+>/g, ' ')
   )
@@ -127,7 +128,7 @@ const plain = (value: string): string =>
     .replace(/\n\s*\n/g, '\n')
     .trim();
 const semanticBodies = (value: string): string[] => {
-  const cleaned = withoutPageChrome(value),
+  const cleaned = withoutPageChrome(value, true),
     candidates: string[] = [];
   const tokens = /<\/?([a-z][\w:-]*)\b([^>]*)>/gi;
   let token: RegExpExecArray | null;
@@ -149,8 +150,65 @@ const semanticBodies = (value: string): string[] => {
     const mainRole = /\brole\s*=\s*(?:["']main["']|main(?:\s|$))/i.test(token[2]);
     if (semanticTag || mainRole) active = { name, start: tokens.lastIndex, depth: 1 };
   }
-  return [...new Set(candidates.map(plain).filter(Boolean))];
+  return [...new Set(candidates)];
 };
+
+const attributes = (value: string): Map<string, string> =>
+  new Map(
+    [...value.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g)].map((item) => [
+      item[1].toLowerCase(),
+      decode(item[2] ?? item[3] ?? item[4]),
+    ])
+  );
+
+type PageDate = { value: string; day: string; kind: 'published' | 'modified'; source: string };
+
+function dateDay(value: string): string | undefined {
+  if (value.length > 120 || /[\r\n]/.test(value)) return;
+  const day = /^(\d{4}-\d{2}-\d{2})(?:$|T)/.exec(value)?.[1];
+  if (day) {
+    const midnight = Date.parse(`${day}T00:00:00Z`);
+    if (
+      Number.isFinite(midnight) &&
+      new Date(midnight).toISOString().startsWith(day) &&
+      Number.isFinite(Date.parse(value))
+    )
+      return day;
+    return;
+  }
+  if (!/^(?:[a-z]{3,9}\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[a-z]{3,9}\s+\d{4})$/i.test(value)) return;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : undefined;
+}
+
+/** Only labelled times near the primary heading establish date semantics. */
+function articleTimes(sections: string[], add: (value: unknown, kind: PageDate['kind'], source: string) => void): void {
+  const primary = sections.find((section) => /<h1\b/i.test(section));
+  if (!primary) return;
+  const heading = /<h1\b[^>]*>[\s\S]*?<\/h1>/i.exec(primary);
+  if (!heading) return;
+  const header = [...primary.matchAll(/<header\b[^>]*>([\s\S]*?)<\/header>/gi)].find((match) =>
+    match[1].includes(heading[0])
+  )?.[1];
+  const afterHeading = primary.slice(heading.index + heading[0].length);
+  const boundary = afterHeading.search(/<\/?article\b|<h[1-6]\b/i);
+  const scope = header ?? afterHeading.slice(0, Math.min(boundary < 0 ? 2000 : boundary, 2000));
+  for (const match of scope.matchAll(/<time\b([^>]*)>([\s\S]*?)<\/time>/gi)) {
+    const attrs = attributes(match[1]);
+    const property = attrs.get('itemprop')?.toLowerCase();
+    const prefix = plain(scope.slice(0, match.index), true).slice(-80);
+    const kind =
+      property === 'datemodified' ||
+      /(?:(?:last\s+)?updated(?:\s+on)?|更新(?:于|时间|日期)?)\s*[:：]?\s*$/i.test(prefix)
+        ? 'modified'
+        : property === 'datepublished' ||
+            /(?:^|\s)pubdate(?:\s|=|$)/i.test(match[1]) ||
+            /(?:published(?:\s+on)?|发布(?:于|时间|日期)?|发表(?:于|时间|日期)?)\s*[:：]?\s*$/i.test(prefix)
+          ? 'published'
+          : undefined;
+    if (kind) add(attrs.get('datetime') || plain(match[2]), kind, `html.time.${kind}`);
+  }
+}
 
 type SearchResult = { title: string; url: string; snippet: string; publishedAt: null; providerDate: string | null };
 
@@ -344,54 +402,85 @@ export async function readWeb(
   if (/your request has been blocked|access denied|just a moment|verify (?:that )?you are human|captcha/i.test(title))
     throw new Error('WEB_ACCESS_CHALLENGE_USE_ANOTHER_PUBLIC_SOURCE');
   const meta = new Map<string, string>();
+  const dates: PageDate[] = [];
+  const addDate = (value: unknown, kind: PageDate['kind'], source: string): void => {
+    if (typeof value !== 'string' || dates.length >= 32) return;
+    const trimmed = value.trim(),
+      day = dateDay(trimmed);
+    if (day) dates.push({ value: trimmed, day, kind, source });
+  };
   for (const match of page.body.matchAll(/<meta\b([^>]+)>/gi)) {
-    const attrs = new Map(
-      [...match[1].matchAll(/([\w:-]+)\s*=\s*["']([^"']*)["']/g)].map((item) => [
-        item[1].toLowerCase(),
-        decode(item[2]),
-      ])
-    );
-    const key = attrs.get('property') || attrs.get('name');
-    if (key && attrs.get('content')) meta.set(key.toLowerCase(), attrs.get('content')!);
+    const attrs = attributes(match[1]);
+    const key = (attrs.get('property') || attrs.get('name') || attrs.get('itemprop'))?.toLowerCase();
+    if (key && attrs.get('content')) {
+      meta.set(key, attrs.get('content')!);
+      if (['article:published_time', 'datepublished'].includes(key))
+        addDate(attrs.get('content'), 'published', `meta.${key}`);
+      if (['article:modified_time', 'datemodified'].includes(key))
+        addDate(attrs.get('content'), 'modified', `meta.${key}`);
+    }
   }
-  const structured: Array<{ body?: string; description?: string; date?: string }> = [];
+  const structured: Array<{ body?: string; description?: string }> = [];
+  const currentPage = (identity: unknown): boolean => {
+    if (typeof identity !== 'string') return true;
+    try {
+      const reference = new URL(identity, page.url),
+        current = new URL(page.url);
+      reference.hash = current.hash = '';
+      reference.pathname = reference.pathname.replace(/\/$/, '');
+      current.pathname = current.pathname.replace(/\/$/, '');
+      return reference.href === current.href;
+    } catch {
+      return false;
+    }
+  };
+  let structuredNodes = 0;
   const collect = (value: unknown, depth = 0): void => {
-    if (depth > 5 || structured.length >= 10 || !value || typeof value !== 'object') return;
+    if (depth > 5 || structuredNodes++ >= 100 || !value || typeof value !== 'object') return;
     if (Array.isArray(value)) {
       for (const item of value.slice(0, 20)) collect(item, depth + 1);
       return;
     }
     const item = value as Record<string, unknown>;
-    if (typeof item.articleBody === 'string' || typeof item.description === 'string')
+    const types = Array.isArray(item['@type']) ? item['@type'] : [item['@type']];
+    const article = types.some((type) =>
+      /^(?:Article|NewsArticle|BlogPosting|TechArticle|Report|ScholarlyArticle|WebPage)$/.test(String(type))
+    );
+    const mainEntity = item.mainEntityOfPage as Record<string, unknown> | string | undefined;
+    const identities = [item.url, item['@id'], typeof mainEntity === 'string' ? mainEntity : mainEntity?.['@id']];
+    if ((article || typeof item.articleBody === 'string') && identities.every(currentPage)) {
+      addDate(item.datePublished, 'published', 'jsonld.datePublished');
+      addDate(item.dateModified, 'modified', 'jsonld.dateModified');
+    }
+    if (structured.length < 10 && (typeof item.articleBody === 'string' || typeof item.description === 'string'))
       structured.push({
         body: typeof item.articleBody === 'string' ? item.articleBody : undefined,
         description: typeof item.description === 'string' ? item.description.slice(0, 4000) : undefined,
-        date: typeof item.datePublished === 'string' ? item.datePublished.slice(0, 120) : undefined,
       });
     if (item['@graph']) collect(item['@graph'], depth + 1);
     if (item.mainEntity) collect(item.mainEntity, depth + 1);
   };
-  for (const match of page.body.matchAll(
-    /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
-  )) {
+  for (const match of page.body.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    if (attributes(match[1]).get('type')?.toLowerCase() !== 'application/ld+json') continue;
     try {
-      collect(JSON.parse(match[1]));
+      collect(JSON.parse(match[2]));
     } catch {
       /* malformed metadata is not executable */
     }
   }
-  const publishedAt =
-    meta.get('article:published_time') ||
-    meta.get('datepublished') ||
-    meta.get('date') ||
-    structured.find((item) => item.date)?.date ||
-    null;
+  const semanticSections = semanticBodies(page.body);
+  articleTimes(semanticSections, addDate);
+  const publications = dates.filter((date) => date.kind === 'published');
+  const publicationDays = new Set(publications.map((date) => date.day));
+  const publicationDateStatus =
+    publicationDays.size > 1 ? 'conflicting' : publicationDays.size === 1 ? 'identified' : 'not_extracted';
+  const updates = dates.filter((date) => date.kind === 'modified');
   const structuredArticles = structured
     .map((item) => item.body)
     .filter((item): item is string => Boolean(item))
-    .map(plain)
+    .map((item) => plain(item, true))
     .filter(Boolean);
-  const semanticHtml = semanticBodies(page.body);
+  const semanticHtml = [...new Set(semanticSections.map((section) => plain(section, true)).filter(Boolean))];
   const fallbackHtml = structuredArticles.length || semanticHtml.length ? '' : plain(page.body);
   const metadataDescriptions = [
     meta.get('description'),
@@ -399,7 +488,7 @@ export async function readWeb(
     ...structured.map((item) => item.description),
   ]
     .filter((item): item is string => Boolean(item))
-    .map(plain)
+    .map((item) => plain(item))
     .filter(Boolean);
   const text = [
     ...new Set([...structuredArticles, ...semanticHtml, fallbackHtml, ...metadataDescriptions].filter(Boolean)),
@@ -416,7 +505,16 @@ export async function readWeb(
   return {
     url: page.url,
     title,
-    publishedAt,
+    publishedAt: publicationDateStatus === 'identified' ? publications[0].value : null,
+    modifiedAt: updates.length && new Set(updates.map((date) => date.day)).size === 1 ? updates[0].value : null,
+    publicationDateStatus,
+    publicationDateEvidence: publications.map(({ value, source }) => ({ value, source })),
+    publicationDateNote:
+      publicationDateStatus === 'identified'
+        ? 'Publication date is declared by the fetched original page; update and retrieval dates are separate.'
+        : publicationDateStatus === 'conflicting'
+          ? 'The fetched page contains conflicting publication declarations. Check the original before choosing a date; do not describe it as undated.'
+          : 'No explicit publication date was extracted. This does not establish that the original page has no publication date. Check visible page text or the original before claiming it is undated.',
     retrievedAt: new Date().toISOString(),
     ...selectWebText(text, options),
     textSources: {

@@ -219,6 +219,94 @@ test('source storage versions are labelled separately from product document vers
   expect(actual.entries.map((s) => s.version)).toEqual(['知识文档版本 1', '文件版本 3']);
 });
 
+const webSource = {
+  ref: 'web-date-ref',
+  kind: 'web' as const,
+  quote: 'Synthetic source excerpt without a date; publication metadata must remain visible independently.',
+  locator: {
+    url: 'https://example.com/article',
+    originalUrl: 'https://example.com/article',
+    sourceUrl: 'https://workspace.example/source-snapshot',
+    title: 'Synthetic dated source',
+    versionLabel: '读取快照 2026-11-18 04:00',
+    publishedAt: '2025-09-23T00:00:00.000Z',
+    modifiedAt: '2026-01-02T10:00:00.000Z',
+    publicationDateStatus: 'identified',
+    retrievedAt: '2026-11-18T04:00:00.000Z',
+  },
+};
+
+test('web source versions distinguish declared publication and update dates from the read snapshot', () => {
+  const catalog = buildOfficeSources([webSource]);
+  expect(catalog.entries[0].version).toBe('发布日期：2025-09-23 · 更新日期：2026-01-02 · 读取快照 2026-11-18 04:00');
+  expect(catalog.entries[0].quotes).toEqual([webSource.quote]);
+  expect(catalog.provenance.sources[0].locator).toEqual(webSource.locator);
+  const legacy = buildOfficeSources([
+    { ...webSource, locator: { ...webSource.locator, publicationDateStatus: undefined, modifiedAt: undefined } },
+  ]);
+  expect(legacy.entries[0].version).toBe('发布日期：2025-09-23 · 读取快照 2026-11-18 04:00');
+});
+
+test.each([
+  [null, 'not_extracted', '发布日期：本次未提取到'],
+  ['2025-09-23', 'not_extracted', '发布日期：本次未提取到'],
+  ['2025-09-23', 'conflicting', '发布日期：存在冲突，需核对原文'],
+  ['2026-02-30', 'identified', '发布日期：本次未提取到'],
+  ['September 31, 2025', 'identified', '发布日期：本次未提取到'],
+  ['not a date', 'identified', '发布日期：本次未提取到'],
+  ['Sep 23, 2025', 'identified', '发布日期：2025-09-23'],
+  ['23 September 2025', 'identified', '发布日期：2025-09-23'],
+  ['2025-09-23T23:30:00-08:00', 'identified', '发布日期：2025-09-23'],
+])('web source date %s with status %s has a bounded visible claim', (publishedAt, publicationDateStatus, label) => {
+  const catalog = buildOfficeSources([
+    {
+      ...webSource,
+      locator: { ...webSource.locator, publishedAt, publicationDateStatus, modifiedAt: '2026-02-30' },
+    },
+  ]);
+  expect(catalog.entries[0].version).toBe(`${label} · 读取快照 2026-11-18 04:00`);
+  expect(catalog.entries[0].version).not.toContain('未标注');
+  expect(catalog.entries[0].version).not.toContain('发布日期：2026-11-18');
+});
+
+test('web date presentation leaves workspace and knowledge source versions unchanged', () => {
+  const actual = buildOfficeSources([
+    { ...webSource, kind: 'knowledge', locator: { version: 1, publishedAt: '2025-09-23' } },
+    { ...webSource, kind: 'workspace', locator: { version: 3, publishedAt: '2025-09-23' } },
+    { ...webSource, kind: 'knowledge', locator: { ...webSource.locator, versionLabel: '授权文档 V4' } },
+  ]);
+  expect(actual.entries.map((entry) => entry.version)).toEqual(['知识文档版本 1', '文件版本 3', '授权文档 V4']);
+});
+
+integration('renders web publication metadata in the real Word source catalog without rewriting quotes', async () => {
+  const catalog = buildOfficeSources([
+    webSource,
+    {
+      ...webSource,
+      locator: { ...webSource.locator, publishedAt: null, modifiedAt: null, publicationDateStatus: 'not_extracted' },
+    },
+    {
+      ...webSource,
+      locator: { ...webSource.locator, publishedAt: null, modifiedAt: null, publicationDateStatus: 'conflicting' },
+    },
+  ]);
+  const bytes = await generateOfficeArtifact({
+    format: 'docx',
+    title: '来源日期显示合成验收',
+    paragraphs: ['仅验证可信来源元数据的可见表示，不代替报告结论的业务验收。'],
+    sources: catalog.entries,
+    provenance: catalog.provenance,
+  });
+  const info = await inspectZip(bytes, 'docx');
+  expect(info.text).toContain('发布日期：2025-09-23 · 更新日期：2026-01-02 · 读取快照 2026-11-18 04:00');
+  expect(info.text).toContain('发布日期：本次未提取到');
+  expect(info.text).toContain('发布日期：存在冲突，需核对原文');
+  expect(info.text).toContain(webSource.quote);
+  expect(info.links).toContain(webSource.locator.originalUrl);
+  expect(info.provenance).toContain(webSource.locator.publishedAt);
+  expect(info.crc).toBeNull();
+});
+
 integration(
   'typed parameter values survive real Word/Excel rendering and context is excluded from checklist',
   async () => {

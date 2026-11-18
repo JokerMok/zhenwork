@@ -91,6 +91,116 @@ test('reads explicitly identified article metadata without executing webpage scr
   expect(source.textSources).toMatchObject({ metadataDescription: true, structuredArticle: true });
 });
 
+test('extracts publication metadata from a headline-only Article and separates its update date', async () => {
+  mocks.body =
+    '<main><h1>Official release</h1><p>Original release details.</p></main><script type="application/ld+json">{"@type":"BlogPosting","headline":"Official release","datePublished":"2025-09-23","dateModified":"2026-01-02"}</script>';
+  const source = await readWeb('https://example.com/source');
+  expect(source).toMatchObject({
+    publishedAt: '2025-09-23',
+    modifiedAt: '2026-01-02',
+    publicationDateStatus: 'identified',
+  });
+  expect(source.publicationDateEvidence).toEqual([{ value: '2025-09-23', source: 'jsonld.datePublished' }]);
+});
+
+test('reads JSON-LD date declarations with ordinary HTML attribute whitespace', async () => {
+  mocks.body =
+    '<main><h1>Release</h1><p>Release details.</p></main><script TYPE = "application/ld+json">{"@type":"Article","datePublished":"2025-09-23"}</script><script>throw Error("must not execute")</script>';
+  expect(await readWeb('https://example.com/source')).toMatchObject({
+    publishedAt: '2025-09-23',
+    publicationDateStatus: 'identified',
+  });
+});
+
+test('preserves an article header and extracts its explicitly labelled publication time', async () => {
+  mocks.body =
+    '<header>Global navigation</header><article><header><h1>Official release</h1><p>Published <time datetime="2025-09-23">September 23, 2025</time></p></header><p>Original release details.</p></article>';
+  const source = await readWeb('https://example.com/source');
+  expect(source).toMatchObject({ publishedAt: '2025-09-23', publicationDateStatus: 'identified' });
+  expect(source.text).toContain('September 23, 2025');
+  expect(source.text).not.toContain('Global navigation');
+});
+
+test('does not turn an updated-only page or an unlabelled time into a publication date', async () => {
+  mocks.body =
+    '<article><header><h1>Current guide</h1><p>Last updated <time datetime="2026-01-02">January 2, 2026</time></p><time datetime="2025-09-23">September 23, 2025</time></header><p>Guide content.</p></article>';
+  const source = await readWeb('https://example.com/source');
+  expect(source).toMatchObject({ publishedAt: null, modifiedAt: '2026-01-02', publicationDateStatus: 'not_extracted' });
+  expect(source.publicationDateEvidence).toEqual([]);
+  expect(source.publicationDateNote).toContain('does not establish that the original page has no publication date');
+});
+
+test('does not borrow dates from Product metadata, ItemList entries or another article URL', async () => {
+  mocks.body =
+    '<main><h1>Current guide</h1><p>Current guide content.</p></main><script type="application/ld+json">{"@graph":[{"@type":"Product","description":"Promotional metadata","datePublished":"2025-01-02"},{"@type":"ItemList","itemListElement":[{"@type":"Article","datePublished":"2025-02-03"}]},{"@type":"BlogPosting","url":"https://example.com/other-article","description":"Related article","datePublished":"2025-03-04"}]}</script>';
+  const source = await readWeb('https://example.com/source');
+  expect(source).toMatchObject({ publishedAt: null, publicationDateStatus: 'not_extracted' });
+  expect(source.publicationDateEvidence).toEqual([]);
+});
+
+test('reports conflicting original publication declarations instead of choosing an arbitrary date', async () => {
+  mocks.body =
+    '<meta property="article:published_time" content="2025-09-23"><main><h1>Release</h1><p>Release details.</p></main><script type="application/ld+json">{"@type":"Article","datePublished":"2025-09-24"}</script>';
+  const source = await readWeb('https://example.com/source');
+  expect(source).toMatchObject({ publishedAt: null, publicationDateStatus: 'conflicting' });
+  expect(source.publicationDateEvidence).toHaveLength(2);
+});
+
+test('accepts matching date-only and timestamp declarations without inventing a conflict', async () => {
+  mocks.body =
+    '<meta property="article:published_time" content="2025-09-23T10:00:00+08:00"><article><header><h1>Release</h1><time itemprop="datePublished" datetime="2025-09-23">September 23, 2025</time></header><p>Release details.</p></article>';
+  const source = await readWeb('https://example.com/source');
+  expect(source).toMatchObject({ publishedAt: '2025-09-23T10:00:00+08:00', publicationDateStatus: 'identified' });
+});
+
+test('does not infer publication from a generic date, footer year, or historical body date', async () => {
+  mocks.body =
+    '<meta name="date" content="2026-01-02"><main><h1>History</h1><p>The earlier announcement was on 2025-09-23.</p></main><footer>Copyright 2026</footer>';
+  const source = await readWeb('https://example.com/source');
+  expect(source).toMatchObject({ publishedAt: null, publicationDateStatus: 'not_extracted' });
+});
+
+test('does not assign a related article time to the current article', async () => {
+  mocks.body =
+    '<main><article><h1>Current guide</h1><p>Current guide content.</p></article><article><h2>Related release</h2><time itemprop="datePublished" datetime="2025-09-23">September 23, 2025</time></article></main>';
+  const source = await readWeb('https://example.com/source');
+  expect(source).toMatchObject({ publishedAt: null, publicationDateStatus: 'not_extracted' });
+});
+
+test('keeps multiple unidentified Article dates ambiguous but selects an explicitly matching page identity', async () => {
+  mocks.bodies = [
+    '<main><h1>Current guide</h1><p>Guide content.</p></main><script type="application/ld+json">{"@graph":[{"@type":"Article","datePublished":"2025-09-23"},{"@type":"Article","datePublished":"2025-09-24"}]}</script>',
+    '<main><h1>Current guide</h1><p>Guide content.</p></main><script type="application/ld+json">{"@graph":[{"@type":"Article","url":"https://example.com/other","datePublished":"2025-09-23"},{"@type":"Article","@id":"https://example.com/source#article","datePublished":"2025-09-24"}]}</script>',
+  ];
+  expect(await readWeb('https://example.com/source')).toMatchObject({
+    publishedAt: null,
+    publicationDateStatus: 'conflicting',
+  });
+  expect(await readWeb('https://example.com/source')).toMatchObject({
+    publishedAt: '2025-09-24',
+    publicationDateStatus: 'identified',
+  });
+});
+
+test('keeps Chinese publication and update labels distinct', async () => {
+  mocks.body =
+    '<article><header><h1>官方指南</h1><p>发布时间：<time datetime="2025-09-23">2025年9月23日</time></p><p>更新于：<time datetime="2026-01-02">2026年1月2日</time></p></header><p>指南正文。</p></article>';
+  expect(await readWeb('https://example.com/source')).toMatchObject({
+    publishedAt: '2025-09-23',
+    modifiedAt: '2026-01-02',
+    publicationDateStatus: 'identified',
+  });
+});
+
+test('does not normalize an impossible declared date into a different calendar date', async () => {
+  mocks.body =
+    '<meta property="article:published_time" content="2025-02-30"><main><h1>Release</h1><p>Release details.</p></main>';
+  expect(await readWeb('https://example.com/source')).toMatchObject({
+    publishedAt: null,
+    publicationDateStatus: 'not_extracted',
+  });
+});
+
 test('places semantic main content before long navigation and removes page chrome', async () => {
   const navigation = Array.from({ length: 24 }, (_, index) => `<li>Navigation item ${index}</li>`).join('');
   mocks.body = `<html><head><title>Official product</title></head><body><header>Global promotion</header><nav><ul>${navigation}</ul></nav><div role="main"><section><div><h1>Documented capability</h1><p>The product supports a continuous, source-backed workflow.</p></div></section></div><aside>Related promotion</aside><footer>Legal links</footer></body></html>`;

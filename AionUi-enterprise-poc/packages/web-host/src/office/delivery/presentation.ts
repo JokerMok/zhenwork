@@ -122,6 +122,50 @@ function locationText(value: unknown): string {
   return '未提供位置';
 }
 
+function declaredSourceDay(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 120 || /[\r\n]/.test(value)) return;
+  const text = value.trim();
+  let day = /^(\d{4}-\d{2}-\d{2})(?:$|T)/.exec(text)?.[1];
+  if (day) {
+    if (!Number.isFinite(Date.parse(text))) return;
+  } else {
+    const parts = /^(?:([a-z]{3,9})\s+(\d{1,2}),?|(\d{1,2})\s+([a-z]{3,9}))\s+(\d{4})$/i.exec(text);
+    if (!parts) return;
+    const name = (parts[1] || parts[4]).toLowerCase();
+    const month = [
+      'january',
+      'february',
+      'march',
+      'april',
+      'may',
+      'june',
+      'july',
+      'august',
+      'september',
+      'october',
+      'november',
+      'december',
+    ].findIndex((item) => item === name || item.slice(0, 3) === name);
+    if (month < 0) return;
+    day = `${parts[5]}-${String(month + 1).padStart(2, '0')}-${(parts[2] || parts[3]).padStart(2, '0')}`;
+  }
+  const midnight = Date.parse(`${day}T00:00:00Z`);
+  return Number.isFinite(midnight) && new Date(midnight).toISOString().slice(0, 10) === day ? day : undefined;
+}
+
+function webSourceVersion(locator: Record<string, unknown>, snapshot: string): string {
+  const published = declaredSourceDay(locator.publishedAt),
+    modified = declaredSourceDay(locator.modifiedAt),
+    status = locator.publicationDateStatus;
+  const publication =
+    status === 'conflicting'
+      ? '发布日期：存在冲突，需核对原文'
+      : published && (status == null || status === 'identified')
+        ? `发布日期：${published}`
+        : '发布日期：本次未提取到';
+  return [publication, modified ? `更新日期：${modified}` : '', snapshot].filter(Boolean).join(' · ');
+}
+
 /** Deduplicate readable references while retaining exact internal evidence outside body content. */
 export function buildOfficeSources(sources: VerifiedSourceEvidence[]) {
   const entries: OfficeSource[] = [],
@@ -160,19 +204,20 @@ export function buildOfficeSources(sources: VerifiedSourceEvidence[]) {
     if (!entry) {
       const rawPath =
         typeof locator.path === 'string' ? locator.path.replaceAll('\\', '/').split('/').at(-1) : undefined;
+      const version = String(
+        locator.versionLabel ||
+          (locator.version == null
+            ? locator.sha256
+              ? '读取时版本'
+              : '未提供版本'
+            : source.kind === 'knowledge'
+              ? `知识文档版本 ${locator.version}`
+              : `文件版本 ${locator.version}`)
+      );
       entry = {
         id: `S${entries.length + 1}`,
         title: String(locator.title || rawPath || (source.kind === 'web' ? '公开网页' : '来源资料')),
-        version: String(
-          locator.versionLabel ||
-            (locator.version == null
-              ? locator.sha256
-                ? '读取时版本'
-                : '未提供版本'
-              : source.kind === 'knowledge'
-                ? `知识文档版本 ${locator.version}`
-                : `文件版本 ${locator.version}`)
-        ),
+        version: source.kind === 'web' ? webSourceVersion(locator, version) : version,
         location: locationText(locator.location),
         url: safeOfficeSourceUrl(locator.sourceUrl || locator.url || locator.downloadUrl),
         originalUrl: safeOfficeSourceUrl(locator.originalUrl),

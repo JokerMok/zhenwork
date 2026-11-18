@@ -7,6 +7,7 @@ import type { EnterpriseCore } from '../enterprise-gateway.js';
 import { OfficeStore } from './office-store.js';
 import { enterpriseProfilePath } from '../enterprise-core.js';
 import { buildEvidenceTable, ensureOfficeAssistant, startOfficeTools } from './office-tools.js';
+import * as webResearch from './research.js';
 
 const roots: string[] = [];
 const actor = { serverId: 'rc2', userId: '17' };
@@ -823,6 +824,81 @@ test('knowledge search resolves permitted bases and output context without inven
       citations: [{ ref, quoteIndex: 0 }],
     })) as unknown as { error: { message: string } };
     expect(staleCitation.error.message).toBe('SOURCE_OUTSIDE_SELECTED_KNOWLEDGE');
+  } finally {
+    await office.stop();
+    await fixture.close();
+  }
+});
+
+test.each([
+  {
+    publishedAt: '2025-09-23',
+    modifiedAt: '2025-10-01',
+    publicationDateStatus: 'identified',
+    publicationDateEvidence: [{ value: '2025-09-23', source: 'jsonld.datePublished' }],
+    publicationDateNote: 'Publication date is declared by the fetched original page.',
+  },
+  {
+    publishedAt: null,
+    modifiedAt: '2025-10-01',
+    publicationDateStatus: 'not_extracted',
+    publicationDateEvidence: [],
+    publicationDateNote: 'No explicit publication date was extracted; the original may still display one.',
+  },
+  {
+    publishedAt: null,
+    modifiedAt: null,
+    publicationDateStatus: 'conflicting',
+    publicationDateEvidence: [
+      { value: '2025-09-23', source: 'jsonld.datePublished' },
+      { value: '2025-09-24', source: 'meta.article:published_time' },
+    ],
+    publicationDateNote: 'Conflicting publication declarations require checking the original.',
+  },
+])('retains $publicationDateStatus date evidence from web reading through quote verification', async (dates) => {
+  const fixture = await coreFixture();
+  const root = await profileRoot();
+  const url = 'https://example.com/source';
+  const text = 'The source describes the current product capabilities.';
+  vi.spyOn(webResearch, 'readWeb').mockResolvedValue({
+    ...dates,
+    url,
+    title: 'Source article',
+    text,
+    retrievedAt: '2026-11-18T00:00:00.000Z',
+    start: 0,
+    end: text.length,
+    totalChars: text.length,
+  });
+  const client = { me: async () => ({ userId: actor.userId }) };
+  const office = await startOfficeTools(
+    actor,
+    fixture.core,
+    root,
+    async () => client as never,
+    'https://workspace.example'
+  );
+  const registration = fixture.registered();
+  const call = async (name: string, args: unknown) => {
+    const reply = (await (
+      await fetch(registration.transport.url.replace('/mcp', '/conversations/web-evidence/mcp'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: registration.transport.headers.Authorization },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+      })
+    ).json()) as { result: { content: Array<{ text: string }> } };
+    return JSON.parse(reply.result.content[0].text);
+  };
+  try {
+    const source = await call('read_web', { url });
+    const verified = await call('verify_source_quotes', { citations: [{ ref: source.sourceRef, quoteIndex: 0 }] });
+    expect(verified.sources).toEqual([
+      expect.objectContaining({
+        kind: 'web',
+        quote: text,
+        locator: expect.objectContaining({ ...dates, url, retrievedAt: '2026-11-18T00:00:00.000Z' }),
+      }),
+    ]);
   } finally {
     await office.stop();
     await fixture.close();
