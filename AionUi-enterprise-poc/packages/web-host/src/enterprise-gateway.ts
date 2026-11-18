@@ -1008,7 +1008,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
         pendingSessions -= 1;
       }
     })()
-      .catch(() => undefined)
+      .catch((): undefined => undefined)
       .finally(() => restoring.delete(id));
     restoring.set(id, restore);
     return restore;

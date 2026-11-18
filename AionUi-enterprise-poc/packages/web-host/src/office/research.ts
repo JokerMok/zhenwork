@@ -212,7 +212,7 @@ async function bingResults(query: string, signal?: AbortSignal): Promise<SearchR
   const page = await fetchPublic(`https://www.bing.com/search?format=rss&q=${encodeURIComponent(query)}`, signal);
   return [...page.body.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)]
     .slice(0, 8)
-    .map((match) => {
+    .map((match): SearchResult => {
       const source = tag(match[1], 'link');
       return {
         title: tag(match[1], 'title'),
@@ -300,7 +300,7 @@ export function selectWebText(text: string, options: WebReadOptions = {}) {
         start,
         end: start,
         totalChars: text.length,
-        nextStart: null,
+        nextStart: null as null,
         matches,
         query: options.query.trim(),
         truncated: true,

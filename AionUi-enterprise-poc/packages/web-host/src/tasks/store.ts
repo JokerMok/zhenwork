@@ -38,7 +38,7 @@ export class TaskStore {
     return this.read();
   }
   private async read(): Promise<TaskRecord[]> {
-    const stat = await lstat(this.file).catch((e: NodeJS.ErrnoException) => {
+    const stat = await lstat(this.file).catch((e: NodeJS.ErrnoException): null => {
       if (e.code === 'ENOENT') return null;
       throw e;
     });

@@ -40,7 +40,7 @@ export class EnterpriseWebSessions {
 
   async get(id: string): Promise<StoredSession | undefined> {
     const file = this.file(id);
-    const entry = await lstat(file).catch((error: NodeJS.ErrnoException) => {
+    const entry = await lstat(file).catch((error: NodeJS.ErrnoException): undefined => {
       if (error.code === 'ENOENT') return undefined;
       throw error;
     });
@@ -68,7 +68,7 @@ export class EnterpriseWebSessions {
     for (const entry of await readdir(this.directory, { withFileTypes: true })) {
       if (!entry.isFile() || !/^[a-f0-9]{64}$/.test(entry.name)) continue;
       const file = path.join(this.directory, entry.name);
-      const attrs = await lstat(file).catch((error: NodeJS.ErrnoException) => {
+      const attrs = await lstat(file).catch((error: NodeJS.ErrnoException): undefined => {
         if (error.code === 'ENOENT') return undefined;
         throw error;
       });
