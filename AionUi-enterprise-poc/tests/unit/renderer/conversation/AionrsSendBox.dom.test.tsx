@@ -1,4 +1,5 @@
 import React from 'react';
+import { webcrypto } from 'node:crypto';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Message } from '@arco-design/web-react';
@@ -27,6 +28,7 @@ const {
   clearFilesMock,
   draftMutateMock,
   draftContentRef,
+  draftUploadFilesRef,
   runtimeViewIsProcessingRef,
 } = vi.hoisted(() => ({
   ensureConversationRuntimeMock: vi.fn().mockResolvedValue({ recovered: false, config_options: [], runtime: null }),
@@ -42,6 +44,7 @@ const {
   clearFilesMock: vi.fn(),
   draftMutateMock: vi.fn(),
   draftContentRef: { current: '' },
+  draftUploadFilesRef: { current: [] as string[] },
   runtimeViewIsProcessingRef: { current: false },
 }));
 
@@ -176,7 +179,7 @@ vi.mock('@/renderer/hooks/chat/useSendBoxDraft', () => ({
   getSendBoxDraftHook: () => () => ({
     data: {
       atPath: [],
-      uploadFile: [],
+      uploadFile: draftUploadFilesRef.current,
       content: draftContentRef.current,
     },
     mutate: draftMutateMock,
@@ -197,9 +200,6 @@ vi.mock('@/renderer/hooks/file/useOpenFileSelector', () => ({
     openFileSelector: vi.fn(),
     onSlashBuiltinCommand: vi.fn(),
   }),
-}));
-vi.mock('@/renderer/hooks/ui/useLatestRef', () => ({
-  useLatestRef: <T,>(value: T) => ({ current: value }),
 }));
 vi.mock('@/renderer/pages/conversation/platforms/useConversationCommandQueue', () => ({
   useConversationCommandQueue: () => ({
@@ -265,10 +265,6 @@ vi.mock('@/renderer/utils/emitter', () => ({
 vi.mock('@/renderer/utils/file/fileSelection', () => ({
   mergeFileSelectionItems: vi.fn((items: unknown[]) => items),
 }));
-vi.mock('@/renderer/utils/file/messageFiles', () => ({
-  collectChatFileRefs: () => [],
-  splitChatFileRefs: () => ({ uploadFiles: [], atPath: [] }),
-}));
 vi.mock('@arco-design/web-react', async (importOriginal) => ({
   Input: (await importOriginal<typeof import('@arco-design/web-react')>()).Input,
   Message: {
@@ -323,6 +319,7 @@ describe('AionrsSendBox', () => {
     ensureConversationRuntimeMock.mockResolvedValue({ recovered: false, config_options: [], runtime: null });
     useTeamPermissionMock.mockReturnValue(null);
     draftContentRef.current = '';
+    draftUploadFilesRef.current = [];
     runtimeViewIsProcessingRef.current = false;
   });
 
@@ -594,6 +591,166 @@ describe('AionrsSendBox', () => {
   });
 });
 
+describe('ordinary submission recovery', () => {
+  const id = 'conv-recovery';
+  const receipt = { turn_id: 'native-attempt', msg_id: '', runtime: {} };
+  const originalPath = '/uploads/reimbursement-v1.xlsx';
+  type SessionProps = {
+    selectedSessions?: Array<{ id: string }>;
+    onSelectedSessionsChange?: (sessions: Array<{ id: string }>) => void;
+  };
+  const latestProps = (): SessionProps => sendBoxPropsSpy.mock.calls.at(-1)?.[0] as SessionProps;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('__AION_ENTERPRISE_WEB__', true);
+    vi.stubGlobal('crypto', webcrypto);
+    sendMessageInvokeMock.mockReset();
+    ensureConversationRuntimeMock.mockResolvedValue({ recovered: false, config_options: [], runtime: null });
+    useTeamPermissionMock.mockReturnValue(null);
+    draftContentRef.current = 'Hello';
+    draftUploadFilesRef.current = [originalPath];
+    runtimeViewIsProcessingRef.current = false;
+    sessionStorage.clear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: 'TASK_NOT_FOUND' }), { status: 404 }))
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+    draftUploadFilesRef.current = [];
+  });
+
+  async function selectSession(sessionId: string) {
+    await act(async () => latestProps().onSelectedSessionsChange?.([{ id: sessionId }]));
+  }
+
+  it('keeps attachments and @@ references when the host requires external review before another message', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id,
+          updatedAt: 1,
+          attempts: [
+            {
+              id: 'failed-write',
+              state: 'failed',
+              requiresExternalReview: true,
+              artifacts: [],
+              steps: [],
+            },
+          ],
+        })
+      )
+    );
+    sendMessageInvokeMock.mockRejectedValue(
+      new BackendHttpError({
+        method: 'POST',
+        path: `/api/conversations/${id}/messages`,
+        status: 409,
+        body: { error: 'TASK_EXTERNAL_REVIEW_REQUIRED' },
+      })
+    );
+    render(<AionrsSendBox conversation_id={id} modelSelection={modelSelection} />);
+    await waitFor(() => expect(ensureConversationRuntimeMock).toHaveBeenCalledWith(id));
+    await selectSession('expense-context');
+    await act(async () => screen.getByRole('button', { name: 'send' }).click());
+    await waitFor(() => expect(markSendFailedMock).toHaveBeenCalled());
+
+    expect(sendMessageInvokeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: 'Hello',
+        files: [{ kind: 'upload', path: originalPath }],
+        sessions: [{ id: 'expense-context' }],
+      })
+    );
+    expect(clearFilesMock).not.toHaveBeenCalled();
+    expect(latestProps().selectedSessions).toEqual([{ id: 'expense-context' }]);
+  });
+
+  it('clears the submitted attachments and @@ references only after acceptance', async () => {
+    let accept!: (value: typeof receipt) => void;
+    sendMessageInvokeMock.mockImplementation(() => new Promise((resolve) => (accept = resolve)));
+    render(<AionrsSendBox conversation_id={id} modelSelection={modelSelection} />);
+    await waitFor(() => expect(ensureConversationRuntimeMock).toHaveBeenCalledWith(id));
+    await selectSession('expense-context');
+    await act(async () => screen.getByRole('button', { name: 'send' }).click());
+    await waitFor(() => expect(sendMessageInvokeMock).toHaveBeenCalledTimes(1));
+
+    expect(clearFilesMock).not.toHaveBeenCalled();
+    expect(latestProps().selectedSessions).toEqual([{ id: 'expense-context' }]);
+    await act(async () => accept(receipt));
+    expect(clearFilesMock).toHaveBeenCalledTimes(1);
+    expect(latestProps().selectedSessions).toEqual([]);
+  });
+
+  it('does not clear newer attachments or @@ references when an earlier send is accepted late', async () => {
+    let accept!: (value: typeof receipt) => void;
+    sendMessageInvokeMock.mockImplementation(() => new Promise((resolve) => (accept = resolve)));
+    const view = render(<AionrsSendBox conversation_id={id} modelSelection={modelSelection} />);
+    await waitFor(() => expect(ensureConversationRuntimeMock).toHaveBeenCalledWith(id));
+    await selectSession('expense-context');
+    await act(async () => screen.getByRole('button', { name: 'send' }).click());
+    await waitFor(() => expect(sendMessageInvokeMock).toHaveBeenCalledTimes(1));
+
+    draftUploadFilesRef.current = ['/uploads/next-report.xlsx'];
+    view.rerender(<AionrsSendBox conversation_id={id} modelSelection={modelSelection} />);
+    await selectSession('next-context');
+    clearFilesMock.mockClear();
+    await act(async () => accept(receipt));
+
+    expect(sendMessageInvokeMock.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        files: [{ kind: 'upload', path: originalPath }],
+        sessions: [{ id: 'expense-context' }],
+      })
+    );
+    expect(clearFilesMock).not.toHaveBeenCalled();
+    expect(latestProps().selectedSessions).toEqual([{ id: 'next-context' }]);
+  });
+
+  it('isolates a late acceptance from the next draft and allows a fresh identical request on return', async () => {
+    let accept!: (value: typeof receipt) => void;
+    sendMessageInvokeMock.mockImplementation(() => new Promise((resolve) => (accept = resolve)));
+    const view = render(<AionrsSendBox conversation_id={id} modelSelection={modelSelection} />);
+    await waitFor(() => expect(ensureConversationRuntimeMock).toHaveBeenCalledWith(id));
+    await selectSession('expense-context');
+    await act(async () => screen.getByRole('button', { name: 'send' }).click());
+    await waitFor(() => expect(sendMessageInvokeMock).toHaveBeenCalledTimes(1));
+
+    const previousComposer = screen.getByRole('button', { name: 'send' });
+    draftContentRef.current = 'A different task';
+    draftUploadFilesRef.current = ['/uploads/next-report.xlsx'];
+    view.rerender(<AionrsSendBox conversation_id='conv-next' modelSelection={modelSelection} />);
+    // The real entry must remount its shared composer to release the previous
+    // request's local loading state, not only fence its eventual callback.
+    expect(screen.getByRole('button', { name: 'send' })).not.toBe(previousComposer);
+    await selectSession('next-context');
+    clearFilesMock.mockClear();
+    draftMutateMock.mockClear();
+    await act(async () => accept(receipt));
+
+    expect(clearFilesMock).not.toHaveBeenCalled();
+    expect(draftMutateMock).not.toHaveBeenCalled();
+    expect(latestProps().selectedSessions).toEqual([{ id: 'next-context' }]);
+
+    // Acceptance belongs to the original request even while its composer is
+    // away. Returning and sending the same payload must start a new request.
+    const acceptedId = sendMessageInvokeMock.mock.calls[0]?.[0].execution_id;
+    sendMessageInvokeMock.mockResolvedValueOnce(receipt);
+    draftContentRef.current = 'Hello';
+    draftUploadFilesRef.current = [originalPath];
+    view.rerender(<AionrsSendBox conversation_id={id} modelSelection={modelSelection} />);
+    await selectSession('expense-context');
+    await act(async () => screen.getByRole('button', { name: 'send' }).click());
+    await waitFor(() => expect(sendMessageInvokeMock).toHaveBeenCalledTimes(2));
+    expect(sendMessageInvokeMock.mock.calls[1]?.[0].execution_id).not.toBe(acceptedId);
+  });
+});
+
 describe('initial message recovery', () => {
   const id = 'conv-first';
   const executionId = '5d471dc2-194e-4b07-82d2-565c52325180';
@@ -611,6 +768,7 @@ describe('initial message recovery', () => {
     vi.stubGlobal('__AION_ENTERPRISE_WEB__', true);
     accepted = false;
     sendMessageInvokeMock.mockReset();
+    draftUploadFilesRef.current = [];
     sessionStorage.clear();
     writeDraft<InitialMessage>(initialMessageKey(employeeDraftScope('test-employee')!, id), {
       executionId,

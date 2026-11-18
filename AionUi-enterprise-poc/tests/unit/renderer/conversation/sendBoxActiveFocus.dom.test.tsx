@@ -6,10 +6,11 @@
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React, { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { layoutState } = vi.hoisted(() => ({
+const { layoutState, conversationRef } = vi.hoisted(() => ({
   layoutState: { isMobile: false },
+  conversationRef: { current: 'sendbox-active-focus-conversation' },
 }));
 
 vi.mock('react-i18next', () => ({
@@ -38,7 +39,7 @@ vi.mock('@/renderer/hooks/chat/useInputFocusRing', () => ({
 
 vi.mock('@/renderer/hooks/context/ConversationContext', () => ({
   useConversationContextSafe: () => ({
-    conversation_id: 'sendbox-active-focus-conversation',
+    conversation_id: conversationRef.current,
     type: 'acp',
   }),
 }));
@@ -133,6 +134,7 @@ const SendBoxHarness = ({
   initialValue = '',
   onSend = vi.fn().mockResolvedValue(undefined),
   onAddToDraft,
+  preserveDraftUntilAccepted,
 }: {
   active?: boolean;
   onFocused?: () => void;
@@ -140,6 +142,7 @@ const SendBoxHarness = ({
   initialValue?: string;
   onSend?: (message: string) => Promise<void | false>;
   onAddToDraft?: () => void;
+  preserveDraftUntilAccepted?: boolean;
 }) => {
   const [value, setValue] = useState(initialValue);
   return (
@@ -151,6 +154,7 @@ const SendBoxHarness = ({
       onFocused={onFocused}
       disabled={disabled}
       onAddToDraft={onAddToDraft}
+      preserveDraftUntilAccepted={preserveDraftUntilAccepted}
     />
   );
 };
@@ -294,5 +298,95 @@ describe('SendBox selection→focus downward effect', () => {
     screen.getByRole('button', { name: 'outside' }).focus();
     await waitFor(() => expect(screen.getByRole('button', { name: 'outside' })).toHaveFocus());
     expect(textarea).not.toHaveFocus();
+  });
+});
+
+describe('SendBox preserves enterprise drafts until acceptance', () => {
+  beforeEach(() => {
+    layoutState.isMobile = false;
+    conversationRef.current = 'sendbox-active-focus-conversation';
+  });
+  afterEach(() => {
+    conversationRef.current = 'sendbox-active-focus-conversation';
+  });
+
+  it('keeps the body when the host rejects the request', async () => {
+    const onSend = vi.fn().mockRejectedValue(new Error('TASK_EXTERNAL_REVIEW_REQUIRED'));
+    render(<SendBoxHarness initialValue='Fill the reimbursement copy' onSend={onSend} preserveDraftUntilAccepted />);
+    const textarea = screen.getByTestId('sendbox-input') as HTMLTextAreaElement;
+
+    await act(async () => fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' }));
+
+    expect(onSend).toHaveBeenCalledWith('Fill the reimbursement copy');
+    expect(textarea.value).toBe('Fill the reimbursement copy');
+  });
+
+  it('keeps the original body pending and clears it only after acceptance', async () => {
+    let accept!: () => void;
+    const onSend = vi.fn(() => new Promise<void>((resolve) => (accept = resolve)));
+    render(<SendBoxHarness initialValue='Fill the reimbursement copy' onSend={onSend} preserveDraftUntilAccepted />);
+    const textarea = screen.getByTestId('sendbox-input') as HTMLTextAreaElement;
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect.soft(textarea.value).toBe('Fill the reimbursement copy');
+    await act(async () => accept());
+    expect(textarea.value).toBe('');
+  });
+
+  it('does not erase text typed after the submitted snapshot when acceptance arrives late', async () => {
+    let accept!: () => void;
+    const onSend = vi.fn(() => new Promise<void>((resolve) => (accept = resolve)));
+    render(<SendBoxHarness initialValue='Fill the reimbursement copy' onSend={onSend} preserveDraftUntilAccepted />);
+    const textarea = screen.getByTestId('sendbox-input') as HTMLTextAreaElement;
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+    fireEvent.change(textarea, { target: { value: 'Now prepare a market report' } });
+
+    await act(async () => accept());
+
+    expect(textarea.value).toBe('Now prepare a market report');
+    expect(onSend).toHaveBeenCalledWith('Fill the reimbursement copy');
+  });
+
+  it('does not clear an identical body in the next conversation on a late acceptance', async () => {
+    let accept!: () => void;
+    const onSend = vi.fn(() => new Promise<void>((resolve) => (accept = resolve)));
+    const oldChange = vi.fn();
+    const nextChange = vi.fn();
+    const view = render(
+      <SendBox value='Check this document' onChange={oldChange} onSend={onSend} preserveDraftUntilAccepted />
+    );
+    fireEvent.keyDown(screen.getByTestId('sendbox-input'), { key: 'Enter', code: 'Enter' });
+    conversationRef.current = 'next-conversation';
+    view.rerender(
+      <SendBox value='Check this document' onChange={nextChange} onSend={onSend} preserveDraftUntilAccepted />
+    );
+    oldChange.mockClear();
+
+    await act(async () => accept());
+
+    expect(oldChange).not.toHaveBeenCalled();
+    expect(nextChange).not.toHaveBeenCalled();
+    expect(screen.getByTestId('sendbox-input')).toHaveValue('Check this document');
+  });
+
+  it('releases local sending state when the enterprise entry remounts for the next conversation', async () => {
+    let accept!: () => void;
+    const oldSend = vi.fn(() => new Promise<void>((resolve) => (accept = resolve)));
+    const nextSend = vi.fn().mockResolvedValue(false);
+    const view = render(
+      <SendBoxHarness key='old-conversation' initialValue='Old task' onSend={oldSend} preserveDraftUntilAccepted />
+    );
+    fireEvent.keyDown(screen.getByTestId('sendbox-input'), { key: 'Enter', code: 'Enter' });
+    expect(oldSend).toHaveBeenCalledWith('Old task');
+
+    conversationRef.current = 'next-conversation';
+    view.rerender(
+      <SendBoxHarness key='next-conversation' initialValue='Next task' onSend={nextSend} preserveDraftUntilAccepted />
+    );
+    await act(async () => fireEvent.keyDown(screen.getByTestId('sendbox-input'), { key: 'Enter', code: 'Enter' }));
+    expect(nextSend).toHaveBeenCalledWith('Next task');
+    await act(async () => accept());
+    expect(screen.getByTestId('sendbox-input')).toHaveValue('Next task');
   });
 });

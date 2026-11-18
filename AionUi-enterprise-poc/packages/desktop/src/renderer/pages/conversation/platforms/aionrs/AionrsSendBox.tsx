@@ -173,6 +173,14 @@ const AionrsSendBox: React.FC<{
   const initialScope = hosted ? employeeDraftScope(user?.id) : undefined;
   const pendingKey = initialScope && initialMessageKey(initialScope, conversation_id);
   const initialMessage = pendingKey ? readDraft<InitialMessage>(pendingKey) : undefined;
+  const sendOwner = useMemo(() => ({ active: true }), [conversation_id, initialScope]);
+  const sendOwnerRef = useLatestRef(sendOwner);
+  useEffect(() => {
+    sendOwner.active = true;
+    return () => {
+      sendOwner.active = false;
+    };
+  }, [sendOwner]);
   const [, redrawInitial] = useState(0);
   const { checkAndUpdateTitle } = useAutoTitle();
   const { current_model, enterpriseCatalog } = modelSelection;
@@ -355,16 +363,20 @@ const AionrsSendBox: React.FC<{
         acceptedExecutionRef.current = null;
         markSendStarted();
         setWaitingResponse(true);
+        const requestId = executionId ?? (await taskRequestId(conversation_id, { input, files, sessions }));
         const res = await ipcBridge.conversation.sendMessage.invoke({
           input,
-          execution_id: executionId ?? (await taskRequestId(conversation_id, { input, files, sessions })),
+          execution_id: requestId,
           conversation_id,
           files,
           // `@@` references. Omitting this makes the whole feature silently
           // no-op for this platform.
           sessions,
         });
-        if (!executionId) taskAccepted(conversation_id);
+        // A durable receipt belongs to its request even after leaving the page.
+        // Match its ID so a late receipt cannot consume a newer pending draft.
+        if (!executionId) taskAccepted(conversation_id, requestId);
+        if (!sendOwner.active || sendOwnerRef.current !== sendOwner) return;
         acceptedExecutionRef.current = res.turn_id ? { conversationId: conversation_id, id: res.turn_id } : null;
         // Durable acceptance precedes the native turn. Do not fence later stream
         // events with an outbox ID or a previous round's message ID.
@@ -375,6 +387,7 @@ const AionrsSendBox: React.FC<{
           emitter.emit('aionrs.workspace.refresh');
         }
       } catch (error) {
+        if (!sendOwner.active || sendOwnerRef.current !== sendOwner) throw error;
         const errorMessage =
           error instanceof BackendHttpError && (error.code || error.backendMessage) === 'TASK_INPUT_TOO_LARGE'
             ? t('guid.initialMessage.inputTooLarge')
@@ -411,6 +424,8 @@ const AionrsSendBox: React.FC<{
       t,
       teamPermission,
       teamSendMessage,
+      sendOwner,
+      sendOwnerRef,
     ]
   );
 
@@ -565,6 +580,7 @@ const AionrsSendBox: React.FC<{
   // `@@` session references the user picked. Declared before the handlers that
   // read it — every send path has to both forward and release it.
   const [selectedSessions, setSelectedSessions] = useState<SessionRef[]>([]);
+  const selectionRef = useLatestRef({ atPath, uploadFile, selectedSessions });
   const { enabled: crossSessionEnabled } = useCrossSessionMessageEnabled();
 
   // aionrs backends never support mid-turn delivery: while the agent is
@@ -594,10 +610,15 @@ const AionrsSendBox: React.FC<{
       Message.error(t('guid.initialMessage.inputTooLarge'));
       return false;
     }
-    clearFiles();
-    setSelectedSessions([]);
-    emitter.emit('aionrs.selected.file.clear');
     await executeCommand({ input: message, files: filesToSend, sessions });
+    if (!sendOwner.active || sendOwnerRef.current !== sendOwner) return;
+    // Only release the accepted selection. Edits made while admission is in
+    // flight belong to the next draft, even in this same conversation.
+    if (selectionRef.current.atPath === atPath && selectionRef.current.uploadFile === uploadFile) {
+      clearFiles();
+      emitter.emit('aionrs.selected.file.clear');
+    }
+    setSelectedSessions((current) => (current === selectedSessions ? [] : current));
   };
 
   const [interrupting, setInterrupting] = useState(false);
@@ -1049,6 +1070,8 @@ const AionrsSendBox: React.FC<{
       />
       <CrossSessionDisabledBanner />
       <SendBox
+        key={`${initialScope || 'local'}:${conversation_id}`}
+        preserveDraftUntilAccepted={hosted}
         data-testid='aionrs-sendbox'
         onMobilePlusClick={isMobile ? () => setIsMobileSheetOpen(true) : undefined}
         value={content}

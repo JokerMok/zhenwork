@@ -237,6 +237,8 @@ const SendBox: React.FC<{
   value?: string;
   onChange?: (value: string) => void;
   onSend: (message: string) => Promise<void | false>;
+  /** Keep an enterprise draft until durable admission; errors must not discard it. */
+  preserveDraftUntilAccepted?: boolean;
   onStop?: () => Promise<void>;
   disabled?: boolean;
   /**
@@ -305,6 +307,7 @@ const SendBox: React.FC<{
   topRightOverlay?: React.ReactNode;
 }> = ({
   onSend,
+  preserveDraftUntilAccepted = false,
   onStop,
   prefix,
   className,
@@ -357,6 +360,14 @@ const SendBox: React.FC<{
   const effectiveLockMultiLine = lockMultiLine && !collapseMobileToolbar;
   const effectiveDefaultMultiLine = defaultMultiLine && !collapseMobileToolbar;
   const conversationContext = useConversationContextSafe();
+  const submissionOwner = useMemo(() => ({ active: true }), [conversationContext?.conversation_id]);
+  const submissionOwnerRef = useLatestRef(submissionOwner);
+  useEffect(() => {
+    submissionOwner.active = true;
+    return () => {
+      submissionOwner.active = false;
+    };
+  }, [submissionOwner]);
   const { t, i18n } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [isSingleLine, setIsSingleLine] = useState(!effectiveDefaultMultiLine);
@@ -404,6 +415,7 @@ const SendBox: React.FC<{
 
   // 集成预览面板的"添加到聊天"功能 / Integrate preview panel's "Add to chat" functionality
   const { setSendBoxHandler, domSnippets, removeDomSnippet, clearDomSnippets } = usePreviewContext();
+  const submissionDraftRef = useLatestRef({ input, domSnippets, replyQuote });
 
   // 注册处理器以接收来自预览面板的文本 / Register handler to receive text from preview panel
   useEffect(() => {
@@ -1627,21 +1639,30 @@ const SendBox: React.FC<{
       finalMessage = input + snippetsHtml;
     }
 
-    // 立即清空输入框，避免异步 onSend 完成后覆盖用户新输入
-    // Clear input immediately to prevent async onSend completion from overwriting new user input
-    setInput('');
-    clearDomSnippets();
-    setReplyQuote(null);
+    // Hosted tasks keep the draft until durable admission. Other platforms
+    // retain their existing eager-clear contract.
+    if (!preserveDraftUntilAccepted) {
+      setInput('');
+      clearDomSnippets();
+      setReplyQuote(null);
+    }
 
     onSend(finalMessage)
       .then((result) => {
-        if (result === false) {
+        if (preserveDraftUntilAccepted) {
+          if (!submissionOwner.active || submissionOwnerRef.current !== submissionOwner || result === false) return;
+          const current = submissionDraftRef.current;
+          if (current.input === input) setInput('');
+          if (current.domSnippets === domSnippets) clearDomSnippets();
+          if (current.replyQuote === replyQuote) setReplyQuote(null);
+        } else if (result === false) {
           setInput(finalMessage);
         }
       })
       .catch(() => {})
       .finally(() => {
-        setIsLoading(false);
+        if (!preserveDraftUntilAccepted || (submissionOwner.active && submissionOwnerRef.current === submissionOwner))
+          setIsLoading(false);
       });
   };
 
