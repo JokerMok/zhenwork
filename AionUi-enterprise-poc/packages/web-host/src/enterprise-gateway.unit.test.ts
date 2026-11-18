@@ -1,9 +1,13 @@
-import { afterAll, beforeAll, expect, test, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { prepareEnterpriseProfile } from './enterprise-core.js';
+import { enterpriseManagedResourcePath } from './enterprise-resource-runtime.js';
 import { OfficeStore } from './office/office-store.js';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { TaskStore } from './tasks/store.js';
+import { currentAttempt } from './tasks/types.js';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -43,14 +47,15 @@ function request(
   cookie?: string,
   payload?: unknown,
   origin = 'https://workspace.example',
-  extraHeaders: Record<string, string> = {}
+  extraHeaders: Record<string, string> = {},
+  targetPort = port
 ) {
   return new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string; bytes: Buffer }>(
     (resolve, reject) => {
       const req = http.request(
         {
           hostname: '127.0.0.1',
-          port,
+          port: targetPort,
           path: url,
           method,
           headers: {
@@ -2333,4 +2338,186 @@ test('knowledge default reset requires the owning actor and same origin without 
     await gateway.stop();
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+describe('durable task HTTP boundaries', () => {
+  const actor = { serverId: 'rc2', userId: '93' };
+  const nativeCalls: Array<{ method: string; pathname: string }> = [];
+  const nativeConfirmation = { id: 'native-confirmation', call_id: 'write-call', action: 'ExecCommand' };
+  let dir: string;
+  let store: TaskStore;
+  let storeFile: string;
+  let attemptId: string;
+  let gateway: Awaited<ReturnType<typeof startEnterpriseGateway>>;
+  let cookie: string | undefined;
+  const call = (method: string, route: string, payload?: unknown) =>
+    request(method, route, cookie, payload, 'https://workspace.example', {}, gateway.port);
+  const routes = [
+    { label: 'canonical path', conversation: 'owned123', query: '' },
+    { label: 'query string', conversation: 'owned123', query: '?source=history' },
+    { label: 'encoded conversation and query', conversation: '%6fwned123', query: '?source=history' },
+  ];
+
+  beforeAll(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'enterprise-task-routing-'));
+    const root = path.join(dir, 'profiles');
+    const { profile } = await prepareEnterpriseProfile(root, actor);
+    await writeFile(path.join(dir, 'index.html'), '<html></html>');
+    execFileSync('python3', [
+      '-c',
+      "import sqlite3,sys;c=sqlite3.connect(sys.argv[1]);c.executescript(\"CREATE TABLE conversations(id,user_id,archived_at);INSERT INTO conversations VALUES('owned123','system_default_user',NULL);INSERT INTO conversations VALUES('legacy123','system_default_user',NULL);\");c.close()",
+      path.join(profile, 'aionui-backend.db'),
+    ]);
+    store = await TaskStore.create(root, actor);
+    storeFile = path.join(path.dirname(await enterpriseManagedResourcePath(root, actor)), 'tasks', 'tasks.json');
+    const accepted = await store.accept('owned123', randomUUID(), { content: 'Original work' });
+    attemptId = currentAttempt(accepted.task).id;
+    await store.mutate('owned123', attemptId, (attempt) => {
+      attempt.state = 'interrupted';
+      attempt.phase = 'settled';
+    });
+    gateway = await startEnterpriseGateway({
+      staticDir: dir,
+      profileRoot: root,
+      publicOrigin: 'https://workspace.example',
+      port: 0,
+      login: async () => ({ actor, validate: async () => true, close: async () => {} }),
+      taskRuntime: {
+        issueTaskGrant: async () => {},
+        checkTaskGrant: async () => true,
+        revokeTaskGrant: async () => {},
+        bindTask: () => {},
+        taskActors: async () => [actor],
+        trustedTaskConfirmation: async () => false,
+      },
+      startCore: async () => {
+        const core = http.createServer(async (req, res) => {
+          for await (const _chunk of req) {
+            // Consume the request exactly as a native HTTP handler does.
+          }
+          const pathname = decodeURIComponent(new URL(req.url!, 'http://native.test').pathname);
+          nativeCalls.push({ method: req.method || 'GET', pathname });
+          const data = pathname.endsWith('/confirmations') ? [nativeConfirmation] : {};
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ success: true, data }));
+        });
+        await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
+        return {
+          port: (core.address() as { port: number }).port,
+          localToken: 'task-routing-test',
+          stop: async () => {
+            core.closeAllConnections();
+            await new Promise<void>((resolve) => core.close(() => resolve()));
+          },
+        };
+      },
+    });
+    const login = await call('POST', '/enterprise/login', { username: '93', password: 'test' });
+    cookie = login.headers['set-cookie']?.[0].split(';')[0];
+    expect(cookie).toBeTruthy();
+    await call('GET', '/enterprise/ready');
+    await vi.waitFor(async () => {
+      expect(JSON.parse((await call('GET', '/enterprise/ready?inspect=1')).body).ready).toBe(true);
+    });
+  });
+
+  beforeEach(async () => {
+    await store.mutate('owned123', attemptId, (attempt) => {
+      attempt.state = 'interrupted';
+      attempt.phase = 'settled';
+      attempt.approval = { used: true, kind: 'exec', fingerprint: 'approved-original-write' };
+    });
+    nativeCalls.length = 0;
+  });
+
+  afterAll(async () => {
+    await gateway?.stop();
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+
+  test.each(routes)(
+    'hides native confirmation cards for a durable task through $label',
+    async ({ conversation, query }) => {
+      const response = await call('GET', `/api/conversations/${conversation}/confirmations${query}`);
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ success: true, data: [] });
+      expect(nativeCalls).toEqual([]);
+    }
+  );
+
+  test.each(routes)(
+    'rejects native approval of a durable task through $label without reaching Core',
+    async ({ conversation, query }) => {
+      const response = await call(
+        'POST',
+        `/api/conversations/${conversation}/confirmations/write-call/confirm${query}`,
+        {
+          msg_id: 'old-message',
+          data: { value: 'proceed_once' },
+          always_allow: true,
+        }
+      );
+      expect(response.status).toBe(409);
+      expect(JSON.parse(response.body).error).toBe('TASK_APPROVAL_VIA_TASK_REQUIRED');
+      expect(nativeCalls).toEqual([]);
+    }
+  );
+
+  test.each(routes)(
+    'enforces external-outcome review for a new message through $label',
+    async ({ conversation, query }) => {
+      const response = await call('POST', `/api/conversations/${conversation}/messages${query}`, {
+        content: 'Repeat the write',
+        request_id: randomUUID(),
+      });
+      expect(response.status).toBe(409);
+      expect(JSON.parse(response.body).error).toBe('TASK_EXTERNAL_REVIEW_REQUIRED');
+      expect(nativeCalls).toEqual([]);
+    }
+  );
+
+  test.each(routes)(
+    'cancels the durable queued attempt through $label without native dispatch',
+    async ({ conversation, query }) => {
+      await store.mutate('owned123', attemptId, (attempt) => {
+        attempt.state = 'queued';
+        attempt.phase = 'authorizing';
+      });
+      const response = await call('POST', `/api/conversations/${conversation}/cancel${query}`, { turn_id: attemptId });
+      expect(response.status).toBe(200);
+      expect(currentAttempt(await store.get('owned123')).state).toBe('cancelled');
+      expect(nativeCalls).toEqual([]);
+    }
+  );
+
+  test('retains the native confirmation contract for a legacy conversation without a task', async () => {
+    const route = '/api/conversations/%6cegacy123/confirmations';
+    const pending = await call('GET', `${route}?source=history`);
+    expect(JSON.parse(pending.body)).toEqual({ success: true, data: [nativeConfirmation] });
+    const approved = await call('POST', `${route}/write-call/confirm?source=history`, {
+      msg_id: 'legacy-message',
+      data: { value: 'proceed_once' },
+    });
+    expect(approved.status).toBe(200);
+    expect(nativeCalls).toEqual([
+      { method: 'GET', pathname: '/api/conversations/legacy123/confirmations' },
+      { method: 'POST', pathname: '/api/conversations/legacy123/confirmations/write-call/confirm' },
+    ]);
+  });
+
+  test('does not turn an unreadable task store into a legacy approval bypass', async () => {
+    const saved = await readFile(storeFile);
+    try {
+      await writeFile(storeFile, 'invalid-json');
+      const pending = await call('GET', '/api/conversations/owned123/confirmations?source=history');
+      const approved = await call('POST', '/api/conversations/owned123/confirmations/write-call/confirm', {
+        data: { value: 'proceed_once' },
+      });
+      expect(pending.status).toBe(503);
+      expect(approved.status).toBe(503);
+      expect(nativeCalls).toEqual([]);
+    } finally {
+      await writeFile(storeFile, saved);
+    }
+  });
 });

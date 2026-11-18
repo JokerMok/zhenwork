@@ -5,7 +5,8 @@ import type { EnterpriseActor } from '../enterprise-gateway.js';
 import type { EmployeePreferences } from '../read-model/preferences.js';
 import { enterpriseManagedResourcePath } from '../enterprise-resource-runtime.js';
 import {
-  activeStates,
+  holdsRuntime,
+  needsExternalReview,
   currentAttempt,
   digest,
   requiredFormats,
@@ -118,7 +119,8 @@ export class TaskStore {
     payload: Record<string, unknown>,
     retry = false,
     replaceRequirements = false,
-    loadPreferences?: () => Promise<EmployeePreferences>
+    loadPreferences?: () => Promise<EmployeePreferences>,
+    externalOutcome?: string
   ): Promise<{ task: TaskRecord; duplicate: boolean }> {
     if (
       !/^[A-Za-z0-9_-]{1,100}$/.test(id) ||
@@ -138,10 +140,17 @@ export class TaskStore {
       }
       let task = tasks.find((t) => t.id === id);
       const prior = task ? currentAttempt(task) : undefined;
-      if (prior && activeStates.has(prior.state)) {
+      if (prior && holdsRuntime(prior)) {
         if (prior.payloadHash === hash) return { task: task!, duplicate: true };
         throw new TaskError(409, 'TASK_BUSY');
       }
+      if (
+        prior &&
+        ['failed', 'partial', 'interrupted', 'cancelled'].includes(prior.state) &&
+        needsExternalReview(prior) &&
+        !['applied', 'not_applied'].includes(externalOutcome || '')
+      )
+        throw new TaskError(409, 'TASK_EXTERNAL_REVIEW_REQUIRED');
       if (!task) {
         if (tasks.length >= 500) throw new TaskError(409, 'TASK_HISTORY_CAPACITY');
         task = {

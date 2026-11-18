@@ -15,7 +15,7 @@ export type WorkAttempt = {
   assistant?: { id: string; name: string };
   requiresExternalReview?: boolean;
   canApprove?: boolean;
-  confirmation?: { proposal?: string };
+  confirmation?: { id?: string; proposal?: string };
   inputs?: {
     content: string;
     files: Array<{ kind: string; path?: string; relative_path?: string }>;

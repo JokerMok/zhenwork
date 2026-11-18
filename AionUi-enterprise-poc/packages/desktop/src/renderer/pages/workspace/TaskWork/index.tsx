@@ -50,7 +50,7 @@ export default function TaskWork({
     setReviewed(false);
     setExternalOutcome(undefined);
     setFailure(false);
-  }, [conversationId, a?.id]);
+  }, [conversationId, a?.id, a?.confirmation?.id]);
   if (!isEnterpriseWeb()) return null;
   if (!task || !a)
     return error && !embedded ? (
@@ -76,14 +76,20 @@ export default function TaskWork({
     setBusy(true);
     setFailure(false);
     try {
-      const payload = { attemptId: a.id, reviewed, externalOutcome, language: i18n.language };
+      const payload = {
+        attemptId: a.id,
+        reviewed,
+        externalOutcome,
+        language: i18n.language,
+        ...(['approve', 'decline'].includes(kind) ? { confirmationId: a.confirmation?.id } : {}),
+      };
       const request_id = await taskRequestId(conversationId, { kind, ...payload });
       await enterpriseRequest(`/enterprise/tasks/${conversationId}/${kind}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ...payload, request_id }),
       });
-      taskAccepted(conversationId);
+      taskAccepted(conversationId, request_id);
       await reload();
     } catch (e) {
       if (workspaceErrorCode(e) !== 'AUTHENTICATION_REQUIRED') {
@@ -96,7 +102,11 @@ export default function TaskWork({
     }
   };
   const waiting = ['waiting_input', 'waiting_confirmation'].includes(a.state);
-  const canApprove = a.state === 'waiting_confirmation' && a.canApprove === true && !!a.confirmation?.proposal;
+  const canApprove =
+    a.state === 'waiting_confirmation' && a.canApprove === true && !!a.confirmation?.id && !!a.confirmation?.proposal;
+  const canRetry =
+    ['partial', 'failed', 'interrupted'].includes(a.state) ||
+    (a.state === 'cancelled' && a.requiresExternalReview === true);
   const status = t(`workspace.work.states.${a.state}`, { defaultValue: t('workspace.work.unknown') });
   let question = a.question;
   if (question?.startsWith('[')) {
@@ -155,11 +165,13 @@ export default function TaskWork({
           </Space>
         </div>
       )}
-      {a.state === 'interrupted' && (
+      {(a.state === 'interrupted' || (canRetry && a.requiresExternalReview)) && (
         <Space wrap>
-          <Checkbox checked={reviewed} onChange={setReviewed}>
-            {t('workspace.work.reviewRecovery')}
-          </Checkbox>
+          {a.state === 'interrupted' && (
+            <Checkbox checked={reviewed} onChange={setReviewed}>
+              {t('workspace.work.reviewRecovery')}
+            </Checkbox>
+          )}
           {a.requiresExternalReview && (
             <Select
               value={externalOutcome}
@@ -193,12 +205,12 @@ export default function TaskWork({
           {status}
         </span>
         <Space size='mini' wrap>
-          {['partial', 'failed', 'interrupted'].includes(a.state) && (
+          {canRetry && (
             <Button
               size='mini'
               type='text'
               loading={busy}
-              disabled={a.state === 'interrupted' && (!reviewed || (a.requiresExternalReview && !externalOutcome))}
+              disabled={(a.state === 'interrupted' && !reviewed) || (a.requiresExternalReview && !externalOutcome)}
               onClick={() => void action('retry')}
             >
               {t('workspace.work.retryRemaining')}

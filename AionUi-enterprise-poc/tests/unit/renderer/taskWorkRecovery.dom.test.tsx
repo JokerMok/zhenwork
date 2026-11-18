@@ -1,6 +1,10 @@
 import React, { type PropsWithChildren } from 'react';
-import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { webcrypto } from 'node:crypto';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { Message } from '@arco-design/web-react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import TaskWork from '@/renderer/pages/workspace/TaskWork';
 import { mergeTaskSnapshot, useTaskWork, type WorkTask } from '@/renderer/pages/workspace/TaskWork/api';
 import { enterpriseRequest } from '@/renderer/pages/workspace/workspaceApi';
 import {
@@ -9,6 +13,9 @@ import {
   useMessageList,
 } from '@/renderer/pages/conversation/Messages/hooks';
 import type { TMessage } from '@/common/chat/chatLib';
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
+}));
 vi.mock('@/renderer/utils/platform', () => ({ isEnterpriseWeb: () => true }));
 vi.mock('@/renderer/pages/workspace/workspaceApi', () => ({
   enterpriseRequest: vi.fn(),
@@ -18,6 +25,9 @@ vi.mock('@/common', () => ({ ipcBridge: {} }));
 const task = (id: string, updatedAt = 1): WorkTask => ({ id, title: id, updatedAt, attempts: [] });
 afterEach(() => {
   cleanup();
+  sessionStorage.clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 describe('persisted task recovery', () => {
@@ -57,6 +67,140 @@ describe('persisted task recovery', () => {
     expect(mergeTaskSnapshot(latest, task('versioned', 90), 'versioned')).toBe(latest);
     expect(mergeTaskSnapshot(latest, task('versioned', 101), 'versioned').updatedAt).toBe(101);
     expect(() => mergeTaskSnapshot(latest, task('other', 200), 'versioned')).toThrow('TASK_SNAPSHOT_INVALID');
+  });
+});
+describe('displayed approval identity', () => {
+  const pendingTask = (id: string, confirmationId?: string, updatedAt = 1): WorkTask => ({
+    ...task(id, updatedAt),
+    attempts: [
+      {
+        id: 'same-attempt',
+        round: 1,
+        attempt: 1,
+        updatedAt,
+        state: 'waiting_confirmation',
+        phase: 'awaiting_confirmation',
+        canApprove: true,
+        confirmation: { id: confirmationId, proposal: `Review operation ${updatedAt}` },
+        steps: [],
+        artifacts: [],
+      },
+    ],
+  });
+
+  beforeEach(() => {
+    vi.stubGlobal('crypto', webcrypto);
+    vi.spyOn(Message, 'error').mockImplementation(() => () => {});
+  });
+
+  it.each(['approve', 'decline'])(
+    'binds %s to the displayed confirmation after a stale decision fails',
+    async (kind) => {
+      const id = `approval-${kind}`;
+      let snapshot = pendingTask(id, 'confirmation-one');
+      const decisions: Array<{ attemptId: string; confirmationId: string; request_id: string }> = [];
+      vi.mocked(enterpriseRequest).mockImplementation(async (path, init) => {
+        if (init?.method === 'POST') {
+          if (path !== `/enterprise/tasks/${id}/${kind}`) throw Error('UNEXPECTED_ACTION');
+          decisions.push(JSON.parse(String(init.body)) as (typeof decisions)[number]);
+          if (decisions.length === 1) throw Error('TASK_CONFIRMATION_STALE');
+        }
+        return snapshot;
+      });
+      render(
+        <MemoryRouter>
+          <TaskWork conversationId={id} embedded />
+        </MemoryRouter>
+      );
+      await screen.findByText('Review operation 1');
+      fireEvent.click(screen.getByRole('button', { name: `workspace.work.${kind}` }));
+      await screen.findByRole('alert');
+
+      // The failed decision remains pending locally. A new confirmation in the same
+      // attempt must get a different request ID and may never reuse its old scope.
+      snapshot = pendingTask(id, 'confirmation-two', 2);
+      act(() => window.dispatchEvent(new Event('task-work:changed')));
+      await screen.findByText('Review operation 2');
+      fireEvent.click(screen.getByRole('button', { name: `workspace.work.${kind}` }));
+      await waitFor(() => expect(decisions).toHaveLength(2));
+      expect(decisions).toEqual([
+        expect.objectContaining({
+          attemptId: 'same-attempt',
+          confirmationId: 'confirmation-one',
+          request_id: expect.any(String),
+        }),
+        expect.objectContaining({
+          attemptId: 'same-attempt',
+          confirmationId: 'confirmation-two',
+          request_id: expect.any(String),
+        }),
+      ]);
+      expect(decisions[1].request_id).not.toBe(decisions[0].request_id);
+    }
+  );
+
+  it('withholds decisions when the pending proposal has no confirmation identity', async () => {
+    vi.mocked(enterpriseRequest).mockResolvedValue(pendingTask('unbound-approval'));
+    render(
+      <MemoryRouter>
+        <TaskWork conversationId='unbound-approval' embedded />
+      </MemoryRouter>
+    );
+    await screen.findByRole('status');
+    expect({
+      approve: screen.queryByRole('button', { name: 'workspace.work.approve' }),
+      decline: screen.queryByRole('button', { name: 'workspace.work.decline' }),
+    }).toEqual({ approve: null, decline: null });
+    expect(vi.mocked(enterpriseRequest).mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+  });
+
+  it.each(['failed', 'partial', 'cancelled'])(
+    'requires reviewing the external outcome before retrying an approved write in state %s',
+    async (state) => {
+      const id = `${state}-approved-write`;
+      const snapshot = pendingTask(id);
+      snapshot.attempts[0] = {
+        ...snapshot.attempts[0],
+        state,
+        phase: state,
+        canApprove: false,
+        confirmation: undefined,
+        requiresExternalReview: true,
+      };
+      vi.mocked(enterpriseRequest).mockImplementation(async (path) => (path.includes('/feedback') ? null : snapshot));
+      render(
+        <MemoryRouter>
+          <TaskWork conversationId={id} embedded />
+        </MemoryRouter>
+      );
+      const retry = await screen.findByRole('button', { name: 'workspace.work.retryRemaining' });
+      expect(retry).toBeDisabled();
+      fireEvent.click(retry);
+      expect(vi.mocked(enterpriseRequest).mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+      fireEvent.click(screen.getByRole('combobox', { name: 'workspace.work.externalReview' }));
+      fireEvent.click(await screen.findByRole('option', { name: 'workspace.work.externalNotApplied' }));
+      fireEvent.click(retry);
+      await waitFor(() => {
+        const sent = vi.mocked(enterpriseRequest).mock.calls.find(([, init]) => init?.method === 'POST');
+        expect({ path: sent?.[0], body: JSON.parse(String(sent?.[1]?.body || '{}')) }).toMatchObject({
+          path: `/enterprise/tasks/${id}/retry`,
+          body: { attemptId: 'same-attempt', externalOutcome: 'not_applied' },
+        });
+      });
+    }
+  );
+
+  it('keeps ordinary cancelled work closed when no external write needs review', async () => {
+    const snapshot = pendingTask('ordinary-cancelled');
+    snapshot.attempts[0] = { ...snapshot.attempts[0], state: 'cancelled', canApprove: false };
+    vi.mocked(enterpriseRequest).mockResolvedValue(snapshot);
+    render(
+      <MemoryRouter>
+        <TaskWork conversationId={snapshot.id} embedded />
+      </MemoryRouter>
+    );
+    await screen.findByRole('status');
+    expect(screen.queryByRole('button', { name: 'workspace.work.retryRemaining' })).toBeNull();
   });
 });
 describe('existing execution event identity', () => {

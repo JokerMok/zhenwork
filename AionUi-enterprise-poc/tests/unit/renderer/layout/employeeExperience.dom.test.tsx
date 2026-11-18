@@ -75,7 +75,7 @@ test('a concrete persisted operation has exactly one approval guarded against do
     state: 'waiting_confirmation',
     question: 'Create the specified test file?',
     canApprove: true,
-    confirmation: { proposal: '{"path":"synthetic.txt"}' },
+    confirmation: { id: 'saved-native-confirmation', proposal: '{"path":"synthetic.txt"}' },
   });
   fixture.request.mockImplementation(() => new Promise(() => {}));
   render(
@@ -87,6 +87,9 @@ test('a concrete persisted operation has exactly one approval guarded against do
   fireEvent.click(approval);
   fireEvent.click(approval);
   await waitFor(() => expect(fixture.request).toHaveBeenCalledTimes(1));
+  expect(JSON.parse(fixture.request.mock.calls[0][1].body)).toMatchObject({
+    confirmationId: 'saved-native-confirmation',
+  });
 });
 test('employee model errors retain an actionable message without raw provider diagnostics', () => {
   render(

@@ -1212,6 +1212,12 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
     const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(req.method || '');
     if (!validOrigin(req, unsafe)) return reply(res, 403, { error: 'ORIGIN_DENIED' });
     if (!req.url || !req.url.startsWith('/')) return reply(res, 400, { error: 'BAD_REQUEST' });
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(new URL(req.url, origin).pathname);
+    } catch {
+      return reply(res, 400, { error: 'BAD_REQUEST' });
+    }
     if (req.url.startsWith('/api/internal/') || req.url.startsWith('/api/cron/internal/')) {
       return reply(res, 404, { error: 'NOT_FOUND' });
     }
@@ -1512,9 +1518,9 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
     }
     const taskRoute =
       /^\/enterprise\/tasks(?:\/([A-Za-z0-9_-]{1,100})(?:\/(events|cancel|continue|retry|approve|decline))?)?$/.exec(
-        req.url.split('?')[0]
+        pathname
       );
-    const taskMessage = /^\/api\/conversations\/([A-Za-z0-9_-]{1,100})\/messages$/.exec(req.url);
+    const taskMessage = /^\/api\/conversations\/([A-Za-z0-9_-]{1,100})\/messages$/.exec(pathname);
     if ((taskRoute || (taskMessage && req.method === 'POST')) && tasks) {
       try {
         if (taskMessage) {
@@ -1566,6 +1572,30 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       } catch (error) {
         if (error instanceof TaskError) return reply(res, error.status, { error: error.message });
         return reply(res, 503, { error: 'TASK_SERVICE_UNAVAILABLE' });
+      }
+    }
+    const taskConfirmation = /^\/api\/conversations\/([A-Za-z0-9_-]{1,100})\/confirmations(?:\/(.+)\/confirm)?$/.exec(
+      pathname
+    );
+    if (
+      tasks &&
+      taskConfirmation &&
+      ((req.method === 'GET' && !taskConfirmation[2]) || (req.method === 'POST' && taskConfirmation[2]))
+    ) {
+      try {
+        await tasks.detail(auth.session.actor, taskConfirmation[1]);
+        // A durable task owns approval identity, argument checks and recovery.
+        // Native cards must not expose a second route that consumes its future.
+        return req.method === 'GET'
+          ? reply(res, 200, { success: true, data: [] })
+          : reply(res, 409, { error: 'TASK_APPROVAL_VIA_TASK_REQUIRED' });
+      } catch (error) {
+        // Only an absent task is legacy. Store failures must never reopen the
+        // native approval path while a durable decision may already exist.
+        if (!(error instanceof TaskError && error.status === 404))
+          return reply(res, error instanceof TaskError ? error.status : 503, {
+            error: error instanceof TaskError ? error.message : 'TASK_SERVICE_UNAVAILABLE',
+          });
       }
     }
     if (req.url === '/enterprise/resources/refresh' && req.method === 'POST') {
@@ -2476,7 +2506,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       }
       return;
     }
-    const taskCancel = /^\/api\/conversations\/([A-Za-z0-9_-]{1,100})\/cancel$/.exec(req.url);
+    const taskCancel = /^\/api\/conversations\/([A-Za-z0-9_-]{1,100})\/cancel$/.exec(pathname);
     if (tasks && taskCancel && req.method === 'POST') {
       try {
         const task = (await tasks.detail(auth.session.actor, taskCancel[1])) as {
@@ -2524,7 +2554,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
       try {
         if (opts.profileRoot && req.method === 'GET' && !cores.has(actorKey(auth.session.actor)))
           return reply(res, 409, { error: 'CORE_NOT_RUNNING' });
-        const messageRoute = /^\/api\/conversations\/([A-Za-z0-9_-]{1,100})\/messages$/.exec(req.url);
+        const messageRoute = /^\/api\/conversations\/([A-Za-z0-9_-]{1,100})\/messages$/.exec(pathname);
         if (opts.profileRoot && req.method === 'POST' && messageRoute) {
           const store = await OfficeStore.create(opts.profileRoot, auth.session.actor);
           const scope = await store.knowledgeScope(messageRoute[1]);
@@ -2565,7 +2595,7 @@ export async function startEnterpriseGateway(opts: EnterpriseGatewayOptions): Pr
           auth.session.actor,
           false,
           !passiveWorkerRequest(req.method || 'GET', req.url || ''),
-          req.method === 'POST' && /^\/api\/conversations(?:\/[^/]+\/messages)?$/.test(req.url)
+          req.method === 'POST' && /^\/api\/conversations(?:\/[^/]+\/messages)?$/.test(pathname)
             ? 'task_request'
             : 'user_operation'
         );

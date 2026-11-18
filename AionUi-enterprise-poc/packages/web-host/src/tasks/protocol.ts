@@ -1,7 +1,7 @@
 import type { EnterpriseActor } from '../enterprise-gateway.js';
 import type { EmployeePreferences } from '../read-model/preferences.js';
 import { TaskStore } from './store.js';
-import { currentAttempt, digest, type TaskArtifact, TaskError } from './types.js';
+import { canRunTools, currentAttempt, digest, type TaskArtifact, TaskError } from './types.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
@@ -104,7 +104,7 @@ export async function trustedTaskArtifacts(
 ): Promise<TaskArtifact[]> {
   const task = await (await TaskStore.create(root, actor)).get(conversation);
   const a = currentAttempt(task);
-  if (a.state !== 'running' || (attemptId && a.id !== attemptId)) throw new TaskError(409, 'TASK_NOT_EXECUTING');
+  if (!canRunTools(a) || (attemptId && a.id !== attemptId)) throw new TaskError(409, 'TASK_NOT_EXECUTING');
   return a.artifacts.filter((f) => f.valid && /^[a-f0-9]{64}$/.test(f.sha256) && !!f.versionId);
 }
 
@@ -155,7 +155,7 @@ export async function recordTool(
     return;
   }
   const attempt = currentAttempt(task);
-  if (attempt.state !== 'running' || (expectedAttemptId && attempt.id !== expectedAttemptId)) return;
+  if (!canRunTools(attempt) || (expectedAttemptId && attempt.id !== expectedAttemptId)) return;
   const collect = (v: unknown): TaskArtifact[] => {
     if (!v || typeof v !== 'object') return [];
     if (Array.isArray(v)) return v.flatMap(collect);
@@ -224,7 +224,7 @@ export async function recordTool(
       error = 'PARTIAL_OUTPUT';
   }
   await store.mutate(conversation, attempt.id, (a) => {
-    if (a.state !== 'running') return;
+    if (!canRunTools(a)) return;
     const existing = stepId ? a.steps.find((s) => s.id === stepId) : undefined;
     if (!existing && a.steps.length >= 200) throw new TaskError(409, 'TASK_STEP_CAPACITY');
     const d = digest({ tool, args });
@@ -275,10 +275,10 @@ export async function beginTool(
     return;
   }
   const a = currentAttempt(task);
-  if (a.state !== 'running' || (expectedAttemptId && a.id !== expectedAttemptId)) return;
+  if (!canRunTools(a) || (expectedAttemptId && a.id !== expectedAttemptId)) return;
   const id = randomUUID();
   await store.mutate(conversation, a.id, (x) => {
-    if (x.state !== 'running') throw new TaskError(409, 'TASK_NOT_EXECUTING');
+    if (!canRunTools(x)) throw new TaskError(409, 'TASK_NOT_EXECUTING');
     if (x.steps.length >= 200) throw new TaskError(409, 'TASK_STEP_CAPACITY');
     x.steps.push({
       id,
@@ -361,7 +361,7 @@ export async function currentTaskScope(
   try {
     const a = currentAttempt(await store.get(conversation));
     return {
-      active: a.state === 'running',
+      active: canRunTools(a),
       round: a.round,
       attemptId: a.id,
       jobId: a.jobId,

@@ -34,10 +34,30 @@ async function fixture(trusted = false) {
   let releaseCore = () => {};
   let authorized = true;
   let pendingApproval = false;
+  let pendingCallId = 'office-call';
+  let pendingCommandType = 'exec';
+  let pendingAction = 'ExecCommand';
+  let runtimeTurnId = 'turn1';
+  let loseConfirmationResponse = false;
+  const confirmations: Array<{ callId: string; data: unknown; input: Record<string, unknown> }> = [];
+  const confirmationRequests: string[] = [];
   let approvalData: unknown;
   let nativeToolError = false;
   let answerText = 'Actual answer';
   let proposalInput: Record<string, unknown> = { command: 'printf harmless' };
+  let confirmationReads = 0;
+  let additionalPending: Array<{
+    callId: string;
+    action: string;
+    commandType: string;
+    input: Record<string, unknown>;
+  }> = [];
+  const pendingCalls = () => [
+    ...additionalPending,
+    ...(pendingApproval
+      ? [{ callId: pendingCallId, action: pendingAction, commandType: pendingCommandType, input: proposalInput }]
+      : []),
+  ];
   const server = http.createServer(async (req, res) => {
     let data = {};
     for await (const b of req) data = { ...data, ...JSON.parse(String(b)) };
@@ -45,38 +65,49 @@ async function fixture(trusted = false) {
     if (req.url?.endsWith('/messages') && req.method === 'POST') {
       sends++;
       processing = true;
-      body = { msg_id: 'msg1', turn_id: 'turn1' };
+      body = { msg_id: 'msg1', turn_id: runtimeTurnId };
     } else if (req.url?.endsWith('/confirmations')) {
-      body = [
-        {
-          call_id: 'office-call',
-          action: 'ExecCommand',
-          command_type: 'exec',
-          description: 'Execute: same prefix',
-          options: [{ value: 'proceed_once' }],
-        },
-      ];
-    } else if (req.url?.endsWith('/office-call/confirm')) {
+      confirmationReads++;
+      body = pendingCalls().map((call) => ({
+        call_id: call.callId,
+        action: call.action,
+        command_type: call.commandType,
+        description: 'Execute: same prefix',
+        options: [{ value: 'proceed_once' }],
+      }));
+    } else if (req.url?.endsWith('/confirm')) {
       approvalData = (data as { data?: unknown }).data;
-      pendingApproval = false;
+      const callId = decodeURIComponent(req.url.split('/').at(-2) || '');
+      confirmationRequests.push(callId);
+      // Native confirmation is one-shot and returns success even if the call
+      // no longer exists. Only a live matching invocation can have an effect.
+      const pending = pendingCalls().find((call) => call.callId === callId);
+      if (pending) {
+        confirmations.push({ callId, data: approvalData, input: structuredClone(pending.input) });
+        if (callId === pendingCallId) pendingApproval = false;
+        additionalPending = additionalPending.filter((call) => call.callId !== callId);
+      }
+      if (loseConfirmationResponse) {
+        loseConfirmationResponse = false;
+        req.socket.destroy();
+        return;
+      }
     } else if (req.url?.includes('/messages?')) {
       if (!req.url.includes('anchor_message_id=msg1')) {
-        if (pendingApproval) {
+        if (pendingCalls().length) {
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(
             JSON.stringify({
               success: true,
               data: {
-                items: [
-                  {
-                    type: 'tool_call',
-                    content: {
-                      call_id: 'aionrs-office-call',
-                      name: 'ExecCommand',
-                      args: proposalInput,
-                    },
+                items: pendingCalls().map((call) => ({
+                  type: 'tool_call',
+                  content: {
+                    call_id: `aionrs-${call.callId}`,
+                    name: call.action,
+                    args: call.input,
                   },
-                ],
+                })),
               },
             })
           );
@@ -117,13 +148,14 @@ async function fixture(trusted = false) {
       stops++;
       processing = false;
       pendingApproval = false;
+      additionalPending = [];
     } else
       body = {
         runtime: {
           state: processing ? 'running' : 'idle',
-          turn_id: 'turn1',
+          turn_id: runtimeTurnId,
           is_processing: processing,
-          pending_confirmations: pendingApproval ? 1 : 0,
+          pending_confirmations: pendingCalls().length,
         },
       };
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -141,11 +173,11 @@ async function fixture(trusted = false) {
     workspaceRoot: path.join(profile, 'workspace'),
   };
   const grants = new Set<string>();
-  const runner = new TaskRunner({
+  const dependencies = {
     root,
     origin: 'https://employee.test',
     queueLimit: 2,
-    core: async () => {
+    core: async (_actor: EnterpriseActor) => {
       await coreGate;
       return core;
     },
@@ -153,18 +185,23 @@ async function fixture(trusted = false) {
     cancelPreparation: async () => {
       releaseCore();
     },
-    issue: async (_a, j) => {
+    issue: async (_a: EnterpriseActor, j: string) => {
       grants.add(j);
     },
-    check: async (_a, j) => authorized && grants.has(j),
-    revoke: async (_a, j) => {
+    check: async (_a: EnterpriseActor, j: string) => authorized && grants.has(j),
+    revoke: async (_a: EnterpriseActor, j: string) => {
       grants.delete(j);
     },
     bind: () => {},
     actors: async () => [actor],
     trustedConfirmation: async () => trusted,
-  });
-  cleanups.push(() => runner.stop());
+  };
+  const createRunner = () => {
+    const created = new TaskRunner(dependencies);
+    cleanups.push(() => created.stop());
+    return created;
+  };
+  const runner = createRunner();
   const store = await TaskStore.create(root, actor);
   return {
     core,
@@ -172,6 +209,7 @@ async function fixture(trusted = false) {
     actor,
     store,
     runner,
+    createRunner,
     grants,
     blockCore: () => {
       coreGate = new Promise<void>((r) => {
@@ -185,9 +223,28 @@ async function fixture(trusted = false) {
     revoke: () => {
       authorized = false;
     },
-    approval: () => {
+    approval: (callId = 'office-call', commandType = 'exec', action = 'ExecCommand') => {
       pendingApproval = true;
+      pendingCallId = callId;
+      pendingCommandType = commandType;
+      pendingAction = action;
     },
+    forgetApproval: () => {
+      pendingApproval = false;
+      additionalPending = [];
+    },
+    prependApproval: (callId: string, input: Record<string, unknown>) => {
+      additionalPending.unshift({ callId, input, action: 'ExecCommand', commandType: 'exec' });
+    },
+    runtimeTurn: (turnId: string) => {
+      runtimeTurnId = turnId;
+    },
+    loseConfirmationResponse: () => {
+      loseConfirmationResponse = true;
+    },
+    confirmations: () => confirmations,
+    confirmationRequests: () => confirmationRequests,
+    confirmationReads: () => confirmationReads,
     approvalData: () => approvalData,
     nativeToolError: () => {
       nativeToolError = true;
@@ -468,34 +525,340 @@ test('only a verified later Host receipt resolves a persisted tool error; untrac
   }
 });
 
-test('explicit approval is bound to full tool input, not a matching truncated description', async () => {
-  for (const changed of [false, true]) {
-    const f = await fixture();
-    await f.runner.accept(f.actor, 'aabbccdd', { content: 'Work', request_id: randomUUID() });
-    await expect.poll(() => f.counts().sends, { timeout: 5000 }).toBe(1);
-    f.approval();
+async function waitingApprovalFixture() {
+  const f = await fixture();
+  await f.runner.accept(f.actor, 'aabbccdd', { content: 'Work', request_id: randomUUID() });
+  await expect.poll(() => f.counts().sends, { timeout: 5000 }).toBe(1);
+  f.approval();
+  await f.runner.tick();
+  await expect
+    .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 6000 })
+    .toBe('waiting_confirmation');
+  const attempt = currentAttempt(await f.store.get('aabbccdd'));
+  const detail = (await f.runner.detail(f.actor, 'aabbccdd')) as {
+    attempts: Array<{ confirmation?: { id?: string } }>;
+  };
+  return {
+    ...f,
+    attempt,
+    approvalBody: {
+      attemptId: attempt.id,
+      confirmationId: detail.attempts.at(-1)?.confirmation?.id,
+      request_id: randomUUID(),
+    },
+  };
+}
+
+test('employee approval keeps the original invocation alive instead of cancelling and asking the model again', async () => {
+  const f = await waitingApprovalFixture();
+  expect(f.counts()).toEqual({ sends: 1, stops: 0 });
+  expect(f.grants.has(f.attempt.jobId)).toBe(true);
+  expect(f.approvalBody.confirmationId).toEqual(expect.any(String));
+});
+
+test('approving executes the exact pending input in the original attempt and turn without another model message', async () => {
+  const f = await waitingApprovalFixture();
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody);
+  expect(f.confirmations()).toEqual([
+    { callId: 'office-call', data: { value: 'proceed_once' }, input: { command: 'printf harmless' } },
+  ]);
+  expect(currentAttempt(await f.store.get('aabbccdd'))).toMatchObject({ id: f.attempt.id, turnId: f.attempt.turnId });
+  expect(f.counts().sends).toBe(1);
+});
+
+test('explicit approval rejects changed full input even when call ID and truncated description are unchanged', async () => {
+  const f = await waitingApprovalFixture();
+  f.proposal({ command: 'a different action with the same description' });
+  await expect(f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody)).rejects.toMatchObject({ status: 409 });
+  expect(f.confirmations()).toEqual([]);
+  expect(f.counts().sends).toBe(1);
+});
+
+test('duplicate simultaneous approval requests resolve once without another model turn', async () => {
+  const f = await waitingApprovalFixture();
+  await Promise.all([
+    f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody),
+    f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody),
+  ]);
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody);
+  expect(f.confirmations()).toHaveLength(1);
+  expect(f.confirmationRequests()).toEqual(['office-call']);
+  expect(f.counts().sends).toBe(1);
+});
+
+test('declining denies the original invocation without asking the model to reconstruct it', async () => {
+  const f = await waitingApprovalFixture();
+  await f.runner.action(f.actor, 'aabbccdd', 'decline', f.approvalBody);
+  expect(f.confirmations()).toEqual([
+    { callId: 'office-call', data: { value: 'cancel' }, input: { command: 'printf harmless' } },
+  ]);
+  expect(currentAttempt(await f.store.get('aabbccdd')).id).toBe(f.attempt.id);
+  expect(f.counts().sends).toBe(1);
+});
+
+test('approval cannot target an unspecified confirmation from a stale client', async () => {
+  const f = await waitingApprovalFixture();
+  const { confirmationId: _confirmationId, ...withoutConfirmation } = f.approvalBody;
+  await expect(f.runner.action(f.actor, 'aabbccdd', 'approve', withoutConfirmation)).rejects.toBeInstanceOf(Error);
+  expect(f.confirmations()).toEqual([]);
+  expect(currentAttempt(await f.store.get('aabbccdd')).state).toBe('waiting_confirmation');
+});
+
+test('an old confirmation cannot approve a second tool call in the same attempt', async () => {
+  const f = await waitingApprovalFixture();
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody);
+  f.proposal({ command: 'printf second' });
+  f.approval('office-call-2');
+  await f.runner.tick();
+  await expect
+    .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 6000 })
+    .toBe('waiting_confirmation');
+  await expect(
+    f.runner.action(f.actor, 'aabbccdd', 'approve', { ...f.approvalBody, request_id: randomUUID() })
+  ).rejects.toMatchObject({ status: 409 });
+  // A retry of the already accepted decision may return its receipt but must
+  // never be interpreted as permission for the new call.
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody);
+  expect(f.confirmations().map((c) => c.callId)).toEqual(['office-call']);
+  const detail = (await f.runner.detail(f.actor, 'aabbccdd')) as {
+    attempts: Array<{ id: string; confirmation?: { id?: string } }>;
+  };
+  const current = detail.attempts.at(-1)!;
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', {
+    attemptId: current.id,
+    confirmationId: current.confirmation?.id,
+    request_id: randomUUID(),
+  });
+  expect(f.confirmations().map((c) => [c.callId, c.input])).toEqual([
+    ['office-call', { command: 'printf harmless' }],
+    ['office-call-2', { command: 'printf second' }],
+  ]);
+});
+
+test('reordered native pending calls keep the displayed approval bound to its original invocation', async () => {
+  const f = await waitingApprovalFixture();
+  const reads = f.confirmationReads();
+  f.prependApproval('inserted-call', { command: 'printf inserted' });
+  await f.runner.tick();
+  // Observe two queue reads so the assertion cannot pass merely because the
+  // background observation of the reordered queue has not finished yet.
+  await expect.poll(() => f.confirmationReads(), { timeout: 6000 }).toBeGreaterThanOrEqual(reads + 2);
+  type Detail = { attempts: Array<{ confirmation?: { id?: string } }> };
+  const current = (await f.runner.detail(f.actor, 'aabbccdd')) as Detail;
+  expect(current.attempts.at(-1)?.confirmation?.id).toBe(f.approvalBody.confirmationId);
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody);
+  await f.runner.tick();
+  await expect
+    .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 6000 })
+    .toBe('waiting_confirmation');
+  const next = (await f.runner.detail(f.actor, 'aabbccdd')) as Detail;
+  const nextConfirmationId = next.attempts.at(-1)?.confirmation?.id;
+  expect(nextConfirmationId).not.toBe(f.approvalBody.confirmationId);
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', {
+    attemptId: f.attempt.id,
+    confirmationId: nextConfirmationId,
+    request_id: randomUUID(),
+  });
+  expect(f.confirmations().map((call) => call.callId)).toEqual(['office-call', 'inserted-call']);
+}, 15000);
+
+test('a lost approval response cannot replay the approved side effect or start another model turn', async () => {
+  const f = await waitingApprovalFixture();
+  f.loseConfirmationResponse();
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody).catch(() => undefined);
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody).catch(() => undefined);
+  expect(f.confirmations()).toHaveLength(1);
+  expect(f.confirmationRequests()).toEqual(['office-call']);
+  expect(f.counts().sends).toBe(1);
+});
+
+test('an uncertain approved write requires its external outcome to be reviewed before any retry', async () => {
+  const f = await waitingApprovalFixture();
+  f.loseConfirmationResponse();
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody).catch(() => undefined);
+  await expect
+    .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 5000 })
+    .toBe('interrupted');
+  await expect(
+    f.runner.action(f.actor, 'aabbccdd', 'retry', {
+      attemptId: f.attempt.id,
+      request_id: randomUUID(),
+      reviewed: true,
+    })
+  ).rejects.toThrow('TASK_EXTERNAL_REVIEW_REQUIRED');
+  expect(f.counts().sends).toBe(1);
+}, 12000);
+
+test('cancelling an uncertain approved write cannot remove its external-outcome guard for direct messages', async () => {
+  const f = await waitingApprovalFixture();
+  f.loseConfirmationResponse();
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody);
+  await expect
+    .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 5000 })
+    .toBe('interrupted');
+  await f.runner.action(f.actor, 'aabbccdd', 'cancel', { attemptId: f.attempt.id });
+  expect(currentAttempt(await f.store.get('aabbccdd')).state).toBe('cancelled');
+  await expect(f.runner.accept(f.actor, 'aabbccdd', { content: 'Work', request_id: randomUUID() })).rejects.toThrow(
+    'TASK_EXTERNAL_REVIEW_REQUIRED'
+  );
+}, 12000);
+
+test('a later approved read cannot erase the external-outcome review needed for an earlier approved write', async () => {
+  const f = await waitingApprovalFixture();
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody);
+  f.proposal({ path: 'receipt.txt' });
+  f.approval('read-call', 'read', 'ReadFile');
+  await f.runner.tick();
+  await expect
+    .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 6000 })
+    .toBe('waiting_confirmation');
+  const detail = (await f.runner.detail(f.actor, 'aabbccdd')) as {
+    attempts: Array<{ confirmation?: { id?: string } }>;
+  };
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', {
+    attemptId: f.attempt.id,
+    confirmationId: detail.attempts.at(-1)?.confirmation?.id,
+    request_id: randomUUID(),
+  });
+  f.runtimeTurn('turn-after-crash');
+  await f.runner.tick();
+  await expect
+    .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 5000 })
+    .toBe('interrupted');
+  await expect(
+    f.runner.action(f.actor, 'aabbccdd', 'retry', {
+      attemptId: f.attempt.id,
+      request_id: randomUUID(),
+      reviewed: true,
+    })
+  ).rejects.toThrow('TASK_EXTERNAL_REVIEW_REQUIRED');
+}, 15000);
+
+test.each(['retry', 'message'] as const)(
+  'timeout cannot make an approved write retryable without checking its external outcome via %s',
+  async (entry) => {
+    const f = await waitingApprovalFixture();
+    await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody);
+    await f.store.mutate('aabbccdd', f.attempt.id, (attempt) => {
+      attempt.startedAt = Date.now() - 21 * 60 * 1000;
+    });
     await f.runner.tick();
     await expect
-      .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 6000 })
-      .toBe('waiting_confirmation');
-    const a = currentAttempt(await f.store.get('aabbccdd'));
-    expect(a.confirmation?.proposal).toContain('printf harmless');
-    await f.runner.action(f.actor, 'aabbccdd', 'approve', {
-      attemptId: a.id,
-      request_id: randomUUID(),
-    });
-    await expect.poll(() => f.counts().sends, { timeout: 5000 }).toBe(2);
-    if (changed) f.proposal({ command: 'a different action with the same description' });
-    f.approval();
-    await f.runner.tick();
-    if (changed) {
-      await expect
-        .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 6000 })
-        .toBe('waiting_confirmation');
-      expect(f.approvalData()).toBeUndefined();
-    } else await expect.poll(() => f.approvalData(), { timeout: 5000 }).toEqual({ value: 'proceed_once' });
-  }
-}, 20000);
+      .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 8000 })
+      .toBe('failed');
+    const continuation =
+      entry === 'retry'
+        ? f.runner.action(f.actor, 'aabbccdd', 'retry', {
+            attemptId: f.attempt.id,
+            request_id: randomUUID(),
+            reviewed: true,
+          })
+        : f.runner.accept(f.actor, 'aabbccdd', { content: 'Work', request_id: randomUUID() });
+    await expect(continuation).rejects.toThrow('TASK_EXTERNAL_REVIEW_REQUIRED');
+    expect(f.counts().sends).toBe(1);
+  },
+  12000
+);
+
+test('a pending approval prevents another message from replacing its native invocation', async () => {
+  const f = await waitingApprovalFixture();
+  await expect(
+    f.runner.accept(f.actor, 'aabbccdd', { content: 'Different work', request_id: randomUUID() })
+  ).rejects.toThrow('TASK_BUSY');
+  expect(f.counts().sends).toBe(1);
+  expect(currentAttempt(await f.store.get('aabbccdd')).id).toBe(f.attempt.id);
+});
+
+test.each([
+  ['cancel', 'cancelled'],
+  ['revoke', 'failed'],
+  ['stop', 'interrupted'],
+] as const)(
+  'pending approval is safely terminated by %s and releases its grant',
+  async (action, expectedState) => {
+    const f = await waitingApprovalFixture();
+    if (action === 'cancel') await f.runner.action(f.actor, 'aabbccdd', 'cancel', { attemptId: f.attempt.id });
+    else if (action === 'revoke') {
+      f.revoke();
+      await f.runner.tick();
+    } else await f.runner.stop();
+    await expect
+      .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 8000 })
+      .toBe(expectedState);
+    expect(f.counts().stops).toBeGreaterThan(0);
+    await expect.poll(() => f.grants.size, { timeout: 3000 }).toBe(0);
+  },
+  12000
+);
+
+test('authorization is checked again when an employee approves, before the next polling interval', async () => {
+  const f = await waitingApprovalFixture();
+  f.revoke();
+  await expect(f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody)).rejects.toBeInstanceOf(Error);
+  expect(f.confirmations()).toEqual([]);
+  expect(f.counts().sends).toBe(1);
+});
+
+test('cancellation racing with approval leaves no executing task or grant behind', async () => {
+  const f = await waitingApprovalFixture();
+  await Promise.allSettled([
+    f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody),
+    f.runner.action(f.actor, 'aabbccdd', 'cancel', { attemptId: f.attempt.id }),
+  ]);
+  await expect
+    .poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 8000 })
+    .toBe('cancelled');
+  expect(f.counts().sends).toBe(1);
+  await expect.poll(() => f.grants.size, { timeout: 3000 }).toBe(0);
+}, 12000);
+
+test('a vanished native pending invocation interrupts approval instead of pretending a successful no-op resumed it', async () => {
+  const f = await waitingApprovalFixture();
+  f.forgetApproval();
+  await expect(f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody)).rejects.toMatchObject({ status: 409 });
+  expect(f.confirmations()).toEqual([]);
+  expect(currentAttempt(await f.store.get('aabbccdd')).state).toBe('interrupted');
+});
+
+test('native restart cannot apply an old confirmation to a different active turn', async () => {
+  const f = await waitingApprovalFixture();
+  f.runtimeTurn('turn-after-restart');
+  await expect(f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody)).rejects.toMatchObject({ status: 409 });
+  expect(f.confirmations()).toEqual([]);
+  expect(f.counts().sends).toBe(1);
+});
+
+test('startup recovery interrupts a persisted approval wait and never reconstructs its tool call', async () => {
+  const f = await waitingApprovalFixture();
+  const atCrash = await f.store.get('aabbccdd');
+  await f.runner.stop();
+  // Restore exactly what was durable at a crash, rather than manufacturing
+  // private approval fields. A restarted native process has no pending future.
+  await f.store.transaction((tasks) => {
+    tasks.splice(0, tasks.length, atCrash);
+  });
+  f.forgetApproval();
+  f.finish();
+  const restarted = f.createRunner();
+  await restarted.recover();
+  await restarted.tick();
+  expect(currentAttempt(await f.store.get('aabbccdd'))).toMatchObject({
+    id: f.attempt.id,
+    state: 'interrupted',
+  });
+  expect(f.grants.size).toBe(0);
+  expect(f.counts().sends).toBe(1);
+});
+
+test('employee approval cannot extend the original execution deadline', async () => {
+  const f = await waitingApprovalFixture();
+  await f.store.mutate('aabbccdd', f.attempt.id, (attempt) => {
+    attempt.startedAt = Date.now() - 21 * 60 * 1000;
+  });
+  await expect(f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody)).rejects.toBeInstanceOf(Error);
+  expect(f.confirmations()).toEqual([]);
+  await expect.poll(async () => currentAttempt(await f.store.get('aabbccdd')).state, { timeout: 8000 }).toBe('failed');
+}, 12000);
 
 test('execution deadline cannot be bypassed by a continuous sequence of trusted tool approvals', async () => {
   const f = await fixture(true);

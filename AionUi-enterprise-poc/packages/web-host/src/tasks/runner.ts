@@ -9,6 +9,8 @@ import { readProfile } from '../read-model/profile.js';
 import { TaskStore } from './store.js';
 import {
   activeStates,
+  holdsRuntime,
+  needsExternalReview,
   currentAttempt,
   digest,
   publicTask,
@@ -48,6 +50,7 @@ export class TaskRunner {
   private readonly polling = new Set<string>();
   private readonly starting = new Set<string>();
   private readonly native = new Map<string, EnterpriseCore>();
+  private readonly confirmationActions = new Map<string, Promise<unknown>>();
   private stopping = false;
   private ticking = false;
   private readonly inflight = new Set<Promise<unknown>>();
@@ -82,7 +85,7 @@ export class TaskRunner {
             a.phase = 'settled';
             a.reason = 'BACKGROUND_AUTHORIZATION_UNAVAILABLE';
           }
-          if (a.state === 'running' || a.state === 'cancelling') {
+          if (a.state !== 'queued' && holdsRuntime(a)) {
             a.state = 'interrupted';
             a.phase = 'settled';
             a.reason = 'SERVICE_RESTART_REVIEW_BEFORE_RESUME';
@@ -102,8 +105,7 @@ export class TaskRunner {
         await this.register(actor);
         const tasks = await (await TaskStore.create(this.deps.root, actor)).list();
         for (const task of tasks)
-          for (const a of task.attempts)
-            if (!activeStates.has(a.state)) await this.deps.revoke(actor, a.jobId).catch(() => {});
+          for (const a of task.attempts) if (!holdsRuntime(a)) await this.deps.revoke(actor, a.jobId).catch(() => {});
       } catch {
         console.warn('[Enterprise tasks] actor recovery unavailable');
       }
@@ -156,9 +158,7 @@ export class TaskRunner {
       const prior = (await store.list()).find((t) => t.id === id);
       const duplicate =
         prior?.attempts.some((a) => a.requestId === requestId) ||
-        (prior &&
-          activeStates.has(currentAttempt(prior).state) &&
-          currentAttempt(prior).payloadHash === digest(normalized));
+        (prior && holdsRuntime(currentAttempt(prior)) && currentAttempt(prior).payloadHash === digest(normalized));
       if (!duplicate && all.reduce((a, b) => a + b, 0) >= this.deps.queueLimit)
         throw new TaskError(429, 'TASK_QUEUE_FULL');
       const accepted = await store.accept(
@@ -167,7 +167,8 @@ export class TaskRunner {
         normalized,
         retry,
         resumeContext?.replaceRequirements === true,
-        () => readEmployeePreferences(this.deps.root, actor)
+        () => readEmployeePreferences(this.deps.root, actor),
+        resumeContext?.externalOutcome
       );
       const attempt = currentAttempt(accepted.task);
       if (!accepted.duplicate) {
@@ -177,8 +178,6 @@ export class TaskRunner {
           await store.mutate(id, attempt.id, (a) => {
             a.scope = scope;
             a.resumeContext = resumeContext;
-            if (resumeContext?.approvalFingerprint)
-              a.approval = { fingerprint: resumeContext.approvalFingerprint, used: false };
             if (a.state === 'queued') a.phase = 'queued';
           });
         } catch (e) {
@@ -212,10 +211,12 @@ export class TaskRunner {
                   ? 'running'
                   : a.state === 'cancelling'
                     ? 'cancelling'
-                    : 'idle',
+                    : a.state === 'waiting_confirmation' && a.pendingConfirmation
+                      ? 'waiting_confirmation'
+                      : 'idle',
             turn_id: a.turnId || null,
-            is_processing: activeStates.has(a.state),
-            pending_confirmations: 0,
+            is_processing: holdsRuntime(a),
+            pending_confirmations: a.state === 'waiting_confirmation' && a.pendingConfirmation ? 1 : 0,
             can_send_message: false,
             has_task: true,
             supports_midturn_delivery: false,
@@ -230,6 +231,7 @@ export class TaskRunner {
     return run;
   }
   async action(actor: EnterpriseActor, id: string, action: string, body: Record<string, unknown>): Promise<unknown> {
+    await this.register(actor);
     const store = await TaskStore.create(this.deps.root, actor),
       task = await store.get(id),
       a = currentAttempt(task);
@@ -244,7 +246,10 @@ export class TaskRunner {
           current.state = 'cancelled';
           current.phase = 'settled';
           current.reason = 'USER_CANCELLED';
-        } else if (current.state === 'running') {
+        } else if (
+          current.state === 'running' ||
+          (current.state === 'waiting_confirmation' && current.pendingConfirmation)
+        ) {
           current.state = 'cancelling';
           current.reason = 'USER_CANCEL_REQUESTED';
         } else if (['waiting_input', 'waiting_confirmation', 'interrupted'].includes(current.state)) {
@@ -253,21 +258,37 @@ export class TaskRunner {
         }
       });
       if (a.state === 'queued') await this.deps.cancelPreparation(actor);
-      if (a.state === 'queued' || !activeStates.has(a.state)) await this.release(actor, id, a);
+      if (!holdsRuntime(currentAttempt(await store.get(id)))) await this.release(actor, id, a);
       void this.tick();
       return this.detail(actor, id);
+    }
+    if ((action === 'approve' || action === 'decline') && (a.pendingConfirmation || body.confirmationId)) {
+      const key = `${actorKey(actor)}:${id}`;
+      const previous = this.confirmationActions.get(key) || Promise.resolve();
+      const work = previous.catch(() => {}).then(() => this.decideConfirmation(actor, id, action, body));
+      this.confirmationActions.set(key, work);
+      this.track(work);
+      void work
+        .finally(() => {
+          if (this.confirmationActions.get(key) === work) this.confirmationActions.delete(key);
+        })
+        .catch(() => {});
+      return work;
     }
     if (!['retry', 'continue', 'approve', 'decline'].includes(action) || activeStates.has(a.state))
       throw new TaskError(409, 'TASK_ACTION_NOT_AVAILABLE');
     if (a.state === 'interrupted' && body.reviewed !== true) throw new TaskError(409, 'TASK_RECOVERY_REVIEW_REQUIRED');
     if (
-      a.state === 'interrupted' &&
-      a.approval?.used &&
-      !['read', 'info', 'search'].includes(a.resumeContext?.approvedKind || '') &&
+      ['failed', 'partial', 'interrupted', 'cancelled'].includes(a.state) &&
+      needsExternalReview(a) &&
       !['applied', 'not_applied'].includes(String(body.externalOutcome))
     )
       throw new TaskError(409, 'TASK_EXTERNAL_REVIEW_REQUIRED');
-    if (action === 'retry' && !['partial', 'failed', 'interrupted'].includes(a.state))
+    if (
+      action === 'retry' &&
+      !['partial', 'failed', 'interrupted'].includes(a.state) &&
+      !(a.state === 'cancelled' && needsExternalReview(a))
+    )
       throw new TaskError(409, 'TASK_ACTION_NOT_AVAILABLE');
     let input = typeof body.content === 'string' ? body.content.trim() : '';
     if (action === 'approve' || action === 'decline') {
@@ -282,8 +303,9 @@ export class TaskRunner {
             ? 'Approve the saved action once.'
             : 'Decline the saved action.');
     }
-    if (action === 'approve' && (!a.confirmation || typeof a.confirmation.fingerprint !== 'string'))
-      throw new TaskError(409, 'TASK_APPROVAL_DETAILS_UNAVAILABLE');
+    // Older stopped confirmations have no live invocation to approve. Never
+    // reconstruct their tool call by turning permission into a model message.
+    if (action === 'approve') throw new TaskError(409, 'TASK_APPROVAL_DETAILS_UNAVAILABLE');
     if (!input && action !== 'retry') throw new TaskError(400, 'TASK_INPUT_REQUIRED');
     const files = body.files || [];
     return this.accept(
@@ -300,14 +322,206 @@ export class TaskRunner {
         question: a.question || a.reason,
         protectedFiles: a.artifacts.filter((f) => f.valid),
         externalOutcome: typeof body.externalOutcome === 'string' ? body.externalOutcome : undefined,
-        ...(action === 'approve' && a.confirmation
-          ? {
-              approvalFingerprint: String(a.confirmation.fingerprint),
-              approvedKind: String(a.confirmation.command_type || 'unknown'),
-            }
-          : {}),
       }
     );
+  }
+  private async confirmationDetails(
+    core: EnterpriseCore,
+    id: string,
+    confirmation: Record<string, unknown>
+  ): Promise<{ fingerprint?: string; proposal?: string }> {
+    const page = await this.call<{ items: Array<{ type?: string; content?: Record<string, unknown> }> }>(
+      core,
+      `/api/conversations/${id}/messages?limit=100`
+    );
+    const call = page.items
+      .map((m) => (m.type === 'tool_call' ? m.content : undefined))
+      .find(
+        (v) => v && String(v.call_id).replace(/^aionrs-/, '') === String(confirmation.call_id).replace(/^aionrs-/, '')
+      );
+    const input = call?.args || call?.input;
+    if (
+      call?.name !== confirmation.action ||
+      !input ||
+      typeof input !== 'object' ||
+      JSON.stringify(input).length > 16000
+    )
+      return {};
+    let redacted = false;
+    const proposal = JSON.stringify(
+      input,
+      (k, v) => {
+        if (
+          /authorization|password|api[_-]?key|access[_-]?token|cookie|secret/i.test(k) ||
+          (typeof v === 'string' && /Bearer\s+[A-Za-z0-9_-]{16}|sk-[A-Za-z0-9]{16}/.test(v))
+        ) {
+          redacted = true;
+          return '[private]';
+        }
+        return v;
+      },
+      2
+    );
+    return { proposal, fingerprint: redacted ? undefined : digest({ action: confirmation.action, input }) };
+  }
+  /** Permission consumes the existing native future, never a new model request. */
+  private async decideConfirmation(
+    actor: EnterpriseActor,
+    id: string,
+    action: 'approve' | 'decline',
+    body: Record<string, unknown>
+  ): Promise<unknown> {
+    const store = await TaskStore.create(this.deps.root, actor),
+      task = await store.get(id),
+      a = currentAttempt(task);
+    const requestId = typeof body.request_id === 'string' ? body.request_id : '';
+    if (!/^[0-9a-f-]{36}$/i.test(requestId)) throw new TaskError(400, 'TASK_INPUT_INVALID');
+    if (body.attemptId !== a.id) throw new TaskError(409, 'TASK_ATTEMPT_CHANGED');
+    const requestHash = digest({ action, body });
+    const prior = a.confirmationDecisions?.find((d) => d.requestId === requestId);
+    if (prior) {
+      if (prior.requestHash !== requestHash) throw new TaskError(409, 'TASK_REQUEST_CONFLICT');
+      return publicTask(task);
+    }
+    const pending = a.pendingConfirmation;
+    if (a.state !== 'waiting_confirmation' || !pending || body.confirmationId !== pending.id)
+      throw new TaskError(409, 'TASK_CONFIRMATION_CHANGED');
+    if (a.confirmationDecisions?.some((d) => d.confirmationId === pending.id))
+      throw new TaskError(409, 'TASK_CONFIRMATION_CHANGED');
+    if (action === 'approve' && (!pending.fingerprint || !a.confirmation?.proposal))
+      throw new TaskError(409, 'TASK_APPROVAL_DETAILS_UNAVAILABLE');
+    const checkAuthority = async () => {
+      const reason = !(await this.deps.check(actor, a.jobId))
+        ? 'TASK_AUTHORIZATION_REVOKED'
+        : Date.now() - (a.startedAt || a.createdAt) > 20 * 60 * 1000
+          ? 'TASK_EXECUTION_TIME_LIMIT'
+          : undefined;
+      if (reason) {
+        await store.mutate(id, a.id, (x) => {
+          if (holdsRuntime(x) && x.state !== 'cancelling') {
+            x.state = 'cancelling';
+            x.reason = reason;
+          }
+        });
+        void this.tick();
+        throw new TaskError(reason === 'TASK_AUTHORIZATION_REVOKED' ? 403 : 409, reason);
+      }
+    };
+    await checkAuthority();
+    const core = this.native.get(a.id) || (await this.deps.peek(actor));
+    let invalid: string | undefined;
+    if (!core) invalid = 'TASK_RUNTIME_INTERRUPTED';
+    else {
+      const { runtime } = await this.call<{ runtime: Runtime }>(core, `/api/conversations/${id}`);
+      if (!runtime || runtime.turn_id !== pending.turnId) invalid = 'TASK_RUNTIME_TURN_CHANGED';
+      else {
+        const confirmations = await this.call<Array<Record<string, unknown>>>(
+          core,
+          `/api/conversations/${id}/confirmations`
+        );
+        const actual = confirmations.find((c) => String(c.call_id) === pending.callId && !c.questions);
+        if (!actual) invalid = 'TASK_PENDING_CONFIRMATION_LOST';
+        else if (action === 'approve') {
+          const details = await this.confirmationDetails(core, id, actual);
+          if (!details.fingerprint || details.fingerprint !== pending.fingerprint)
+            invalid = 'TASK_APPROVAL_INPUT_CHANGED';
+        }
+      }
+    }
+    if (invalid) {
+      await this.interruptConfirmation(actor, id, a, core, invalid);
+      throw new TaskError(409, invalid);
+    }
+    await checkAuthority();
+    await store.mutate(id, a.id, (x) => {
+      if (this.stopping) throw new TaskError(503, 'TASK_SERVICE_UNAVAILABLE');
+      if (
+        x.state !== 'waiting_confirmation' ||
+        x.pendingConfirmation?.id !== pending.id ||
+        x.confirmationDecisions?.some((d) => d.confirmationId === pending.id)
+      )
+        throw new TaskError(409, 'TASK_CONFIRMATION_CHANGED');
+      if (Date.now() - (x.startedAt || x.createdAt) > 20 * 60 * 1000)
+        throw new TaskError(409, 'TASK_EXECUTION_TIME_LIMIT');
+      if ((x.confirmationDecisions?.length || 0) >= 128) throw new TaskError(409, 'TASK_HISTORY_CAPACITY');
+      (x.confirmationDecisions ??= []).push({
+        confirmationId: pending.id,
+        requestId,
+        requestHash,
+        action,
+        status: 'sending',
+      });
+      // Keep evidence of any potentially external effect monotonic across later read-only approvals.
+      if (action === 'approve' && (!x.approval?.used || ['read', 'info', 'search'].includes(x.approval.kind || '')))
+        x.approval = {
+          fingerprint: pending.fingerprint!,
+          used: true,
+          kind: String(x.confirmation?.command_type || ''),
+        };
+      x.state = 'running';
+      x.phase = 'executing';
+      x.stopReason = undefined;
+      x.question = undefined;
+      x.reason = undefined;
+    });
+    // The decision is durable before any native side effect. A failed/ambiguous
+    // response is never resent, even when the browser retries its request ID.
+    try {
+      const latest = currentAttempt(await store.get(id));
+      if (this.stopping || latest.id !== a.id || latest.state !== 'running')
+        throw new TaskError(409, 'TASK_ACTION_NOT_AVAILABLE');
+      await this.call(core!, `/api/conversations/${id}/confirmations/${encodeURIComponent(pending.callId)}/confirm`, {
+        msg_id: a.messageId,
+        data: { value: action === 'approve' ? 'proceed_once' : 'cancel' },
+        always_allow: false,
+      });
+      await store.mutate(id, a.id, (x) => {
+        const decision = x.confirmationDecisions?.find((d) => d.requestId === requestId);
+        if (decision) decision.status = 'acknowledged';
+      });
+    } catch {
+      await store.mutate(id, a.id, (x) => {
+        const decision = x.confirmationDecisions?.find((d) => d.requestId === requestId);
+        if (decision) decision.status = 'unknown';
+        if (x.state === 'running') {
+          x.state = 'cancelling';
+          x.reason = 'TASK_APPROVAL_RESULT_UNKNOWN';
+        }
+      });
+      void this.tick();
+    }
+    return publicTask(await store.get(id));
+  }
+  private async interruptConfirmation(
+    actor: EnterpriseActor,
+    id: string,
+    a: TaskAttempt,
+    core: EnterpriseCore | undefined,
+    reason: string
+  ): Promise<void> {
+    const store = await TaskStore.create(this.deps.root, actor);
+    await store.mutate(id, a.id, (x) => {
+      if (x.state === 'waiting_confirmation' || x.state === 'running') {
+        x.state = 'cancelling';
+        x.reason = reason;
+      }
+    });
+    // Never cancel a different turn that appeared after a Core replacement.
+    let stopped = !core || reason === 'TASK_RUNTIME_TURN_CHANGED';
+    if (core && !stopped) {
+      await this.call(core, `/api/conversations/${id}/cancel`, { turn_id: a.turnId });
+      const { runtime } = await this.call<{ runtime: Runtime }>(core, `/api/conversations/${id}`);
+      stopped = !!runtime && !runtime.is_processing && !runtime.pending_confirmations && runtime.state === 'idle';
+    }
+    if (stopped) {
+      await store.mutate(id, a.id, (x) => {
+        if (x.state === 'cancelling' && x.reason === reason) {
+          x.state = 'interrupted';
+          x.phase = 'settled';
+        }
+      });
+      if (!holdsRuntime(currentAttempt(await store.get(id)))) await this.release(actor, id, a);
+    }
   }
   private async call<T>(core: EnterpriseCore, route: string, data?: unknown): Promise<T> {
     const r = await fetch(enterpriseCoreBase(core) + route, {
@@ -347,7 +561,7 @@ export class TaskRunner {
         try {
           const store = await TaskStore.create(this.deps.root, actor),
             tasks = await store.list();
-          const live = tasks.find((t) => ['running', 'cancelling'].includes(currentAttempt(t).state));
+          const live = tasks.find((t) => currentAttempt(t).state !== 'queued' && holdsRuntime(currentAttempt(t)));
           if (live) {
             const a = currentAttempt(live);
             if (!this.polling.has(a.id) && !this.starting.has(actorKey(actor))) {
@@ -356,7 +570,7 @@ export class TaskRunner {
                 this.observe(actor, live)
                   .catch(async (e) => {
                     await store.mutate(live.id, a.id, (x) => {
-                      if (activeStates.has(x.state)) {
+                      if (holdsRuntime(x)) {
                         x.state = 'interrupted';
                         x.phase = 'settled';
                         x.reason = safeError(e);
@@ -507,6 +721,7 @@ export class TaskRunner {
     if (this.stopping) return;
     const store = await TaskStore.create(this.deps.root, actor);
     let a = currentAttempt(await store.get(task.id));
+    const decisionCount = a.confirmationDecisions?.length || 0;
     const core = this.native.get(a.id) || (await this.deps.peek(actor));
     if (!core) throw new TaskError(409, 'TASK_RUNTIME_INTERRUPTED');
     const authorized = await this.deps.check(actor, a.jobId);
@@ -521,17 +736,23 @@ export class TaskRunner {
       r = conv.runtime;
     if (!r) throw new TaskError(502, 'TASK_RUNTIME_UNAVAILABLE');
     if (r.turn_id && r.turn_id !== a.turnId) throw new TaskError(409, 'TASK_RUNTIME_TURN_CHANGED');
+    a = currentAttempt(await store.get(task.id));
     if (a.state === 'cancelling') {
       if (r.is_processing || r.pending_confirmations || r.state === 'cancelling') {
         await this.call(core, `/api/conversations/${task.id}/cancel`, { turn_id: a.turnId });
         return;
       }
       await store.mutate(task.id, a.id, (x) => {
+        if (x.state !== 'cancelling') return;
         x.state = ['TASK_EXECUTION_TIME_LIMIT', 'TASK_AUTHORIZATION_REVOKED'].includes(x.reason || '')
           ? x.artifacts.some((f) => f.valid)
             ? 'partial'
             : 'failed'
-          : 'cancelled';
+          : ['TASK_APPROVAL_RESULT_UNKNOWN', 'TASK_APPROVAL_INPUT_CHANGED', 'TASK_PENDING_CONFIRMATION_LOST'].includes(
+                x.reason || ''
+              )
+            ? 'interrupted'
+            : 'cancelled';
         x.phase = 'settled';
       });
       await this.release(actor, task.id, a);
@@ -546,70 +767,107 @@ export class TaskRunner {
       (r.is_processing || r.pending_confirmations > 0 || r.state === 'running')
     ) {
       await store.mutate(task.id, a.id, (x) => {
-        x.state = 'cancelling';
-        x.reason = 'TASK_EXECUTION_TIME_LIMIT';
+        if (holdsRuntime(x) && x.state !== 'cancelling') {
+          x.state = 'cancelling';
+          x.reason = 'TASK_EXECUTION_TIME_LIMIT';
+        }
       });
       return;
     }
+    // Approval validation and polling must not publish one another's stale
+    // view. Cancellation/revocation/deadline above still take precedence.
+    const deciding = () => this.confirmationActions.has(`${actorKey(actor)}:${task.id}`);
+    if (deciding() || (a.confirmationDecisions?.length || 0) !== decisionCount) return;
     if (r.pending_confirmations > 0) {
       const pending = await this.call<Array<Record<string, unknown>>>(
         core,
         `/api/conversations/${task.id}/confirmations`
       );
-      for (const c of pending) {
-        const trusted = !c.questions && (await this.deps.trustedConfirmation(actor, c));
-        let fingerprint: string | undefined, proposal: string | undefined;
-        if (!trusted && !c.questions) {
-          const page = await this.call<{
-            items: Array<{ type?: string; content?: Record<string, unknown> }>;
-          }>(core, `/api/conversations/${task.id}/messages?limit=100`);
-          const call = page.items
-            .map((m) => (m.type === 'tool_call' ? m.content : undefined))
-            .find((v) => v && String(v.call_id).replace(/^aionrs-/, '') === String(c.call_id).replace(/^aionrs-/, ''));
-          const input = call?.args || call?.input;
-          if (call?.name === c.action && input && typeof input === 'object' && JSON.stringify(input).length <= 16000) {
-            let redacted = false;
-            proposal = JSON.stringify(
-              input,
-              (k, v) => {
-                if (
-                  /authorization|password|api[_-]?key|access[_-]?token|cookie|secret/i.test(k) ||
-                  (typeof v === 'string' && /Bearer\s+[A-Za-z0-9_-]{16}|sk-[A-Za-z0-9]{16}/.test(v))
-                ) {
-                  redacted = true;
-                  return '[private]';
-                }
-                return v;
-              },
-              2
-            );
-            if (!redacted) fingerprint = digest({ action: c.action, input });
-          }
-        }
-        const approved = !!fingerprint && !!a.approval && !a.approval.used && a.approval.fingerprint === fingerprint;
-        if (!c.questions && (approved || trusted)) {
-          if (approved)
-            await store.mutate(task.id, a.id, (x) => {
-              if (x.approval) x.approval.used = true;
-            });
+      const presented =
+        a.pendingConfirmation && pending.find((c) => String(c.call_id) === a.pendingConfirmation!.callId);
+      if (a.state === 'waiting_confirmation' && !presented) {
+        if (!deciding()) await this.interruptConfirmation(actor, task.id, a, core, 'TASK_PENDING_CONFIRMATION_LOST');
+        return;
+      }
+      // Native tools may wait in parallel and reorder their queue. Keep the
+      // displayed operation stable; a different entry is not an argument edit.
+      for (const c of presented ? [presented] : pending) {
+        const alreadyPresented = a.pendingConfirmation?.callId === String(c.call_id);
+        const trusted = !alreadyPresented && !c.questions && (await this.deps.trustedConfirmation(actor, c));
+        if (trusted) {
+          const latest = currentAttempt(await store.get(task.id));
+          if (this.stopping || latest.state !== 'running' || deciding() || !(await this.deps.check(actor, a.jobId)))
+            return;
           await this.call(
             core,
             `/api/conversations/${task.id}/confirmations/${encodeURIComponent(String(c.call_id))}/confirm`,
             { msg_id: a.messageId, data: { value: 'proceed_once' }, always_allow: false }
           );
-        } else {
+        } else if (c.questions) {
+          let waiting = false;
           await store.mutate(task.id, a.id, (x) => {
-            x.stopReason = c.questions ? 'waiting_input' : 'waiting_confirmation';
-            x.question = String(
-              c.questions ? JSON.stringify(c.questions) : c.description || c.title || 'Confirmation required'
-            ).slice(0, 2000);
-            x.confirmation = { ...c, fingerprint, proposal };
+            if (x.state !== 'running' || deciding()) return;
+            waiting = true;
+            x.stopReason = 'waiting_input';
+            x.question = JSON.stringify(c.questions).slice(0, 2000);
+            x.confirmation = c;
+            x.pendingConfirmation = undefined;
           });
-          // Persist the unapproved request before cancelling its in-memory wait. Resume is an explicit new employee decision, never auto-approval.
-          await this.call(core, `/api/conversations/${task.id}/cancel`, { turn_id: a.turnId });
+          // Input checkpoints still resume as a new employee message. Native
+          // permission waits below keep their exact invocation alive instead.
+          if (waiting) await this.call(core, `/api/conversations/${task.id}/cancel`, { turn_id: a.turnId });
+          return;
+        } else {
+          const details = await this.confirmationDetails(core, task.id, c);
+          const pendingConfirmation = {
+            id: digest({
+              attempt: a.id,
+              turn: a.turnId,
+              call: c.call_id,
+              action: c.action,
+              fingerprint: details.fingerprint,
+            }),
+            callId: String(c.call_id),
+            turnId: a.turnId!,
+            fingerprint: details.fingerprint,
+          };
+          await store.mutate(task.id, a.id, (x) => {
+            if (
+              !['running', 'waiting_confirmation'].includes(x.state) ||
+              deciding() ||
+              (x.confirmationDecisions?.length || 0) !== decisionCount
+            )
+              return;
+            const decision = x.confirmationDecisions?.find((d) => d.confirmationId === pendingConfirmation.id);
+            if (decision) {
+              // A consumed decision must disappear from the live native queue.
+              // A successful no-op or ambiguous reply never grants it twice.
+              if (decision.status !== 'sending') {
+                x.state = 'cancelling';
+                x.reason = 'TASK_APPROVAL_RESULT_UNKNOWN';
+              }
+              return;
+            }
+            if (x.state === 'waiting_confirmation' && x.pendingConfirmation?.id !== pendingConfirmation.id) {
+              x.state = 'cancelling';
+              x.reason = 'TASK_APPROVAL_INPUT_CHANGED';
+              return;
+            }
+            x.state = 'waiting_confirmation';
+            x.phase = 'executing';
+            x.stopReason = undefined;
+            x.question = String(c.description || c.title || 'Confirmation required').slice(0, 2000);
+            x.confirmation = { ...c, ...details };
+            x.pendingConfirmation = pendingConfirmation;
+          });
           return;
         }
       }
+      return;
+    }
+    a = currentAttempt(await store.get(task.id));
+    if (a.state === 'waiting_confirmation' && a.pendingConfirmation && !deciding()) {
+      await this.interruptConfirmation(actor, task.id, a, core, 'TASK_PENDING_CONFIRMATION_LOST');
       return;
     }
     if (
@@ -793,13 +1051,14 @@ export class TaskRunner {
     if (this.ticking) await new Promise<void>((resolve) => this.tickWaiters.push(resolve));
     await Promise.allSettled([...this.actors.values()].map((actor) => this.deps.cancelPreparation(actor)));
     await Promise.allSettled(this.inflight);
-    for (const actor of this.actors.values())
-      await (
-        await TaskStore.create(this.deps.root, actor)
-      ).transaction((tasks) => {
+    for (const actor of this.actors.values()) {
+      const store = await TaskStore.create(this.deps.root, actor);
+      const interrupted: Array<{ id: string; attempt: TaskAttempt }> = [];
+      await store.transaction((tasks) => {
         for (const task of tasks) {
           const a = currentAttempt(task);
-          if (a.state === 'running' || a.state === 'cancelling') {
+          if (a.state !== 'queued' && holdsRuntime(a)) {
+            interrupted.push({ id: task.id, attempt: a });
             a.state = 'interrupted';
             a.phase = 'settled';
             a.reason = 'SERVICE_RESTART_REVIEW_BEFORE_RESUME';
@@ -807,6 +1066,13 @@ export class TaskRunner {
           }
         }
       });
+      for (const { id, attempt } of interrupted) {
+        const core = this.native.get(attempt.id) || (await this.deps.peek(actor));
+        if (core && attempt.turnId)
+          await this.call(core, `/api/conversations/${id}/cancel`, { turn_id: attempt.turnId }).catch(() => {});
+        await this.release(actor, id, attempt);
+      }
+    }
   }
 }
 import { createHash } from 'node:crypto';

@@ -5,7 +5,16 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, expect, test } from 'vitest';
 import { TaskStore } from './store.js';
 import { currentAttempt, publicTask, requiredFormats, requiresToolEvidence } from './types.js';
-import { checkpoint, recordTool, reusableOutput, artifactReferenceFeedback, trustedTaskArtifacts } from './protocol.js';
+import { OfficeStore } from '../office/office-store.js';
+import {
+  checkpoint,
+  recordTool,
+  reusableOutput,
+  artifactReferenceFeedback,
+  trustedTaskArtifacts,
+  beginTool,
+  currentTaskScope,
+} from './protocol.js';
 const roots: string[] = [];
 const actor = { serverId: 'rc2', userId: '17' };
 
@@ -159,35 +168,126 @@ test('source reads are steps rather than generated deliverables; partial tool re
   });
 });
 
-test('late tool and checkpoint callbacks cannot affect a newer round', async () => {
+test('an in-flight Office receipt survives another native tool waiting for approval', async () => {
   const { root, store } = await fixture();
-  const old = currentAttempt((await store.accept('aabbccdd', randomUUID(), { content: 'First' })).task);
-  await store.mutate('aabbccdd', old.id, (a) => {
-    a.state = 'completed';
+  const a = currentAttempt((await store.accept('aabbccdd', randomUUID(), { content: 'Generate Word' })).task);
+  await store.mutate('aabbccdd', a.id, (x) => {
+    x.state = 'running';
   });
-  const next = currentAttempt((await store.accept('aabbccdd', randomUUID(), { content: 'Next' })).task);
-  await store.mutate('aabbccdd', next.id, (a) => {
-    a.state = 'running';
+  const args = { path: 'report.docx' };
+  const stepId = await beginTool(root, actor, 'aabbccdd', 'create_office_document', args, a.id);
+  await store.mutate('aabbccdd', a.id, (x) => {
+    x.state = 'waiting_confirmation';
+    x.pendingConfirmation = { id: randomUUID(), callId: 'parallel-call', turnId: 'original-turn' };
   });
-  await recordTool(
-    root,
-    actor,
-    'aabbccdd',
-    'create_office_document',
-    { path: 'late.docx' },
-    { path: 'late.docx', sha256: 'a'.repeat(64) },
-    undefined,
-    old.id
-  );
-  await expect(checkpoint(root, actor, 'aabbccdd', { state: 'completed', summary: 'Old' }, old.id)).rejects.toThrow(
-    'TASK_NOT_EXECUTING'
-  );
+  const receipt = {
+    path: 'report.docx',
+    versionId: randomUUID(),
+    sha256: 'a'.repeat(64),
+    validation: { valid: true },
+  };
+  await recordTool(root, actor, 'aabbccdd', 'create_office_document', args, receipt, undefined, a.id, stepId);
   expect(currentAttempt(await store.get('aabbccdd'))).toMatchObject({
-    id: next.id,
-    steps: [],
-    artifacts: [],
+    state: 'waiting_confirmation',
+    steps: [{ id: stepId, state: 'completed' }],
+    artifacts: [{ path: receipt.path, versionId: receipt.versionId, valid: true }],
+  });
+  expect(await trustedTaskArtifacts(root, actor, 'aabbccdd', a.id)).toMatchObject([
+    { path: receipt.path, versionId: receipt.versionId, valid: true },
+  ]);
+  const parallelStep = await beginTool(root, actor, 'aabbccdd', 'read_document', { path: 'source.txt' }, a.id);
+  expect(parallelStep).toEqual(expect.any(String));
+  await expect(
+    checkpoint(root, actor, 'aabbccdd', { state: 'completed', summary: 'Parallel checkpoint' }, a.id)
+  ).rejects.toThrow('TASK_NOT_EXECUTING');
+  expect(currentAttempt(await store.get('aabbccdd')).state).toBe('waiting_confirmation');
+});
+
+test('a live native confirmation retains the accepted knowledge scope when the next-round selection changes', async () => {
+  const { root, store } = await fixture();
+  const a = currentAttempt((await store.accept('aabbccdd', randomUUID(), { content: 'Research' })).task);
+  const acceptedScope = { baseIds: [randomUUID()], documents: [] };
+  const nextScope = { baseIds: [randomUUID()], documents: [] };
+  await store.mutate('aabbccdd', a.id, (x) => {
+    x.state = 'waiting_confirmation';
+    x.scope = acceptedScope;
+    x.pendingConfirmation = { id: randomUUID(), callId: 'parallel-call', turnId: 'original-turn' };
+  });
+  const office = await OfficeStore.create(root, actor);
+  await office.selectKnowledge('aabbccdd', nextScope);
+  expect(await office.knowledgeScope('aabbccdd')).toEqual(nextScope);
+  expect(await currentTaskScope(root, actor, 'aabbccdd')).toMatchObject({
+    active: true,
+    state: 'waiting_confirmation',
+    attemptId: a.id,
+    jobId: a.jobId,
+    scope: acceptedScope,
   });
 });
+
+test.each(['cancelling', 'interrupted', 'waiting_confirmation'] as const)(
+  'tool receipts and starts remain blocked for %s without a live native wait',
+  async (state) => {
+    const { root, store } = await fixture();
+    const a = currentAttempt((await store.accept('aabbccdd', randomUUID(), { content: 'Work' })).task);
+    await store.mutate('aabbccdd', a.id, (x) => {
+      x.state = state;
+      if (state !== 'waiting_confirmation')
+        x.pendingConfirmation = { id: randomUUID(), callId: 'stale-call', turnId: 'old-turn' };
+    });
+    expect(await currentTaskScope(root, actor, 'aabbccdd')).toMatchObject({ active: false });
+    expect(await beginTool(root, actor, 'aabbccdd', 'read_document', {}, a.id)).toBeUndefined();
+    await recordTool(
+      root,
+      actor,
+      'aabbccdd',
+      'create_office_document',
+      {},
+      { path: 'late.docx', versionId: randomUUID(), sha256: 'b'.repeat(64), validation: { valid: true } },
+      undefined,
+      a.id
+    );
+    await expect(trustedTaskArtifacts(root, actor, 'aabbccdd', a.id)).rejects.toThrow('TASK_NOT_EXECUTING');
+    expect(currentAttempt(await store.get('aabbccdd'))).toMatchObject({ state, steps: [], artifacts: [] });
+  }
+);
+
+test.each(['running', 'waiting_confirmation'] as const)(
+  'late tool and checkpoint callbacks cannot affect a newer %s round',
+  async (state) => {
+    const { root, store } = await fixture();
+    const old = currentAttempt((await store.accept('aabbccdd', randomUUID(), { content: 'First' })).task);
+    await store.mutate('aabbccdd', old.id, (a) => {
+      a.state = 'completed';
+    });
+    const next = currentAttempt((await store.accept('aabbccdd', randomUUID(), { content: 'Next' })).task);
+    await store.mutate('aabbccdd', next.id, (a) => {
+      a.state = state;
+      if (state === 'waiting_confirmation')
+        a.pendingConfirmation = { id: randomUUID(), callId: 'current-call', turnId: 'current-turn' };
+    });
+    expect(await beginTool(root, actor, 'aabbccdd', 'read_document', {}, old.id)).toBeUndefined();
+    await expect(trustedTaskArtifacts(root, actor, 'aabbccdd', old.id)).rejects.toThrow('TASK_NOT_EXECUTING');
+    await recordTool(
+      root,
+      actor,
+      'aabbccdd',
+      'create_office_document',
+      { path: 'late.docx' },
+      { path: 'late.docx', sha256: 'a'.repeat(64) },
+      undefined,
+      old.id
+    );
+    await expect(checkpoint(root, actor, 'aabbccdd', { state: 'completed', summary: 'Old' }, old.id)).rejects.toThrow(
+      'TASK_NOT_EXECUTING'
+    );
+    expect(currentAttempt(await store.get('aabbccdd'))).toMatchObject({
+      id: next.id,
+      steps: [],
+      artifacts: [],
+    });
+  }
+);
 
 test('ordinary answers do not require tools solely because the employee forbids reading or editing', () => {
   expect(requiresToolEvidence('只回复一句已收到。不要调用工具，不读取或修改文件。', [])).toBe(false);

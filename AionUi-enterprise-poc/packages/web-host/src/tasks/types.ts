@@ -52,6 +52,14 @@ export type TaskAttempt = {
   progress?: string;
   question?: string;
   confirmation?: Record<string, unknown>;
+  pendingConfirmation?: { id: string; callId: string; turnId: string; fingerprint?: string };
+  confirmationDecisions?: Array<{
+    confirmationId: string;
+    requestId: string;
+    requestHash: string;
+    action: 'approve' | 'decline';
+    status: 'sending' | 'acknowledged' | 'unknown';
+  }>;
   steps: TaskStep[];
   artifacts: TaskArtifact[];
   requiredFormats: string[];
@@ -73,10 +81,16 @@ export type TaskAttempt = {
   stopReason?: 'waiting_input' | 'waiting_confirmation';
   retryOf?: string;
   scope?: unknown;
-  approval?: { fingerprint: string; used: boolean };
+  approval?: { fingerprint: string; used: boolean; kind?: string };
 };
 export type TaskRecord = { id: string; title: string; updatedAt: number; attempts: TaskAttempt[] };
 export const activeStates = new Set<TaskState>(['queued', 'running', 'cancelling']);
+/** A native confirmation still owns its original turn, grant and capacity slot. */
+export const canRunTools = (a: TaskAttempt): boolean =>
+  a.state === 'running' || (a.state === 'waiting_confirmation' && !!a.pendingConfirmation);
+export const holdsRuntime = (a: TaskAttempt): boolean => activeStates.has(a.state) || canRunTools(a);
+export const needsExternalReview = (a: TaskAttempt): boolean =>
+  !!a.approval?.used && !['read', 'info', 'search'].includes(a.approval.kind || a.resumeContext?.approvedKind || '');
 export const digest = (value: unknown): string =>
   createHash('sha256')
     .update(
@@ -148,6 +162,8 @@ export function publicTask(task: TaskRecord, summary = false): unknown {
       ({
         payload: _payload,
         approval: _approval,
+        pendingConfirmation: _pendingConfirmation,
+        confirmationDecisions: _confirmationDecisions,
         resumeContext: _context,
         preferences,
         confirmation,
@@ -156,7 +172,8 @@ export function publicTask(task: TaskRecord, summary = false): unknown {
       }) => ({
         ...a,
         ...(preferences ? { preferenceVersion: preferences.version } : {}),
-        requiresExternalReview: !!_approval?.used && !['read', 'info', 'search'].includes(_context?.approvedKind || ''),
+        requiresExternalReview:
+          !!_approval?.used && !['read', 'info', 'search'].includes(_approval.kind || _context?.approvedKind || ''),
         ...(summary
           ? {}
           : {
@@ -165,9 +182,14 @@ export function publicTask(task: TaskRecord, summary = false): unknown {
                 files: _payload.files,
               },
             }),
-        canApprove: typeof confirmation?.fingerprint === 'string' && !!confirmation?.proposal,
+        canApprove:
+          a.state === 'waiting_confirmation' &&
+          !!_pendingConfirmation?.fingerprint &&
+          !!confirmation?.proposal &&
+          !_confirmationDecisions?.some((decision) => decision.confirmationId === _pendingConfirmation.id),
         confirmation: confirmation
           ? {
+              id: _pendingConfirmation?.id,
               title: confirmation.title,
               description: confirmation.description,
               questions: confirmation.questions,
