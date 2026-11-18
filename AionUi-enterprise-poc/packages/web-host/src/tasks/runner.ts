@@ -882,6 +882,7 @@ export class TaskRunner {
         if (x.state === 'running') {
           x.state = x.stopReason!;
           x.phase = 'settled';
+          x.pendingConfirmation = undefined;
           settled = true;
         }
       });

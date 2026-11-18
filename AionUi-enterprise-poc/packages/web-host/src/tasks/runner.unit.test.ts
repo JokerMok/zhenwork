@@ -566,6 +566,30 @@ test('approving executes the exact pending input in the original attempt and tur
   expect(f.counts().sends).toBe(1);
 });
 
+test('a business checkpoint drops the consumed native confirmation before releasing its grant', async () => {
+  const f = await waitingApprovalFixture();
+  await f.runner.action(f.actor, 'aabbccdd', 'approve', f.approvalBody);
+  await checkpoint(f.root, f.actor, 'aabbccdd', {
+    state: 'waiting_confirmation',
+    summary: 'The tool finished and the employee must choose how to continue.',
+    question: 'Use the approved template for the next step?',
+  });
+  f.finish();
+  await f.runner.tick();
+  await expect.poll(() => f.grants.has(f.attempt.jobId), { timeout: 6000 }).toBe(false);
+  const current = currentAttempt(await f.store.get('aabbccdd'));
+  expect(current).toMatchObject({
+    id: f.attempt.id,
+    state: 'waiting_confirmation',
+    phase: 'settled',
+    question: 'Use the approved template for the next step?',
+    confirmationDecisions: [{ confirmationId: f.approvalBody.confirmationId, status: 'acknowledged' }],
+  });
+  expect(current.pendingConfirmation).toBeUndefined();
+  await f.runner.tick();
+  expect(currentAttempt(await f.store.get('aabbccdd')).reason).toBeUndefined();
+});
+
 test('explicit approval rejects changed full input even when call ID and truncated description are unchanged', async () => {
   const f = await waitingApprovalFixture();
   f.proposal({ command: 'a different action with the same description' });
