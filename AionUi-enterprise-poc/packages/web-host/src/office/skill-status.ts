@@ -1,16 +1,46 @@
 import { createHash } from 'node:crypto';
+import { lstat, readFile, realpath } from 'node:fs/promises';
+import path from 'node:path';
 type Catalog = { id: string; name?: string; version: number };
 type Client = {
   resources(type: string): Promise<unknown>;
   authorizedResource(id: string, type: string): Promise<unknown>;
 };
 type Loaded = { id: string; name: string; version: number };
+type RuntimeRegistry = { profile: string; registry: Array<{ name: string; location?: string }> };
+
+async function installedFile(directory: string, relative: string, content: string): Promise<string | undefined> {
+  const file = path.join(directory, relative);
+  try {
+    const expected = Buffer.from(content, 'utf8');
+    const entry = await lstat(file);
+    if (!entry.isFile() || entry.size !== expected.length || (await realpath(file)) !== file) return;
+    if ((await readFile(file)).equals(expected)) return file;
+  } catch {
+    return;
+  }
+}
+
+async function installedPackage(profile: string, location: string, source: string): Promise<string | undefined> {
+  if (!path.isAbsolute(location)) return;
+  try {
+    const directory = await realpath(location);
+    const relative = path.relative(await realpath(profile), directory);
+    if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return;
+    if (await installedFile(directory, 'SKILL.md', source)) return directory;
+  } catch {
+    return;
+  }
+}
+
+type PackageFile = { path: string; sha256: string; executable: boolean; runtimeFile?: string; runtimeError?: string };
+
 export async function checkEnterpriseSkill(
   client: Client,
   query: string,
   loaded: Loaded[],
   installedNames: string[],
-  options: { includeInstructions?: boolean; file?: string } = {}
+  options: { includeInstructions?: boolean; file?: string; runtime?: RuntimeRegistry } = {}
 ): Promise<Record<string, unknown>> {
   if (!query.trim() || query.length > 100) throw new Error('SKILL_QUERY_REQUIRED_MAX_100');
   const wanted = query.trim().toLowerCase();
@@ -63,8 +93,14 @@ export async function checkEnterpriseSkill(
     const files = detail.config?.files;
     if (files !== undefined && (!Array.isArray(files) || files.length > 200))
       return { ...result, available: false, reason: 'PACKAGE_INVALID' };
+    const runtime = options.runtime;
+    const location = runtime?.registry.find((item) => item.name === local?.name)?.location;
+    const install =
+      runtime && typeof location === 'string' && Array.isArray(files) && files.some((file) => file?.executable)
+        ? await installedPackage(runtime.profile, location, source)
+        : undefined;
     const content: Array<{ path: string; content: string; sha256: string }> = [];
-    const catalog: Array<{ path: string; sha256: string; executable: boolean }> = [];
+    const catalog: PackageFile[] = [];
     let bytes = 0;
     const omittedFiles: string[] = [];
     for (const file of [
@@ -85,7 +121,23 @@ export async function checkEnterpriseSkill(
         typeof file.content === 'string' && file.encoding !== 'base64'
           ? createHash('sha256').update(file.content).digest('hex')
           : file.sha256;
-      catalog.push({ path: file.path, sha256: sha, executable: !!file.executable });
+      const catalogFile: PackageFile = { path: file.path, sha256: sha, executable: !!file.executable };
+      if (location && catalogFile.executable && (!options.file || options.file === file.path)) {
+        const onDisk =
+          install &&
+          typeof file.content === 'string' &&
+          file.encoding !== 'base64' &&
+          (!file.sha256 || file.sha256 === sha)
+            ? await installedFile(install, file.path, file.content)
+            : undefined;
+        if (onDisk) catalogFile.runtimeFile = onDisk;
+        else {
+          const reason = 'RUNTIME_FILE_MISSING_OR_CHANGED';
+          if (options.file) return { ...result, available: false, reason, file: file.path };
+          catalogFile.runtimeError = reason;
+        }
+      }
+      catalog.push(catalogFile);
       if (
         options.file
           ? file.path !== options.file

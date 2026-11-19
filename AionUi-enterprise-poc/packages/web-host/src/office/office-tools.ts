@@ -419,7 +419,7 @@ const tools = [
   {
     name: 'check_enterprise_skill',
     description:
-      'Load an authorized enterprise Skill with includeInstructions=true: returns its actual SKILL.md, reference instructions, templates and file catalog without Exec/CLI approval. Optional file reads one exact package text path (including scripts); it never executes code. Also check CURRENT enterprise Skill USE authorization and actual loaded runtime version by resource ID, display name or runtime Skill name. Read-only. Use this instead of guessing a CLI or scanning old cache paths. available:false means stop trying that package; do not run old paths, reconstruct its scripts, or claim success. Builtin/personal Core Skills are outside this catalog.',
+      'Load an authorized enterprise Skill with includeInstructions=true: returns its actual SKILL.md, reference instructions, templates and file catalog without Exec/CLI approval. Executable entries can include runtimeFile, the verified installed path to use for that exact file. Stop on runtimeError. Optional file reads one exact package text path (including scripts); it never executes code. Also check CURRENT enterprise Skill USE authorization and actual loaded runtime version by resource ID, display name or runtime Skill name. Read-only. Use this instead of guessing a CLI or scanning old cache paths. available:false means stop trying that package; do not run old paths, reconstruct its scripts, or claim success. Builtin/personal Core Skills are outside this catalog.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -1205,7 +1205,7 @@ export async function startOfficeTools(
           });
           const registry = (await response.json()) as {
             success?: boolean;
-            data?: Array<{ name: string }>;
+            data?: Array<{ name: string; location?: string }>;
           };
           if (!response.ok || !registry.success || !Array.isArray(registry.data))
             throw new Error('SKILL_RUNTIME_CATALOG_UNAVAILABLE');
@@ -1217,6 +1217,7 @@ export async function startOfficeTools(
             {
               includeInstructions: args.includeInstructions === true,
               file: typeof args.file === 'string' ? args.file : undefined,
+              runtime: { profile: enterpriseProfilePath(profileRoot, actor), registry: registry.data },
             }
           );
         } else if (tool === 'write_text_file') {

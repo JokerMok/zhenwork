@@ -1,3 +1,6 @@
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { expect, test, vi } from 'vitest';
 import { checkEnterpriseSkill } from './skill-status.js';
 const id = '11111111-1111-4111-8111-111111111111';
@@ -107,4 +110,53 @@ test('existing Unicode and binary companions remain installed without making tex
   expect(
     await checkEnterpriseSkill(client, id, loaded, ['shared-tool'], { file: 'templates/报销.xlsx' })
   ).toMatchObject({ available: false, reason: 'PACKAGE_TEXT_INVALID_OR_TOO_LARGE' });
+});
+
+test('returns an entry only for the actual installed bytes of the authorized script', async () => {
+  const profile = await realpath(await mkdtemp(path.join(tmpdir(), 'enterprise-skill-')));
+  try {
+    const location = path.join(profile, 'skills', 'shared-tool');
+    const file = 'scripts/check.py';
+    const entry = path.join(location, file);
+    await mkdir(path.dirname(entry), { recursive: true });
+    await writeFile(path.join(location, 'SKILL.md'), '# Workflow');
+    await writeFile(entry, 'print(1)');
+    const client = {
+      resources: async () => [{ id, version: 2 }],
+      authorizedResource: async () => ({
+        version: 2,
+        config: { source: '# Workflow', files: [{ path: file, content: 'print(1)', executable: true }] },
+      }),
+    };
+    const runtime = { profile, registry: [{ name: 'shared-tool', location }] };
+    const lookup = (options: { includeInstructions?: boolean; file?: string }) =>
+      checkEnterpriseSkill(client, id, loaded, ['shared-tool'], { ...options, runtime });
+
+    expect(await lookup({ includeInstructions: true })).toMatchObject({
+      available: true,
+      files: expect.arrayContaining([{ path: file, executable: true, sha256: expect.any(String), runtimeFile: entry }]),
+    });
+    await writeFile(entry, 'print(2)');
+    expect(await lookup({ file })).toMatchObject({
+      available: false,
+      reason: 'RUNTIME_FILE_MISSING_OR_CHANGED',
+      file,
+    });
+    await rm(entry);
+    expect(await lookup({ file })).toMatchObject({ available: false, reason: 'RUNTIME_FILE_MISSING_OR_CHANGED' });
+  } finally {
+    await rm(profile, { force: true, recursive: true });
+  }
+});
+
+test('a document-only Skill is still readable without any script installation', async () => {
+  const client = {
+    resources: async () => [{ id, version: 2 }],
+    authorizedResource: async () => ({ version: 2, config: { source: '# Workflow' } }),
+  };
+  const result = await checkEnterpriseSkill(client, id, loaded, ['shared-tool'], {
+    file: 'SKILL.md',
+    runtime: { profile: '/unused', registry: [{ name: 'shared-tool' }] },
+  });
+  expect(result).toMatchObject({ available: true, instructions: [{ path: 'SKILL.md', content: '# Workflow' }] });
 });
