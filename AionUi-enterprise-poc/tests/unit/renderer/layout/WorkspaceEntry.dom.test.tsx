@@ -130,7 +130,7 @@ async function openWorkspace() {
     </MemoryRouter>
   );
   await screen.findByText('Business task A');
-  return container.querySelector<HTMLDivElement>('.overflow-y-auto.bg-bg-1')!;
+  return container.querySelector<HTMLDivElement>('[data-testid=workspace-scroll]')!;
 }
 
 async function tab(section: 'tasks' | 'files') {

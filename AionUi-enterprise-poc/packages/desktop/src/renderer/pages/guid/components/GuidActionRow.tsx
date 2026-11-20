@@ -85,6 +85,7 @@ type GuidActionRowProps = {
   // Model selector node (rendered by parent for the desktop layout)
   modelSelectorNode: React.ReactNode;
   inlineModelOnMobile?: boolean;
+  contextTools?: React.ReactNode;
 
   // Flat model data for the mobile action sheet (desktop uses modelSelectorNode).
   isGeminiMode: boolean;
@@ -128,6 +129,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
   onUploadingChange,
   modelSelectorNode,
   inlineModelOnMobile = false,
+  contextTools,
   isGeminiMode,
   modelList,
   current_model,
@@ -375,7 +377,10 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
           activeSkillCount > 0
             ? enterpriseManaged
               ? t('guid.enabledCount', { count: activeSkillCount })
-              : t('common.selectedCount', { count: activeSkillCount, defaultValue: `Selected ${activeSkillCount}` })
+              : t('common.selectedCount', {
+                  count: activeSkillCount,
+                  defaultValue: `Selected ${activeSkillCount}`,
+                })
             : undefined,
         submenu: {
           title: t('settings.capabilitiesTab.skills'),
@@ -405,7 +410,10 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
           activeMcpCount > 0
             ? enterpriseManaged
               ? t('guid.enabledCount', { count: activeMcpCount })
-              : t('common.selectedCount', { count: activeMcpCount, defaultValue: `Selected ${activeMcpCount}` })
+              : t('common.selectedCount', {
+                  count: activeMcpCount,
+                  defaultValue: `Selected ${activeMcpCount}`,
+                })
             : undefined,
         submenu: {
           title: enterpriseManaged ? t('guid.toolConnections') : t('mcp.label'),
@@ -518,9 +526,13 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
             showSearch={showSkillSearch}
             query={skillQuery}
             onQueryChange={setSkillQuery}
-            placeholder={t('settings.skillsHub.searchPlaceholder', { defaultValue: 'Search skills...' })}
+            placeholder={t('settings.skillsHub.searchPlaceholder', {
+              defaultValue: 'Search skills...',
+            })}
             searchTestId='guid-skill-search'
-            emptyText={t('settings.skillsHub.noSearchResults', { defaultValue: 'No matching skills.' })}
+            emptyText={t('settings.skillsHub.noSearchResults', {
+              defaultValue: 'No matching skills.',
+            })}
             isEmpty={filteredSkills.length === 0}
           >
             {filteredSkills.map((skill) => (
@@ -564,7 +576,9 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
             onQueryChange={setMcpQuery}
             placeholder={t('mcp.searchServers', { defaultValue: 'Search servers...' })}
             searchTestId='guid-mcp-search'
-            emptyText={t('mcp.noServersFound', { defaultValue: 'No servers found matching your criteria' })}
+            emptyText={t('mcp.noServersFound', {
+              defaultValue: 'No servers found matching your criteria',
+            })}
             isEmpty={filteredMcpServers.length === 0}
           >
             {filteredMcpServers.map((server) => (
@@ -594,7 +608,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
   );
 
   return (
-    <div className={styles.actionRow}>
+    <div className={styles.actionRow} data-employee-tools={contextTools ? 'true' : undefined}>
       <div className={styles.actionTools}>
         <div className={styles.actionEntry}>
           {isMobile ? (
@@ -642,6 +656,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
           )}
         </div>
         <EnterpriseKnowledgePicker onAttach={(filePath) => onFilesPicked([filePath])} />
+        {contextTools}
       </div>
       {isMobile && (
         <MobileActionSheet
@@ -680,12 +695,14 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
           disabled={isButtonDisabled}
           className='send-button-custom'
           style={{
-            backgroundColor: isButtonDisabled ? undefined : '#000000',
-            borderColor: isButtonDisabled ? undefined : '#000000',
+            backgroundColor: contextTools || isButtonDisabled ? undefined : '#000000',
+            borderColor: contextTools || isButtonDisabled ? undefined : '#000000',
           }}
           icon={<ArrowUp theme='filled' size='14' fill='white' strokeWidth={5} />}
           onClick={onSend}
           aria-label={t('common.send')}
+          aria-keyshortcuts={contextTools ? 'Enter' : undefined}
+          title={contextTools ? t('common.send') + ' (Enter)' : undefined}
           data-testid='guid-send-btn'
         />
       </div>

@@ -272,3 +272,120 @@
 [dir='rtl'] .rtl-text-right {
   text-align: right;
 }
+
+/* The hosted employee shell uses one canvas and a slightly quieter navigation rail. */
+.employee-workspace .layout-content,
+.employee-workspace .conversation-canvas {
+  background-color: var(--bg-base) !important;
+}
+
+.employee-workspace > .layout > .layout-sider,
+.employee-workspace .layout-sider-header,
+.employee-workspace .sider-section-label {
+  background-color: var(--bg-1) !important;
+}
+
+.employee-workspace .employee-composer,
+.employee-workspace .employee-reply .sendbox-panel {
+  border: 1px solid var(--color-border-3);
+  border-radius: 18px;
+  background: var(--bg-base);
+  padding: 16px;
+}
+
+.employee-workspace .employee-composer:focus-within,
+.employee-workspace .employee-reply .sendbox-panel:focus-within {
+  border-color: rgb(var(--primary-5));
+}
+
+.employee-workspace .employee-composer .arco-btn:focus-visible,
+.employee-workspace .employee-reply .arco-btn:focus-visible {
+  outline: 2px solid rgb(var(--primary-6));
+  outline-offset: 2px;
+}
+
+.employee-workspace .employee-composer .send-button-custom,
+.employee-workspace .employee-reply .send-button-custom {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.employee-workspace .employee-history-row {
+  display: flex;
+  gap: 5px;
+  height: 38px;
+  padding-inline-end: 3px;
+  transition: background-color 0.15s ease;
+}
+
+.employee-workspace .employee-history-row[aria-current='page'] {
+  background: var(--color-fill-2);
+}
+
+.employee-workspace .employee-history-row:focus-visible {
+  outline: 2px solid rgb(var(--primary-6));
+  outline-offset: -2px;
+}
+
+.employee-history-row .chat-history__item-name {
+  justify-content: space-between;
+  font-weight: 400;
+}
+
+.employee-history-row[aria-current='page'] .employee-history-title {
+  font-weight: 600;
+}
+
+.employee-history-row [data-task-state] {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.employee-history-row
+  :is([data-task-state='waiting_input'], [data-task-state='waiting_confirmation'], [data-task-state='partial']) {
+  color: rgb(var(--warning-7));
+}
+
+.employee-history-row :is([data-task-state='failed'], [data-task-state='interrupted']) {
+  color: rgb(var(--danger-6));
+}
+
+.employee-history-row :is([data-task-state='running'], [data-task-state='queued']) {
+  color: rgb(var(--primary-7));
+}
+
+.employee-history-menu {
+  opacity: 0;
+  width: 26px;
+}
+
+.employee-history-row:hover .employee-history-menu,
+.employee-history-row:focus-within .employee-history-menu,
+.employee-history-menu.employee-history-menu-visible {
+  opacity: 1;
+}
+
+.employee-history-row .employee-history-menu .arco-btn {
+  width: 26px;
+  padding: 0;
+}
+
+.employee-workspace .employee-reply :is(textarea[data-testid='sendbox-input'], .sendbox-highlight-layer) {
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.employee-workspace .employee-reply textarea[data-testid='sendbox-input']::placeholder {
+  color: var(--text-secondary) !important;
+  opacity: 1;
+}
+
+[data-theme='dark'] .employee-workspace :is(.employee-composer, .employee-reply) .arco-btn-text:not(:disabled) {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme='dark'] .employee-workspace :is(.employee-composer, .employee-reply) .arco-btn-text:not(:disabled):hover {
+  color: var(--text-primary) !important;
+}

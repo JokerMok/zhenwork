@@ -683,3 +683,167 @@
     max-width: 100px;
   }
 }
+
+.employeeCanvas {
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: clamp(24px, 14vh, 136px) clamp(14px, 4vw, 42px) 28px;
+}
+
+.employeeStart {
+  width: min(100%, 800px);
+  margin-inline: auto;
+}
+
+.employeeTitle {
+  margin: 0 0 22px;
+  font-size: 27px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.employeeStart > :global(.arco-alert) {
+  margin-block: 0 10px;
+  border-radius: 8px;
+}
+
+.employeeCardWrap {
+  width: 100%;
+}
+
+.employeeInput {
+  font-size: 16px !important;
+  line-height: 1.65 !important;
+  max-height: 34vh;
+  padding-inline: 0 !important;
+}
+
+.employeeInput::placeholder {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
+.actionRow[data-employee-tools] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.actionRow[data-employee-tools] .actionTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  gap: 4px;
+}
+
+.actionRow[data-employee-tools] .actionSubmit :global(.sendbox-model-btn .guid-model-label) {
+  max-width: clamp(80px, 12vw, 170px);
+}
+
+.directoryControl {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  max-width: min(100%, 180px);
+  min-width: 0;
+}
+
+.directoryButton,
+.configurationTrigger {
+  display: inline-flex !important;
+  min-width: 0;
+  max-width: 160px;
+  padding-inline: 6px !important;
+}
+
+.configurationTrigger {
+  max-width: min(225px, 100%);
+}
+
+.directoryButton :global(.arco-btn-content),
+.configurationTrigger :global(.arco-btn-content) {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.configurationTrigger[aria-expanded='true'] {
+  background-color: var(--color-fill-2);
+}
+
+.configurationPanel {
+  border-block-start: 1px solid var(--color-border-2);
+  margin-block-start: 12px;
+  padding-block-start: 8px;
+}
+
+.officeExamples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block-start: 14px;
+}
+
+.officeExamples :global(.arco-btn) {
+  height: 34px;
+  padding-inline: 10px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  max-width: 100%;
+}
+
+.officeExamples :global(.arco-btn-icon),
+.configurationTrigger :global(.arco-btn-icon),
+.directoryButton :global(.arco-btn-icon) {
+  margin-inline-end: 5px !important;
+}
+
+.officeExamples :global(.arco-btn):hover {
+  border-color: var(--color-border-3);
+  background-color: var(--bg-1);
+  color: var(--text-primary);
+}
+
+@media (max-width: 600px) {
+  .employeeCanvas {
+    padding-block-start: 26px;
+  }
+
+  .employeeTitle {
+    margin-block-end: 18px;
+    font-size: 24px;
+  }
+
+  .actionRow[data-employee-tools] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .actionRow[data-employee-tools] .actionSubmit {
+    justify-self: end;
+  }
+}
+
+@media (max-height: 600px) {
+  .employeeCanvas {
+    padding-block-start: 20px;
+  }
+
+  .employeeInput {
+    max-height: 22vh;
+  }
+}
+
+.employeeAttachments {
+  max-block-size: min(18dvh, 128px);
+  overflow-y: auto;
+  padding: 4px 6px 4px 1px;
+}
+
+:global([data-theme='dark']) .officeExamples :global(.arco-btn-text:not(:disabled)),
+:global([data-theme='dark']) .employeeStart > :global(.arco-btn-text:not(:disabled)) {
+  color: var(--text-secondary) !important;
+}

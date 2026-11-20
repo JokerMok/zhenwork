@@ -8,7 +8,7 @@ import { ipcBridge } from '@/common';
 import { addRecentWorkspace, getRecentWorkspaces } from '@/renderer/components/workspace';
 import { AionInlineSearchInput } from '@/renderer/components/base';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
-import { Tooltip } from '@arco-design/web-react';
+import { Button, Tooltip } from '@arco-design/web-react';
 import { Close, Down } from '@icon-park/react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -222,6 +222,35 @@ const GuidWorkspaceFootnote: React.FC<GuidWorkspaceFootnoteProps> = ({
         document.body
       )
     : null;
+
+  if (enterprise) {
+    const label = t('workspace.files.workDirectory');
+    return (
+      <div className={styles.directoryControl}>
+        <Button
+          type='text'
+          size='small'
+          className={styles.directoryButton}
+          icon={<FolderIcon size={16} />}
+          title={workspaceName || label}
+          aria-label={workspaceName ? label + ' · ' + workspaceName : label}
+          data-testid='workspace-selector-btn'
+          onClick={handleBrowseWorkspace}
+        >
+          <span className='min-w-0 truncate'>{workspaceName || label}</span>
+        </Button>
+        {workspaceDir && (
+          <Button
+            type='text'
+            size='mini'
+            icon={<Close size={12} />}
+            aria-label={t('guid.workspace.clearWorkspace')}
+            onClick={onClearWorkspace}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={styles.workspaceFootnote}>

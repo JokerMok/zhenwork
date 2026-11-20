@@ -62,7 +62,14 @@ export function TaskStateTag({ state }: { state: string }) {
   );
 }
 
-export function TaskBadge({ id }: { id: string }) {
-  const state = useContext(TaskOverview).get(id);
-  return state && state !== 'unknown' ? <TaskStateTag state={state} /> : null;
+export function TaskBadge({ id, liveState }: { id: string; liveState?: 'running' | 'waiting_confirmation' }) {
+  const { t } = useTranslation();
+  const recorded = useContext(TaskOverview).get(id);
+  const state = recorded === 'waiting_input' && liveState === 'running' ? recorded : (liveState ?? recorded);
+  if (!state || state === 'unknown') return null;
+  return (
+    <span data-task-state={state}>
+      {t(`workspace.work.states.${state}`, { defaultValue: t('workspace.work.unknown') })}
+    </span>
+  );
 }

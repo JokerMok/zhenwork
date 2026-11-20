@@ -1,7 +1,15 @@
-import styles from '../WorkspaceExperience.module.css';
-import { FileText } from '@icon-park/react';
-import React from 'react';
+import { Button, Dropdown, Menu } from '@arco-design/web-react';
+import { DataFile, FileEditing, FileText, MoreOne, Picture } from '@icon-park/react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import styles from '../WorkspaceExperience.module.css';
+
+type ArtifactAction = {
+  key: string;
+  label: string;
+  disabled?: boolean;
+  onSelect: () => void;
+};
 
 type ArtifactCardProps = {
   path: string;
@@ -12,6 +20,9 @@ type ArtifactCardProps = {
   versionId?: string;
   sha256?: string;
   details?: React.ReactNode;
+  layout?: 'card' | 'row';
+  onPreview?: (event: Event) => void;
+  menuActions?: ArtifactAction[];
   children: React.ReactNode;
 };
 
@@ -25,46 +36,108 @@ export default function ArtifactCard({
   versionId,
   sha256,
   details,
+  layout = 'card',
+  onPreview,
+  menuActions = [],
   children,
 }: ArtifactCardProps) {
   const { t } = useTranslation();
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const title = name || path.split('/').pop() || path;
   const extension = title.match(/\.([a-z0-9]{1,12})$/i)?.[1].toUpperCase();
+  const FileIcon = /^(XLSX?|CSV|TSV)$/.test(extension || '')
+    ? DataFile
+    : /^(DOCX?|RTF|ODT)$/.test(extension || '')
+      ? FileEditing
+      : /^(PNG|JPE?G|GIF|WEBP|SVG)$/.test(extension || '')
+        ? Picture
+        : FileText;
+  const technicalLabel = t('common.technical_details');
+  const technicalDetails = (
+    <div className={styles.artifactDetails}>
+      {path !== title && <span>{path}</span>}
+      {version !== undefined && (
+        <span>
+          {t('common.version')} · v{version}
+        </span>
+      )}
+      {versionId && <code>{versionId}</code>}
+      {sha256 && <code>SHA-256 · {sha256}</code>}
+      {details}
+    </div>
+  );
+
   return (
-    <article className={styles.surface + ' min-w-0 p-14px'}>
-      <div className='flex items-start gap-12px'>
-        <span
-          aria-hidden='true'
-          className='size-38px shrink-0 inline-flex items-center justify-center rd-8px bg-fill-2 text-t-secondary'
-        >
-          <FileText size={21} />
+    <article className={layout === 'row' ? styles.artifactRow : styles.artifactCard}>
+      <div className={styles.artifactObject}>
+        <span className={styles.artifactIcon} aria-hidden='true'>
+          <FileIcon size={20} />
         </span>
         <div className='min-w-0 flex-1'>
-          <div className='flex flex-wrap items-center justify-between gap-8px'>
-            <strong className='min-w-0 break-words text-15px text-t-primary'>{title}</strong>
+          <div className={styles.artifactTitleLine}>
+            {onPreview ? (
+              <Button
+                type='text'
+                size='small'
+                className={styles.artifactName}
+                title={title}
+                aria-label={t('workspace.files.preview') + ' · ' + title}
+                onClick={onPreview}
+              >
+                <span className='min-w-0 truncate'>{title}</span>
+              </Button>
+            ) : (
+              <strong className='min-w-0 break-words text-15px text-t-primary'>{title}</strong>
+            )}
             {status}
           </div>
-          <div className='mt-3px flex flex-wrap items-center gap-x-8px gap-y-2px text-13px text-t-secondary'>
+          <div className={styles.artifactMeta}>
             <span>{extension || t('common.file')}</span>
+            {version !== undefined && <span>v{version}</span>}
             {metadata}
           </div>
         </div>
       </div>
-      <div className='mt-10px flex flex-wrap items-center gap-8px'>{children}</div>
-      <details className='mt-8px text-13px text-t-secondary'>
-        <summary className='w-fit cursor-pointer'>{t('common.technical_details')}</summary>
-        <div className='mt-6px grid gap-4px break-all'>
-          {path !== title && <span>{path}</span>}
-          {version !== undefined && (
-            <span>
-              {t('common.version')} · <span>v{version}</span>
-            </span>
-          )}
-          {versionId && <code>{versionId}</code>}
-          {sha256 && <code>SHA-256 · {sha256}</code>}
-          {details}
-        </div>
-      </details>
+      <div className={styles.artifactActions}>
+        {children}
+        {layout === 'row' && (
+          <Dropdown
+            trigger='click'
+            position='br'
+            droplist={
+              <Menu
+                onClickMenuItem={(key) => {
+                  if (key === 'details') setDetailsOpen((open) => !open);
+                  else menuActions.find((action) => action.key === key)?.onSelect();
+                }}
+              >
+                {menuActions.map((action) => (
+                  <Menu.Item key={action.key} disabled={action.disabled}>
+                    {action.label}
+                  </Menu.Item>
+                ))}
+                <Menu.Item key='details'>{technicalLabel}</Menu.Item>
+              </Menu>
+            }
+          >
+            <Button
+              type='text'
+              size='small'
+              aria-label={t('common.more') + ' · ' + title}
+              aria-haspopup='menu'
+              icon={<MoreOne size={17} />}
+            />
+          </Dropdown>
+        )}
+      </div>
+      {layout === 'row' ? (
+        detailsOpen && technicalDetails
+      ) : (
+        <details className={styles.artifactDisclosure}>
+          <summary>{technicalLabel}</summary>
+          {technicalDetails}
+        </details>
+      )}
     </article>
   );
 }

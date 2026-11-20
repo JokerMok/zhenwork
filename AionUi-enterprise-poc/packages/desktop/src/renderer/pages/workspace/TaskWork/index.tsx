@@ -168,7 +168,13 @@ export default function TaskWork({
                 decision.busy ||
                 (!!decision.pending && (decision.pending.kind !== 'approve' || !decision.safeId))
               }
-              onClick={() => void decision.submit('approve', { reviewed, externalOutcome, language: i18n.language })}
+              onClick={() =>
+                void decision.submit('approve', {
+                  reviewed,
+                  externalOutcome,
+                  language: i18n.language,
+                })
+              }
             >
               {t('workspace.work.approve')}
             </Button>
@@ -179,7 +185,13 @@ export default function TaskWork({
                 decision.busy ||
                 (!!decision.pending && (decision.pending.kind !== 'decline' || !decision.safeId))
               }
-              onClick={() => void decision.submit('decline', { reviewed, externalOutcome, language: i18n.language })}
+              onClick={() =>
+                void decision.submit('decline', {
+                  reviewed,
+                  externalOutcome,
+                  language: i18n.language,
+                })
+              }
             >
               {t('workspace.work.decline')}
             </Button>
@@ -220,7 +232,9 @@ export default function TaskWork({
       )}
       {a.reason && ['failed', 'partial', 'interrupted'].includes(a.state) && (
         <span className='text-14px text-t-secondary'>
-          {t(`workspace.work.reasons.${a.reason}`, { defaultValue: t('workspace.experience.actionFailed') })}
+          {t(`workspace.work.reasons.${a.reason}`, {
+            defaultValue: t('workspace.experience.actionFailed'),
+          })}
         </span>
       )}
       {failure && (
@@ -281,7 +295,9 @@ export default function TaskWork({
               {a.steps.map((step) => (
                 <div key={step.id} className='flex items-start gap-8px text-12px break-words'>
                   <Tag size='small'>
-                    {t(`workspace.work.step.${step.state}`, { defaultValue: t('workspace.work.unknown') })}
+                    {t(`workspace.work.step.${step.state}`, {
+                      defaultValue: t('workspace.work.unknown'),
+                    })}
                   </Tag>
                   <span>{step.tool}</span>
                 </div>
@@ -315,8 +331,23 @@ export default function TaskWork({
             <ArtifactCard
               key={JSON.stringify([file.path, file.versionId || file.sha256])}
               {...file}
+              onPreview={
+                previewVersion
+                  ? () => {
+                      const current = new URLSearchParams(location.search);
+                      const inTask =
+                        location.pathname === '/workspace' &&
+                        current.get('section') === 'tasks' &&
+                        current.get('task') === conversationId;
+                      const next = inTask ? current : new URLSearchParams({ section: 'files' });
+                      next.set('previewPath', file.path);
+                      next.set('fileVersion', previewVersion);
+                      navigate({ pathname: '/workspace', search: next.toString() });
+                    }
+                  : undefined
+              }
               status={
-                <Tag color={!file.valid ? 'red' : download || previewVersion ? 'green' : undefined}>
+                <Tag color={!file.valid ? 'red' : undefined}>
                   {t(
                     !file.valid
                       ? 'workspace.delivery.verificationFailed'
@@ -327,26 +358,6 @@ export default function TaskWork({
                 </Tag>
               }
             >
-              {previewVersion && (
-                <Button
-                  size='mini'
-                  type='text'
-                  aria-label={t('workspace.files.preview') + ' · ' + title}
-                  onClick={() => {
-                    const current = new URLSearchParams(location.search);
-                    const inTask =
-                      location.pathname === '/workspace' &&
-                      current.get('section') === 'tasks' &&
-                      current.get('task') === conversationId;
-                    const next = inTask ? current : new URLSearchParams({ section: 'files' });
-                    next.set('previewPath', file.path);
-                    next.set('fileVersion', previewVersion);
-                    navigate({ pathname: '/workspace', search: next.toString() });
-                  }}
-                >
-                  {t('workspace.files.preview')}
-                </Button>
-              )}
               {download && (
                 <Link href={download} download aria-label={t('common.download') + ' · ' + title}>
                   {t('common.download')}

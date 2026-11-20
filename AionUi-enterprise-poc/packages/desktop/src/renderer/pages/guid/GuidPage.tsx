@@ -37,7 +37,8 @@ import { chatFileRefPath, uploadFileRef } from '@/common/types/chatFile';
 import { useOpenFileSelector } from '@/renderer/hooks/file/useOpenFileSelector';
 import { appendSpeechTranscript } from '@/renderer/hooks/system/useSpeechInput';
 import { useLiveTranscriptInsertion } from '@/renderer/hooks/system/useLiveTranscriptInsertion';
-import { ArrowRightUp } from '@icon-park/react';
+import { ArrowRightUp, ChartHistogram, DataFile, Expenses, FileEditing, SettingTwo } from '@icon-park/react';
+import GuidWorkspaceFootnote from './components/GuidWorkspaceFootnote';
 import { Alert, Button, ConfigProvider, Space } from '@arco-design/web-react';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -58,11 +59,19 @@ type GuidNavigationState = {
   [key: string]: unknown;
 };
 
+const OFFICE_EXAMPLES = [
+  { key: 'reimbursement', icon: Expenses },
+  { key: 'requirements', icon: FileEditing },
+  { key: 'data', icon: DataFile },
+  { key: 'market', icon: ChartHistogram },
+] as const;
+
 const GuidPage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const guidContainerRef = useRef<HTMLDivElement>(null);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const { activeBorderColor, inactiveBorderColor, activeShadow } = useInputFocusRing();
 
   const localeKey = resolveLocaleKey(i18n.language);
@@ -405,7 +414,7 @@ const GuidPage: React.FC = () => {
     return agentSelection.assistants.find((item) => candidates.has(item.id));
   }, [agentSelection.assistants, selectedAssistantId, agentSelection.selectedAssistantId]);
   const selectedAssistantPrompts = useMemo(() => {
-    if (!selectedAssistantId) return [];
+    if (hostedEnterpriseWeb || !selectedAssistantId) return [];
     const resolvedPrompts =
       selectedAssistantDetail?.prompts.recommended_i18n?.[localeKey] ||
       selectedAssistantDetail?.prompts.recommended_i18n?.['en-US'] ||
@@ -417,15 +426,6 @@ const GuidPage: React.FC = () => {
 
     if (resolvedPrompts.length > 0) {
       return resolvedPrompts;
-    }
-
-    if (hostedEnterpriseWeb) {
-      return [
-        t('workspace.examples.reimbursement.prompt'),
-        t('workspace.examples.requirements.prompt'),
-        t('workspace.examples.data.prompt'),
-        t('workspace.examples.market.prompt'),
-      ];
     }
 
     return [t('guid.defaultPrompts.understand'), t('guid.defaultPrompts.cleanup'), t('guid.defaultPrompts.create')];
@@ -529,7 +529,9 @@ const GuidPage: React.FC = () => {
       if (resolvedDefaults.permissionMode) {
         const availableModeIds = new Set(agentSelection.currentAgentModeOptions.map((mode) => mode.value));
         if (availableModeIds.size === 0 || availableModeIds.has(resolvedDefaults.permissionMode)) {
-          agentSelection.setSelectedMode(resolvedDefaults.permissionMode, { persistPreference: false });
+          agentSelection.setSelectedMode(resolvedDefaults.permissionMode, {
+            persistPreference: false,
+          });
         } else {
           const fallbackMode = agentSelection.currentAgentModeOptions[0]?.value;
           if (fallbackMode) {
@@ -542,13 +544,17 @@ const GuidPage: React.FC = () => {
           agentSelection.currentThoughtLevelOption.options.map((option) => option.value)
         );
         if (resolvedDefaults.thoughtLevel && availableThoughtLevelValues.has(resolvedDefaults.thoughtLevel)) {
-          agentSelection.setSelectedThoughtLevelValue(resolvedDefaults.thoughtLevel, { persistPreference: false });
+          agentSelection.setSelectedThoughtLevelValue(resolvedDefaults.thoughtLevel, {
+            persistPreference: false,
+          });
         } else {
           const fallbackThoughtLevel =
             agentSelection.currentThoughtLevelOption.currentValue ||
             agentSelection.currentThoughtLevelOption.options[0]?.value ||
             '';
-          agentSelection.setSelectedThoughtLevelValue(fallbackThoughtLevel, { persistPreference: false });
+          agentSelection.setSelectedThoughtLevelValue(fallbackThoughtLevel, {
+            persistPreference: false,
+          });
         }
       }
       setGuidSelectedMcpServerIds(resolvedDefaults.mcpIds);
@@ -588,7 +594,9 @@ const GuidPage: React.FC = () => {
   const setGuidSelectedThoughtLevel = useCallback(
     (value: string) => {
       manualThoughtLevelSelectionAssistantRef.current = selectedAssistantId;
-      agentSelection.setSelectedThoughtLevelValue(value, { persistPreference: !hasSelectedAssistant });
+      agentSelection.setSelectedThoughtLevelValue(value, {
+        persistPreference: !hasSelectedAssistant,
+      });
     },
     [agentSelection, hasSelectedAssistant, selectedAssistantId]
   );
@@ -714,7 +722,10 @@ const GuidPage: React.FC = () => {
     // The organization catalog can arrive after this page mounts. Clearing the
     // request earlier silently replaces the chosen expert with the web default.
     if (!isGuidNavigationSelectionReady(preselectAssistantId, selectedAssistantId)) return;
-    navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null });
+    navigate(`${location.pathname}${location.search}${location.hash}`, {
+      replace: true,
+      state: null,
+    });
   }, [
     anchoringDraft,
     resetAssistantRequested,
@@ -734,13 +745,11 @@ const GuidPage: React.FC = () => {
   // Build the mention dropdown node
   // Build the model selector node
   const modelSelectorNode = hostedEnterpriseWeb ? (
-    showAdvancedConfiguration ? (
-      <GuidEnterpriseModelSelector
-        model={modelSelection.current_model}
-        setModel={setGuidCurrentModel}
-        busy={guidInput.loading}
-      />
-    ) : null
+    <GuidEnterpriseModelSelector
+      model={modelSelection.current_model}
+      setModel={setGuidCurrentModel}
+      busy={guidInput.loading}
+    />
   ) : (
     <GuidModelSelector
       isGeminiMode={isGeminiMode}
@@ -763,7 +772,41 @@ const GuidPage: React.FC = () => {
   );
   const { handleLiveTranscript } = useLiveTranscriptInsertion(guidInput.setInput);
 
-  // Build the action row
+  const assistantSummary =
+    selectedAssistantRecord?.name_i18n?.[localeKey] ||
+    selectedAssistantRecord?.name ||
+    t('workspace.abilities.assistants');
+  const assistantSelection = (
+    <AssistantSelectionArea
+      selectedAssistantId={agentSelection.selectedAssistantId}
+      assistants={agentSelection.assistants}
+      localeKey={localeKey}
+      onSelectAssistant={handleSelectAssistant}
+    />
+  );
+  const contextTools = hostedEnterpriseWeb ? (
+    <>
+      <GuidWorkspaceFootnote
+        workspaceDir={guidInput.dir}
+        onSelectWorkspace={guidInput.setDir}
+        onClearWorkspace={() => guidInput.setDir('')}
+      />
+      <Button
+        ref={settingsTriggerRef}
+        type='text'
+        size='small'
+        className={styles.configurationTrigger}
+        icon={<SettingTwo size={16} />}
+        aria-label={t('settings.advancedSettings') + ' · ' + assistantSummary}
+        aria-expanded={showAdvancedConfiguration}
+        aria-controls={showAdvancedConfiguration ? 'guid-configuration' : undefined}
+        title={t('settings.advancedSettings')}
+        onClick={() => setShowAdvancedConfiguration((visible) => !visible)}
+      >
+        <span className='min-w-0 truncate'>{assistantSummary}</span>
+      </Button>
+    </>
+  ) : null;
   const actionRowNode = (
     <GuidActionRow
       onFilesUploaded={guidInput.handleFilesUploaded}
@@ -771,6 +814,7 @@ const GuidPage: React.FC = () => {
       onFilesPicked={guidInput.handleFilesPicked}
       modelSelectorNode={modelSelectorNode}
       inlineModelOnMobile={hostedEnterpriseWeb}
+      contextTools={contextTools}
       isGeminiMode={isGeminiMode}
       modelList={hostedEnterpriseWeb ? [] : modelSelection.modelList}
       current_model={modelSelection.current_model}
@@ -826,37 +870,30 @@ const GuidPage: React.FC = () => {
     <ConfigProvider getPopupContainer={() => guidContainerRef.current || document.body}>
       <div
         ref={guidContainerRef}
-        className={styles.guidContainer}
+        className={hostedEnterpriseWeb ? styles.employeeCanvas : styles.guidContainer}
+        onKeyDown={(event) => {
+          if (!showAdvancedConfiguration || event.key !== 'Escape' || event.defaultPrevented) return;
+          setShowAdvancedConfiguration(false);
+          settingsTriggerRef.current?.focus();
+        }}
         onDragEnterCapture={guidInput.dragHandlers.onDragEnter}
         onDragOverCapture={guidInput.dragHandlers.onDragOver}
         onDragLeaveCapture={guidInput.dragHandlers.onDragLeave}
         onDropCapture={guidInput.dragHandlers.onDrop}
       >
-        <div className={styles.guidLayout}>
-          <div className={styles.heroHeader}>
-            <p className='text-2xl font-semibold mb-0 text-t-primary text-center'>{t('conversation.welcome.title')}</p>
-          </div>
-
-          {!simplifiedEnterpriseExperience ? (
-            <AssistantSelectionArea
-              selectedAssistantId={agentSelection.selectedAssistantId}
-              assistants={agentSelection.assistants}
-              localeKey={localeKey}
-              onSelectAssistant={handleSelectAssistant}
-            />
-          ) : null}
-
+        <div className={hostedEnterpriseWeb ? styles.employeeStart : styles.guidLayout}>
           {hostedEnterpriseWeb ? (
-            <Button
-              type='text'
-              size='small'
-              className='self-center text-t-secondary'
-              aria-expanded={showAdvancedConfiguration}
-              onClick={() => setShowAdvancedConfiguration((visible) => !visible)}
-            >
-              {showAdvancedConfiguration ? t('common.collapse') : t('settings.advancedSettings')}
-            </Button>
-          ) : null}
+            <h1 className={styles.employeeTitle}>{t('workspace.start.title')}</h1>
+          ) : (
+            <>
+              <div className={styles.heroHeader}>
+                <p className='text-2xl font-semibold mb-0 text-t-primary text-center'>
+                  {t('conversation.welcome.title')}
+                </p>
+              </div>
+              {assistantSelection}
+            </>
+          )}
 
           {hostedEnterpriseWeb && agentSelection.catalogLoading ? (
             <Alert type='info' content={t('workspace.status.preparing')} />
@@ -947,7 +984,23 @@ const GuidPage: React.FC = () => {
             onPaste={guidInput.onPaste}
             onFocus={guidInput.handleTextareaFocus}
             onBlur={guidInput.handleTextareaBlur}
-            placeholder={typewriterPlaceholder || t('conversation.welcome.placeholder')}
+            placeholder={
+              hostedEnterpriseWeb
+                ? t('workspace.start.placeholder')
+                : typewriterPlaceholder || t('conversation.welcome.placeholder')
+            }
+            employee={hostedEnterpriseWeb}
+            configuration={
+              hostedEnterpriseWeb && showAdvancedConfiguration ? (
+                <div
+                  id='guid-configuration'
+                  className={styles.configurationPanel}
+                  aria-label={t('settings.advancedSettings')}
+                >
+                  {assistantSelection}
+                </div>
+              ) : undefined
+            }
             isInputActive={guidInput.isInputFocused}
             isFileDragging={guidInput.isFileDragging}
             activeBorderColor={activeBorderColor}
@@ -973,6 +1026,26 @@ const GuidPage: React.FC = () => {
             >
               {t('guid.discardDraft')}
             </Button>
+          ) : null}
+
+          {hostedEnterpriseWeb ? (
+            <div className={styles.officeExamples}>
+              {OFFICE_EXAMPLES.map(({ key, icon: Icon }) => (
+                <Button
+                  key={key}
+                  size='small'
+                  type='text'
+                  icon={<Icon size={16} />}
+                  disabled={guidInput.loading}
+                  onClick={() => {
+                    guidInput.setInput((draft) => appendPromptToDraft(draft, t(`workspace.examples.${key}.prompt`)));
+                    guidContainerRef.current?.querySelector<HTMLTextAreaElement>('[data-testid="guid-input"]')?.focus();
+                  }}
+                >
+                  {t(`workspace.examples.${key}.title`)}
+                </Button>
+              ))}
+            </div>
           ) : null}
 
           {selectedAssistantPrompts.length > 0 ? (
@@ -1004,13 +1077,17 @@ const GuidPage: React.FC = () => {
           ) : null}
         </div>
 
-        <QuickActionButtons
-          onOpenLink={openLink}
-          onOpenBugReport={() => setShowFeedbackModal(true)}
-          inactiveBorderColor={inactiveBorderColor}
-          activeShadow={activeShadow}
-        />
-        <FeedbackReportModal visible={showFeedbackModal} onCancel={() => setShowFeedbackModal(false)} />
+        {!hostedEnterpriseWeb && (
+          <>
+            <QuickActionButtons
+              onOpenLink={openLink}
+              onOpenBugReport={() => setShowFeedbackModal(true)}
+              inactiveBorderColor={inactiveBorderColor}
+              activeShadow={activeShadow}
+            />
+            <FeedbackReportModal visible={showFeedbackModal} onCancel={() => setShowFeedbackModal(false)} />
+          </>
+        )}
       </div>
     </ConfigProvider>
   );

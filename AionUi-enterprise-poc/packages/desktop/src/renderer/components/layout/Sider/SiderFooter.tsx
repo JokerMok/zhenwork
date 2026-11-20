@@ -6,10 +6,11 @@
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Avatar, Button, Dropdown, Menu, Tooltip } from '@arco-design/web-react';
+import { Avatar, Button, Dropdown, Menu, Modal, Spin, Tooltip } from '@arco-design/web-react';
 import { ArrowCircleLeft, CloseOne, Down, Moon, SettingTwo, SunOne } from '@icon-park/react';
 import classNames from 'classnames';
 import { useNavigate } from 'react-router-dom';
+import { useFeedback } from '@renderer/hooks/context/FeedbackContext';
 import { useAuth, type AuthUser } from '@renderer/hooks/context/AuthContext';
 import { enterpriseRequest } from '@renderer/pages/workspace/workspaceApi';
 import { iconColors } from '@renderer/styles/colors';
@@ -34,8 +35,12 @@ type EmployeeProfile = { id: string; nickname?: string; avatarUrl?: string };
 const ACCOUNT_ROUTES = {
   profile: '/settings/profile',
   personalization: '/settings/personalization',
-  settings: '/settings',
+  memory: '/workspace?section=memory',
 } as const;
+
+const AboutModalContent = React.lazy(
+  () => import('@renderer/components/settings/SettingsModal/contents/AboutModalContent')
+);
 
 const footerClasses =
   'shrink-0 sider-footer mt-auto py-8px border-t border-solid border-[var(--color-border-2)] border-s-0 border-e-0 border-b-0';
@@ -67,6 +72,8 @@ function EmployeeAccountMenu({
   const menuId = useId();
   const [profile, setProfile] = useState<EmployeeProfile>();
   const [visible, setVisible] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const { openFeedback } = useFeedback();
   const [failedAvatar, setFailedAvatar] = useState<string>();
   const trigger = useRef<HTMLButtonElement>(null);
   const { id, username } = user;
@@ -77,7 +84,9 @@ function EmployeeAccountMenu({
       current?.abort();
       const controller = new AbortController();
       current = controller;
-      void enterpriseRequest<EmployeeProfile>('/enterprise/self-profile', { signal: controller.signal })
+      void enterpriseRequest<EmployeeProfile>('/enterprise/self-profile', {
+        signal: controller.signal,
+      })
         .then((result) => {
           if (!controller.signal.aborted && String(result?.id) === id) setProfile(result);
         })
@@ -141,6 +150,10 @@ function EmployeeAccountMenu({
       onClickMenuItem={(key) => {
         if (key === 'logout') {
           onLogoutClick?.();
+        } else if (key === 'help') {
+          void openFeedback({ autoScreenshot: true });
+        } else if (key === 'about') {
+          setAboutOpen(true);
         } else if (Object.hasOwn(ACCOUNT_ROUTES, key)) {
           void navigate(ACCOUNT_ROUTES[key as keyof typeof ACCOUNT_ROUTES]);
           onSessionClick?.();
@@ -153,7 +166,9 @@ function EmployeeAccountMenu({
       <Menu.Item key='personalization'>
         {t('settings.enterpriseAccount.personalization', { defaultValue: 'Personalization' })}
       </Menu.Item>
-      <Menu.Item key='settings'>{t('common.settings')}</Menu.Item>
+      <Menu.Item key='memory'>{t('workspace.tabs.memory')}</Menu.Item>
+      <Menu.Item key='help'>{t('conversation.welcome.quickActionFeedback')}</Menu.Item>
+      <Menu.Item key='about'>{t('settings.about')}</Menu.Item>
       <Menu.Item key='logout'>{t('settings.googleLogout')}</Menu.Item>
     </Menu>
   );
@@ -197,6 +212,19 @@ function EmployeeAccountMenu({
           </span>
         </Button>
       </Dropdown>
+      <Modal
+        title={t('settings.about')}
+        visible={aboutOpen}
+        onCancel={() => setAboutOpen(false)}
+        footer={null}
+        style={{ maxWidth: 'calc(100vw - 24px)' }}
+      >
+        {aboutOpen && (
+          <React.Suspense fallback={<Spin />}>
+            <AboutModalContent />
+          </React.Suspense>
+        )}
+      </Modal>
     </div>
   );
 }

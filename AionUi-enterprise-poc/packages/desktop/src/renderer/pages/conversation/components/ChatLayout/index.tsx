@@ -271,7 +271,7 @@ const ChatLayout: React.FC<{
             flexBasis: 0,
           }}
         >
-          <div className='shrink-0 !bg-1'>{headerBlock}</div>
+          <div className='shrink-0 !bg-1 conversation-canvas'>{headerBlock}</div>
           <div className='flex flex-1 min-h-0 relative'>
             {/* Chat area - always mounted, never unmounted on preview toggle */}
             <div
@@ -290,7 +290,7 @@ const ChatLayout: React.FC<{
                 if (window.innerWidth < 768 && !rightSiderCollapsed) setRightSiderCollapsed(true);
               }}
             >
-              <ArcoLayout.Content className='flex flex-col flex-1 bg-1 overflow-hidden'>
+              <ArcoLayout.Content className='flex flex-col flex-1 bg-1 overflow-hidden conversation-canvas'>
                 {props.children}
               </ArcoLayout.Content>
             </div>

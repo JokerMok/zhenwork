@@ -16,6 +16,8 @@ import GuidWorkspaceFootnote from './GuidWorkspaceFootnote';
 
 type GuidInputCardProps = {
   focusRequestKey?: string;
+  employee?: boolean;
+  configuration?: React.ReactNode;
   // Input state
   input: string;
   onInputChange: (value: string) => void;
@@ -49,6 +51,8 @@ type GuidInputCardProps = {
 
 const GuidInputCard: React.FC<GuidInputCardProps> = ({
   focusRequestKey,
+  employee = false,
+  configuration,
   input,
   onInputChange,
   onKeyDown,
@@ -74,7 +78,11 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
   const isMobile = layout?.isMobile ?? false;
   const { compositionHandlers, isComposing } = useCompositionInput();
   const inputRef = useRef<RefTextAreaType | null>(null);
-  const textareaAutoSize = isMobile ? { minRows: 2, maxRows: 8 } : { minRows: 2, maxRows: 20 };
+  const textareaAutoSize = employee
+    ? { minRows: 3, maxRows: 8 }
+    : isMobile
+      ? { minRows: 2, maxRows: 8 }
+      : { minRows: 2, maxRows: 20 };
 
   useEffect(() => {
     if (!focusRequestKey || isMobile) return;
@@ -97,13 +105,13 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
 
   return (
     <div
-      className={`${styles.guidInputCardWrap} guid-input-card-shell relative rd-24px flex flex-col ${slashCommandMenu ? 'overflow-visible' : 'overflow-hidden'} transition-all duration-200 ${isFileDragging ? 'b b-solid border-dashed guid-input-card-shell--dragging' : ''}`}
+      className={`${employee ? styles.employeeCardWrap : styles.guidInputCardWrap} guid-input-card-shell relative rd-24px flex flex-col ${employee || slashCommandMenu ? 'overflow-visible' : 'overflow-hidden'} transition-all duration-200 ${isFileDragging ? 'b b-solid border-dashed guid-input-card-shell--dragging' : ''}`}
       style={{
         zIndex: 1,
         transition: 'box-shadow 0.25s ease',
-        width: isMobile ? 'calc(100% + 28px)' : undefined,
-        marginLeft: isMobile ? -14 : undefined,
-        marginRight: isMobile ? -14 : undefined,
+        width: isMobile && !employee ? 'calc(100% + 28px)' : undefined,
+        marginLeft: isMobile && !employee ? -14 : undefined,
+        marginRight: isMobile && !employee ? -14 : undefined,
         ...(isFileDragging
           ? {
               backgroundColor: 'var(--color-primary-light-1)',
@@ -111,26 +119,27 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
               borderWidth: '1px',
             }
           : {
-              boxShadow: isInputActive ? activeShadow : 'none',
+              boxShadow: !employee && isInputActive ? activeShadow : 'none',
             }),
       }}
       {...dragHandlers}
     >
       {/* inner white card — narrower than outer wrap */}
       <div
-        className={`${styles.guidInputInner} relative p-12px flex flex-col bg-dialog-fill-0`}
+        className={`${employee ? 'employee-composer' : styles.guidInputInner + ' p-12px bg-dialog-fill-0'} relative flex flex-col`}
         style={{
           transition: 'box-shadow 0.25s ease, border-color 0.25s ease',
-          borderColor: isFileDragging ? 'rgb(var(--primary-3))' : borderColor,
-          boxShadow: isInputActive && !isFileDragging ? activeShadow : 'none',
+          borderColor: isFileDragging ? 'rgb(var(--primary-3))' : employee ? undefined : borderColor,
+          boxShadow: !employee && isInputActive && !isFileDragging ? activeShadow : undefined,
         }}
       >
         <Input.TextArea
           ref={inputRef}
           autoSize={textareaAutoSize}
           placeholder={placeholder}
+          aria-label={employee ? placeholder : undefined}
           spellCheck={false}
-          className={`text-14px focus:b-none rounded-xl !bg-transparent !b-none !resize-none !py-0 !pe-0 !ps-7px ${styles.lightPlaceholder}`}
+          className={`text-14px focus:b-none rounded-xl !bg-transparent !b-none !resize-none !py-0 !pe-0 !ps-7px ${employee ? styles.employeeInput : styles.lightPlaceholder}`}
           value={input}
           onChange={onInputChange}
           onPaste={onPaste}
@@ -142,7 +151,9 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
         />
         <div style={{ height: 12, flexShrink: 0 }} aria-hidden='true' />
         {files.length > 0 && (
-          <div className='flex flex-wrap items-center gap-8px mt-12px mb-12px'>
+          <div
+            className={`flex flex-wrap items-center gap-8px mt-12px mb-12px ${employee ? styles.employeeAttachments : ''}`}
+          >
             {files.map((path) => (
               <FilePreview key={path} path={path} onRemove={() => onRemoveFile(path)} />
             ))}
@@ -150,13 +161,16 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
         )}
         <UploadProgressBar source='sendbox' />
         {actionRow}
+        {configuration}
         {slashCommandMenu && <div className='absolute start-0 end-0 top-[calc(100%+4px)] z-70'>{slashCommandMenu}</div>}
       </div>
-      <GuidWorkspaceFootnote
-        workspaceDir={workspaceDir}
-        onSelectWorkspace={onSelectWorkspace}
-        onClearWorkspace={onClearWorkspace}
-      />
+      {!employee && (
+        <GuidWorkspaceFootnote
+          workspaceDir={workspaceDir}
+          onSelectWorkspace={onSelectWorkspace}
+          onClearWorkspace={onClearWorkspace}
+        />
+      )}
     </div>
   );
 };

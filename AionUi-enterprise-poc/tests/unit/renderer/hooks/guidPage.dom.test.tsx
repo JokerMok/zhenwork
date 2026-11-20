@@ -537,15 +537,13 @@ describe('GuidPage', () => {
     expect(screen.getByRole('button', { name: 'guid.defaultPrompts.create' })).toBeInTheDocument();
   });
 
-  it('uses office examples as the fallback in the simplified enterprise experience', () => {
+  it('labels the four office examples with short names', () => {
     platformMock.enterpriseWeb = true;
-
     render(<GuidPage />);
 
-    expect(screen.getByRole('button', { name: 'workspace.examples.reimbursement.prompt' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'workspace.examples.requirements.prompt' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'workspace.examples.data.prompt' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'workspace.examples.market.prompt' })).toBeInTheDocument();
+    for (const key of ['reimbursement', 'requirements', 'data', 'market']) {
+      expect(screen.getByRole('button', { name: `workspace.examples.${key}.title` })).toBeInTheDocument();
+    }
     expect(screen.queryByRole('button', { name: 'guid.defaultPrompts.understand' })).not.toBeInTheDocument();
   });
 
@@ -803,17 +801,17 @@ describe('GuidPage', () => {
     sendMock.isButtonDisabled = false;
   });
 
-  it('keeps employee office examples and model selection when advanced settings are toggled', () => {
+  it('appends an office example to the current draft without sending or replacing its attachments', () => {
     platformMock.enterpriseWeb = true;
     render(<GuidPage />);
-    const prompt = 'workspace.examples.reimbursement.prompt';
-    expect(screen.getByText(prompt)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'settings.advancedSettings' }));
-    expect(screen.getByText(prompt)).toBeInTheDocument();
-    expect(screen.queryByText('guid.defaultPrompts.understand')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'common.collapse' }));
-    expect(screen.getByText(prompt)).toBeInTheDocument();
-    expect(modelSelectionMock.setCurrentModel).not.toHaveBeenCalled();
+    guidInputMock.setFiles.mockClear();
+    sendMock.sendMessageHandler.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.examples.reimbursement.title' }));
+
+    const update = guidInputMock.setInput.mock.lastCall?.[0] as (value: string) => string;
+    expect(update('current draft')).toBe('current draft\nworkspace.examples.reimbursement.prompt');
+    expect(guidInputMock.setFiles).not.toHaveBeenCalled();
+    expect(sendMock.sendMessageHandler).not.toHaveBeenCalled();
   });
 
   it('keeps catalog failures in the employee workspace instead of linking the admin console', () => {

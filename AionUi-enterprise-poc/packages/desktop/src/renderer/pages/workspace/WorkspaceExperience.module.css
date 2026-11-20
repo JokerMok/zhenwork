@@ -23,3 +23,173 @@
   width: 100%;
   min-width: 0;
 }
+
+.catalogNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-block-end: 20px;
+  border-block-end: 1px solid var(--color-border-2);
+}
+
+.catalogNav a {
+  padding: 10px 6px;
+  border-block-end: 2px solid transparent;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.catalogNav a[aria-current='page'] {
+  border-block-end-color: rgb(var(--primary-6));
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.catalogNav a:hover,
+.quietLink:hover {
+  color: var(--text-primary);
+}
+
+.quietLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding-inline: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.artifactList {
+  border-top: 1px solid var(--color-border-2);
+}
+
+.artifactRow,
+.artifactCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 14px;
+  min-width: 0;
+}
+
+.artifactRow {
+  border-bottom: 1px solid var(--color-border-2);
+  min-height: 62px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+.artifactRow:hover,
+.artifactRow:focus-within {
+  background: var(--bg-1);
+}
+
+.artifactCard {
+  border: 1px solid var(--color-border-2);
+  border-radius: 12px;
+  background: var(--bg-base);
+  padding: 12px 14px;
+}
+
+.artifactObject {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.artifactIcon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 36px;
+  flex: 0 0 34px;
+  color: var(--text-secondary);
+  background: var(--bg-2);
+  border-radius: 8px;
+}
+
+.artifactTitleLine,
+.artifactMeta,
+.artifactActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  min-width: 0;
+}
+
+.artifactMeta,
+.artifactDetails,
+.artifactDisclosure {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.artifactName {
+  display: inline-flex !important;
+  max-width: 100%;
+  height: auto !important;
+  min-height: 26px;
+  padding: 0 !important;
+  font-weight: 600 !important;
+  font-size: 15px !important;
+  color: var(--text-primary) !important;
+}
+
+.artifactName:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  background: transparent !important;
+}
+
+.artifactName :global(.arco-btn-content) {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.artifactActions {
+  justify-content: flex-end;
+}
+
+.artifactActions:empty {
+  display: none;
+}
+
+.artifactActions :global(.arco-btn),
+.artifactActions > a {
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.artifactDisclosure,
+.artifactDetails {
+  grid-column: 1 / -1;
+}
+
+.artifactDisclosure summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.artifactDetails {
+  display: grid;
+  gap: 4px;
+  padding-block: 4px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 680px) {
+  .artifactRow,
+  .artifactCard {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .artifactActions {
+    justify-content: flex-start;
+    padding-inline-start: 42px;
+  }
+}

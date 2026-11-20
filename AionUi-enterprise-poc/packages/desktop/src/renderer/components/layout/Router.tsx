@@ -29,8 +29,6 @@ const TaskDetailPage = React.lazy(() => import('@renderer/pages/cron/ScheduledTa
 const TeamIndex = React.lazy(() => import('@renderer/pages/team'));
 const Workspace = React.lazy(() => import('@renderer/pages/workspace'));
 
-const enterpriseHome = (): string => (isEnterpriseWeb() ? '/workspace' : '/guid');
-
 const withRouteFallback = (Component: React.LazyExoticComponent<React.ComponentType>) => (
   <Suspense fallback={<AppLoader contained />}>
     <Component />
@@ -85,7 +83,7 @@ const PanelRoute: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
       <Routes>
         <Route path='/login' element={withRouteFallback(LoginPage)} />
         <Route element={<ProtectedLayout layout={layout} />}>
-          <Route index element={<Navigate to={enterpriseHome()} replace />} />
+          <Route index element={<Navigate to='/guid' replace />} />
           <Route path='/workspace' element={withRouteFallback(Workspace)} />
           <Route path='/guid' element={withRouteFallback(Guid)} />
           <Route path='/conversation/:id' element={withRouteFallback(Conversation)} />
@@ -153,7 +151,7 @@ const PanelRoute: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
           <Route path='/scheduled' element={withRouteFallback(ScheduledTasksPage)} />
           <Route path='/scheduled/:job_id' element={withRouteFallback(TaskDetailPage)} />
         </Route>
-        <Route path='*' element={<Navigate to={status === 'authenticated' ? enterpriseHome() : '/login'} replace />} />
+        <Route path='*' element={<Navigate to={status === 'authenticated' ? '/guid' : '/login'} replace />} />
       </Routes>
     </HashRouter>
   );

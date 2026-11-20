@@ -1103,14 +1103,17 @@ const AionrsSendBox: React.FC<{
         }
         placeholder={
           current_model?.use_model
-            ? t('acp.sendbox.placeholder', {
-                backend: isEnterpriseWeb() ? t('workspace.experience.assistant') : agent_name || 'AionCLI',
-                defaultValue: `Send message to {{backend}}...`,
-              })
+            ? hosted
+              ? t('workspace.start.placeholder')
+              : t('acp.sendbox.placeholder', {
+                  backend: agent_name || 'AionCLI',
+                  defaultValue: `Send message to {{backend}}...`,
+                })
             : t('conversation.chat.noModelSelected')
         }
+        bottomHint={hosted ? '' : undefined}
         onStop={effectiveHandleStop}
-        className='z-10'
+        className={hosted ? 'employee-reply z-10' : 'z-10'}
         onFilesAdded={handleFilesAdded}
         onFoldersAdded={appendSelectedFolders}
         hasPendingAttachments={uploadFile.length > 0 || atPath.length > 0}

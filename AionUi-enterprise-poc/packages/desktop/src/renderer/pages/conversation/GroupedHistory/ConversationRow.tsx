@@ -13,7 +13,7 @@ import { CronJobIndicator } from '@/renderer/pages/cron';
 import { resolveConversationLeadingMark } from '@/renderer/pages/conversation/utils/conversationAssistantIdentity';
 import { cleanupSiderTooltips, getSiderTooltipProps } from '@/renderer/utils/ui/siderTooltip';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
-import { Checkbox, Dropdown, Menu, Spin, Tooltip } from '@arco-design/web-react';
+import { Button, Checkbox, Dropdown, Menu, Spin, Tooltip } from '@arco-design/web-react';
 import {
   Attention,
   EditOne,
@@ -155,6 +155,8 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
   // paused turn still streams frames that mark it "generating", so without this
   // the distinct icon would never win.
   const showWaitingConfirmation = isWaitingConfirmation && !batchMode;
+  const compactHistory = employeeWeb && !collapsed;
+  const showLeadingIcon = !compactHistory || isPinned || cronStatus !== 'none';
 
   const renderCompletionUnreadDot = () => {
     if (batchMode || !hasUnread || isGenerating || isWaitingConfirmation) {
@@ -184,7 +186,8 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
           !collapsed && (dimIcon ? 'ps-34px' : 'ps-10px'),
           {
             'hover:bg-fill-3': !batchMode && !selected,
-            '!bg-fill-3 ring-inset ring-1 ring-border-2': selected,
+            '!bg-fill-3 ring-inset ring-1 ring-border-2': selected && !compactHistory,
+            'employee-history-row': compactHistory,
             'bg-[rgba(var(--primary-6),0.08)]': batchMode && checked,
           }
         )}
@@ -211,34 +214,36 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
             <Checkbox checked={checked} />
           </span>
         )}
-        <span className='size-22px flex items-center justify-center shrink-0 relative'>
-          {showWaitingConfirmation ? (
-            <Attention
-              theme='filled'
-              size='16'
-              className='line-height-0 flex-shrink-0 text-warning animate-wiggle'
-              data-testid={`conversation-waiting-confirmation-${conversation.id}`}
-            />
-          ) : isGenerating && !batchMode ? (
-            <Spin size={16} />
-          ) : (
-            renderLeadingIcon()
-          )}
-          {/* Hover overlay on the leading icon: drag handle for sortable pinned rows, pushpin marker otherwise */}
-          {!batchMode &&
-            isPinned &&
-            !isMobile &&
-            !isGenerating &&
-            !isWaitingConfirmation &&
-            (dragHandle ?? (
-              <span
-                className='absolute inset-0 flex-center text-t-secondary pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity'
-                style={{ lineHeight: 0 }}
-              >
-                <Pushpin theme='outline' size='14' />
-              </span>
-            ))}
-        </span>
+        {showLeadingIcon && (
+          <span className='size-22px flex items-center justify-center shrink-0 relative'>
+            {showWaitingConfirmation ? (
+              <Attention
+                theme='filled'
+                size='16'
+                className='line-height-0 flex-shrink-0 text-warning animate-wiggle'
+                data-testid={`conversation-waiting-confirmation-${conversation.id}`}
+              />
+            ) : isGenerating && !batchMode ? (
+              <Spin size={16} />
+            ) : (
+              renderLeadingIcon()
+            )}
+            {/* Hover overlay on the leading icon: drag handle for sortable pinned rows, pushpin marker otherwise */}
+            {!batchMode &&
+              isPinned &&
+              !isMobile &&
+              !isGenerating &&
+              !isWaitingConfirmation &&
+              (dragHandle ?? (
+                <span
+                  className='absolute inset-0 flex-center text-t-secondary pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity'
+                  style={{ lineHeight: 0 }}
+                >
+                  <Pushpin theme='outline' size='14' />
+                </span>
+              ))}
+          </span>
+        )}
         <FlexFullContainer className='h-24px min-w-0 flex-1 collapsed-hidden'>
           <Tooltip
             content={conversation.name}
@@ -250,9 +255,22 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
             position='top'
           >
             <div className='chat-history__item-name overflow-hidden text-ellipsis flex items-center gap-4px w-full text-14px font-[500] lh-24px whitespace-nowrap min-w-0 text-t-primary'>
-              <span className='block overflow-hidden text-ellipsis whitespace-nowrap min-w-0'>{conversation.name}</span>
+              <span className='employee-history-title block overflow-hidden text-ellipsis whitespace-nowrap min-w-0'>
+                {conversation.name}
+              </span>
               <span id={'c-state-' + conversation.id} className='inline-flex shrink-0 items-center'>
-                <TaskBadge id={conversation.id} />
+                <TaskBadge
+                  id={conversation.id}
+                  liveState={
+                    employeeWeb
+                      ? isWaitingConfirmation
+                        ? 'waiting_confirmation'
+                        : isGenerating
+                          ? 'running'
+                          : undefined
+                      : undefined
+                  }
+                />
                 {hasUnread && <span className='sr-only'>{t('team.activity.unread')}</span>}
               </span>
               {executionSource && (
@@ -282,10 +300,13 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
         {!batchMode && (
           <div
             className={classNames(
-              'absolute end-8px top-1/2 -translate-y-1/2 items-center justify-end !collapsed-hidden',
+              compactHistory
+                ? 'employee-history-menu shrink-0 !collapsed-hidden'
+                : 'absolute end-8px top-1/2 -translate-y-1/2 items-center justify-end !collapsed-hidden',
               {
-                flex: isMobile || menuVisible,
-                'hidden group-hover:flex': !isMobile && !menuVisible,
+                flex: !compactHistory && (isMobile || menuVisible),
+                'hidden group-hover:flex': !compactHistory && !isMobile && !menuVisible,
+                'employee-history-menu-visible': isMobile || menuVisible,
               }
             )}
             onClick={(event) => {
@@ -370,22 +391,38 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
               getPopupContainer={() => document.body}
               unmountOnExit={false}
             >
-              <span
-                data-testid={`conversation-row-menu-${conversation.id}`}
-                className={classNames(
-                  'flex-center cursor-pointer transition-colors text-t-secondary hover:text-t-primary size-20px rd-4px sider-action-btn',
-                  {
-                    flex: isMobile || menuVisible,
-                    'hidden group-hover:flex': !isMobile && !menuVisible,
-                  }
-                )}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onOpenMenu(conversation);
-                }}
-              >
-                <MoreOne theme='outline' size='14' fill='currentColor' className='block leading-none' />
-              </span>
+              {compactHistory ? (
+                <Button
+                  type='text'
+                  size='mini'
+                  aria-label={t('common.more') + ' · ' + conversation.name}
+                  aria-haspopup='menu'
+                  aria-expanded={menuVisible}
+                  icon={<MoreOne size={16} />}
+                  data-testid={`conversation-row-menu-${conversation.id}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenMenu(conversation);
+                  }}
+                />
+              ) : (
+                <span
+                  data-testid={`conversation-row-menu-${conversation.id}`}
+                  className={classNames(
+                    'flex-center cursor-pointer transition-colors text-t-secondary hover:text-t-primary size-20px rd-4px sider-action-btn',
+                    {
+                      flex: isMobile || menuVisible,
+                      'hidden group-hover:flex': !isMobile && !menuVisible,
+                    }
+                  )}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenMenu(conversation);
+                  }}
+                >
+                  <MoreOne theme='outline' size='14' fill='currentColor' className='block leading-none' />
+                </span>
+              )}
             </Dropdown>
           </div>
         )}

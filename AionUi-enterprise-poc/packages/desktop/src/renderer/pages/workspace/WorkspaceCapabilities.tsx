@@ -51,7 +51,13 @@ type AssistantConfig = {
   toolIds?: string[];
   knowledgeIds?: string[];
 };
-type SkillFile = { path: string; content: string; encoding: 'utf8' | 'base64'; executable: boolean; sha256?: string };
+type SkillFile = {
+  path: string;
+  content: string;
+  encoding: 'utf8' | 'base64';
+  executable: boolean;
+  sha256?: string;
+};
 type SkillConfig = { source: string; files: SkillFile[]; manifest?: { name?: string } };
 type AssistantResource = WorkspaceResource & { config: AssistantConfig };
 type SkillResource = WorkspaceResource & { config: SkillConfig };
@@ -79,7 +85,9 @@ const relativePath = (file: File): string =>
 const readBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.addEventListener('error', () => reject(reader.error || new Error('FILE_READ_FAILED')), { once: true });
+    reader.addEventListener('error', () => reject(reader.error || new Error('FILE_READ_FAILED')), {
+      once: true,
+    });
     reader.addEventListener(
       'load',
       () => {
@@ -101,9 +109,14 @@ const frontmatterValue = (source: string, key: string): string => {
 type WorkspaceCapabilitiesProps = {
   capabilityType: CapabilityType;
   onCapabilityChange: (type: CapabilityType) => void;
+  showTypePicker?: boolean;
 };
 
-const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilityType, onCapabilityChange }) => {
+const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({
+  capabilityType,
+  onCapabilityChange,
+  showTypePicker = true,
+}) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [message, messageContext] = Message.useMessage();
@@ -296,9 +309,10 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
       }
       const [detail, state] = await Promise.all([
         enterpriseControl<AssistantResource>(`/ai/resources/${item.id}`),
-        enterpriseControl<{ ready: boolean; issues?: Array<{ type?: string; id?: string; code?: string }> }>(
-          `/ai/resources/${item.id}/readiness`
-        ).catch((): null => null),
+        enterpriseControl<{
+          ready: boolean;
+          issues?: Array<{ type?: string; id?: string; code?: string }>;
+        }>(`/ai/resources/${item.id}/readiness`).catch((): null => null),
       ]);
       setEditing(detail);
       setReadiness(state);
@@ -495,22 +509,24 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
     <div className='flex flex-col gap-12px'>
       {messageContext}
       <div className='flex flex-wrap items-start justify-between gap-8px'>
-        <div>
+        {showTypePicker && (
           <h1 className='m-0 text-20px font-semibold text-t-primary'>{t('workspace.abilities.title')}</h1>
-        </div>
+        )}
         <Space wrap>
-          <Select
-            aria-label={t('workspace.abilities.title')}
-            value={capabilityType}
-            onChange={onCapabilityChange}
-            style={{ width: 145 }}
-          >
-            <Select.Option value='MODEL'>{t('workspace.abilities.models')}</Select.Option>
-            <Select.Option value='ASSISTANT'>{t('workspace.abilities.assistants')}</Select.Option>
-            <Select.Option value='SKILL'>{t('workspace.abilities.skillPackages')}</Select.Option>
-            <Select.Option value='MCP'>{t('workspace.abilities.mcpConnections')}</Select.Option>
-            <Select.Option value='TOOL'>{t('workspace.abilities.tools')}</Select.Option>
-          </Select>
+          {showTypePicker && (
+            <Select
+              aria-label={t('workspace.abilities.title')}
+              value={capabilityType}
+              onChange={onCapabilityChange}
+              style={{ width: 145 }}
+            >
+              <Select.Option value='MODEL'>{t('workspace.abilities.models')}</Select.Option>
+              <Select.Option value='ASSISTANT'>{t('workspace.abilities.assistants')}</Select.Option>
+              <Select.Option value='SKILL'>{t('workspace.abilities.skillPackages')}</Select.Option>
+              <Select.Option value='MCP'>{t('workspace.abilities.mcpConnections')}</Select.Option>
+              <Select.Option value='TOOL'>{t('workspace.abilities.tools')}</Select.Option>
+            </Select>
+          )}
           {capabilityType !== 'MODEL' ? (
             <Select
               aria-label={t('workspace.scope.available')}
@@ -569,12 +585,16 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
           </summary>
           {packageBudgetIssues.length > 0 && (
             <p>
-              {t('workspace.abilities.packageBudgetWarning', { issues: describeRuntimeIssues(packageBudgetIssues) })}
+              {t('workspace.abilities.packageBudgetWarning', {
+                issues: describeRuntimeIssues(packageBudgetIssues),
+              })}
             </p>
           )}
           {otherRuntimeIssues.length > 0 && (
             <p>
-              {t('workspace.abilities.runtimeIssuesWarning', { issues: describeRuntimeIssues(otherRuntimeIssues) })}
+              {t('workspace.abilities.runtimeIssuesWarning', {
+                issues: describeRuntimeIssues(otherRuntimeIssues),
+              })}
             </p>
           )}
         </details>
@@ -741,7 +761,11 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
                       <details className='text-13px'>
                         <summary className='cursor-pointer'>{t('common.technical_details')}</summary>
                         <div>{t('workspace.abilities.version', { version: item.version })}</div>
-                        <div>{t('workspace.abilities.authorization', { actions: item.actions.join(', ') || '—' })}</div>
+                        <div>
+                          {t('workspace.abilities.authorization', {
+                            actions: item.actions.join(', ') || '—',
+                          })}
+                        </div>
                         {runtimeIssues
                           .filter((issue) => issue.id === item.id && issue.type === item.resourceType)
                           .map((issue) => (
@@ -795,7 +819,10 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
             border
             data={[
               { label: t('workspace.abilities.versionLabel'), value: `v${editing.version}` },
-              { label: t('workspace.abilities.permissionLabel'), value: editing.actions.join(', ') || '-' },
+              {
+                label: t('workspace.abilities.permissionLabel'),
+                value: editing.actions.join(', ') || '-',
+              },
             ]}
           />
         ) : null}
@@ -869,9 +896,15 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
             column={1}
             border
             data={[
-              { label: t('workspace.abilities.description'), value: toolResource.description || t('workspace.none') },
+              {
+                label: t('workspace.abilities.description'),
+                value: toolResource.description || t('workspace.none'),
+              },
               { label: t('workspace.abilities.versionLabel'), value: `v${toolResource.version}` },
-              { label: t('workspace.abilities.permissionLabel'), value: toolResource.actions.join(', ') || '-' },
+              {
+                label: t('workspace.abilities.permissionLabel'),
+                value: toolResource.actions.join(', ') || '-',
+              },
             ]}
           />
         )}

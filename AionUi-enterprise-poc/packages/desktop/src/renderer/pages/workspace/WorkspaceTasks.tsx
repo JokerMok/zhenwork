@@ -1,11 +1,13 @@
 import TaskWork from './TaskWork';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
+import styles from './WorkspaceExperience.module.css';
 import { TaskStateTag } from './TaskWork/overview';
 import type { WorkAttempt, WorkTask } from './TaskWork/api';
 import { Alert, Button, Empty, List, Select, Space, Spin, Tag } from '@arco-design/web-react';
-import { Refresh, Right } from '@icon-park/react';
+import { AlarmClock, Refresh, Right } from '@icon-park/react';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { enterpriseRequest, workspaceErrorCode } from './workspaceApi';
 import type { WebConversationTask } from './workspaceTypes';
 
@@ -60,7 +62,13 @@ const WorkspaceTasks: React.FC = () => {
 
   const generation = useRef(0);
   const reading = useRef(false);
-  const [status, setStatus] = useState('all');
+  const status = params.get('status') || 'all';
+  const setStatus = (value: string) => {
+    const next = new URLSearchParams(params);
+    if (value === 'all') next.delete('status');
+    else next.set('status', value);
+    setParams(next, { replace: true });
+  };
   const [loading, setLoading] = useState(true);
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
@@ -74,7 +82,9 @@ const WorkspaceTasks: React.FC = () => {
         enterpriseRequest<{ items: WebConversationTask[] }>('/enterprise/conversations', {
           signal: AbortSignal.timeout(10000),
         }),
-        enterpriseRequest<{ items: WorkTask[] }>('/enterprise/tasks', { signal: AbortSignal.timeout(10000) }),
+        enterpriseRequest<{ items: WorkTask[] }>('/enterprise/tasks', {
+          signal: AbortSignal.timeout(10000),
+        }),
       ]);
       if (sequence !== generation.current) return;
       setWork(workResult.items);
@@ -133,7 +143,7 @@ const WorkspaceTasks: React.FC = () => {
   return (
     <div className='flex flex-col gap-12px'>
       <div className='flex flex-wrap items-center justify-between gap-8px'>
-        <h2 className='m-0 text-20px font-semibold text-t-primary'>{t('workspace.tasks.title')}</h2>
+        <h1 className='m-0 text-24px font-medium text-t-primary'>{t('workspace.tasks.title')}</h1>
         <Space>
           <Select aria-label={t('common.status')} value={status} onChange={setStatus} style={{ width: 150 }}>
             <Select.Option value='all'>{t('workspace.status.all')}</Select.Option>
@@ -143,6 +153,12 @@ const WorkspaceTasks: React.FC = () => {
               </Select.Option>
             ))}
           </Select>
+          {isEnterpriseWeb() && (
+            <Link className={styles.quietLink} to='/scheduled'>
+              <AlarmClock size={16} aria-hidden='true' />
+              {t('cron.scheduledTasks')}
+            </Link>
+          )}
           <Button icon={<Refresh />} onClick={() => void loadTasks()} loading={loading}>
             {t('common.refresh')}
           </Button>

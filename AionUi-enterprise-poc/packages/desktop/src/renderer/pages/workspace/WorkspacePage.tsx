@@ -1,8 +1,18 @@
 import { Button, Tabs, Spin } from '@arco-design/web-react';
 import { AlarmClock, Book, FileCabinet, Home, ListCheckbox, Memory, Robot } from '@icon-park/react';
+import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import React, { Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useNavigationType, useSearchParams } from 'react-router-dom';
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useNavigate,
+  useNavigationType,
+  useOutletContext,
+  useSearchParams,
+} from 'react-router-dom';
+import styles from './WorkspaceExperience.module.css';
 import { workspaceCapabilityType, type CapabilityType } from './workspaceCatalog';
 const WorkspaceCapabilities = React.lazy(() => import('./WorkspaceCapabilities'));
 const WorkspaceFiles = React.lazy(() => import('./WorkspaceFiles'));
@@ -16,9 +26,18 @@ const deferred = (content: React.ReactNode) => (
 );
 
 const SECTIONS = new Set(['home', 'tasks', 'files', 'knowledge', 'abilities', 'memory']);
+const CATALOG_TYPES = [
+  ['MODEL', 'workspace.abilities.models'],
+  ['ASSISTANT', 'workspace.abilities.assistants'],
+  ['SKILL', 'workspace.abilities.skillPackages'],
+  ['MCP', 'workspace.abilities.mcpConnections'],
+  ['TOOL', 'workspace.abilities.tools'],
+] as const;
 
 type WorkspaceView = { section: string; task: string | null };
-type ScrollProps = React.PropsWithChildren<WorkspaceView & { historyNavigation: boolean }>;
+type ScrollProps = React.PropsWithChildren<
+  WorkspaceView & { historyNavigation: boolean; savedPositions?: Map<string, number> | null }
+>;
 
 const viewKey = ({ section, task }: WorkspaceView) => JSON.stringify([section, task]);
 
@@ -37,7 +56,7 @@ class WorkspaceScroll extends React.Component<ScrollProps> {
     const key = viewKey(previous);
     if (key === viewKey(this.props)) return null;
     // Read before the DOM changes: a shorter pane clamps scrollTop during layout.
-    if (!this.observer && this.scroller.current) this.positions.set(key, this.scroller.current.scrollTop);
+    this.remember(key);
     this.cancelRestore();
     return previous;
   }
@@ -47,7 +66,14 @@ class WorkspaceScroll extends React.Component<ScrollProps> {
   }
 
   componentWillUnmount() {
+    this.remember(viewKey(this.props));
     this.cancelRestore();
+  }
+
+  private remember(key: string) {
+    if (!this.observer && this.scroller.current) {
+      (this.props.savedPositions ?? this.positions).set(key, this.scroller.current.scrollTop);
+    }
   }
 
   private cancelRestore = () => {
@@ -60,7 +86,7 @@ class WorkspaceScroll extends React.Component<ScrollProps> {
     const content = this.content.current;
     if (!scroll || !content) return;
     const { section, task, historyNavigation } = this.props;
-    const saved = this.positions.get(viewKey(this.props));
+    const saved = (this.props.savedPositions ?? this.positions).get(viewKey(this.props));
     const revealTask = Boolean(task && (saved === undefined || (!historyNavigation && task !== this.lastTask)));
     const focusTask = revealTask || Boolean(task && outgoing?.section === 'tasks' && outgoing.task !== task);
     if (section === 'tasks') this.lastTask = task;
@@ -103,7 +129,8 @@ class WorkspaceScroll extends React.Component<ScrollProps> {
     return (
       <div
         ref={this.scroller}
-        className='h-full min-h-0 min-w-0 overflow-y-auto bg-bg-1'
+        data-testid='workspace-scroll'
+        className='h-full min-h-0 min-w-0 overflow-y-auto'
         style={{ overflowAnchor: 'none' }}
         onWheelCapture={this.cancelRestore}
         onTouchStartCapture={this.cancelRestore}
@@ -124,6 +151,9 @@ class WorkspaceScroll extends React.Component<ScrollProps> {
 const WorkspacePage: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const employeeWeb = isEnterpriseWeb();
+  const savedPositions = useOutletContext<Map<string, number> | null>();
   const [params, setParams] = useSearchParams();
   const historyNavigation = useNavigationType() === 'POP';
   const requested = params.get('section') || 'home';
@@ -143,16 +173,50 @@ const WorkspacePage: React.FC = () => {
     setParams(next, { replace: true });
   };
 
+  if (employeeWeb && active === 'home') {
+    const next = new URLSearchParams(params);
+    next.delete('section');
+    return (
+      <Navigate
+        to={{ pathname: '/guid', search: next.toString(), hash: location.hash }}
+        state={location.state}
+        replace
+      />
+    );
+  }
+
+  const catalogNav = () =>
+    active === 'knowledge' || active === 'abilities' ? (
+      <nav aria-label={t('workspace.start.catalog')} className={styles.catalogNav}>
+        <Link to='/workspace?section=knowledge' aria-current={active === 'knowledge' ? 'page' : undefined}>
+          {t('workspace.tabs.knowledge')}
+        </Link>
+        {CATALOG_TYPES.map(([type, label]) => (
+          <Link
+            key={type}
+            to={'/workspace?section=abilities&capability=' + type}
+            aria-current={active === 'abilities' && capability === type ? 'page' : undefined}
+          >
+            {t(label)}
+          </Link>
+        ))}
+      </nav>
+    ) : (
+      <></>
+    );
+
   return (
     <WorkspaceScroll
       section={active}
       task={active === 'tasks' ? params.get('task') : null}
       historyNavigation={historyNavigation}
+      savedPositions={employeeWeb ? savedPositions : undefined}
     >
       <Tabs
         activeTab={active}
         onChange={setActive}
         type='rounded'
+        renderTabHeader={employeeWeb ? catalogNav : undefined}
         className='!overflow-visible [&>.arco-tabs-header-nav]:sticky [&>.arco-tabs-header-nav]:top-0 [&>.arco-tabs-header-nav]:z-10 [&>.arco-tabs-header-nav]:bg-bg-1'
       >
         <Tabs.TabPane
@@ -209,7 +273,12 @@ const WorkspacePage: React.FC = () => {
           }
         >
           {deferred(
-            <WorkspaceCapabilities key={capability} capabilityType={capability} onCapabilityChange={setCapability} />
+            <WorkspaceCapabilities
+              key={capability}
+              capabilityType={capability}
+              onCapabilityChange={setCapability}
+              showTypePicker={!employeeWeb}
+            />
           )}
         </Tabs.TabPane>
         <Tabs.TabPane
@@ -225,9 +294,11 @@ const WorkspacePage: React.FC = () => {
         </Tabs.TabPane>
       </Tabs>
       {active === 'tasks' && params.has('previewPath') && deferred(<WorkspaceFiles previewOnly />)}
-      <Button type='text' className='mt-16px' icon={<AlarmClock />} onClick={() => navigate('/scheduled')}>
-        {t('workspace.openScheduled')}
-      </Button>
+      {!employeeWeb && (
+        <Button type='text' className='mt-16px' icon={<AlarmClock />} onClick={() => navigate('/scheduled')}>
+          {t('workspace.openScheduled')}
+        </Button>
+      )}
     </WorkspaceScroll>
   );
 };

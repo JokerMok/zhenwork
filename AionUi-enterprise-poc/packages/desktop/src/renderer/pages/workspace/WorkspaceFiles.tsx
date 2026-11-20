@@ -19,10 +19,10 @@ import {
   Upload,
 } from '@arco-design/web-react';
 import type { UploadRequest } from '@arco-design/web-react/es/Upload/interface';
-import { Download, PreviewOpen, Refresh, Undo, UploadOne } from '@icon-park/react';
+import { Download, Refresh, Undo, UploadOne } from '@icon-park/react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { enterpriseRequest, uploadWorkspaceFiles, workspaceErrorCode } from './workspaceApi';
 import type { EnterpriseFile, EnterpriseFileVersion } from './workspaceTypes';
 
@@ -113,14 +113,24 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
   const location = useLocation();
   const [message, messageContext] = Message.useMessage();
   const [files, setFiles] = useState<EnterpriseFile[]>([]);
-  const [kind, setKind] = useState('all');
+  const [params, setParams] = useSearchParams();
+  const kind = params.get('kind') || 'all';
+  const setKind = (value: string) => {
+    const next = new URLSearchParams(params);
+    if (value === 'all') next.delete('kind');
+    else next.set('kind', value);
+    setParams(next, { replace: true });
+  };
   const [loading, setLoading] = useState(true);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [versionFile, setVersionFile] = useState<EnterpriseFile | null>(null);
   const [diff, setDiff] = useState<EnterpriseFileDiff | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [workspaceRoot, setWorkspaceRoot] = useState('');
-  const [dataPath, setDataPath] = useState<string>();
+  const [dataMapping, setDataMapping] = useState<{ path: string; openCount: number }>();
+  const openDataMapping = (path: string) => {
+    setDataMapping((previous) => ({ path, openCount: (previous?.openCount ?? 0) + 1 }));
+  };
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [continuingPath, setContinuingPath] = useState<string>();
   const continuation = useRef<AbortController | null>(null);
@@ -142,7 +152,6 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
     previewTrigger.current = null;
   };
   useEffect(() => () => continuation.current?.abort(), [location.key]);
-  const params = new URLSearchParams(location.search);
   const requestedPath = active
     ? params.get('previewPath') || (location.state as { previewPath?: string } | null)?.previewPath
     : undefined;
@@ -165,10 +174,11 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
     setLoading(true);
     setErrorCode(null);
     try {
-      const result = await enterpriseRequest<{ files: EnterpriseFile[]; workspaceRoot?: string; warnings?: string[] }>(
-        '/enterprise/files',
-        { signal: controller.signal }
-      );
+      const result = await enterpriseRequest<{
+        files: EnterpriseFile[];
+        workspaceRoot?: string;
+        warnings?: string[];
+      }>('/enterprise/files', { signal: controller.signal });
       if (controller.signal.aborted) return;
       const currentFiles = Array.isArray(result.files) ? result.files : [];
       setFiles(currentFiles);
@@ -211,7 +221,10 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
   const restore = (file: EnterpriseFile, version: EnterpriseFileVersion) => {
     Modal.confirm({
       title: t('workspace.files.restoreTitle'),
-      content: t('workspace.files.restoreConfirm', { name: file.name, time: formatDate(version.createdAt) }),
+      content: t('workspace.files.restoreConfirm', {
+        name: file.name,
+        time: formatDate(version.createdAt),
+      }),
       onOk: async () => {
         try {
           await enterpriseRequest('/enterprise/files/restore', {
@@ -371,7 +384,7 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
       onSuccess?.({});
       message.success(t('workspace.files.uploaded'));
       await loadFiles();
-      if (/\.(xlsx|csv)$/i.test(result.uploaded[0])) setDataPath(result.uploaded[0]);
+      if (/\.(xlsx|csv)$/i.test(result.uploaded[0])) openDataMapping(result.uploaded[0]);
     } catch (error) {
       onError?.(error as Error);
       message.error(t('workspace.errors.action', { code: workspaceErrorCode(error) }));
@@ -380,7 +393,11 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
 
   const visiblePreview = matchesPreview ? preview : null;
   const previewDialogAttributes: React.AriaAttributes & { role?: React.AriaRole } = requestedPath
-    ? { role: 'dialog', 'aria-modal': true, 'aria-label': visiblePreview?.file.name || t('workspace.files.preview') }
+    ? {
+        role: 'dialog',
+        'aria-modal': true,
+        'aria-label': visiblePreview?.file.name || t('workspace.files.preview'),
+      }
     : {};
   const previewDrawer = (
     <Drawer
@@ -441,7 +458,14 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
           <Button
             onClick={() =>
               setPreview((current) =>
-                current ? { ...current, loading: true, errorCode: undefined, retry: (current.retry || 0) + 1 } : current
+                current
+                  ? {
+                      ...current,
+                      loading: true,
+                      errorCode: undefined,
+                      retry: (current.retry || 0) + 1,
+                    }
+                  : current
               )
             }
           >
@@ -494,13 +518,10 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
 
   return (
     <div className='min-w-0 flex flex-col gap-12px'>
-      {dataPath && <DataAnalysisControl key={dataPath} filePath={dataPath} autoOpen />}
+      {dataMapping && <DataAnalysisControl key={dataMapping.openCount} filePath={dataMapping.path} autoOpen />}
       {messageContext}
       <div className='flex flex-wrap items-center justify-between gap-8px'>
-        <div>
-          <div className='text-20px font-semibold text-t-primary'>{t('workspace.files.title')}</div>
-          <div className='mt-3px text-13px text-t-secondary'>{t('workspace.files.subtitle')}</div>
-        </div>
+        <h1 className='m-0 text-24px font-medium text-t-primary'>{t('workspace.files.title')}</h1>
         <Space wrap className='max-w-full'>
           <Select aria-label={t('workspace.files.title')} value={kind} onChange={setKind} style={{ width: 145 }}>
             {['all', 'task', 'personal', 'shared', 'generated', 'result']
@@ -556,24 +577,51 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
           <List
             bordered={false}
             split={false}
+            className={styles.artifactList}
             dataSource={visibleFiles}
             render={(file) => {
               const version = file.versions?.find((item) => item.id === file.currentVersionId);
               return (
-                <List.Item key={file.path} className='!block !p-0 mb-8px'>
+                <List.Item key={file.path} className='!block !p-0'>
                   <ArtifactCard
+                    layout='row'
                     path={file.path}
                     name={file.name}
+                    onPreview={() => openPreview(file, version)}
+                    menuActions={[
+                      {
+                        key: 'continue',
+                        label: t('workspace.files.continueInNewTask'),
+                        disabled: Boolean(continuingPath),
+                        onSelect: () => void continueWithFile(file, version),
+                      },
+                      {
+                        key: 'versions',
+                        label: t('workspace.files.versions', { count: file.versions?.length || 0 }),
+                        disabled: !file.versions?.length,
+                        onSelect: () => setVersionFile(file),
+                      },
+                      ...(/\.(xlsx|csv)$/i.test(file.path)
+                        ? [
+                            {
+                              key: 'dataMapping',
+                              label: t('workspace.dataAnalysis.title'),
+                              onSelect: () => openDataMapping(file.path),
+                            },
+                          ]
+                        : []),
+                    ]}
                     versionId={file.currentVersionId}
                     sha256={version?.sha256}
                     status={
-                      <Tag>{t(`workspace.fileKind.${file.kind.toLowerCase()}`, { defaultValue: file.kind })}</Tag>
+                      <Tag>
+                        {t(`workspace.fileKind.${file.kind.toLowerCase()}`, {
+                          defaultValue: file.kind,
+                        })}
+                      </Tag>
                     }
                     metadata={`${formatFileSize(file.byteSize)} · ${formatDate(file.modifiedAt)}`}
                   >
-                    <Button size='small' icon={<PreviewOpen />} onClick={() => openPreview(file, version)}>
-                      {t('workspace.files.preview')}
-                    </Button>
                     <Button
                       size='small'
                       type='text'
@@ -582,24 +630,6 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
                     >
                       {t('workspace.files.download')}
                     </Button>
-                    <Button
-                      size='small'
-                      type='text'
-                      loading={continuingPath === file.path}
-                      disabled={Boolean(continuingPath) && continuingPath !== file.path}
-                      onClick={() => void continueWithFile(file, version)}
-                    >
-                      {t('workspace.files.continueInNewTask')}
-                    </Button>
-                    <Button
-                      size='small'
-                      type='text'
-                      disabled={!file.versions?.length}
-                      onClick={() => setVersionFile(file)}
-                    >
-                      {t('workspace.files.versions', { count: file.versions?.length || 0 })}
-                    </Button>
-                    {/\.(xlsx|csv)$/i.test(file.path) && <DataAnalysisControl filePath={file.path} />}
                   </ArtifactCard>
                 </List.Item>
               );
@@ -613,6 +643,11 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
         autoFocus
         escToExit={!requestedPath && !diff}
         visible={Boolean(versionFile)}
+        {...(versionFile && {
+          role: 'dialog',
+          'aria-modal': true,
+          'aria-label': t('workspace.files.versionTitle', { name: versionFile.name }),
+        })}
         title={t('workspace.files.versionTitle', { name: versionFile?.name || '' })}
         footer={null}
         onCancel={() => setVersionFile(null)}

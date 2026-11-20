@@ -214,6 +214,7 @@ export const TaskDeliverySummary: React.FC<{
           ...file,
           status: file.valid ? ('complete' as const) : ('failed' as const),
         }));
+  const previewTrigger = useRef<HTMLButtonElement | null>(null);
   const [preview, setPreview] = useState<{ path: string; version: string }>();
   const [attaching, setAttaching] = useState<string>();
   const continuation = useRef<AbortController | undefined>(undefined);
@@ -292,8 +293,17 @@ export const TaskDeliverySummary: React.FC<{
           >
             <ArtifactCard
               {...file}
+              onPreview={
+                canPreview
+                  ? (event) => {
+                      previewTrigger.current =
+                        event.currentTarget instanceof HTMLButtonElement ? event.currentTarget : null;
+                      setPreview({ path: file.path, version: file.versionId! });
+                    }
+                  : undefined
+              }
               status={
-                <Tag color={file.status === 'failed' ? 'red' : canDownload || canPreview ? 'green' : undefined}>
+                <Tag color={file.status === 'failed' ? 'red' : undefined}>
                   {t(
                     file.status === 'failed'
                       ? 'workspace.delivery.verificationFailed'
@@ -334,11 +344,6 @@ export const TaskDeliverySummary: React.FC<{
                 </>
               }
             >
-              {canPreview && (
-                <Button size='small' onClick={() => setPreview({ path: file.path, version: file.versionId! })}>
-                  {t('workspace.files.preview')}
-                </Button>
-              )}
               {canDownload && (
                 <Button
                   type='text'
@@ -376,8 +381,14 @@ export const TaskDeliverySummary: React.FC<{
         focusLock
         autoFocus
         unmountOnExit
+        escToExit
+        {...(preview && { role: 'dialog', 'aria-modal': true, 'aria-label': t('workspace.files.preview') })}
         title={preview?.path.split('/').pop() || ''}
         footer={null}
+        afterClose={() => {
+          previewTrigger.current?.focus({ preventScroll: true });
+          previewTrigger.current = null;
+        }}
         onCancel={() => setPreview(undefined)}
       >
         {preview && (

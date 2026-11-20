@@ -19,6 +19,11 @@
     "abilities": "Abilities",
     "memory": "Memory"
   },
+  "start": {
+    "title": "Nouvelle tâche",
+    "placeholder": "Décrivez le travail ou ajoutez des fichiers",
+    "catalog": "Ressources"
+  },
   "home": {
     "welcome": "Welcome to {{brand}}",
     "subtitle": "Start everyday office work, inspect current tasks, and manage the information your assistant can use.",
@@ -33,15 +38,15 @@
       "prompt": "Organize the attached invoices and receipts into a reimbursement checklist. Flag missing dates, amounts, categories, or approvals, and create a clear summary for me to review before submission."
     },
     "requirements": {
-      "title": "Turn notes into requirements",
+      "title": "Organiser les besoins",
       "prompt": "Turn the attached notes into a requirements document with goals, users, scope, acceptance criteria, open questions, and risks. Mark every assumption and do not invent missing facts."
     },
     "data": {
-      "title": "Analyze a data file",
+      "title": "Analyser les données",
       "prompt": "Analyze the attached spreadsheet. Check data quality first, then summarize key changes, unusual values, and conclusions supported by the data. Create a concise table of findings."
     },
     "market": {
-      "title": "Prepare a market brief",
+      "title": "Note de marché",
       "prompt": "Prepare a market brief for the topic I provide. Separate sourced facts from inference, compare the main alternatives, and list the evidence and dates behind each important conclusion."
     }
   },

@@ -134,6 +134,7 @@ const Layout: React.FC<{
   useDesktopTurnNotification();
   const navigate = useNavigate();
   const location = useLocation();
+  const [workspaceScrollPositions] = useState(() => new Map<string, number>());
   const workspaceAvailable =
     location.pathname.startsWith('/conversation/') || (TEAM_MODE_ENABLED && location.pathname.startsWith('/team/'));
   const toggleSider = useCallback(() => {
@@ -401,8 +402,12 @@ const Layout: React.FC<{
   return (
     <LayoutContext.Provider value={{ isMobile, siderCollapsed: collapsed, setSiderCollapsed: setCollapsed }}>
       <NavigationHistoryProvider>
-        <div className='app-shell flex flex-col size-full min-h-0'>
-          <Titlebar workspaceAvailable={workspaceAvailable} />
+        <div
+          className={classNames('app-shell flex flex-col size-full min-h-0', {
+            'employee-workspace': isEnterpriseWeb(),
+          })}
+        >
+          <Titlebar workspaceAvailable={workspaceAvailable} productName={brandName} />
           {/* 移动端左侧边栏蒙板 / Mobile left sider backdrop */}
           {isMobile && !collapsed && (
             <div className='fixed inset-0 bg-black/30 z-90' onClick={() => setCollapsed(true)} aria-hidden='true' />
@@ -543,7 +548,7 @@ const Layout: React.FC<{
                     <Outlet />
                   </EnterpriseRuntimeGate>
                 ) : (
-                  <Outlet />
+                  <Outlet context={workspaceScrollPositions} />
                 )}
                 <PwaPullToRefresh />
                 <Suspense fallback={null}>

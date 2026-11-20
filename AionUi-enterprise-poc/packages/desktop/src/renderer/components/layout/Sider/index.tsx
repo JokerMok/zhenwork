@@ -1,8 +1,9 @@
 import classNames from 'classnames';
-import { Spin } from '@arco-design/web-react';
+import { Spin, Tooltip } from '@arco-design/web-react';
+import { Book, FileCabinet, ListCheckbox } from '@icon-park/react';
 import { useTranslation } from 'react-i18next';
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { usePreviewContext } from '@renderer/pages/conversation/Preview/context/PreviewContext';
 import { cleanupSiderTooltips, getSiderTooltipProps } from '@renderer/utils/ui/siderTooltip';
 import { useAuth } from '@renderer/hooks/context/AuthContext';
@@ -10,13 +11,7 @@ import { useLayoutContext } from '@renderer/hooks/context/LayoutContext';
 import { blurActiveElement } from '@renderer/utils/ui/focus';
 import { isEnterpriseWeb } from '@renderer/utils/platform';
 import { useThemeContext } from '@renderer/hooks/context/ThemeContext';
-import {
-  SiderAssistantEntry,
-  SiderScheduledEntry,
-  SiderSearchEntry,
-  SiderToolbar,
-  SiderWorkspaceEntry,
-} from './SiderNav';
+import { SiderAssistantEntry, SiderScheduledEntry, SiderSearchEntry, SiderToolbar } from './SiderNav';
 import SiderFooter from './SiderFooter';
 import TeamSiderSection from './TeamSiderSection';
 import siderStyles from './Sider.module.css';
@@ -48,8 +43,27 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
   const showEnterpriseWorkspace = isEnterpriseWeb();
   const workspaceParams = new URLSearchParams(search);
   const isWorkspace = pathname === '/workspace';
-  const isEnterpriseAssistant =
-    isWorkspace && workspaceParams.get('section') === 'abilities' && workspaceParams.get('capability') === 'ASSISTANT';
+  const section = isWorkspace ? workspaceParams.get('section') : null;
+  const enterpriseEntries = [
+    {
+      section: 'tasks',
+      label: t('workspace.tabs.tasks'),
+      icon: ListCheckbox,
+      active: section === 'tasks' || pathname.startsWith('/scheduled'),
+    },
+    {
+      section: 'files',
+      label: t('workspace.tabs.files'),
+      icon: FileCabinet,
+      active: section === 'files',
+    },
+    {
+      section: 'knowledge',
+      label: t('workspace.start.catalog'),
+      icon: Book,
+      active: section === 'knowledge' || section === 'abilities',
+    },
+  ];
 
   useEffect(() => {
     if (!pathname.startsWith('/settings')) {
@@ -111,14 +125,10 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
     }
   };
 
-  const handleWorkspaceClick = () => {
+  const handleWorkspaceNavigation = () => {
     cleanupSiderTooltips();
-    blurActiveElement();
     closePreview();
     setIsBatchMode(false);
-    Promise.resolve(navigate('/workspace')).catch((error) => {
-      console.error('Navigation failed:', error);
-    });
     onSessionClick?.();
   };
 
@@ -127,9 +137,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
     blurActiveElement();
     closePreview();
     setIsBatchMode(false);
-    Promise.resolve(
-      navigate(showEnterpriseWorkspace ? '/workspace?section=abilities&capability=ASSISTANT' : '/assistants')
-    ).catch((error) => {
+    Promise.resolve(navigate('/assistants')).catch((error) => {
       console.error('Navigation failed:', error);
     });
     if (onSessionClick) {
@@ -215,6 +223,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
               collapsed={collapsed}
               siderTooltipProps={siderTooltipProps}
               onNewChat={handleNewChat}
+              employeeTaskActive={showEnterpriseWorkspace ? pathname === '/guid' : undefined}
               onToggleBatchMode={() => setIsBatchMode((prev) => !prev)}
             />
             {/* Scrollable content: pinned → team (slot) → projects → conversations */}
@@ -228,31 +237,42 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
               />
             )}
             {showEnterpriseWorkspace ? (
-              <SiderWorkspaceEntry
-                isMobile={isMobile}
-                isActive={isWorkspace && !isEnterpriseAssistant}
-                collapsed={collapsed}
-                siderTooltipProps={siderTooltipProps}
-                onClick={handleWorkspaceClick}
-              />
-            ) : null}
-            {/* Scrollable content: pinned → team (slot) → projects → conversations */}
-            <SiderAssistantEntry
-              isMobile={isMobile}
-              isActive={showEnterpriseWorkspace ? isEnterpriseAssistant : pathname.startsWith('/assistants')}
-              collapsed={collapsed}
-              siderTooltipProps={siderTooltipProps}
-              onClick={handleAssistantClick}
-            />
-            {/* Scrollable content: pinned → team (slot) → projects → conversations */}
-            <SiderScheduledEntry
-              isMobile={isMobile}
-              isActive={pathname === '/scheduled' || pathname.startsWith('/scheduled/')}
-              collapsed={collapsed}
-              siderTooltipProps={siderTooltipProps}
-              onClick={handleScheduledClick}
-            />
-            {/* Scrollable content: pinned → team (slot) → projects → conversations */}
+              <nav className='grid gap-2px shrink-0' aria-label={t('workspace.title')}>
+                {enterpriseEntries.map(({ section, label, icon: Icon, active }) => (
+                  <Tooltip key={section} {...siderTooltipProps} content={label} position='right'>
+                    <Link
+                      to={'/workspace?section=' + section}
+                      className={classNames(siderStyles.employeeNavEntry, {
+                        [siderStyles.employeeNavCollapsed]: collapsed,
+                      })}
+                      aria-label={label}
+                      aria-current={active ? 'page' : undefined}
+                      onClick={handleWorkspaceNavigation}
+                    >
+                      <Icon size={17} aria-hidden='true' />
+                      {!collapsed && label}
+                    </Link>
+                  </Tooltip>
+                ))}
+              </nav>
+            ) : (
+              <>
+                <SiderAssistantEntry
+                  isMobile={isMobile}
+                  isActive={pathname.startsWith('/assistants')}
+                  collapsed={collapsed}
+                  siderTooltipProps={siderTooltipProps}
+                  onClick={handleAssistantClick}
+                />
+                <SiderScheduledEntry
+                  isMobile={isMobile}
+                  isActive={pathname === '/scheduled' || pathname.startsWith('/scheduled/')}
+                  collapsed={collapsed}
+                  siderTooltipProps={siderTooltipProps}
+                  onClick={handleScheduledClick}
+                />
+              </>
+            )}
             <div
               className={classNames(
                 'shrink-0 mt-6px mb-2px h-1px bg-[var(--color-border-2)]',

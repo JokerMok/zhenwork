@@ -106,7 +106,7 @@ const AionrsChat: React.FC<{
       <ConversationArtifactProvider conversation_id={conversation_id}>
         <div
           ref={chatRoot}
-          className={`${CHAT_SURFACE_CONTAINER_CLASS} flex-1 flex flex-col px-20px min-h-0 ${isFileDragging ? 'outline outline-dashed outline-2 outline-primary' : ''}`}
+          className={`${CHAT_SURFACE_CONTAINER_CLASS} ${isEnterpriseWeb() ? 'employee-conversation' : ''} flex-1 flex flex-col px-20px min-h-0 ${isFileDragging ? 'outline outline-dashed outline-2 outline-primary' : ''}`}
           // Capture Finder drops before the editor or attachment cards consume them.
           // The hook stops propagation, so SendBox cannot add the same folder twice.
           onDragEnterCapture={dragHandlers.onDragEnter}

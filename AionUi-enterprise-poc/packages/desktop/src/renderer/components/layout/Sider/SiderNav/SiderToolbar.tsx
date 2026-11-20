@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Tooltip } from '@arco-design/web-react';
+import { Button, Tooltip } from '@arco-design/web-react';
 import { ListCheckbox, Plus } from '@icon-park/react';
 import classNames from 'classnames';
 import type { SiderTooltipProps } from '@renderer/utils/ui/siderTooltip';
@@ -18,6 +18,7 @@ interface SiderToolbarProps {
   collapsed: boolean;
   siderTooltipProps: SiderTooltipProps;
   onNewChat: () => void;
+  employeeTaskActive?: boolean;
   onToggleBatchMode: () => void;
 }
 
@@ -27,9 +28,43 @@ const SiderToolbar: React.FC<SiderToolbarProps> = ({
   collapsed,
   siderTooltipProps,
   onNewChat,
+  employeeTaskActive,
   onToggleBatchMode,
 }) => {
   const { t } = useTranslation();
+
+  if (employeeTaskActive !== undefined) {
+    const label = t('workspace.start.title');
+    return (
+      <div className='flex shrink-0 items-center gap-4px'>
+        <Tooltip {...siderTooltipProps} content={label} position='right'>
+          <Button
+            type='text'
+            aria-current={employeeTaskActive ? 'page' : undefined}
+            aria-label={label}
+            icon={<Plus size={18} />}
+            className={classNames(styles.employeeNavEntry, styles.employeeNewTask, {
+              [styles.employeeNavCollapsed]: collapsed,
+            })}
+            onClick={onNewChat}
+          >
+            {!collapsed && label}
+          </Button>
+        </Tooltip>
+        {!collapsed && (
+          <Tooltip content={t('conversation.history.batchManage')}>
+            <Button
+              type='text'
+              icon={<ListCheckbox size={16} />}
+              aria-label={t('conversation.history.batchManage')}
+              aria-pressed={isBatchMode}
+              onClick={onToggleBatchMode}
+            />
+          </Tooltip>
+        )}
+      </div>
+    );
+  }
 
   if (collapsed) {
     return (
