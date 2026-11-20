@@ -61,12 +61,8 @@
       <el-button :disabled="rows.length<30||loading" @click="page++;load()">下一页</el-button>
     </nav>
 
-    <el-drawer v-model="detailVisible" :title="detail?.name || '资源详情'" size="min(520px, 100%)" @close="detailGeneration++">
-      <el-skeleton v-if="detailLoading" :rows="4" animated />
-      <el-result v-else-if="detailError" icon="warning" title="资源详情读取失败" :sub-title="detailError">
-        <template #extra><el-button @click="openDetail(detailId)">重试</el-button></template>
-      </el-result>
-      <template v-else-if="detail">
+    <el-drawer v-model="detailVisible" :title="detail?.name || '资源详情'" size="min(520px, 100%)">
+      <template v-if="detail">
         <p v-if="detail.description" class="detail-purpose">{{ detail.description }}</p>
         <el-descriptions :column="1" border>
           <el-descriptions-item label="类型">{{ types[detail.resourceType] }}</el-descriptions-item>
@@ -78,7 +74,7 @@
         </el-descriptions>
         <details class="resource-tech"><summary>技术详情</summary><code>{{ detail.id }}</code></details>
       </template>
-      <template #footer><div v-if="detail && !detailLoading && !detailError" class="detail-actions">
+      <template #footer><div v-if="detail" class="detail-actions">
         <el-button @click="detailVisible=false;openVersions(detail)">版本</el-button>
         <el-button @click="detailVisible=false;openShares(detail)">共享授权</el-button>
         <el-button type="primary" @click="detailVisible=false;edit(detail.id)">编辑</el-button>
@@ -306,29 +302,18 @@ async function api(url:string,data?:unknown,method=data?'post':'get'){return(awa
 async function fail(e:unknown,fallback:string){error.value=(await extractErrorMessage(e))||fallback;}
 const listError = ref(false);
 type ResourceInfo = { id: string; name: string; description?: string; resourceType: string; enabled?: boolean; securityDisabled?: boolean; visibility: string; ownerType: string; version: number; publishedVersion?: number };
-const detail = ref<ResourceInfo>(), detailId = ref<string>(), detailVisible = ref(false), detailLoading = ref(false), detailError = ref('');
-let detailGeneration = 0;
+const detail = ref<ResourceInfo>();
+const detailVisible = ref(false);
 function stateLabel(resource: Pick<ResourceInfo,'enabled'|'securityDisabled'>) {
   if (resource.securityDisabled) return '安全停用';
   return resource.enabled === true ? '已启用' : resource.enabled === false ? '已停用' : '状态未知';
 }
-async function openDetail(id?: string) {
-  if (!id || scope.value !== 'enterprise') return;
-  const generation = ++detailGeneration;
-  detailId.value = id;
-  detail.value = undefined;
+function openDetail(id: string) {
+  if (scope.value !== 'enterprise') return;
+  const resource = rows.value.find(row => row.id === id);
+  if (!resource) return;
+  detail.value = resource;
   detailVisible.value = true;
-  detailLoading.value = true;
-  detailError.value = '';
-  try {
-    const value = await api('/ai/resources/'+id);
-    if (generation === detailGeneration) detail.value = value;
-  } catch (cause) {
-    const message = await extractErrorMessage(cause);
-    if (generation === detailGeneration) detailError.value = message || '请检查资源状态和访问权限。';
-  } finally {
-    if (generation === detailGeneration) detailLoading.value = false;
-  }
 }
 let listGeneration = 0;
 async function load() {
