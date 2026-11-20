@@ -184,7 +184,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
           !collapsed && (dimIcon ? 'ps-34px' : 'ps-10px'),
           {
             'hover:bg-fill-3': !batchMode && !selected,
-            '!bg-fill-3': selected,
+            '!bg-fill-3 ring-inset ring-1 ring-border-2': selected,
             'bg-[rgba(var(--primary-6),0.08)]': batchMode && checked,
           }
         )}
@@ -194,6 +194,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
         role={employeeWeb && !batchMode ? 'link' : undefined}
         tabIndex={employeeWeb && !batchMode ? 0 : undefined}
         aria-label={employeeWeb && !batchMode ? conversation.name : undefined}
+        aria-describedby={employeeWeb && !batchMode ? 'c-state-' + conversation.id : undefined}
         onKeyDown={(event) => {
           if (!employeeWeb || batchMode || event.target !== event.currentTarget || event.key !== 'Enter') return;
           handleRowClick();
@@ -250,9 +251,12 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
           >
             <div className='chat-history__item-name overflow-hidden text-ellipsis flex items-center gap-4px w-full text-14px font-[500] lh-24px whitespace-nowrap min-w-0 text-t-primary'>
               <span className='block overflow-hidden text-ellipsis whitespace-nowrap min-w-0'>{conversation.name}</span>
-              <TaskBadge id={conversation.id} />
+              <span id={'c-state-' + conversation.id} className='inline-flex shrink-0 items-center'>
+                <TaskBadge id={conversation.id} />
+                {hasUnread && <span className='sr-only'>{t('team.activity.unread')}</span>}
+              </span>
               {executionSource && (
-                <span className='text-10px text-t-tertiary flex-shrink-0'>
+                <span className='text-12px text-t-tertiary flex-shrink-0'>
                   {t('conversation.history.desktopConversationSource')}
                 </span>
               )}

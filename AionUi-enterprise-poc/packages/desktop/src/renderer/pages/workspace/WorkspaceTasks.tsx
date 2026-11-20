@@ -1,4 +1,5 @@
 import TaskWork from './TaskWork';
+import { TaskStateTag } from './TaskWork/overview';
 import type { WorkAttempt, WorkTask } from './TaskWork/api';
 import { Alert, Button, Empty, List, Select, Space, Spin, Tag } from '@arco-design/web-react';
 import { Refresh, Right } from '@icon-park/react';
@@ -242,9 +243,7 @@ const WorkspaceTasks: React.FC = () => {
                           {title}
                         </span>
                         {attempt ? (
-                          <Tag>
-                            {t(`workspace.work.states.${attempt.state}`, { defaultValue: t('workspace.work.unknown') })}
-                          </Tag>
+                          <TaskStateTag state={attempt.state} />
                         ) : execution ? null : (
                           <Tag>{t('conversation.history.conversationsSection')}</Tag>
                         )}

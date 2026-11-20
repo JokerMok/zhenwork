@@ -1,0 +1,25 @@
+.surface {
+  background: var(--bg-base);
+  border: 1px solid var(--border-base);
+  border-radius: 10px;
+}
+.homeHeader {
+  border-bottom: 1px solid var(--border-base);
+}
+.example {
+  display: flex;
+  height: 100%;
+}
+.example:hover,
+.example:focus-within {
+  border-color: var(--aou-5);
+  background: var(--bg-hover);
+}
+.example button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.fullList > :global(.arco-spin-children) {
+  width: 100%;
+  min-width: 0;
+}

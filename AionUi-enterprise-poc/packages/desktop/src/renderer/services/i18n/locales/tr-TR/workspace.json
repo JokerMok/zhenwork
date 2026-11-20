@@ -353,6 +353,9 @@
     "slideSelect": "Slayt"
   },
   "delivery": {
+    "checkedAmount": "Tutar eşleşti {{amount}}",
+    "mismatchedAmount": "Tutar uyuşmuyor {{amount}}",
+    "verificationFailed": "Doğrulama başarısız",
     "processing": "İşleniyor",
     "partial": "Kısmi teslim: bitmemiş dosyalar var",
     "receipts": "Bu isteğin çıktı kayıtları",
@@ -367,6 +370,8 @@
     "savedWorkbookStructure": "{{sheets}} çalışma sayfası"
   },
   "work": {
+    "checkDecision": "Kararın sonucu kontrol ediliyor",
+    "repeatDecision": "Hâlâ bekliyor. Aynı işlemi yeniden deneyebilirsiniz.",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

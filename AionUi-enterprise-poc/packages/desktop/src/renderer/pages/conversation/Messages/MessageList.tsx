@@ -795,6 +795,9 @@ const MessageList: React.FC<{
                   </React.Fragment>
                 ))}
                 <TaskDeliverySummary
+                  key={conversationContext?.conversation_id}
+                  conversationId={conversationContext?.conversation_id}
+                  state={currentWork?.state}
                   processing={isProcessing}
                   trustedArtifacts={currentTask ? currentWork?.artifacts || [] : undefined}
                   messages={list

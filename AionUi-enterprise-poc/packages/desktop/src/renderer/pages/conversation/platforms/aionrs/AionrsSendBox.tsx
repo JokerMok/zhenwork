@@ -326,10 +326,12 @@ const AionrsSendBox: React.FC<{
   });
   useAddEventListener(
     'aionrs.upload.file.append',
-    (files, targetConversationId) => {
-      if (targetConversationId === conversation_id) handleFilesAdded(files);
+    (files, targetConversationId, prompt) => {
+      if (targetConversationId !== conversation_id) return;
+      handleFilesAdded(files);
+      if (prompt) setContentRef.current([contentRef.current, prompt].filter(Boolean).join('\n'));
     },
-    [conversation_id, handleFilesAdded]
+    [conversation_id, handleFilesAdded, contentRef, setContentRef]
   );
 
   const executeCommand = useCallback(

@@ -353,6 +353,9 @@
     "slideSelect": "Слайд"
   },
   "delivery": {
+    "checkedAmount": "Сумма совпала {{amount}}",
+    "mismatchedAmount": "Расхождение в сумме {{amount}}",
+    "verificationFailed": "Проверка не пройдена",
     "processing": "Обработка",
     "partial": "Частичная выдача: файлы не готовы",
     "receipts": "Результаты текущего запроса",
@@ -367,6 +370,8 @@
     "savedWorkbookStructure": "Листов: {{sheets}}"
   },
   "work": {
+    "checkDecision": "Проверяем результат действия",
+    "repeatDecision": "Ожидает подтверждения. Можно повторить то же действие.",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

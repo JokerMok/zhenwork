@@ -127,8 +127,13 @@ const OfficePreview: React.FC<OfficePreviewProps> = ({ path, version, revision, 
             {t('workspace.files.continueInNewTask')}
           </Button>
         ) : null}
-        {data ? <Tag>{data.sourceSha256.slice(0, 12)}</Tag> : null}
       </Space>
+      {data?.sourceSha256 && (
+        <details className='text-13px text-t-secondary'>
+          <summary className='w-fit cursor-pointer'>{t('common.technical_details')}</summary>
+          <code className='break-all'>SHA-256 · {data.sourceSha256}</code>
+        </details>
+      )}
       {!path.toLowerCase().endsWith('.pptx') && data?.visualMode !== 'libreoffice' ? (
         <Alert type='info' content={t('workspace.preview.basicHint')} />
       ) : null}

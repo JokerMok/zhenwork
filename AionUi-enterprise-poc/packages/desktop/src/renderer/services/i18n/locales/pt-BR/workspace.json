@@ -353,6 +353,9 @@
     "slideSelect": "Slide"
   },
   "delivery": {
+    "checkedAmount": "Conferido {{amount}}",
+    "mismatchedAmount": "Divergência em {{amount}}",
+    "verificationFailed": "Falha na verificação",
     "processing": "Processando",
     "partial": "Entrega parcial: arquivos pendentes",
     "receipts": "Resultados desta solicitação",
@@ -367,6 +370,8 @@
     "savedWorkbookStructure": "{{sheets}} planilhas"
   },
   "work": {
+    "checkDecision": "Verificando a decisão",
+    "repeatDecision": "Ainda pendente. Você pode repetir a mesma decisão.",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

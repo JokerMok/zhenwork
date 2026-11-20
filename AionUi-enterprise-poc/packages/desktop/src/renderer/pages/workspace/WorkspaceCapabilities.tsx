@@ -1,3 +1,4 @@
+import styles from './WorkspaceExperience.module.css';
 import {
   Alert,
   Button,
@@ -113,6 +114,7 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
   const [items, setItems] = useState<WorkspaceResource[]>([]);
   const [models, setModels] = useState<AvailableModel[]>([]);
   const [organizationDefaultModel, setOrganizationDefaultModel] = useState<AvailableModel | null>(null);
+  const [diagnosticError, setDiagnosticError] = useState('');
   const [runtimeIssues, setRuntimeIssues] = useState<RuntimeIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -142,6 +144,7 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
     setLoading(true);
+    setDiagnosticError('');
     setErrorCode(null);
     try {
       if (capabilityType === 'MODEL') {
@@ -157,7 +160,10 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
       }
       const [value, issues, availableModels] = await Promise.all([
         workspaceResourcePage(capabilityType, scope, page),
-        enterpriseControl<RuntimeIssue[]>('/ai/resources/runtime-issues'),
+        enterpriseControl<RuntimeIssue[]>('/ai/resources/runtime-issues').catch((error: unknown): RuntimeIssue[] => {
+          if (generation === loadGeneration.current) setDiagnosticError(workspaceErrorCode(error));
+          return [];
+        }),
         page === 1 && scope === 'available' && (capabilityType === 'ASSISTANT' || capabilityType === 'TOOL')
           ? enterpriseControl<AvailableModel[]>('/ai/models/available').catch((error: unknown): AvailableModel[] => {
               if (workspaceErrorTranslationKey(workspaceErrorCode(error), 'load') === 'workspace.errors.forbidden')
@@ -204,11 +210,24 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
 
   const useCapability = useCallback(
     async (item: WorkspaceResource) => {
+      if (!item.enabled || item.securityDisabled || !item.actions.includes('USE')) return;
+      const generation = loadGeneration.current;
       setOpeningResourceId(item.id);
       try {
         const result = await refreshRuntimeResources();
+        if (generation !== loadGeneration.current) return;
         if (result.state === 'pending') {
           message.info(t('workspace.status.resourceUpdatePending'));
+          return;
+        }
+        const issues = await enterpriseControl<RuntimeIssue[]>('/ai/resources/runtime-issues');
+        if (generation !== loadGeneration.current) return;
+        if (!Array.isArray(issues)) throw new Error('INVALID_CATALOG_RESPONSE');
+        setRuntimeIssues(issues);
+        setDiagnosticError('');
+        const issue = issues.find((issue) => issue.id === item.id && issue.type === item.resourceType);
+        if (issue) {
+          message.warning(t('workspace.abilities.readinessError', { errors: issue.code }));
           return;
         }
         let selectedSkillName: string | undefined;
@@ -217,6 +236,7 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
           selectedSkillName = detail.config.manifest?.name || frontmatterValue(detail.config.source, 'name');
           if (!selectedSkillName) throw new Error('SKILL_NAME_UNAVAILABLE');
         }
+        if (generation !== loadGeneration.current) return;
         navigate('/guid', {
           state: item.resourceType === 'ASSISTANT' ? { selectedAssistantId: `rc2-${item.id}` } : { selectedSkillName },
         });
@@ -531,27 +551,34 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
           </Button>
         </Space>
       </div>
-      {capabilityType === 'SKILL' ? (
-        <Alert type='info' showIcon content={t('workspace.abilities.packageHint')} />
-      ) : null}
-      {packageBudgetIssues.length > 0 ? (
+      {diagnosticError && (
         <Alert
           type='warning'
-          showIcon
-          content={t('workspace.abilities.packageBudgetWarning', {
-            issues: describeRuntimeIssues(packageBudgetIssues),
-          })}
+          content={t('workspace.errors.load', { code: diagnosticError })}
+          action={
+            <Button size='small' onClick={() => void load()}>
+              {t('common.retry')}
+            </Button>
+          }
         />
-      ) : null}
-      {otherRuntimeIssues.length > 0 ? (
-        <Alert
-          type='warning'
-          showIcon
-          content={t('workspace.abilities.runtimeIssuesWarning', {
-            issues: describeRuntimeIssues(otherRuntimeIssues),
-          })}
-        />
-      ) : null}
+      )}
+      {(packageBudgetIssues.length > 0 || otherRuntimeIssues.length > 0) && (
+        <details className='rd-8px bg-fill-1 p-10px text-14px'>
+          <summary className='cursor-pointer'>
+            {t('common.error_details')} · {runtimeIssues.length}
+          </summary>
+          {packageBudgetIssues.length > 0 && (
+            <p>
+              {t('workspace.abilities.packageBudgetWarning', { issues: describeRuntimeIssues(packageBudgetIssues) })}
+            </p>
+          )}
+          {otherRuntimeIssues.length > 0 && (
+            <p>
+              {t('workspace.abilities.runtimeIssuesWarning', { issues: describeRuntimeIssues(otherRuntimeIssues) })}
+            </p>
+          )}
+        </details>
+      )}
       {nativeOfficeCapability ? (
         <List
           dataSource={[capabilityType]}
@@ -593,7 +620,7 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
           }
         />
       ) : null}
-      <Spin loading={loading} className='w-full' aria-busy={loading}>
+      <Spin loading={loading} className={styles.fullList + ' w-full'} aria-busy={loading}>
         {loading || errorCode ? (
           <div className='min-h-100px' />
         ) : capabilityType === 'MODEL' ? (
@@ -615,7 +642,12 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
                         <Tag color='blue'>{t('workspace.abilities.available')}</Tag>
                       </div>
                     }
-                    description={model.code || availableModelId(model) || t('workspace.none')}
+                    description={
+                      <details>
+                        <summary className='cursor-pointer'>{t('common.technical_details')}</summary>
+                        {model.code || availableModelId(model)}
+                      </details>
+                    }
                   />
                 </List.Item>
               )}
@@ -639,6 +671,7 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
             render={(item) => (
               <List.Item
                 key={item.id}
+                className='!flex-wrap gap-y-8px [&_.arco-list-item-main]:min-w-0 [&_.arco-list-item-action]:!ml-0 [&_.arco-list-item-action]:flex-wrap'
                 actions={[
                   <Button
                     key='view'
@@ -661,12 +694,16 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
                     ? [
                         <Button
                           key='use'
-                          type='text'
+                          type='primary'
                           loading={openingResourceId === item.id}
                           disabled={openingResourceId !== null}
                           onClick={() => void useCapability(item)}
                         >
-                          {t('workspace.abilities.use')}
+                          {t(
+                            runtimeIssues.some((issue) => issue.id === item.id && issue.type === item.resourceType)
+                              ? 'common.retry'
+                              : 'workspace.abilities.use'
+                          )}
                         </Button>,
                       ]
                     : []),
@@ -687,7 +724,9 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
                         {t(`workspace.abilities.origin.${catalogOrigin(item)}`)}
                       </Tag>
                       {item.isDefault ? <Tag color='green'>{t('workspace.abilities.default')}</Tag> : null}
-                      <Tag>{t('workspace.abilities.version', { version: item.version })}</Tag>
+                      {runtimeIssues.some((issue) => issue.id === item.id && issue.type === item.resourceType) && (
+                        <Tag color='red'>{t('workspace.abilities.unavailable')}</Tag>
+                      )}
                       <Tag color={item.enabled && !item.securityDisabled ? 'blue' : 'gray'}>
                         {item.enabled && !item.securityDisabled
                           ? t('workspace.abilities.configuredEnabled')
@@ -695,7 +734,22 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({ capabilit
                       </Tag>
                     </div>
                   }
-                  description={`${item.description || t('workspace.none')} · ${t('workspace.abilities.authorization', { actions: item.actions.join(', ') || '-' })}`}
+                  description={
+                    <div className='grid gap-4px text-14px'>
+                      {item.description && <span>{item.description}</span>}
+                      {!item.actions.includes('USE') && <span>{t('workspace.errors.forbidden')}</span>}
+                      <details className='text-13px'>
+                        <summary className='cursor-pointer'>{t('common.technical_details')}</summary>
+                        <div>{t('workspace.abilities.version', { version: item.version })}</div>
+                        <div>{t('workspace.abilities.authorization', { actions: item.actions.join(', ') || '—' })}</div>
+                        {runtimeIssues
+                          .filter((issue) => issue.id === item.id && issue.type === item.resourceType)
+                          .map((issue) => (
+                            <div key={issue.code}>{issue.code}</div>
+                          ))}
+                      </details>
+                    </div>
+                  }
                 />
               </List.Item>
             )}

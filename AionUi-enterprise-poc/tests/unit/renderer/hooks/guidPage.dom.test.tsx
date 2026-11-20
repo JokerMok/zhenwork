@@ -854,8 +854,7 @@ describe('GuidInputCard prefill focus', () => {
         <GuidInputCard {...guidInputCardProps} focusRequestKey='desktop-prefill' />
       </LayoutContext.Provider>
     );
-    await waitFor(() => expect(textarea).toHaveFocus());
-    expect((textarea as HTMLTextAreaElement).selectionStart).toBe(guidInputCardProps.input.length);
+    expect(outsideTarget).toHaveFocus();
 
     outsideTarget.focus();
     rerender(

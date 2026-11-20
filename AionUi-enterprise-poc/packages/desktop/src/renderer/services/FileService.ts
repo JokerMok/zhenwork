@@ -167,7 +167,71 @@ export const textExts = [
 /** 所有支持的文件扩展名（预先设计，当前实际接受所有文件类型） */
 export const allSupportedExts = [...imageExts, ...audioExts, ...documentExts, ...textExts];
 
-// 文件元数据接口
+/** Keep the Host's download path and require a single, matching immutable version. */
+export function pinnedArtifactDownload(address?: string, versionId?: string): string | undefined {
+  if (!address) return;
+  try {
+    const url = new URL(address, window.location.origin);
+    if (url.origin !== window.location.origin || url.pathname !== '/enterprise/files/download') return;
+    const supplied = url.searchParams.getAll('version');
+    if (supplied.length > 1 || (supplied.length && versionId && supplied[0] !== versionId)) return;
+    const version = versionId || supplied[0];
+    if (!version || !url.searchParams.get('path')) return;
+    url.searchParams.set('version', version);
+    return url.pathname + url.search;
+  } catch {
+    return;
+  }
+}
+
+/** Resolve a receipt's authenticated workspace preview without falling back to latest. */
+export function pinnedArtifactPreview(
+  address: string | undefined,
+  path: string,
+  versionId?: string
+): string | undefined {
+  if (!address) return;
+  try {
+    const url = new URL(address, window.location.origin);
+    if (url.origin !== window.location.origin || !url.hash.startsWith('#/workspace?')) return;
+    const query = new URLSearchParams(url.hash.slice('#/workspace?'.length));
+    const versions = query.getAll('fileVersion');
+    if (
+      query.get('previewPath') !== path ||
+      versions.length > 1 ||
+      (versions.length && versionId && versions[0] !== versionId)
+    )
+      return;
+    return versionId || versions[0] || undefined;
+  } catch {
+    return;
+  }
+}
+
+/** Copy the selected workspace bytes into an editable draft attachment. */
+export async function attachWorkspaceVersion(
+  path: string,
+  name: string,
+  version: string | undefined,
+  signal: AbortSignal,
+  conversationId?: string
+): Promise<FileMetadata> {
+  const query = new URLSearchParams({ path });
+  if (version) query.set('version', version);
+  const response = await fetch(`/enterprise/files/download?${query}`, {
+    credentials: 'same-origin',
+    cache: 'no-store',
+    signal,
+  });
+  if (!response.ok) throw new Error(`HTTP_${response.status}`);
+  const bytes = await response.blob();
+  signal.throwIfAborted();
+  const file = new File([bytes], name, { type: bytes.type });
+  const uploaded = await uploadFileViaHttp(file, conversationId, undefined, undefined, { signal });
+  signal.throwIfAborted();
+  return { path: uploaded, name, size: file.size, type: file.type, lastModified: file.lastModified };
+}
+
 export interface FileMetadata {
   name: string;
   path: string;

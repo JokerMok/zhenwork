@@ -369,6 +369,9 @@
     "slideSelect": "Slide"
   },
   "delivery": {
+    "checkedAmount": "Matched {{amount}}",
+    "mismatchedAmount": "Mismatch at {{amount}}",
+    "verificationFailed": "Verification failed",
     "processing": "Processing",
     "partial": "Partial delivery: files remain unfinished",
     "receipts": "Delivery receipts for this turn",
@@ -383,6 +386,8 @@
     "savedWorkbookStructure": "{{sheets}} worksheets"
   },
   "work": {
+    "checkDecision": "Checking the outcome of this decision",
+    "repeatDecision": "Still pending. You can retry the same decision.",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

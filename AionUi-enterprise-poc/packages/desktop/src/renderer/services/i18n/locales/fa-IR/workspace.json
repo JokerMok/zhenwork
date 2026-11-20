@@ -353,6 +353,9 @@
     "slideSelect": "اسلاید"
   },
   "delivery": {
+    "checkedAmount": "تطبیق یافت {{amount}}",
+    "mismatchedAmount": "مغایرت در {{amount}}",
+    "verificationFailed": "تأیید ناموفق بود",
     "processing": "در حال پردازش",
     "partial": "تحویل ناقص: برخی فایل‌ها آماده نیستند",
     "receipts": "رسید نتایج درخواست",
@@ -367,6 +370,8 @@
     "savedWorkbookStructure": "{{sheets}} برگه"
   },
   "work": {
+    "checkDecision": "در حال بررسی نتیجه",
+    "repeatDecision": "هنوز در انتظار است. می‌توانید همان اقدام را تکرار کنید.",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

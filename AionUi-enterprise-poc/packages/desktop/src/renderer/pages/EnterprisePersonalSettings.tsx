@@ -427,7 +427,7 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
         </div>
       )}
       {active && (
-        <div className='flex flex-wrap items-center gap-10px mt-16px'>
+        <div className='sticky bottom-0 z-1 mt-16px flex flex-wrap items-center gap-10px border-t border-solid border-border-2 bg-bg-1 py-12px'>
           <Button type='primary' loading={saving} disabled={!dirty || loading || conflict} onClick={() => void save()}>
             {t('common.save')}
           </Button>

@@ -161,7 +161,7 @@ test('session result cards preserve older attempt versions and withhold unavaila
       <TaskWork conversationId='abcd1234' hideOpenAction />
     </MemoryRouter>
   );
-  expect(screen.getByText('original.xlsx · v1')).toBeTruthy();
+  expect(screen.getByText('original.xlsx')).toBeTruthy();
   expect(screen.getByRole('link', { name: /^common\.download · / }).getAttribute('href')).toContain(
     'version=old-version'
   );
@@ -196,8 +196,8 @@ test('repeated receipts show one card per file version across attempts', () => {
       <TaskWork conversationId='abcd1234' hideOpenAction />
     </MemoryRouter>
   );
-  expect(screen.getAllByText('report.xlsx · v1')).toHaveLength(1);
-  expect(screen.getAllByText('report.xlsx · v2')).toHaveLength(1);
+  expect(screen.getAllByRole('link', { name: 'common.download · report.xlsx · v1' })).toHaveLength(1);
+  expect(screen.getAllByRole('link', { name: 'common.download · report.xlsx · v2' })).toHaveLength(1);
   expect(screen.getAllByRole('link', { name: /^common\.download · / })).toHaveLength(2);
 });
 
@@ -234,6 +234,7 @@ test('a foreign preview URL cannot navigate away from the authorized workspace',
       valid: true,
       sha256: 'a'.repeat(64),
       versionId: 'v1',
+      downloadUrl: '/enterprise/files/download?path=report.xlsx&version=v2',
       previewUrl: 'https://foreign.invalid/#/workspace?section=files&previewPath=report.xlsx&fileVersion=v1',
     },
   ];
@@ -243,7 +244,8 @@ test('a foreign preview URL cannot navigate away from the authorized workspace',
       <PreviewRoute />
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByRole('button', { name: /^workspace\.files\.preview · / }));
+  expect(screen.queryByRole('button', { name: /^workspace\.files\.preview · / })).toBeNull();
+  expect(screen.queryByRole('link', { name: /^common\.download · / })).toBeNull();
   expect(screen.getByTestId('preview-route').textContent).toBe('/');
-  expect(screen.getByRole('alert').textContent).toBe('workspace.experience.actionFailed');
+  expect(screen.getByText('workspace.experience.artifactUnavailable')).toBeTruthy();
 });

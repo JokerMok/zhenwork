@@ -353,6 +353,9 @@
     "slideSelect": "Diapositive"
   },
   "delivery": {
+    "checkedAmount": "Montant concordant {{amount}}",
+    "mismatchedAmount": "Écart constaté pour {{amount}}",
+    "verificationFailed": "Échec de la vérification",
     "processing": "Traitement",
     "partial": "Livraison partielle : fichiers manquants",
     "receipts": "Résultats de cette demande",
@@ -367,6 +370,8 @@
     "savedWorkbookStructure": "{{sheets}} feuilles"
   },
   "work": {
+    "checkDecision": "Vérification de la décision",
+    "repeatDecision": "Toujours en attente. Vous pouvez réessayer la même décision.",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

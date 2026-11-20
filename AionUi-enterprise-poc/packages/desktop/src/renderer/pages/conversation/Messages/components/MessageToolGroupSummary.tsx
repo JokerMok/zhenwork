@@ -1,12 +1,14 @@
+import ArtifactCard from '@/renderer/pages/workspace/TaskWork/ArtifactCard';
+import { attachWorkspaceVersion, pinnedArtifactDownload, pinnedArtifactPreview } from '@/renderer/services/FileService';
 import { useNavigate } from 'react-router-dom';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { emitter } from '@/renderer/utils/emitter';
 import EnterpriseFilePreview from '@/renderer/components/media/OfficePreview/EnterpriseFilePreview';
 import type { BadgeProps } from '@arco-design/web-react';
-import { Badge, Button, Drawer, Message, Space, Spin, Tag, Tooltip } from '@arco-design/web-react';
+import { Badge, Button, Drawer, Message, Spin, Tag, Tooltip } from '@arco-design/web-react';
 import { IconDown, IconRight } from '@arco-design/web-react/icon';
 import { Checklist, Download, Right } from '@icon-park/react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ipcBridge } from '@/common';
 import { getAcpImageFileName } from '@/common/chat/acpToolCallOutput';
@@ -196,127 +198,192 @@ export default React.memo(MessageToolGroupSummary);
 export const TaskDeliverySummary: React.FC<{
   messages: ToolMessage[];
   processing: boolean;
+  conversationId?: string;
+  state?: string;
   trustedArtifacts?: WorkAttempt['artifacts'];
-}> = ({ messages, processing, trustedArtifacts }) => {
+}> = ({ messages, processing, trustedArtifacts, conversationId, state }) => {
   const { t } = useTranslation();
-  const tools = normalizeToolMessages(messages);
-  const files: Array<ReturnType<typeof toolDeliveryReceipts>[number] & { sha256?: string; downloadUrl?: string }> =
+  const receipts = toolDeliveryReceipts(normalizeToolMessages(messages));
+  const files =
     trustedArtifacts === undefined
-      ? toolDeliveryReceipts(tools)
-      : trustedArtifacts
-          .filter((file) => !!file.versionId && /^[a-f0-9]{64}$/.test(file.sha256))
-          .map((file) => ({ ...file, status: file.valid ? ('complete' as const) : ('failed' as const) }));
-  const failed = files.filter((file) => file.status === 'failed');
-  const errors = tools.filter((tool) => tool.status === 'error');
-  const running = tools.findLast((tool) => tool.status === 'running' || tool.status === 'pending');
-  const [preview, setPreview] = useState<{ path: string; version?: string }>();
+      ? receipts
+      : trustedArtifacts.map((file) => ({
+          ...receipts.find(
+            (entry) => entry.path === file.path && entry.versionId === file.versionId && entry.sha256 === file.sha256
+          ),
+          ...file,
+          status: file.valid ? ('complete' as const) : ('failed' as const),
+        }));
+  const [preview, setPreview] = useState<{ path: string; version: string }>();
+  const [attaching, setAttaching] = useState<string>();
+  const continuation = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => continuation.current?.abort(), [conversationId]);
   const navigate = useNavigate();
   if (!isEnterpriseWeb() || !files.length) return null;
+  const failures = files.filter((file) => file.status === 'failed').length;
+  const heading =
+    state === 'partial' || (failures > 0 && failures < files.length)
+      ? 'workspace.delivery.partial'
+      : failures === files.length
+        ? 'workspace.delivery.verificationFailed'
+        : processing
+          ? 'workspace.delivery.processing'
+          : 'workspace.delivery.receipts';
+  const continueHere = async (path: string, version: string, versionNumber?: number) => {
+    if (!conversationId || continuation.current) return;
+    const controller = new AbortController();
+    continuation.current = controller;
+    setAttaching(version);
+    try {
+      const attachment = await attachWorkspaceVersion(
+        path,
+        path.split('/').pop() || path,
+        version,
+        controller.signal,
+        conversationId
+      );
+      if (!controller.signal.aborted)
+        emitter.emit(
+          'aionrs.upload.file.append',
+          [attachment],
+          conversationId,
+          t('workspace.files.continueSnapshotPrompt', {
+            path,
+            time: versionNumber === undefined ? version : 'v' + versionNumber,
+          })
+        );
+    } catch {
+      if (!controller.signal.aborted) Message.error(t('workspace.experience.actionFailed'));
+    } finally {
+      if (!controller.signal.aborted) setAttaching(undefined);
+      if (continuation.current === controller) continuation.current = undefined;
+    }
+  };
   return (
-    <div className='my-8px py-8px border-t border-solid border-border-2' data-testid='task-delivery-summary'>
-      <div className='font-medium mb-8px'>
-        {t(
-          processing
-            ? 'workspace.delivery.processing'
-            : failed.length
-              ? 'workspace.delivery.partial'
-              : files.length
-                ? 'workspace.delivery.receipts'
-                : errors.length
-                  ? 'workspace.delivery.failed'
-                  : 'workspace.delivery.steps'
-        )}
+    <section
+      className='mx-auto my-12px grid w-full max-w-800px min-w-0 gap-8px px-8px box-border'
+      data-testid='task-delivery-summary'
+    >
+      <div className='flex items-center justify-between gap-8px'>
+        <h3 className='m-0 text-16px font-semibold'>{t(heading)}</h3>
+        <Button type='text' size='small' onClick={() => navigate('/workspace?section=files')}>
+          {t('workspace.tabs.files')}
+        </Button>
       </div>
-      {running ? <div className='text-t-secondary mb-8px'>{running.description || running.name}</div> : null}
-      <Space wrap>
-        <Button onClick={() => navigate('/workspace?section=files')}>{t('workspace.tabs.files')}</Button>
-        {failed.length || errors.length ? (
-          <Button
-            onClick={() =>
-              emitter.emit(
-                'sendbox.fill',
-                t('workspace.delivery.retryPrompt', {
-                  paths: failed.map((file) => `${file.path}: ${file.error || ''}`).join('; '),
-                })
-              )
-            }
+      {files.map((file) => {
+        const available = file.status === 'complete' && !!file.versionId && /^[a-f0-9]{64}$/.test(file.sha256 || '');
+        const downloadUrl =
+          'downloadUrl' in file && typeof file.downloadUrl === 'string'
+            ? pinnedArtifactDownload(file.downloadUrl, file.versionId)
+            : undefined;
+        const canDownload = available && (trustedArtifacts === undefined || !!downloadUrl);
+        const canPreview =
+          available &&
+          (trustedArtifacts === undefined ||
+            ('previewUrl' in file &&
+              typeof file.previewUrl === 'string' &&
+              !!pinnedArtifactPreview(file.previewUrl, file.path, file.versionId)));
+        return (
+          <div
+            key={JSON.stringify([file.path, file.versionId || file.sha256 || file.status])}
+            data-testid='trusted-artifact-card'
+            data-version-id={file.versionId}
+            data-sha256={file.sha256}
           >
-            {t('workspace.delivery.continueFailed')}
-          </Button>
-        ) : null}
-      </Space>
-      {files.map((file) => (
-        <div
-          key={file.versionId || file.path}
-          data-testid='trusted-artifact-card'
-          data-version-id={file.versionId}
-          data-sha256={'sha256' in file ? file.sha256 : undefined}
-          className='flex flex-wrap items-center gap-8px mt-8px'
-        >
-          <span className='break-all'>{file.path}</span>
-          {file.version ? <Tag>v{file.version}</Tag> : null}
-          {file.headingCount !== undefined ? (
-            <span className='text-t-secondary'>
-              {t('workspace.delivery.savedStructure', { headings: file.headingCount, tables: file.tableCount || 0 })}
-            </span>
-          ) : null}
-          {file.sheetCount !== undefined ? (
-            <span className='text-t-secondary'>
-              {t('workspace.delivery.savedWorkbookStructure', { sheets: file.sheetCount })}
-            </span>
-          ) : null}
-          {file.addedHeadings?.map((heading) => (
-            <Tag key={heading}>{heading}</Tag>
-          ))}
-          <Tag color={file.status === 'complete' ? 'green' : 'red'}>
-            {t(file.status === 'complete' ? 'workspace.delivery.complete' : 'workspace.delivery.failedFile')}
-          </Tag>
-          {file.status === 'failed' ? (
-            <span>{file.error}</span>
-          ) : (
-            <>
-              <Button type='text' onClick={() => setPreview({ path: file.path, version: file.versionId })}>
-                {t('workspace.files.preview')}
-              </Button>
-              <Button
-                type='text'
-                disabled={trustedArtifacts !== undefined && !file.downloadUrl}
-                onClick={() =>
-                  window.open(
-                    'downloadUrl' in file && file.downloadUrl
-                      ? file.downloadUrl
-                      : `/enterprise/files/download?${new URLSearchParams({ path: file.path, ...(file.versionId ? { version: file.versionId } : {}) })}`,
-                    '_blank',
-                    'noopener,noreferrer'
-                  )
-                }
-              >
-                {t('workspace.files.download')}
-              </Button>
-              <Button
-                type='text'
-                onClick={() => emitter.emit('sendbox.fill', t('workspace.files.continuePrompt', { path: file.path }))}
-              >
-                {t('workspace.files.continue')}
-              </Button>
-            </>
-          )}
-        </div>
-      ))}
-      {errors.length && !isEnterpriseWeb() ? (
-        <div className='text-t-secondary mt-8px'>
-          {t('workspace.delivery.errorCount', { count: errors.length })}: {errors.map((tool) => tool.name).join(', ')}
-        </div>
-      ) : null}
+            <ArtifactCard
+              {...file}
+              status={
+                <Tag color={file.status === 'failed' ? 'red' : canDownload || canPreview ? 'green' : undefined}>
+                  {t(
+                    file.status === 'failed'
+                      ? 'workspace.delivery.verificationFailed'
+                      : canDownload || canPreview
+                        ? 'workspace.delivery.complete'
+                        : 'workspace.experience.artifactUnavailable'
+                  )}
+                </Tag>
+              }
+              metadata={file.checks?.map((check) => (
+                <span
+                  key={JSON.stringify([check.sheet, check.scope])}
+                  className={check.matched ? 'text-t-secondary' : 'text-danger'}
+                >
+                  {check.sheet} · {check.scope} ·{' '}
+                  {t(check.matched ? 'workspace.delivery.checkedAmount' : 'workspace.delivery.mismatchedAmount', {
+                    amount: check.currency + ' ' + check.total,
+                  })}
+                </span>
+              ))}
+              details={
+                <>
+                  {file.headingCount !== undefined && (
+                    <span>
+                      {t('workspace.delivery.savedStructure', {
+                        headings: file.headingCount,
+                        tables: file.tableCount ?? 0,
+                      })}
+                    </span>
+                  )}
+                  {file.sheetCount !== undefined && (
+                    <span>{t('workspace.delivery.savedWorkbookStructure', { sheets: file.sheetCount })}</span>
+                  )}
+                  {file.addedHeadings?.map((heading) => (
+                    <span key={heading}>{heading}</span>
+                  ))}
+                  {file.error && <span>{file.error}</span>}
+                </>
+              }
+            >
+              {canPreview && (
+                <Button size='small' onClick={() => setPreview({ path: file.path, version: file.versionId! })}>
+                  {t('workspace.files.preview')}
+                </Button>
+              )}
+              {canDownload && (
+                <Button
+                  type='text'
+                  size='small'
+                  onClick={() =>
+                    window.open(
+                      downloadUrl ||
+                        `/enterprise/files/download?${new URLSearchParams({ path: file.path, version: file.versionId! })}`,
+                      '_blank',
+                      'noopener,noreferrer'
+                    )
+                  }
+                >
+                  {t('workspace.files.download')}
+                </Button>
+              )}
+              {canDownload && conversationId && (
+                <Button
+                  type='text'
+                  size='small'
+                  disabled={!!attaching}
+                  loading={attaching === file.versionId}
+                  onClick={() => void continueHere(file.path, file.versionId!, file.version)}
+                >
+                  {t('workspace.files.continue')}
+                </Button>
+              )}
+            </ArtifactCard>
+          </div>
+        );
+      })}
       <Drawer
-        width={920}
+        width='min(920px, 100vw)'
         visible={Boolean(preview)}
-        title={preview?.path || ''}
+        focusLock
+        autoFocus
+        unmountOnExit
+        title={preview?.path.split('/').pop() || ''}
         footer={null}
         onCancel={() => setPreview(undefined)}
       >
-        {preview ? <EnterpriseFilePreview path={preview.path} version={preview.version} /> : null}
+        {preview && (
+          <EnterpriseFilePreview key={JSON.stringify(preview)} path={preview.path} version={preview.version} />
+        )}
       </Drawer>
-    </div>
+    </section>
   );
 };

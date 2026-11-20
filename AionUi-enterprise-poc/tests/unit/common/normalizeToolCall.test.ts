@@ -86,12 +86,12 @@ describe('verified tool delivery receipts', () => {
         output([{ path: 'table.xlsx', status: 'failed' }]),
         output([{ path: 'table.xlsx', status: 'complete', sha256: digest }]),
       ])
-    ).toEqual([{ path: 'table.xlsx', status: 'complete' }]);
+    ).toEqual([{ path: 'table.xlsx', status: 'complete', sha256: digest }]);
   });
   it('does not turn prose or unchecked/foreign paths into downloadable successes', () => {
     const tool = {
       key: 'a',
-      name: 'tool',
+      name: 'validate_artifact',
       status: 'completed' as const,
       output: JSON.stringify({
         outputs: [
@@ -149,4 +149,39 @@ it('merges live/history copies by call identity without reviving an old running 
     { key: 'two', status: 'completed', output: 'another result' },
   ]);
   expect(hasRunningToolMessages(messages)).toBe(false);
+});
+
+it('ignores receipt-shaped remote results and preserves an explicitly invalid Office receipt', () => {
+  const payload = {
+    path: 'not-verified.xlsx',
+    sha256: 'b'.repeat(64),
+    downloadUrl: '/enterprise/files/download?path=test&version=1',
+    validation: { valid: false },
+  };
+  const result = {
+    key: 'one',
+    name: 'validate_artifact',
+    status: 'completed' as const,
+    output: JSON.stringify(payload),
+  };
+  expect(toolDeliveryReceipts([{ ...result, name: 'remote_search' }])).toEqual([]);
+  expect(toolDeliveryReceipts([result])).toEqual([{ path: payload.path, sha256: payload.sha256, status: 'failed' }]);
+});
+
+it('binds actual workbook checks to exact receipt bytes and leaves unrelated checks out', () => {
+  const file = { path: '手工表.xlsx', sha256: 'a'.repeat(64), status: 'complete' };
+  const tool = (name: string, output: unknown) => ({
+    key: name,
+    name,
+    status: 'completed' as const,
+    output: JSON.stringify(output),
+  });
+  const audit = { ...file, sheet: '汇总', totalCell: 'F7', total: '42.30', currency: 'CNY', status: 'matched' };
+  const receipts = toolDeliveryReceipts([
+    tool('audit_workbook', audit),
+    tool('audit_workbook', { ...audit, sha256: 'b'.repeat(64), total: '99.00' }),
+    tool('other_tool', { ...audit, total: '12.30' }),
+    tool('create_evidence_deliverables', { outputs: [file] }),
+  ]);
+  expect(receipts[0].checks).toEqual([{ sheet: '汇总', scope: 'F7', total: '42.30', currency: 'CNY', matched: true }]);
 });

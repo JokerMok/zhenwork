@@ -103,7 +103,7 @@ describe('displayed approval identity', () => {
         if (init?.method === 'POST') {
           if (path !== `/enterprise/tasks/${id}/${kind}`) throw Error('UNEXPECTED_ACTION');
           decisions.push(JSON.parse(String(init.body)) as (typeof decisions)[number]);
-          if (decisions.length === 1) throw Error('TASK_CONFIRMATION_STALE');
+          if (decisions.length === 1) throw Error('TASK_CONFIRMATION_CHANGED');
         }
         return snapshot;
       });
@@ -114,10 +114,15 @@ describe('displayed approval identity', () => {
       );
       await screen.findByText('Review operation 1');
       fireEvent.click(screen.getByRole('button', { name: `workspace.work.${kind}` }));
-      await screen.findByRole('alert');
+      const rejection = await screen.findByRole('alert');
+      expect(rejection).toHaveTextContent('workspace.errors.action');
+      fireEvent.click(screen.getByRole('button', { name: 'common.refresh' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'common.refresh' })).not.toBeDisabled());
+      expect(screen.queryByText('workspace.work.repeatDecision')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: `workspace.work.${kind}` })).toBeDisabled();
+      expect(decisions).toHaveLength(1);
 
-      // The failed decision remains pending locally. A new confirmation in the same
-      // attempt must get a different request ID and may never reuse its old scope.
+      // A new confirmation in the same attempt must use its own request ID.
       snapshot = pendingTask(id, 'confirmation-two', 2);
       act(() => window.dispatchEvent(new Event('task-work:changed')));
       await screen.findByText('Review operation 2');
@@ -152,6 +157,48 @@ describe('displayed approval identity', () => {
       decline: screen.queryByRole('button', { name: 'workspace.work.decline' }),
     }).toEqual({ approve: null, decline: null });
     expect(vi.mocked(enterpriseRequest).mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+  });
+
+  it('checks a lost decision before retry, survives remount and retains its original body', async () => {
+    const id = 'uncertain-decision';
+    localStorage.setItem('enterprise:storage-owner', 'isolated-reviewer');
+    const snapshot = pendingTask(id, 'one');
+    let readable = true;
+    const bodies: string[] = [];
+    vi.mocked(enterpriseRequest).mockImplementation(async (_path, init) => {
+      if (init?.method === 'POST') {
+        bodies.push(String(init.body));
+        if (bodies.length === 1) {
+          readable = false;
+          throw Error('TIMEOUT');
+        }
+        snapshot.attempts[0].canApprove = false;
+      }
+      if (!readable) throw Error('NETWORK');
+      return snapshot;
+    });
+    const card = (
+      <MemoryRouter>
+        <TaskWork conversationId={id} embedded />
+      </MemoryRouter>
+    );
+    const first = render(card);
+    fireEvent.click(await screen.findByRole('button', { name: 'workspace.work.approve' }));
+    await screen.findByText('workspace.work.checkDecision');
+    expect(screen.getByRole('button', { name: 'workspace.work.decline' })).toBeDisabled();
+    first.unmount();
+    readable = true;
+    render(card);
+    await screen.findByText('workspace.work.checkDecision');
+    expect(bodies).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'common.refresh' }));
+    await screen.findByText('workspace.work.repeatDecision');
+    expect(screen.getByRole('button', { name: 'workspace.work.decline' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'workspace.work.approve' }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toBe(bodies[0]);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'workspace.work.approve' })).toBeNull());
+    localStorage.removeItem('enterprise:storage-owner');
   });
 
   it.each(['failed', 'partial', 'cancelled'])(

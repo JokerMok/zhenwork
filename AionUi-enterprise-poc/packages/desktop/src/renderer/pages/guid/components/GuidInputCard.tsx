@@ -78,9 +78,11 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
 
   useEffect(() => {
     if (!focusRequestKey || isMobile) return;
-    inputRef.current?.focus();
-    inputRef.current?.dom.setSelectionRange(input.length, input.length);
-  }, [focusRequestKey, input, isMobile]);
+    const textarea = inputRef.current?.dom;
+    if (!textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }, [focusRequestKey, isMobile]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (isComposing.current) return;

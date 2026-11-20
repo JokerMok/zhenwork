@@ -1,6 +1,8 @@
+import styles from './WorkspaceExperience.module.css';
+import ArtifactCard from './TaskWork/ArtifactCard';
 import DataAnalysisControl from './TaskWork/DataAnalysis';
 import OfficePreview from '@/renderer/components/media/OfficePreview';
-import { formatFileSize, uploadFileViaHttp } from '@/renderer/services/FileService';
+import { formatFileSize, attachWorkspaceVersion } from '@/renderer/services/FileService';
 import {
   Alert,
   Button,
@@ -97,7 +99,8 @@ export const workspaceFilePreviewKind = (fileName: string): FilePreviewKind => {
 
 const downloadWorkspaceFile = (file: EnterpriseFile, version?: EnterpriseFileVersion) => {
   const query = new URLSearchParams({ path: file.path });
-  if (version) query.set('version', version.id);
+  const selectedId = version?.id || file.currentVersionId;
+  if (selectedId) query.set('version', selectedId);
   window.open(`/enterprise/files/download?${query.toString()}`, '_blank', 'noopener,noreferrer');
 };
 
@@ -121,6 +124,23 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [continuingPath, setContinuingPath] = useState<string>();
   const continuation = useRef<AbortController | null>(null);
+  const previewTrigger = useRef<HTMLElement | null>(null);
+  const focusPreviewFooter = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    const current = document.activeElement;
+    if (
+      current instanceof HTMLElement &&
+      current !== document.body &&
+      !node.closest('[role="dialog"]')?.contains(current)
+    ) {
+      previewTrigger.current = current;
+    }
+    node.querySelector('button')?.focus({ preventScroll: true });
+  }, []);
+  const restorePreviewFocus = () => {
+    if (previewTrigger.current?.isConnected) previewTrigger.current.focus({ preventScroll: true });
+    previewTrigger.current = null;
+  };
   useEffect(() => () => continuation.current?.abort(), [location.key]);
   const params = new URLSearchParams(location.search);
   const requestedPath = active
@@ -225,33 +245,17 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
       return;
     }
     const selectedVersion = version ?? file.versions?.find((item) => item.id === file.currentVersionId);
-    const query = new URLSearchParams({ path: file.path });
     const versionId = selectedVersion?.id || file.currentVersionId;
-    if (versionId) query.set('version', versionId);
     const controller = new AbortController();
     continuation.current = controller;
     setContinuingPath(file.path);
     try {
-      const response = await fetch(`/enterprise/files/download?${query}`, {
-        credentials: 'same-origin',
-        cache: 'no-store',
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(`HTTP_${response.status}`);
-      const bytes = await response.blob();
-      if (controller.signal.aborted) return;
-      const attachment = await uploadFileViaHttp(
-        new File([bytes], file.name, { type: bytes.type }),
-        undefined,
-        undefined,
-        undefined,
-        { signal: controller.signal }
-      );
+      const attachment = await attachWorkspaceVersion(file.path, file.name, versionId, controller.signal);
       if (controller.signal.aborted) return;
       navigate('/guid', {
         state: {
           workspace: workspaceRoot,
-          prefillFiles: [attachment],
+          prefillFiles: [attachment.path],
           prefillPrompt: t('workspace.files.continueSnapshotPrompt', {
             path: file.path,
             time: formatDate(selectedVersion?.createdAt ?? file.modifiedAt),
@@ -394,18 +398,21 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
           : t('workspace.files.preview')
       }
       footer={
-        <Space wrap>
-          <Button onClick={closePreview}>{t('common.close')}</Button>
-          {visiblePreview && (
-            <Button
-              icon={<Download />}
-              onClick={() => downloadWorkspaceFile(visiblePreview.file, visiblePreview.version)}
-            >
-              {t('workspace.files.download')}
-            </Button>
-          )}
-        </Space>
+        <div ref={focusPreviewFooter}>
+          <Space wrap>
+            <Button onClick={closePreview}>{t('common.close')}</Button>
+            {visiblePreview && ['text', 'pdf', 'image'].includes(visiblePreview.kind) && (
+              <Button
+                icon={<Download />}
+                onClick={() => downloadWorkspaceFile(visiblePreview.file, visiblePreview.version)}
+              >
+                {t('workspace.files.download')}
+              </Button>
+            )}
+          </Space>
+        </div>
       }
+      afterClose={restorePreviewFocus}
       onCancel={closePreview}
     >
       {previewLookupError ? (
@@ -529,7 +536,7 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
       {warnings.length > 0 ? (
         <Alert type='warning' showIcon content={t('workspace.files.warnings', { count: warnings.length })} />
       ) : null}
-      <Spin loading={loading} className='w-full'>
+      <Spin loading={loading} className={styles.fullList + ' w-full'}>
         {visibleFiles.length === 0 ? (
           !loading &&
           !errorCode && (
@@ -547,58 +554,64 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
           )
         ) : (
           <List
+            bordered={false}
+            split={false}
             dataSource={visibleFiles}
-            render={(file) => (
-              <List.Item
-                key={file.path}
-                className='!flex-wrap gap-y-8px [&_.arco-list-item-main]:min-w-0 [&_.arco-list-item-main]:flex-1 [&_.arco-list-item-action]:flex-wrap [&_.arco-list-item-action]:!ml-0'
-                actions={[
-                  /\.(xlsx|csv)$/i.test(file.path) ? (
-                    <DataAnalysisControl key='data-analysis' filePath={file.path} />
-                  ) : null,
-                  <Button key='preview' type='text' icon={<PreviewOpen />} onClick={() => openPreview(file)}>
-                    {t('workspace.files.preview')}
-                  </Button>,
-                  <Button key='download' type='text' icon={<Download />} onClick={() => downloadWorkspaceFile(file)}>
-                    {t('workspace.files.download')}
-                  </Button>,
-                  <Button
-                    key='continue'
-                    type='text'
-                    loading={continuingPath === file.path}
-                    disabled={Boolean(continuingPath) && continuingPath !== file.path}
-                    onClick={() => void continueWithFile(file)}
-                  >
-                    {t('workspace.files.continueInNewTask')}
-                  </Button>,
-                  <Button
-                    key='versions'
-                    type='text'
-                    disabled={!file.versions?.length}
-                    onClick={() => setVersionFile(file)}
-                  >
-                    {t('workspace.files.versions', { count: file.versions?.length || 0 })}
-                  </Button>,
-                ]}
-              >
-                <List.Item.Meta
-                  title={
-                    <div className='min-w-0 flex flex-wrap items-center gap-8px'>
-                      <span className='min-w-0 break-all' title={file.name}>
-                        {file.name}
-                      </span>
+            render={(file) => {
+              const version = file.versions?.find((item) => item.id === file.currentVersionId);
+              return (
+                <List.Item key={file.path} className='!block !p-0 mb-8px'>
+                  <ArtifactCard
+                    path={file.path}
+                    name={file.name}
+                    versionId={file.currentVersionId}
+                    sha256={version?.sha256}
+                    status={
                       <Tag>{t(`workspace.fileKind.${file.kind.toLowerCase()}`, { defaultValue: file.kind })}</Tag>
-                    </div>
-                  }
-                  description={`${formatFileSize(file.byteSize)} · ${formatDate(file.modifiedAt)}`}
-                />
-              </List.Item>
-            )}
+                    }
+                    metadata={`${formatFileSize(file.byteSize)} · ${formatDate(file.modifiedAt)}`}
+                  >
+                    <Button size='small' icon={<PreviewOpen />} onClick={() => openPreview(file, version)}>
+                      {t('workspace.files.preview')}
+                    </Button>
+                    <Button
+                      size='small'
+                      type='text'
+                      icon={<Download />}
+                      onClick={() => downloadWorkspaceFile(file, version)}
+                    >
+                      {t('workspace.files.download')}
+                    </Button>
+                    <Button
+                      size='small'
+                      type='text'
+                      loading={continuingPath === file.path}
+                      disabled={Boolean(continuingPath) && continuingPath !== file.path}
+                      onClick={() => void continueWithFile(file, version)}
+                    >
+                      {t('workspace.files.continueInNewTask')}
+                    </Button>
+                    <Button
+                      size='small'
+                      type='text'
+                      disabled={!file.versions?.length}
+                      onClick={() => setVersionFile(file)}
+                    >
+                      {t('workspace.files.versions', { count: file.versions?.length || 0 })}
+                    </Button>
+                    {/\.(xlsx|csv)$/i.test(file.path) && <DataAnalysisControl filePath={file.path} />}
+                  </ArtifactCard>
+                </List.Item>
+              );
+            }}
           />
         )}
       </Spin>
       <Drawer
-        width={520}
+        width='min(520px, 100vw)'
+        focusLock
+        autoFocus
+        escToExit={!requestedPath && !diff}
         visible={Boolean(versionFile)}
         title={t('workspace.files.versionTitle', { name: versionFile?.name || '' })}
         footer={null}
@@ -621,6 +634,14 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
                     onClick={() => downloadWorkspaceFile(versionFile, version)}
                   >
                     {t('workspace.files.download')}
+                  </Button>,
+                  <Button
+                    key='new-task'
+                    type='text'
+                    loading={continuingPath === versionFile.path}
+                    onClick={() => void continueWithFile(versionFile, version)}
+                  >
+                    {t('workspace.files.continueInNewTask')}
                   </Button>,
                   <Button key='compare' type='text' onClick={() => void compare(versionFile, version)}>
                     {t('workspace.files.compare')}
@@ -648,7 +669,9 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
       </Drawer>
       {previewDrawer}
       <Drawer
-        width={720}
+        width='min(720px, 100vw)'
+        focusLock
+        autoFocus
         visible={Boolean(diff)}
         title={t('workspace.files.compareTitle')}
         footer={null}

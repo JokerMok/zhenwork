@@ -42,10 +42,27 @@ export function TaskOverviewProvider({ children }: React.PropsWithChildren) {
   }, []);
   return <TaskOverview.Provider value={states}>{children}</TaskOverview.Provider>;
 }
-export function TaskBadge({ id }: { id: string }) {
+const stateColor: Record<string, string> = {
+  running: 'arcoblue',
+  queued: 'blue',
+  waiting_input: 'orange',
+  waiting_confirmation: 'orange',
+  partial: 'orange',
+  interrupted: 'red',
+  failed: 'red',
+  completed: 'green',
+};
+
+export function TaskStateTag({ state }: { state: string }) {
   const { t } = useTranslation();
+  return (
+    <Tag size='small' color={stateColor[state]}>
+      {t(`workspace.work.states.${state}`, { defaultValue: t('workspace.work.unknown') })}
+    </Tag>
+  );
+}
+
+export function TaskBadge({ id }: { id: string }) {
   const state = useContext(TaskOverview).get(id);
-  return state && state !== 'unknown' ? (
-    <Tag size='small'>{t(`workspace.work.states.${state}`, { defaultValue: t('workspace.work.unknown') })}</Tag>
-  ) : null;
+  return state && state !== 'unknown' ? <TaskStateTag state={state} /> : null;
 }

@@ -353,6 +353,9 @@
     "slideSelect": "スライド"
   },
   "delivery": {
+    "checkedAmount": "照合一致 {{amount}}",
+    "mismatchedAmount": "照合差異あり {{amount}}",
+    "verificationFailed": "検証に失敗",
     "processing": "処理中",
     "partial": "一部納品：未完成ファイルあり",
     "receipts": "今回の成果記録",
@@ -367,6 +370,8 @@
     "savedWorkbookStructure": "ワークシート {{sheets}} 件"
   },
   "work": {
+    "checkDecision": "操作結果を確認中",
+    "repeatDecision": "未確定です。同じ操作を再試行できます。",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

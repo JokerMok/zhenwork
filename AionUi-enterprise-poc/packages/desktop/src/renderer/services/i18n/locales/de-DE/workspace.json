@@ -353,6 +353,9 @@
     "slideSelect": "Folie"
   },
   "delivery": {
+    "checkedAmount": "Abgeglichen {{amount}}",
+    "mismatchedAmount": "Abweichung bei {{amount}}",
+    "verificationFailed": "Prüfung fehlgeschlagen",
     "processing": "In Bearbeitung",
     "partial": "Teillieferung: Dateien fehlen",
     "receipts": "Ergebnisbelege dieses Schritts",
@@ -367,6 +370,8 @@
     "savedWorkbookStructure": "{{sheets}} Arbeitsblätter"
   },
   "work": {
+    "checkDecision": "Entscheidung wird geprüft",
+    "repeatDecision": "Noch ausstehend. Sie können dieselbe Entscheidung wiederholen.",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

@@ -175,7 +175,7 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
 
   return (
     <Drawer
-      width={720}
+      width='min(720px, 100vw)'
       visible={Boolean(resource)}
       title={resource?.name || t('workspace.abilities.mcp.title')}
       footer={null}
@@ -196,20 +196,26 @@ const McpConnections: React.FC<McpConnectionsProps> = ({ resource, onClose }) =>
               }
             />
           ) : null}
+          {currentDetail && !loading && !resource?.actions.includes('USE') && (
+            <Alert type='info' content={t('workspace.errors.forbidden')} />
+          )}
           {currentDetail && !loading ? (
-            <Descriptions
-              column={1}
-              border
-              data={[
-                {
-                  label: t('workspace.abilities.mcp.endpoint'),
-                  value: currentDetail.config.endpoint || currentDetail.config.managedProfile || t('workspace.none'),
-                },
-                { label: t('workspace.abilities.mcp.transport'), value: currentDetail.config.transport },
-                { label: t('workspace.abilities.mcp.authorization'), value: currentDetail.config.authType },
-                { label: t('workspace.abilities.mcp.timeout'), value: `${currentDetail.config.timeoutSeconds}s` },
-              ]}
-            />
+            <details>
+              <summary className='mb-8px cursor-pointer'>{t('common.technical_details')}</summary>
+              <Descriptions
+                column={1}
+                border
+                data={[
+                  {
+                    label: t('workspace.abilities.mcp.endpoint'),
+                    value: currentDetail.config.endpoint || currentDetail.config.managedProfile || t('workspace.none'),
+                  },
+                  { label: t('workspace.abilities.mcp.transport'), value: currentDetail.config.transport },
+                  { label: t('workspace.abilities.mcp.authorization'), value: currentDetail.config.authType },
+                  { label: t('workspace.abilities.mcp.timeout'), value: `${currentDetail.config.timeoutSeconds}s` },
+                ]}
+              />
+            </details>
           ) : null}
           {currentDetail && !loading && enterprise ? (
             <Alert

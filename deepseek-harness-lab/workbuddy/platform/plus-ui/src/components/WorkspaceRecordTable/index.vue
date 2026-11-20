@@ -1,5 +1,5 @@
 <template>
-  <el-table :data="rows" empty-text="当前没有记录">
+  <el-table :data="rows" :empty-text="emptyText || '当前没有记录'">
     <el-table-column
       v-for="field in summary"
       :key="field"
@@ -7,7 +7,7 @@
       min-width="145"
       show-overflow-tooltip
     >
-      <template #default="{ row }">{{ workspaceLabel(row[field]) }}</template>
+      <template #default="{ row }">{{ displayValue(field, row[field]) }}</template>
     </el-table-column>
     <el-table-column label="详情" width="90" fixed="right">
       <template #default="{ row }"><el-button link @click="detail = row">查看</el-button></template>
@@ -30,7 +30,7 @@
           <summary>展开结构化字段</summary>
           <pre>{{ JSON.stringify(value, null, 2) }}</pre>
         </details>
-        <span v-else class="record-value">{{ workspaceLabel(value) }}</span>
+        <span v-else class="record-value">{{ displayValue(String(key), value) }}</span>
         <el-button v-if="technical(String(key)) && value" link @click="copy(String(value))">复制</el-button>
       </el-descriptions-item>
     </el-descriptions>
@@ -39,12 +39,34 @@
 </template>
 <script setup lang="ts">
 import { ElMessage } from 'element-plus';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { workspaceLabel } from '@/utils/workspacePresentation';
-const props = defineProps<{ rows: Record<string, unknown>[]; columns: string[]; labels: Record<string, string> }>();
+const props = defineProps<{
+  rows: Record<string, unknown>[];
+  columns: string[];
+  labels: Record<string, string>;
+  emptyText?: string;
+}>();
 const detail = ref<Record<string, unknown> | null>(null);
 const technical = (field: string) => /(?:^id$|_id$|Id$|hash$|request_id|^sequence$)/.test(field);
-const summary = computed(() => props.columns.filter(field => !technical(field)).slice(0, 12));
+const summary = computed(() => {
+  const fields = props.columns.filter(field => !technical(field));
+  return (fields.length ? fields : props.columns).slice(0, 6);
+});
+watch(
+  () => props.rows,
+  () => {
+    detail.value = null;
+  }
+);
+function displayValue(field: string, value: unknown) {
+  if (
+    value == null &&
+    /^(?:input_tokens|output_tokens|estimated_cost|provider_ttfb_ms|first_token_ms|duration_ms)$/.test(field)
+  )
+    return '未采集';
+  return workspaceLabel(value);
+}
 async function copy(value: string) {
   try {
     await navigator.clipboard.writeText(value);

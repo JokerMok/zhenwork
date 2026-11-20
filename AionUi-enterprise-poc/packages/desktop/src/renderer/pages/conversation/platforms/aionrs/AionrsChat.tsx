@@ -25,7 +25,7 @@ import {
 } from '@renderer/pages/conversation/Messages/hooks';
 import { usePendingConfirmationsRecovery } from '@renderer/pages/conversation/Messages/usePendingConfirmationsRecovery';
 import HOC from '@renderer/utils/ui/HOC';
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { useDragUpload } from '@renderer/hooks/file/useDragUpload';
 import { allSupportedExts } from '@renderer/services/FileService';
 import { localSelectionItems } from '@/renderer/utils/file/fileSelection';
@@ -68,6 +68,9 @@ const AionrsChat: React.FC<{
   const reloadMessages = useMessageLstCache(conversation_id);
   usePendingConfirmationsRecovery(conversation_id);
   usePlanRecovery(conversation_id);
+  const chatRoot = useRef<HTMLDivElement>(null);
+  const focusComposer = () =>
+    chatRoot.current?.querySelector<HTMLTextAreaElement>('textarea[data-testid="sendbox-input"]')?.focus();
   const { isFileDragging, dragHandlers } = useDragUpload({
     supportedExts: allSupportedExts,
     conversation_id,
@@ -102,6 +105,7 @@ const AionrsChat: React.FC<{
     <ConversationProvider value={conversationValue}>
       <ConversationArtifactProvider conversation_id={conversation_id}>
         <div
+          ref={chatRoot}
           className={`${CHAT_SURFACE_CONTAINER_CLASS} flex-1 flex flex-col px-20px min-h-0 ${isFileDragging ? 'outline outline-dashed outline-2 outline-primary' : ''}`}
           // Capture Finder drops before the editor or attachment cards consume them.
           // The hook stops propagation, so SendBox cannot add the same folder twice.
@@ -115,7 +119,9 @@ const AionrsChat: React.FC<{
               className='flex-1'
               onExecutionSettled={reloadMessages}
               emptySlot={emptySlot}
-              activityFooter={<TaskWork conversationId={conversation_id} embedded />}
+              activityFooter={
+                <TaskWork key={conversation_id} conversationId={conversation_id} embedded onContinue={focusComposer} />
+              }
             />
           </FlexFullContainer>
           {!isEnterpriseWeb() && <ConversationPlanBar conversation_id={conversation_id} />}

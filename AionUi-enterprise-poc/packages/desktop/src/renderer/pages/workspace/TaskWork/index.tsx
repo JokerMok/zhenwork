@@ -16,6 +16,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
 import { enterpriseRequest, workspaceErrorCode } from '../workspaceApi';
 import { taskAccepted, taskRequestId, taskStatusVisible, useTaskWork, type WorkTask } from './api';
+import { useConfirmationDecision } from './useConfirmationDecision';
+import { TaskStateTag } from './overview';
+import ArtifactCard from './ArtifactCard';
+import { pinnedArtifactDownload, pinnedArtifactPreview } from '@/renderer/services/FileService';
 import TaskFeedback from './Feedback';
 
 /** One business status, one approval; all additional employee input uses the main conversation composer. */
@@ -45,6 +49,7 @@ export default function TaskWork({
   const [failure, setFailure] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [externalOutcome, setExternalOutcome] = useState<string>();
+  const decision = useConfirmationDecision(conversationId, a, reload);
   const requestBusy = useRef(false);
   useEffect(() => {
     setReviewed(false);
@@ -81,7 +86,6 @@ export default function TaskWork({
         reviewed,
         externalOutcome,
         language: i18n.language,
-        ...(['approve', 'decline'].includes(kind) ? { confirmationId: a.confirmation?.id } : {}),
       };
       const request_id = await taskRequestId(conversationId, { kind, ...payload });
       await enterpriseRequest(`/enterprise/tasks/${conversationId}/${kind}`, {
@@ -107,7 +111,7 @@ export default function TaskWork({
   const canRetry =
     ['partial', 'failed', 'interrupted'].includes(a.state) ||
     (a.state === 'cancelled' && a.requiresExternalReview === true);
-  const status = t(`workspace.work.states.${a.state}`, { defaultValue: t('workspace.work.unknown') });
+  const stopped = busy || decision.busy || (!!decision.pending && !decision.pending.rejection);
   let question = a.question;
   if (question?.startsWith('[')) {
     try {
@@ -135,13 +139,13 @@ export default function TaskWork({
         </Typography.Paragraph>
       )}
       {waiting && a.reason && (
-        <span className='text-12px text-t-secondary'>
+        <span className='text-13px text-t-secondary'>
           {t(`workspace.work.reasons.${a.reason}`, {
             defaultValue: t('workspace.work.reasons.TASK_EXECUTION_UNAVAILABLE'),
           })}
         </span>
       )}
-      {waiting && onContinue && (
+      {waiting && !canApprove && onContinue && (
         <Button type='primary' onClick={onContinue}>
           {t('workspace.work.continue')}
         </Button>
@@ -151,18 +155,47 @@ export default function TaskWork({
           className='flex flex-col gap-8px border-l-2 border-solid border-warning pl-12px'
           data-testid='task-confirmation'
         >
-          <span className='text-12px text-t-secondary'>{t('workspace.experience.confirmScope')}</span>
-          <pre className='m-0 whitespace-pre-wrap break-words max-h-180px overflow-auto text-12px'>
+          <span className='text-13px text-t-secondary'>{t('workspace.experience.confirmScope')}</span>
+          <pre className='m-0 whitespace-pre-wrap break-words max-h-180px overflow-auto text-14px'>
             {a.confirmation?.proposal}
           </pre>
           <Space>
-            <Button type='primary' loading={busy} onClick={() => void action('approve')}>
+            <Button
+              type='primary'
+              loading={decision.busy && decision.pending?.kind === 'approve'}
+              disabled={
+                busy ||
+                decision.busy ||
+                (!!decision.pending && (decision.pending.kind !== 'approve' || !decision.safeId))
+              }
+              onClick={() => void decision.submit('approve', { reviewed, externalOutcome, language: i18n.language })}
+            >
               {t('workspace.work.approve')}
             </Button>
-            <Button loading={busy} onClick={() => void action('decline')}>
+            <Button
+              loading={decision.busy && decision.pending?.kind === 'decline'}
+              disabled={
+                busy ||
+                decision.busy ||
+                (!!decision.pending && (decision.pending.kind !== 'decline' || !decision.safeId))
+              }
+              onClick={() => void decision.submit('decline', { reviewed, externalOutcome, language: i18n.language })}
+            >
               {t('workspace.work.decline')}
             </Button>
           </Space>
+          {decision.pending && !decision.busy && (
+            <div role='alert' className='flex items-center gap-8px text-14px'>
+              {decision.pending.rejection
+                ? t('workspace.errors.action', { code: decision.pending.rejection })
+                : t(decision.safeId ? 'workspace.work.repeatDecision' : 'workspace.work.checkDecision')}
+              {!decision.safeId && (
+                <Button size='small' loading={decision.checking} onClick={() => void decision.check(decision.pending!)}>
+                  {t('common.refresh')}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
       {(a.state === 'interrupted' || (canRetry && a.requiresExternalReview)) && (
@@ -185,8 +218,10 @@ export default function TaskWork({
           )}
         </Space>
       )}
-      {embedded && a.reason && ['failed', 'partial', 'interrupted'].includes(a.state) && (
-        <span className='text-12px text-t-secondary'>{t('workspace.experience.actionFailed')}</span>
+      {a.reason && ['failed', 'partial', 'interrupted'].includes(a.state) && (
+        <span className='text-14px text-t-secondary'>
+          {t(`workspace.work.reasons.${a.reason}`, { defaultValue: t('workspace.experience.actionFailed') })}
+        </span>
       )}
       {failure && (
         <span role='alert' className='text-danger text-12px'>
@@ -201,8 +236,8 @@ export default function TaskWork({
       className={`${embedded ? 'py-6px' : 'p-12px border border-solid border-border-2 rd-8px'} min-w-0 shrink-0 flex flex-col gap-6px`}
     >
       <div className='flex flex-wrap items-center justify-between gap-8px min-w-0'>
-        <span role='status' className='text-12px text-t-secondary'>
-          {status}
+        <span role='status'>
+          <TaskStateTag state={a.state} />
         </span>
         <Space size='mini' wrap>
           {canRetry && (
@@ -222,7 +257,14 @@ export default function TaskWork({
             </Button>
           )}
           {['queued', 'waiting_input', 'waiting_confirmation', 'interrupted'].includes(a.state) && (
-            <Button size='mini' type='text' status='danger' loading={busy} onClick={() => void action('cancel')}>
+            <Button
+              size='mini'
+              type='text'
+              status='danger'
+              disabled={stopped}
+              loading={busy}
+              onClick={() => void action('cancel')}
+            >
               {t('common.cancel')}
             </Button>
           )}
@@ -231,7 +273,10 @@ export default function TaskWork({
       {body}
       {!embedded && (
         <Collapse bordered={false}>
-          <Collapse.Item name='steps' header={t('workspace.experience.executionDetails')}>
+          <Collapse.Item
+            name='steps'
+            header={t('workspace.experience.executionDetails') + (a.steps.length ? ' · ' + a.steps.length : '')}
+          >
             <div className='flex flex-col gap-6px'>
               {a.steps.map((step) => (
                 <div key={step.id} className='flex items-start gap-8px text-12px break-words'>
@@ -241,7 +286,7 @@ export default function TaskWork({
                   <span>{step.tool}</span>
                 </div>
               ))}
-              {a.reason && !waiting && (
+              {a.reason && !waiting && !['failed', 'partial', 'interrupted'].includes(a.state) && (
                 <p>
                   {t(`workspace.work.reasons.${a.reason}`, {
                     defaultValue: t('workspace.work.reasons.TASK_EXECUTION_UNAVAILABLE'),
@@ -259,55 +304,58 @@ export default function TaskWork({
       )}
       {!embedded &&
         artifacts.map((file) => {
+          const verified = file.valid && /^[a-f0-9]{64}$/i.test(file.sha256 || '');
+          const previewVersion = verified
+            ? pinnedArtifactPreview(file.previewUrl, file.path, file.versionId)
+            : undefined;
+          const download = verified ? pinnedArtifactDownload(file.downloadUrl, file.versionId) : undefined;
           const fileName = file.path.split('/').pop() || file.path;
           const title = file.version !== undefined ? fileName + ' · v' + file.version : fileName;
           return (
-            <Space key={JSON.stringify([file.path, file.versionId || file.sha256])} wrap className='min-w-0'>
-              <span className='break-all text-13px' title={file.path}>
-                {title}
-              </span>
-              {file.valid && file.previewUrl && (
+            <ArtifactCard
+              key={JSON.stringify([file.path, file.versionId || file.sha256])}
+              {...file}
+              status={
+                <Tag color={!file.valid ? 'red' : download || previewVersion ? 'green' : undefined}>
+                  {t(
+                    !file.valid
+                      ? 'workspace.delivery.verificationFailed'
+                      : download || previewVersion
+                        ? 'workspace.delivery.complete'
+                        : 'workspace.experience.artifactUnavailable'
+                  )}
+                </Tag>
+              }
+            >
+              {previewVersion && (
                 <Button
                   size='mini'
                   type='text'
                   aria-label={t('workspace.files.preview') + ' · ' + title}
                   onClick={() => {
-                    try {
-                      const target = new URL(file.previewUrl!, window.location.origin);
-                      if (target.origin !== window.location.origin || !target.hash.startsWith('#/workspace?')) {
-                        throw new Error('Invalid artifact preview route');
-                      }
-                      const preview = new URLSearchParams(target.hash.slice('#/workspace?'.length));
-                      const previewPath = preview.get('previewPath');
-                      if (!previewPath || previewPath !== file.path) throw new Error('Invalid artifact path');
-                      const version = file.versionId || preview.get('fileVersion');
-                      const current = new URLSearchParams(location.search);
-                      const inTask =
-                        location.pathname === '/workspace' &&
-                        current.get('section') === 'tasks' &&
-                        current.get('task') === conversationId;
-                      const next = inTask ? current : new URLSearchParams({ section: 'files' });
-                      next.set('previewPath', previewPath);
-                      if (version) next.set('fileVersion', version);
-                      else next.delete('fileVersion');
-                      navigate({ pathname: '/workspace', search: next.toString() });
-                    } catch {
-                      setFailure(true);
-                    }
+                    const current = new URLSearchParams(location.search);
+                    const inTask =
+                      location.pathname === '/workspace' &&
+                      current.get('section') === 'tasks' &&
+                      current.get('task') === conversationId;
+                    const next = inTask ? current : new URLSearchParams({ section: 'files' });
+                    next.set('previewPath', file.path);
+                    next.set('fileVersion', previewVersion);
+                    navigate({ pathname: '/workspace', search: next.toString() });
                   }}
                 >
                   {t('workspace.files.preview')}
                 </Button>
               )}
-              {file.valid && file.downloadUrl && (
-                <Link href={file.downloadUrl} download aria-label={t('common.download') + ' · ' + title}>
+              {download && (
+                <Link href={download} download aria-label={t('common.download') + ' · ' + title}>
                   {t('common.download')}
                 </Link>
               )}
-              {(!file.valid || (!file.previewUrl && !file.downloadUrl)) && (
-                <span className='text-12px text-t-secondary'>{t('workspace.experience.artifactUnavailable')}</span>
+              {!file.valid && (
+                <span className='text-13px text-t-secondary'>{t('workspace.experience.artifactUnavailable')}</span>
               )}
-            </Space>
+            </ArtifactCard>
           );
         })}
       {feedbackVisible && <TaskFeedback taskId={conversationId} attemptId={a.id} />}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { enterpriseRequest, workspaceErrorCode } from '../workspaceApi';
 import { isEnterpriseWeb } from '@/renderer/utils/platform';
-import { readDraft } from '@/renderer/hooks/chat/employeeDraftStorage';
+import { employeeDraftScope, readDraft } from '@/renderer/hooks/chat/employeeDraftStorage';
 export type WorkAttempt = {
   id: string;
   requestId?: string;
@@ -36,15 +36,17 @@ export type WorkAttempt = {
 };
 export type WorkTask = { id: string; title: string; updatedAt: number; attempts: WorkAttempt[] };
 const pending = new Map<string, Promise<WorkTask>>();
-export async function fetchTask(id: string): Promise<WorkTask> {
-  const prior = pending.get(id);
-  if (prior) return prior;
+export async function fetchTask(id: string, fresh = false): Promise<WorkTask> {
+  const scope = employeeDraftScope(localStorage.getItem('enterprise:storage-owner') ?? undefined);
+  const key = JSON.stringify([scope, id]);
+  const prior = pending.get(key);
+  if (!fresh && prior) return prior;
   const request = enterpriseRequest<WorkTask>(`/enterprise/tasks/${id}`, {
     signal: AbortSignal.timeout(10000),
   }).finally(() => {
-    if (pending.get(id) === request) pending.delete(id);
+    if (pending.get(key) === request) pending.delete(key);
   });
-  pending.set(id, request);
+  pending.set(key, request);
   return request;
 }
 /** A delayed snapshot may never replace a newer persisted state or cross conversations. */
@@ -58,24 +60,28 @@ export function useTaskWork(id?: string) {
   const [task, setTask] = useState<WorkTask>();
   const [error, setError] = useState<{ id: string; code: string }>();
   const generation = useRef(0);
-  const reload = useCallback(async () => {
-    if (!id || !isEnterpriseWeb()) return;
-    const n = ++generation.current;
-    try {
-      const value = await fetchTask(id);
-      mergeTaskSnapshot(undefined, value, id);
-      if (n === generation.current) {
-        setTask((current) => mergeTaskSnapshot(current, value, id));
-        setError(undefined);
+  const reload = useCallback(
+    async (fresh = false) => {
+      if (!id || !isEnterpriseWeb()) return;
+      const n = ++generation.current;
+      try {
+        const value = await fetchTask(id, fresh);
+        mergeTaskSnapshot(undefined, value, id);
+        if (n === generation.current) {
+          setTask((current) => mergeTaskSnapshot(current, value, id));
+          setError(undefined);
+          return value;
+        }
+      } catch (e) {
+        const code = workspaceErrorCode(e);
+        if (n === generation.current) {
+          if (code === 'TASK_NOT_FOUND') setTask(undefined);
+          else setError({ id, code });
+        }
       }
-    } catch (e) {
-      const code = workspaceErrorCode(e);
-      if (n === generation.current) {
-        if (code === 'TASK_NOT_FOUND') setTask(undefined);
-        else setError({ id, code });
-      }
-    }
-  }, [id]);
+    },
+    [id]
+  );
   useEffect(() => {
     setTask(undefined);
     setError(undefined);

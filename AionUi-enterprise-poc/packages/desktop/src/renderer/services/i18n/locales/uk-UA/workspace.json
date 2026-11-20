@@ -353,6 +353,9 @@
     "slideSelect": "Слайд"
   },
   "delivery": {
+    "checkedAmount": "Сума збіглася {{amount}}",
+    "mismatchedAmount": "Розбіжність у сумі {{amount}}",
+    "verificationFailed": "Перевірка не вдалася",
     "processing": "Обробка",
     "partial": "Часткова видача: файли не готові",
     "receipts": "Результати поточного запиту",
@@ -367,6 +370,8 @@
     "savedWorkbookStructure": "Аркушів: {{sheets}}"
   },
   "work": {
+    "checkDecision": "Перевіряємо результат дії",
+    "repeatDecision": "Очікує підтвердження. Можна повторити ту саму дію.",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

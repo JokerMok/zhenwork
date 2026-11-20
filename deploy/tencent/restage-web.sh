@@ -48,6 +48,9 @@ while IFS= read -r -d '' path; do
     deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/index.vue|\
     deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/BusinessRuleEditor.vue|\
     deepseek-harness-lab/workbuddy/platform/plus-ui/src/components/ResourceShareDialog/index.vue|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/components/WorkspaceRecordTable/index.vue|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/audit/index.vue|\
+    deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/operations/index.vue|\
     deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/KnowledgeDocuments.vue|\
     deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/resourceActions.ts|\
     deepseek-harness-lab/workbuddy/platform/plus-ui/src/views/ai/resources/resourceActions.spec.ts|\

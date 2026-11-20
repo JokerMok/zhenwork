@@ -369,6 +369,9 @@
     "slideSelect": "幻灯片"
   },
   "delivery": {
+    "checkedAmount": "核对一致 {{amount}}",
+    "mismatchedAmount": "核对有差异 {{amount}}",
+    "verificationFailed": "核验失败",
     "processing": "正在处理",
     "partial": "部分交付：仍有文件未完成",
     "receipts": "本轮成果回执",
@@ -383,6 +386,8 @@
     "savedWorkbookStructure": "{{sheets}} 个工作表"
   },
   "work": {
+    "checkDecision": "正在核对本次操作结果",
+    "repeatDecision": "仍待确认，可重试刚才的操作。",
     "unknown": "未知",
     "details": "任务详情",
     "round": "第 {{round}} 轮 · 第 {{attempt}} 次执行",

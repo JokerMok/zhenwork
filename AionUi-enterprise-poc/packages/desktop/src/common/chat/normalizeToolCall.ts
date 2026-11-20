@@ -252,7 +252,10 @@ export function hasRunningToolMessages(messages: ToolMessage[]): boolean {
 }
 
 /** Only server tool receipts establish deliverables; chat prose is not a receipt. */
+type WorkbookCheck = { sheet: string; scope: string; currency: string; total: string; matched: boolean };
 export type ToolDeliveryReceipt = {
+  checks?: WorkbookCheck[];
+  sha256?: string;
   path: string;
   status: 'complete' | 'failed';
   error?: string;
@@ -263,8 +266,24 @@ export type ToolDeliveryReceipt = {
   sheetCount?: number;
   addedHeadings?: string[];
 };
+// Legacy transcripts have no TaskWork receipt list. Only the Host Office tools that issue
+// artifacts may supply fallback cards. Remote search results and chat text cannot create one.
+const legacyDeliveryTools = new Set([
+  'create_business_presentation',
+  'run_enterprise_method',
+  'generate_waste_report',
+  'create_office_document',
+  'create_evidence_deliverables',
+  'revise_office_document',
+  'edit_workbook_column',
+  'validate_artifact',
+  'write_workspace_text',
+  'write_text_file',
+]);
+
 export function toolDeliveryReceipts(tools: NormalizedToolCall[]): ToolDeliveryReceipt[] {
   const files = new Map<string, ToolDeliveryReceipt>();
+  const audits = new Map<string, Map<string, WorkbookCheck>>();
   for (const tool of tools) {
     if (!tool.output) continue;
     try {
@@ -273,12 +292,50 @@ export function toolDeliveryReceipts(tools: NormalizedToolCall[]): ToolDeliveryR
         const text = value.content.find((item: { type?: string; text?: string }) => item.type === 'text')?.text;
         if (text) value = JSON.parse(text);
       }
+      if (tool.name === 'audit_workbook' && tool.status === 'completed') {
+        const scope = value?.totalCell || (Array.isArray(value?.amountRanges) ? value.amountRanges.join(', ') : '');
+        if (
+          typeof value?.path !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(value.sha256 || '') ||
+          typeof value.sheet !== 'string' ||
+          typeof scope !== 'string' ||
+          !scope ||
+          typeof value.total !== 'string' ||
+          !/^-?\d+\.\d{2}$/.test(value.total) ||
+          !/^[A-Z]{3}$/.test(value.currency || '') ||
+          !['matched', 'mismatch'].includes(value.status)
+        )
+          continue;
+        const fileKey = JSON.stringify([value.path, value.sha256]);
+        const checks = audits.get(fileKey) ?? new Map<string, WorkbookCheck>();
+        checks.set(JSON.stringify([value.sheet, scope]), {
+          sheet: value.sheet,
+          scope,
+          currency: value.currency,
+          total: value.total,
+          matched: value.status === 'matched',
+        });
+        audits.set(fileKey, checks);
+        continue;
+      }
+      if (!legacyDeliveryTools.has(tool.name) || !['completed', 'error'].includes(tool.status)) continue;
       const outputs = Array.isArray(value?.outputs)
         ? value.outputs
         : value?.downloadUrl && value?.path
-          ? [{ ...value, status: 'complete' }]
+          ? [
+              {
+                ...value,
+                status:
+                  value.valid === false || value.validation?.valid === false || tool.status === 'error'
+                    ? 'failed'
+                    : 'complete',
+              },
+            ]
           : [];
-      for (const item of outputs) {
+      for (const output of outputs) {
+        if (!output || typeof output !== 'object') continue;
+        const item =
+          output.valid === false || output.validation?.valid === false ? { ...output, status: 'failed' } : output;
         if (
           typeof item.path !== 'string' ||
           !item.path ||
@@ -290,7 +347,10 @@ export function toolDeliveryReceipts(tools: NormalizedToolCall[]): ToolDeliveryR
           continue;
         // A completed receipt must include the checked current artifact digest.
         if (item.status === 'complete' && !/^[a-f0-9]{64}$/.test(item.sha256 || '')) continue;
-        files.set(item.path, {
+        const versionId = /^[a-f0-9-]{36}$/i.test(item.versionId || '') ? item.versionId : undefined;
+        if (item.status === 'complete') files.delete(JSON.stringify([item.path, 'failed']));
+        files.set(JSON.stringify([item.path, versionId || item.sha256 || item.status]), {
+          ...(/^[a-f0-9]{64}$/.test(item.sha256 || '') ? { sha256: String(item.sha256) } : {}),
           path: item.path,
           status: item.status,
           ...(Number.isInteger(item.version) && item.version > 0 ? { version: item.version } : {}),
@@ -316,5 +376,9 @@ export function toolDeliveryReceipts(tools: NormalizedToolCall[]): ToolDeliveryR
       /* Ordinary tool output is not a delivery receipt. */
     }
   }
-  return [...files.values()];
+  return [...files.values()].map((file) => {
+    const checks =
+      file.status === 'complete' && file.sha256 ? audits.get(JSON.stringify([file.path, file.sha256])) : undefined;
+    return checks?.size ? { ...file, checks: [...checks.values()] } : file;
+  });
 }

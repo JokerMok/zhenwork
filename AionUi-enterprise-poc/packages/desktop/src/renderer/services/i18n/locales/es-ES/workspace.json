@@ -353,6 +353,9 @@
     "slideSelect": "Diapositiva"
   },
   "delivery": {
+    "checkedAmount": "Coincide {{amount}}",
+    "mismatchedAmount": "Diferencia en {{amount}}",
+    "verificationFailed": "Verificación fallida",
     "processing": "Procesando",
     "partial": "Entrega parcial: faltan archivos",
     "receipts": "Resultados de esta solicitud",
@@ -367,6 +370,8 @@
     "savedWorkbookStructure": "{{sheets}} hojas"
   },
   "work": {
+    "checkDecision": "Comprobando el resultado",
+    "repeatDecision": "Sigue pendiente. Puedes reintentar la misma decisión.",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

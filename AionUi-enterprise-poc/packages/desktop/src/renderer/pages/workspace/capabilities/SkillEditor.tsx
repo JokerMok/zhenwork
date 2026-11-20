@@ -158,7 +158,7 @@ export default function SkillEditor({
   };
   return (
     <Drawer
-      width={840}
+      width='min(840px, 100vw)'
       visible={Boolean(resource)}
       title={resource?.name || t('workspace.abilities.packageDetail')}
       onCancel={onClose}
@@ -167,7 +167,11 @@ export default function SkillEditor({
       {context}
       {resource && (
         <div className='flex flex-col gap-12px'>
+          {resource.description && <p className='m-0 text-14px'>{resource.description}</p>}
           <Space wrap>
+            <span>
+              {t('workspace.abilities.packageDetail')} · {files.length} {t('workspace.tabs.files')}
+            </span>
             <span>
               {t('workspace.abilities.versionLabel')} v{resource.version}
             </span>
@@ -187,7 +191,7 @@ export default function SkillEditor({
                 {t('workspace.abilities.saveMethod')}
               </Button>
             )}
-            {mode !== 'copy' && (
+            {mode !== 'copy' && resource.enabled && !resource.securityDisabled && resource.actions.includes('USE') && (
               <Button
                 data-testid='skill-use'
                 disabled={Object.keys(drafts).length > 0}
@@ -197,6 +201,7 @@ export default function SkillEditor({
               </Button>
             )}
           </Space>
+          {!resource.actions.includes('USE') && <Alert type='info' content={t('workspace.errors.forbidden')} />}
           {canEdit && (
             <Input aria-label={t('workspace.abilities.methodName')} value={name} onChange={setName} maxLength={80} />
           )}

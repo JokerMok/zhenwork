@@ -100,6 +100,7 @@ function clearAuthCache(): void {
         if (
           key === 'aion:last-non-settings-path' ||
           key.startsWith('enterprise:settings-draft:') ||
+          key.startsWith('enterprise:decision:') ||
           key.startsWith('conversation-command-queue/') ||
           key.startsWith('aionrs_initial_processed_')
         )

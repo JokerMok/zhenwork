@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     :title="'共享：' + (resource?.name || '')"
-    width="760px"
+    width="min(760px, 96vw)"
     align-center
     append-to-body
     :close-on-click-modal="false"
@@ -16,7 +16,7 @@
         {{ resource?.publishedVersion ? 'v' + resource.publishedVersion : '未激活' }}
       </span>
       <el-tag :type="resource?.enabled === false ? 'info' : 'success'">
-        {{ resource?.enabled === false ? '已停用' : '已激活' }}
+        {{ resource?.enabled === false ? '已停用' : resource?.enabled === true ? '已启用' : '状态未知' }}
       </el-tag>
       <el-tooltip content="使用组织资源引用，凭据保留在服务端。部门按直接归属、角色按有效成员生效；不包含子部门。依赖变更后重新校验授权。">
         <el-button link>授权说明</el-button>
@@ -104,12 +104,12 @@
       将自动补齐：{{ [...new Set(automatic.map(g => g.name))].join('、') }}（仅查看和使用）。
     </div>
     <el-collapse v-model="panels" class="mt-4">
-      <el-collapse-item :title="'已有共享（' + shares.filter(s => s.status === 'ACTIVE').length + '）'" name="existing">
+      <el-collapse-item :title="loading || listError ? '已有共享' : '已有共享（' + shares.filter(s => s.status === 'ACTIVE').length + '）'" name="existing">
         <el-input v-model="shareQuery" placeholder="搜索已有共享" clearable aria-label="搜索已有共享" class="mb-3" />
         <el-alert v-if="listError" :title="listError" type="error" :closable="false">
           <el-button link @click="loadShares">重试</el-button>
         </el-alert>
-        <el-table v-loading="loading" :data="visibleShares" max-height="260" empty-text="没有匹配的共享">
+        <el-table v-if="!listError" v-loading="loading" :data="visibleShares" max-height="260" empty-text="没有匹配的共享">
           <el-table-column label="对象" min-width="210" show-overflow-tooltip>
             <template #default="{ row }">
               {{ subjectLabels[row.subject_type] }} · {{ row.name || '对象已删除' }}

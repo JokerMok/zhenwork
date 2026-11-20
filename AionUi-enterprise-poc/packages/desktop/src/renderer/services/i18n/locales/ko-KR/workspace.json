@@ -353,6 +353,9 @@
     "slideSelect": "슬라이드"
   },
   "delivery": {
+    "checkedAmount": "대조 일치 {{amount}}",
+    "mismatchedAmount": "대조 불일치 {{amount}}",
+    "verificationFailed": "검증 실패",
     "processing": "처리 중",
     "partial": "일부 전달: 미완성 파일 있음",
     "receipts": "이번 작업의 결과 기록",
@@ -367,6 +370,8 @@
     "savedWorkbookStructure": "워크시트 {{sheets}}개"
   },
   "work": {
+    "checkDecision": "처리 결과 확인 중",
+    "repeatDecision": "아직 대기 중입니다. 같은 작업을 다시 시도할 수 있습니다.",
     "unknown": "Unknown",
     "details": "Task details",
     "round": "Round {{round}} · Attempt {{attempt}}",

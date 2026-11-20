@@ -24,7 +24,7 @@ interface EventTypes {
   // `undefined` = no target = any same-type box accepts (back-compat).
   'aionrs.selected.file': [Array<string | FileOrFolderItem>, string | undefined];
   'aionrs.selected.file.append': [Array<string | FileOrFolderItem>, string | undefined];
-  'aionrs.upload.file.append': [FileMetadata[], string];
+  'aionrs.upload.file.append': [files: FileMetadata[], conversationId: string, prompt?: string];
   'aionrs.selected.file.clear': void;
   'aionrs.workspace.refresh': void;
   'acp.selected.file': [Array<string | FileOrFolderItem>, string | undefined];

@@ -1,11 +1,14 @@
 <template>
   <div class="app-container p-4">
-    <h2>AI 资源管理</h2>
+    <header class="resource-heading">
+      <h1>AI 资源管理</h1>
+      <el-button :loading="loading" @click="load">刷新</el-button>
+    </header>
     <el-tabs v-model="scope" @tab-change="page=1;load()">
       <el-tab-pane label="企业资源" name="enterprise" />
       <el-tab-pane label="安全治理元数据" name="govern" />
     </el-tabs>
-    <p>{{ scope === 'enterprise' ? '独立维护助手、技能、MCP、工具和知识库；助手只组合已授权能力。' : '私人资源只展示运行治理元数据，不显示名称、配置或正文。' }}</p>
+    <p v-if="scope === 'govern'">此处仅显示私人资源的治理元数据。</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb-3" />
     <div v-if="scope === 'enterprise'" class="toolbar">
       <el-button v-if="type==='SKILL'" :disabled="busy" @click="openSkillMaintenance()">从 GitHub 导入</el-button>
@@ -14,8 +17,13 @@
       </el-select>
       <el-button type="primary" @click="edit()">新建企业{{ types[type] }}</el-button>
     </div>
-    <el-table v-loading="loading" :data="rows">
-      <el-table-column v-if="scope === 'enterprise'" prop="name" label="名称" min-width="220" show-overflow-tooltip />
+    <el-table v-if="!listError" v-loading="loading" :data="rows" row-key="id" :empty-text="loading?'正在读取资源':'当前没有此类资源'">
+      <el-table-column v-if="scope === 'enterprise'" label="名称" min-width="210">
+        <template #default="{row}">
+          <el-button class="resource-name" link type="primary" @click="openDetail(row.id)">{{ row.name }}</el-button>
+          <div v-if="row.description" class="resource-description">{{ row.description }}</div>
+        </template>
+      </el-table-column>
       <el-table-column v-else prop="id" label="资源 ID" />
       <el-table-column label="类型" width="90"><template #default="{row}">{{ types[row.resourceType] }}</template></el-table-column>
       <el-table-column label="归属" min-width="100"><template #default="{row}">{{workspaceLabel(row.ownerType)}}</template></el-table-column>
@@ -23,19 +31,19 @@
         <template #default="{row}">草稿 v{{ row.version }}<span v-if="row.publishedVersion"> · 已激活 v{{ row.publishedVersion }}</span></template>
       </el-table-column>
       <el-table-column v-if="scope === 'enterprise'" label="范围" min-width="100"><template #default="{row}">{{workspaceLabel(row.visibility)}}</template></el-table-column>
-      <el-table-column label="状态" min-width="110"><template #default="{row}">{{ row.securityDisabled ? '安全停用' : row.enabled ? '已启用' : '已停用' }}</template></el-table-column>
+      <el-table-column label="状态" min-width="110"><template #default="{row}"><el-tag :type="row.securityDisabled?'danger':row.enabled?'success':'info'" effect="light">{{ stateLabel(row) }}</el-tag></template></el-table-column>
       <el-table-column label="操作" min-width="230">
         <template #default="{row}">
           <template v-if="scope === 'enterprise'">
             <el-button link @click="edit(row.id)">编辑</el-button>
             <el-button link @click="openVersions(row)">版本</el-button>
+            <el-button link @click="openShares(row)">共享授权</el-button>
             <el-button v-if="row.resourceType === 'KNOWLEDGE'" link @click="openDocuments(row)">文档</el-button>
             <el-dropdown trigger="click">
               <el-button link aria-label="更多资源操作">更多</el-button>
               <template #dropdown><el-dropdown-menu>
                 <el-dropdown-item :disabled="!!activationReason(row)" :title="activationReason(row)" @click="activate(row,row.version)">{{ activationReason(row) === '当前已激活此版本' ? '当前已激活此版本' : '激活最新草稿' }}<span v-if="activationReason(row) && activationReason(row)!=='当前已激活此版本'"> · {{ activationReason(row) }}</span></el-dropdown-item>
                 <el-dropdown-item :disabled="!!publicationReason(row)" :title="publicationReason(row)" @click="publish(row)">{{ row.reviewState==='PENDING' ? '审核中' : '提交审核' }}<span v-if="publicationReason(row) && row.reviewState!=='PENDING'"> · {{ publicationReason(row) }}</span></el-dropdown-item>
-                <el-dropdown-item @click="openShares(row)">共享授权</el-dropdown-item>
                 <el-dropdown-item v-if="row.resourceType === 'MCP'" :disabled="!row.publishedVersion" :title="!row.publishedVersion?'请先激活版本':''" @click="openConnection(row)">企业连接{{ !row.publishedVersion?' · 请先激活版本':'' }}</el-dropdown-item>
                 <el-dropdown-item @click="act(()=>api('/ai/resources/'+row.id+'/enabled',{enabled:!row.enabled},'put'))">{{ row.enabled ? '停用' : '启用' }}</el-dropdown-item>
                 <el-dropdown-item v-if="row.resourceType==='SKILL'" @click="openSkillMaintenance(row)">维护来源</el-dropdown-item>
@@ -47,9 +55,38 @@
         </template>
       </el-table-column>
     </el-table>
-    <div class="mt-4"><el-button :disabled="page===1||loading" @click="page--;load()">上一页</el-button>第 {{ page }} 页<el-button :disabled="rows.length<30||loading" @click="page++;load()">下一页</el-button></div>
+    <nav v-if="!listError" aria-label="资源分页" class="resource-pager">
+      <el-button :disabled="page===1||loading" @click="page--;load()">上一页</el-button>
+      <span aria-live="polite">第 {{ page }} 页</span>
+      <el-button :disabled="rows.length<30||loading" @click="page++;load()">下一页</el-button>
+    </nav>
 
-    <el-dialog v-model="dialog" :title="(editing?'编辑':'新建')+'企业'+types[type]" width="860px" :before-close="closeEditor" :close-on-click-modal="false">
+    <el-drawer v-model="detailVisible" :title="detail?.name || '资源详情'" size="min(520px, 100%)" @close="detailGeneration++">
+      <el-skeleton v-if="detailLoading" :rows="4" animated />
+      <el-result v-else-if="detailError" icon="warning" title="资源详情读取失败" :sub-title="detailError">
+        <template #extra><el-button @click="openDetail(detailId)">重试</el-button></template>
+      </el-result>
+      <template v-else-if="detail">
+        <p v-if="detail.description" class="detail-purpose">{{ detail.description }}</p>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="类型">{{ types[detail.resourceType] }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ stateLabel(detail) }}</el-descriptions-item>
+          <el-descriptions-item label="归属">{{ workspaceLabel(detail.ownerType) }}</el-descriptions-item>
+          <el-descriptions-item label="可见范围">{{ workspaceLabel(detail.visibility) }}</el-descriptions-item>
+          <el-descriptions-item label="草稿版本">v{{ detail.version }}</el-descriptions-item>
+          <el-descriptions-item label="激活版本">{{ detail.publishedVersion ? 'v'+detail.publishedVersion : '尚未激活' }}</el-descriptions-item>
+        </el-descriptions>
+        <details class="resource-tech"><summary>技术详情</summary><code>{{ detail.id }}</code></details>
+      </template>
+      <template #footer><div v-if="detail && !detailLoading && !detailError" class="detail-actions">
+        <el-button @click="detailVisible=false;openVersions(detail)">版本</el-button>
+        <el-button @click="detailVisible=false;openShares(detail)">共享授权</el-button>
+        <el-button type="primary" @click="detailVisible=false;edit(detail.id)">编辑</el-button>
+      </div></template>
+    </el-drawer>
+
+
+    <el-dialog v-model="dialog" :title="(editing?'编辑':'新建')+'企业'+types[type]+(editing?' · '+editing.name:'')" width="min(860px, 96vw)" :before-close="closeEditor" :close-on-click-modal="false">
       <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb-3" />
       <el-form label-position="top" :disabled="busy">
         <el-form-item label="名称" required><el-input v-model="form.name" maxlength="100" /></el-form-item>
@@ -130,7 +167,7 @@
       <template #footer><el-button @click="closeEditor()">取消</el-button><el-button type="primary" :loading="busy" @click="save">{{type==='ASSISTANT'?'保存专家草稿':'保存企业资源'}}</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="versionsVisible" title="资源版本" width="820px">
+    <el-dialog v-model="versionsVisible" :title="'资源版本 · '+(selected?.name || '')" width="min(820px, 96vw)">
       <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb-3" />
       <p v-if="selected">{{ selected.name }} · 最新 v{{ selected.version }} · 当前激活 {{ selected.publishedVersion ? 'v'+selected.publishedVersion : '无' }}</p>
       <el-table :data="versions">
@@ -145,7 +182,7 @@
     <SkillMaintenance v-model="skillMaintenanceVisible" :resource="skillMaintenanceResource" @saved="load" />
     <KnowledgeDocuments v-if="documentBase" :key="documentBase.id" :base="documentBase" @close="documentBase=undefined" />
 
-    <el-dialog v-model="connectionVisible" title="企业 MCP 连接" width="760px">
+    <el-dialog v-model="connectionVisible" title="企业 MCP 连接" width="min(760px, 96vw)">
       <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb-3" />
       <el-alert title="凭据只保存在服务端；员工仍需模板 USE 权限。连接测试返回的真实错误会保留。" type="info" :closable="false" />
       <p>{{ statuses[connection?.status]||'尚未配置' }} · {{ connection?.secretConfigured?'已配置密钥':'未配置密钥' }}</p>
@@ -267,8 +304,52 @@ const packageDependencyNames=computed(()=>packageDependencyFiles.value.map(file=
 
 async function api(url:string,data?:unknown,method=data?'post':'get'){return(await request({url,method,data,headers:data instanceof FormData?{repeatSubmit:false}:{}})).data;}
 async function fail(e:unknown,fallback:string){error.value=(await extractErrorMessage(e))||fallback;}
-let listGeneration=0;
-async function load(){const g=++listGeneration;loading.value=true;error.value='';try{const result=await api(scope.value==='govern'?'/ai/govern/resources?page='+page.value:'/ai/resources?scope=enterprise&type='+type.value+'&page='+page.value);if(g===listGeneration)rows.value=result;}catch(e){if(g===listGeneration)await fail(e,'资源加载失败，请刷新重试。');}finally{if(g===listGeneration)loading.value=false;}}
+const listError = ref(false);
+type ResourceInfo = { id: string; name: string; description?: string; resourceType: string; enabled?: boolean; securityDisabled?: boolean; visibility: string; ownerType: string; version: number; publishedVersion?: number };
+const detail = ref<ResourceInfo>(), detailId = ref<string>(), detailVisible = ref(false), detailLoading = ref(false), detailError = ref('');
+let detailGeneration = 0;
+function stateLabel(resource: Pick<ResourceInfo,'enabled'|'securityDisabled'>) {
+  if (resource.securityDisabled) return '安全停用';
+  return resource.enabled === true ? '已启用' : resource.enabled === false ? '已停用' : '状态未知';
+}
+async function openDetail(id?: string) {
+  if (!id || scope.value !== 'enterprise') return;
+  const generation = ++detailGeneration;
+  detailId.value = id;
+  detail.value = undefined;
+  detailVisible.value = true;
+  detailLoading.value = true;
+  detailError.value = '';
+  try {
+    const value = await api('/ai/resources/'+id);
+    if (generation === detailGeneration) detail.value = value;
+  } catch (cause) {
+    const message = await extractErrorMessage(cause);
+    if (generation === detailGeneration) detailError.value = message || '请检查资源状态和访问权限。';
+  } finally {
+    if (generation === detailGeneration) detailLoading.value = false;
+  }
+}
+let listGeneration = 0;
+async function load() {
+  const generation = ++listGeneration;
+  loading.value = true;
+  listError.value = false;
+  error.value = '';
+  rows.value = [];
+  try {
+    const result = await api(scope.value === 'govern' ? '/ai/govern/resources?page='+page.value : '/ai/resources?scope=enterprise&type='+type.value+'&page='+page.value);
+    if (generation === listGeneration) rows.value = result;
+  } catch (cause) {
+    const message = await extractErrorMessage(cause);
+    if (generation === listGeneration) {
+      listError.value = true;
+      error.value = message || '资源加载失败，请刷新重试。';
+    }
+  } finally {
+    if (generation === listGeneration) loading.value = false;
+  }
+}
 async function act(fn:()=>Promise<unknown>,reload=true){busy.value=true;error.value='';try{await fn();if(reload)await load();return true;}catch(e){await fail(e,'操作未完成，请核对资源版本、状态及权限。');return false;}finally{busy.value=false;}}
 async function loadChoicePages(kind:string,scope:string){
   const rows:Dependency[]=[];
@@ -316,5 +397,13 @@ onMounted(load);
 </script>
 
 <style scoped>
-.toolbar{display:flex;gap:16px;margin:16px 0}.toolbar .el-select{width:200px}.source{white-space:pre-wrap;max-height:360px;overflow:auto;padding:16px;background:#f5f7fa}.package-title{font-weight:600;margin:14px 0 8px}.tool-row{display:grid;grid-template-columns:1fr 170px auto;gap:10px;margin-bottom:10px}.mb-3{margin-bottom:12px}
+.resource-heading,.resource-pager,.detail-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.resource-heading{justify-content:space-between;margin-bottom:16px}
+.resource-heading h1{font-size:24px;margin:0}
+.resource-pager,.resource-tech{margin-top:16px}
+.resource-name{font-weight:600;white-space:normal;text-align:start;overflow-wrap:anywhere}
+.resource-description{font-size:13px;color:var(--el-text-color-secondary);line-height:1.5}
+.resource-tech summary{cursor:pointer;margin-bottom:8px}
+.detail-purpose{line-height:1.6;margin-top:0}
+.toolbar{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}.toolbar .el-select{width:200px}.source{white-space:pre-wrap;max-height:360px;overflow:auto;padding:16px;background:var(--el-fill-color-light)}.package-title{font-weight:600;margin:14px 0 8px}.tool-row{display:grid;grid-template-columns:1fr 170px auto;gap:10px;margin-bottom:10px}.mb-3{margin-bottom:12px}
 </style>

@@ -1,5 +1,6 @@
 import { requestEnterpriseBrand } from '@/renderer/components/layout/enterpriseBrand';
-import { Button, Card, Grid } from '@arco-design/web-react';
+import styles from './WorkspaceExperience.module.css';
+import { Button, Grid } from '@arco-design/web-react';
 import { ChartHistogram, DataFile, Expenses, FileEditing, Right } from '@icon-park/react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -53,26 +54,30 @@ const WorkspaceHome: React.FC = () => {
   );
 
   return (
-    <div className='min-w-0 flex flex-col gap-22px'>
-      <div>
+    <div className='min-w-0 flex flex-col gap-24px'>
+      <header className={styles.homeHeader + ' flex flex-wrap items-center justify-between gap-16px pb-18px'}>
         <h1 className='m-0 text-28px font-semibold text-t-primary'>
           {t('workspace.home.welcome', { brand: brandName })}
         </h1>
-      </div>
-      <section>
-        <div className='mb-10px flex flex-wrap items-center justify-between gap-12px'>
-          <h2 className='m-0 text-17px font-semibold text-t-primary'>{t('workspace.home.startTitle')}</h2>
+        <div className='flex flex-wrap gap-8px'>
           <Button type='primary' onClick={() => navigate('/guid')}>
-            {t('workspace.home.blankTask')} <Right theme='outline' />
+            {t('workspace.home.blankTask')} <Right />
+          </Button>
+          <Button onClick={() => navigate('/workspace?section=tasks')}>{t('workspace.tabs.tasks')}</Button>
+          <Button type='text' onClick={() => navigate('/workspace?section=files')}>
+            {t('workspace.tabs.files')}
           </Button>
         </div>
+      </header>
+      <section>
+        <h2 className='mb-12px mt-0 text-17px font-semibold'>{t('workspace.home.startTitle')}</h2>
         <Grid.Row gutter={[12, 12]}>
           {examples.map((example) => (
             <Grid.Col key={example.key} xs={24} md={12}>
-              <Card className='h-full' bodyStyle={{ padding: 0 }}>
+              <div className={styles.surface + ' ' + styles.example}>
                 <Button
                   type='text'
-                  className='w-full min-w-0'
+                  className='w-full min-w-0 !justify-start'
                   style={{ height: 'auto', padding: 16, textAlign: 'start', whiteSpace: 'normal' }}
                   onClick={() => navigate('/guid', { state: { prefillPrompt: example.prompt, focusPrefill: true } })}
                 >
@@ -85,11 +90,10 @@ const WorkspaceHome: React.FC = () => {
                     </span>
                     <span className='block min-w-0 break-words'>
                       <span className='block font-medium text-t-primary'>{example.title}</span>
-                      <span className='mt-5px block text-13px leading-20px text-t-secondary'>{example.prompt}</span>
                     </span>
                   </span>
                 </Button>
-              </Card>
+              </div>
             </Grid.Col>
           ))}
         </Grid.Row>
