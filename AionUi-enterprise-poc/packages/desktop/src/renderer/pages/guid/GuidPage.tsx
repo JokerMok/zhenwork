@@ -800,7 +800,7 @@ const GuidPage: React.FC = () => {
         aria-label={t('settings.advancedSettings') + ' · ' + assistantSummary}
         aria-expanded={showAdvancedConfiguration}
         aria-controls={showAdvancedConfiguration ? 'guid-configuration' : undefined}
-        title={t('settings.advancedSettings')}
+        title={t('settings.advancedSettings') + ' · ' + assistantSummary}
         onClick={() => setShowAdvancedConfiguration((visible) => !visible)}
       >
         <span className='min-w-0 truncate'>{assistantSummary}</span>

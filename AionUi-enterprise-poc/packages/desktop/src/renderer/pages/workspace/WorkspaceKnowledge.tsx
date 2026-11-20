@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Card,
   Descriptions,
   Drawer,
   Empty,
@@ -17,11 +16,12 @@ import {
   Upload,
 } from '@arco-design/web-react';
 import type { UploadRequest } from '@arco-design/web-react/es/Upload/interface';
-import { Delete, Refresh, Search, UploadOne } from '@icon-park/react';
+import { Delete, Refresh, UploadOne } from '@icon-park/react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { catalogOrigin } from './workspaceCatalog';
+import styles from './WorkspaceExperience.module.css';
 import { enterpriseControl, newIdempotencyKey, workspaceErrorCode, workspaceErrorTranslationKey } from './workspaceApi';
 import type {
   KnowledgeCitation,
@@ -389,37 +389,14 @@ const WorkspaceKnowledge: React.FC = () => {
   };
 
   return (
-    <div className='flex flex-col gap-12px'>
+    <div className={styles.catalogPage}>
       {messageContext}
-      <div className='flex flex-wrap items-start justify-between gap-8px'>
+      <div className={styles.pageHeader}>
         <div>
-          <div className='text-20px font-semibold text-t-primary'>{t('workspace.knowledge.title')}</div>
-          <div className='mt-3px text-13px text-t-secondary'>{t('workspace.knowledge.subtitle')}</div>
+          <h1 className={styles.pageTitle}>{t('workspace.knowledge.title')}</h1>
+          <p className={styles.pageDescription}>{t('workspace.knowledge.subtitle')}</p>
         </div>
-        <Space wrap>
-          <Select value={scope} onChange={setScope} style={{ width: 150 }}>
-            <Select.Option value='available'>{t('workspace.scope.available')}</Select.Option>
-            <Select.Option value='mine'>{t('workspace.scope.mine')}</Select.Option>
-            <Select.Option value='shared'>{t('workspace.scope.shared')}</Select.Option>
-          </Select>
-          {selectedBase ? (
-            <Tag color={catalogOrigin(selectedBase) === 'organization' ? 'arcoblue' : 'purple'}>
-              {t(`workspace.abilities.origin.${catalogOrigin(selectedBase)}`)}
-            </Tag>
-          ) : null}
-          <Select
-            aria-label={t('workspace.knowledge.selectBase')}
-            value={baseId || undefined}
-            onChange={setBaseId}
-            placeholder={t('workspace.knowledge.selectBase')}
-            style={{ width: 220 }}
-          >
-            {bases.map((base) => (
-              <Select.Option key={base.id} value={base.id}>
-                {base.name}
-              </Select.Option>
-            ))}
-          </Select>
+        <Space wrap className={styles.pageToolbar}>
           <Button onClick={createBase}>{t('workspace.knowledge.createBase')}</Button>
           {canEdit && baseId ? (
             <Upload
@@ -453,53 +430,84 @@ const WorkspaceKnowledge: React.FC = () => {
           }
         />
       ) : null}
-      {selectedBase ? (
-        <div className='text-13px text-t-secondary'>
-          {t('workspace.knowledge.accessScope', {
-            permissions: selectedBase.actions
-              .filter((a) => ['VIEW', 'USE', 'EDIT'].includes(a))
-              .map((a) => t(`workspace.knowledge.permissions.${a}`))
-              .join(' · '),
-          })}
-        </div>
-      ) : null}
-      <Card>
+      <div className={styles.knowledgeControls}>
+        <Select
+          aria-label={t('workspace.scope.available')}
+          value={scope}
+          onChange={setScope}
+          className={styles.scopeSelect}
+        >
+          <Select.Option value='available'>{t('workspace.scope.available')}</Select.Option>
+          <Select.Option value='mine'>{t('workspace.scope.mine')}</Select.Option>
+          <Select.Option value='shared'>{t('workspace.scope.shared')}</Select.Option>
+        </Select>
+        <Select
+          aria-label={t('workspace.knowledge.selectBase')}
+          value={baseId || undefined}
+          onChange={setBaseId}
+          placeholder={t('workspace.knowledge.selectBase')}
+          className={styles.knowledgeBaseSelect}
+        >
+          {bases.map((base) => (
+            <Select.Option key={base.id} value={base.id}>
+              {base.name}
+            </Select.Option>
+          ))}
+        </Select>
         <Input.Search
+          className={styles.knowledgeSearch}
+          aria-label={t('workspace.knowledge.searchPlaceholder')}
           value={query}
           onChange={setQuery}
           onSearch={() => void search()}
-          searchButton={<Search />}
+          searchButton={t('conversation.historySearch.shortTitle')}
           loading={searching}
           disabled={!baseId}
           placeholder={t('workspace.knowledge.searchPlaceholder')}
         />
-        {results.length > 0 ? (
-          <List
-            className='mt-10px'
-            dataSource={results}
-            render={(row) => (
-              <List.Item
-                key={`${row.documentId}:${row.version}:${row.chunkIndex}`}
-                actions={[
-                  <Button
-                    key='preview'
-                    type='text'
-                    onClick={() => void openPreview(row.documentId, row.version, row.chunkIndex)}
-                  >
-                    {t('workspace.knowledge.viewSource')}
-                  </Button>,
-                ]}
-              >
-                <List.Item.Meta
-                  title={`${row.reference} · ${row.title} · v${row.version} · ${row.locationLabel || t('workspace.knowledge.lines', { start: row.lineStart ?? '-', end: row.lineEnd ?? '-' })}`}
-                  description={row.content}
-                />
-              </List.Item>
-            )}
-          />
-        ) : null}
-        {searched && !results.length ? <Empty description={t('workspace.knowledge.noMatches')} /> : null}
-      </Card>
+      </div>
+      {selectedBase ? (
+        <div className={styles.knowledgeContext}>
+          <span>{t(`workspace.abilities.origin.${catalogOrigin(selectedBase)}`)}</span>
+          <span>
+            {t('workspace.knowledge.accessScope', {
+              permissions: selectedBase.actions
+                .filter((a) => ['VIEW', 'USE', 'EDIT'].includes(a))
+                .map((a) => t(`workspace.knowledge.permissions.${a}`))
+                .join(' · '),
+            })}
+          </span>
+        </div>
+      ) : null}
+      {searched || results.length > 0 ? (
+        <div className={styles.knowledgeResults}>
+          {results.length > 0 ? (
+            <List
+              dataSource={results}
+              render={(row) => (
+                <List.Item
+                  key={`${row.documentId}:${row.version}:${row.chunkIndex}`}
+                  actions={[
+                    <Button
+                      key='preview'
+                      type='text'
+                      onClick={() => void openPreview(row.documentId, row.version, row.chunkIndex)}
+                    >
+                      {t('workspace.knowledge.viewSource')}
+                    </Button>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={`${row.reference} · ${row.title} · v${row.version} · ${row.locationLabel || t('workspace.knowledge.lines', { start: row.lineStart ?? '-', end: row.lineEnd ?? '-' })}`}
+                    description={row.content}
+                  />
+                </List.Item>
+              )}
+            />
+          ) : null}
+          {searched && !results.length ? <Empty description={t('workspace.knowledge.noMatches')} /> : null}
+        </div>
+      ) : null}
       <Spin loading={loading || documentsLoading} className='w-full'>
         {documents.length === 0 ? (
           !loading &&
@@ -515,6 +523,7 @@ const WorkspaceKnowledge: React.FC = () => {
           )
         ) : (
           <List
+            className={styles.knowledgeDocuments}
             dataSource={documents}
             render={(document) => (
               <List.Item
@@ -546,10 +555,12 @@ const WorkspaceKnowledge: React.FC = () => {
               >
                 <List.Item.Meta
                   title={
-                    <div className='flex items-center gap-8px'>
-                      <span>{document.title}</span>
+                    <div className={styles.knowledgeDocumentHeading}>
+                      <span className={styles.knowledgeDocumentName} title={document.title}>
+                        {document.title}
+                      </span>
                       <Tag
-                        color={document.status === 'READY' ? 'green' : document.status === 'ERROR' ? 'red' : 'orange'}
+                        color={document.status === 'READY' ? undefined : document.status === 'ERROR' ? 'red' : 'orange'}
                       >
                         {t(`workspace.knowledge.status.${document.status}`, {
                           defaultValue: document.status,
@@ -578,8 +589,9 @@ const WorkspaceKnowledge: React.FC = () => {
           />
         )}
       </Spin>
-      {baseId ? (
+      {baseId && (documentPage > 1 || documents.length === 30) ? (
         <Pagination
+          className={styles.catalogPagination}
           simple
           current={documentPage}
           pageSize={30}

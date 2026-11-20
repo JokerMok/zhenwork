@@ -73,7 +73,7 @@ export default function ArtifactCard({
         <span className={styles.artifactIcon} aria-hidden='true'>
           <FileIcon size={20} />
         </span>
-        <div className='min-w-0 flex-1'>
+        <div className={styles.artifactContent}>
           <div className={styles.artifactTitleLine}>
             {onPreview ? (
               <Button

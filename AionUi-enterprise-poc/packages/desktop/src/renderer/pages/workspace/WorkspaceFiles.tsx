@@ -517,12 +517,12 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
   if (previewOnly) return previewDrawer;
 
   return (
-    <div className='min-w-0 flex flex-col gap-12px'>
+    <div className={styles.catalogPage}>
       {dataMapping && <DataAnalysisControl key={dataMapping.openCount} filePath={dataMapping.path} autoOpen />}
       {messageContext}
-      <div className='flex flex-wrap items-center justify-between gap-8px'>
-        <h1 className='m-0 text-24px font-medium text-t-primary'>{t('workspace.files.title')}</h1>
-        <Space wrap className='max-w-full'>
+      <div className={styles.pageHeader}>
+        <h1 className={styles.pageTitle}>{t('workspace.files.title')}</h1>
+        <Space wrap className={styles.pageToolbar}>
           <Select aria-label={t('workspace.files.title')} value={kind} onChange={setKind} style={{ width: 145 }}>
             {['all', 'task', 'personal', 'shared', 'generated', 'result']
               .filter((value) => value !== 'result' || files.some((file) => file.kind.toLowerCase() === value))
@@ -620,7 +620,12 @@ const WorkspaceFiles: React.FC<{ active?: boolean; previewOnly?: boolean }> = ({
                         })}
                       </Tag>
                     }
-                    metadata={`${formatFileSize(file.byteSize)} · ${formatDate(file.modifiedAt)}`}
+                    metadata={
+                      <>
+                        <span className={styles.artifactFileSize}>{formatFileSize(file.byteSize)}</span>
+                        <span className={styles.artifactModified}>{formatDate(file.modifiedAt)}</span>
+                      </>
+                    }
                   >
                     <Button
                       size='small'

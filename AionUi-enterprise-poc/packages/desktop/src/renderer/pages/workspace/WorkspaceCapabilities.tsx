@@ -7,7 +7,6 @@ import {
   Empty,
   Form,
   Input,
-  List,
   Message,
   Modal,
   Select,
@@ -17,7 +16,7 @@ import {
   Tag,
   Upload,
 } from '@arco-design/web-react';
-import { Delete, FolderOpen, Plus, Refresh } from '@icon-park/react';
+import { Brain, Connection, Delete, FolderOpen, Plus, Refresh, Robot, Tool } from '@icon-park/react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -504,15 +503,29 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({
     page === 1 &&
     organizationDefaultModel &&
     (capabilityType === 'ASSISTANT' || capabilityType === 'TOOL');
+  const capabilityLabels: Record<CapabilityType, string> = {
+    MODEL: t('workspace.abilities.models'),
+    ASSISTANT: t('workspace.abilities.assistants'),
+    SKILL: t('workspace.abilities.skillPackages'),
+    MCP: t('workspace.abilities.mcpConnections'),
+    TOOL: t('workspace.abilities.tools'),
+  };
+  const CapabilityIcon = {
+    MODEL: Brain,
+    ASSISTANT: Robot,
+    SKILL: FolderOpen,
+    MCP: Connection,
+    TOOL: Tool,
+  }[capabilityType];
 
   return (
-    <div className='flex flex-col gap-12px'>
+    <div className={styles.catalogPage}>
       {messageContext}
-      <div className='flex flex-wrap items-start justify-between gap-8px'>
-        {showTypePicker && (
-          <h1 className='m-0 text-20px font-semibold text-t-primary'>{t('workspace.abilities.title')}</h1>
-        )}
-        <Space wrap>
+      <div className={styles.pageHeader}>
+        <h1 className={styles.pageTitle}>
+          {showTypePicker ? t('workspace.abilities.title') : capabilityLabels[capabilityType]}
+        </h1>
+        <Space wrap className={styles.pageToolbar}>
           {showTypePicker && (
             <Select
               aria-label={t('workspace.abilities.title')}
@@ -600,33 +613,31 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({
         </details>
       )}
       {nativeOfficeCapability ? (
-        <List
-          dataSource={[capabilityType]}
-          render={() => (
-            <List.Item>
-              <List.Item.Meta
-                title={
-                  <div className='flex flex-wrap items-center gap-8px'>
-                    <span>
-                      {capabilityType === 'ASSISTANT'
-                        ? t('workspace.abilities.nativeAssistant')
-                        : t('workspace.abilities.nativeTools')}
-                    </span>
-                    <Tag color='arcoblue'>{t('workspace.abilities.origin.organization')}</Tag>
-                    <Tag>{t('workspace.abilities.workspaceBuiltin')}</Tag>
-                    <Tag color='green'>{t('workspace.abilities.available')}</Tag>
-                  </div>
-                }
-                description={t('workspace.abilities.nativeOfficeDescription', {
-                  model:
-                    organizationDefaultModel.name ||
-                    organizationDefaultModel.code ||
-                    availableModelId(organizationDefaultModel),
-                })}
-              />
-            </List.Item>
-          )}
-        />
+        <article className={styles.nativeCapability}>
+          <span className={styles.resourceIcon} aria-hidden='true'>
+            <CapabilityIcon size={21} />
+          </span>
+          <div className={styles.nativeCapabilityContent}>
+            <div className={styles.resourceHeading}>
+              <h2 className={styles.resourceTitle}>
+                {capabilityType === 'ASSISTANT'
+                  ? t('workspace.abilities.nativeAssistant')
+                  : t('workspace.abilities.nativeTools')}
+              </h2>
+              <Tag>{t('workspace.abilities.workspaceBuiltin')}</Tag>
+              <span className={styles.resourceOrigin}>{t('workspace.abilities.origin.organization')}</span>
+            </div>
+            <p className={styles.nativeCapabilityDescription}>
+              {t('workspace.abilities.nativeOfficeDescription', {
+                model:
+                  organizationDefaultModel.name ||
+                  organizationDefaultModel.code ||
+                  availableModelId(organizationDefaultModel),
+              })}
+            </p>
+          </div>
+          <span className={styles.resourceOrigin}>{t('workspace.abilities.available')}</span>
+        </article>
       ) : null}
       {errorCode && !loading ? (
         <Alert
@@ -647,31 +658,37 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({
           models.length === 0 && !loading ? (
             <Empty description={t('workspace.abilities.modelsEmpty')} />
           ) : (
-            <List
-              dataSource={models}
-              render={(model) => (
-                <List.Item key={availableModelId(model) || model.code || model.name}>
-                  <List.Item.Meta
-                    title={
-                      <div className='flex flex-wrap items-center gap-8px'>
-                        <span>{model.name || model.code || availableModelId(model)}</span>
-                        <Tag color={catalogOrigin(model) === 'organization' ? 'arcoblue' : 'purple'}>
-                          {t(`workspace.abilities.origin.${catalogOrigin(model)}`)}
-                        </Tag>
-                        {model.isDefault ? <Tag color='green'>{t('workspace.abilities.default')}</Tag> : null}
-                        <Tag color='blue'>{t('workspace.abilities.available')}</Tag>
-                      </div>
-                    }
-                    description={
-                      <details>
-                        <summary className='cursor-pointer'>{t('common.technical_details')}</summary>
-                        {model.code || availableModelId(model)}
-                      </details>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
+            <div className={styles.resourceGrid} role='list' aria-label={capabilityLabels.MODEL}>
+              {models.map((model) => (
+                <article
+                  key={availableModelId(model) || model.code || model.name}
+                  className={`${styles.resourceCard} ${styles.modelCard}`}
+                  role='listitem'
+                >
+                  <div className={styles.resourceIdentity}>
+                    <span className={styles.resourceIcon} aria-hidden='true'>
+                      <Brain size={21} />
+                    </span>
+                    <div className={styles.resourceIdentityText}>
+                      <h2 className={styles.resourceTitle} title={model.name || model.code || availableModelId(model)}>
+                        {model.name || model.code || availableModelId(model)}
+                      </h2>
+                      <span className={styles.resourceOrigin}>
+                        {t(`workspace.abilities.origin.${catalogOrigin(model)}`)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.resourceStatus}>
+                    {model.isDefault ? <Tag>{t('workspace.abilities.default')}</Tag> : null}
+                    <span className={styles.resourceOrigin}>{t('workspace.abilities.available')}</span>
+                  </div>
+                  <details className={styles.resourceDetails}>
+                    <summary>{t('common.technical_details')}</summary>
+                    <div>{model.code || availableModelId(model)}</div>
+                  </details>
+                </article>
+              ))}
+            </div>
           )
         ) : items.length === 0 ? (
           nativeOfficeCapability ? null : (
@@ -686,15 +703,62 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({
             />
           )
         ) : (
-          <List
-            dataSource={items}
-            render={(item) => (
-              <List.Item
-                key={item.id}
-                className='!flex-wrap gap-y-8px [&_.arco-list-item-main]:min-w-0 [&_.arco-list-item-action]:!ml-0 [&_.arco-list-item-action]:flex-wrap'
-                actions={[
+          <div className={styles.resourceGrid} role='list' aria-label={capabilityLabels[capabilityType]}>
+            {items.map((item) => (
+              <article key={item.id} className={styles.resourceCard} role='listitem'>
+                <div className={styles.resourceIdentity}>
+                  <span className={styles.resourceIcon} aria-hidden='true'>
+                    <CapabilityIcon size={21} />
+                  </span>
+                  <div className={styles.resourceIdentityText}>
+                    <h2 className={styles.resourceTitle} title={item.name}>
+                      {item.name}
+                    </h2>
+                    <span className={styles.resourceOrigin}>
+                      {t(`workspace.abilities.origin.${catalogOrigin(item)}`)}
+                    </span>
+                  </div>
+                </div>
+                <p className={styles.resourceDescription} title={item.description || undefined}>
+                  {item.description}
+                </p>
+                {(item.isDefault ||
+                  !item.enabled ||
+                  item.securityDisabled ||
+                  !item.actions.includes('USE') ||
+                  runtimeIssues.some((issue) => issue.id === item.id && issue.type === item.resourceType)) && (
+                  <div className={styles.resourceStatus}>
+                    {item.isDefault ? <Tag>{t('workspace.abilities.default')}</Tag> : null}
+                    {runtimeIssues.some((issue) => issue.id === item.id && issue.type === item.resourceType) && (
+                      <Tag color='red'>{t('workspace.abilities.unavailable')}</Tag>
+                    )}
+                    {(!item.enabled || item.securityDisabled) && (
+                      <Tag>{t('workspace.abilities.configuredDisabled')}</Tag>
+                    )}
+                    {!item.actions.includes('USE') && <span>{t('workspace.errors.forbidden')}</span>}
+                  </div>
+                )}
+                <details className={styles.resourceDetails}>
+                  <summary>{t('common.technical_details')}</summary>
+                  <div>{t('workspace.abilities.version', { version: item.version })}</div>
+                  <div>
+                    {item.enabled && !item.securityDisabled
+                      ? t('workspace.abilities.configuredEnabled')
+                      : t('workspace.abilities.configuredDisabled')}
+                  </div>
+                  <div>
+                    {t('workspace.abilities.authorization', {
+                      actions: item.actions.join(', ') || '—',
+                    })}
+                  </div>
+                  {runtimeIssues
+                    .filter((issue) => issue.id === item.id && issue.type === item.resourceType)
+                    .map((issue) => (
+                      <div key={issue.code}>{issue.code}</div>
+                    ))}
+                </details>
+                <div className={styles.resourceActions}>
                   <Button
-                    key='view'
                     type='text'
                     onClick={() => {
                       if (capabilityType === 'ASSISTANT') void openAssistantEditor(item);
@@ -706,14 +770,18 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({
                     {capabilityType === 'ASSISTANT' && item.actions.includes('EDIT')
                       ? t('common.edit')
                       : t('workspace.view')}
-                  </Button>,
-                  ...((capabilityType === 'ASSISTANT' || capabilityType === 'SKILL') &&
-                  item.actions.includes('USE') &&
-                  item.enabled &&
-                  !item.securityDisabled
-                    ? [
+                  </Button>
+                  <Space size={4}>
+                    {scope === 'mine' && item.actions.includes('DELETE') && (
+                      <Button type='text' status='danger' icon={<Delete />} onClick={() => remove(item)}>
+                        {t('common.delete')}
+                      </Button>
+                    )}
+                    {(capabilityType === 'ASSISTANT' || capabilityType === 'SKILL') &&
+                      item.actions.includes('USE') &&
+                      item.enabled &&
+                      !item.securityDisabled && (
                         <Button
-                          key='use'
                           type='primary'
                           loading={openingResourceId === item.id}
                           disabled={openingResourceId !== null}
@@ -724,60 +792,13 @@ const WorkspaceCapabilities: React.FC<WorkspaceCapabilitiesProps> = ({
                               ? 'common.retry'
                               : 'workspace.abilities.use'
                           )}
-                        </Button>,
-                      ]
-                    : []),
-                  ...(scope === 'mine' && item.actions.includes('DELETE')
-                    ? [
-                        <Button key='delete' type='text' status='danger' icon={<Delete />} onClick={() => remove(item)}>
-                          {t('common.delete')}
-                        </Button>,
-                      ]
-                    : []),
-                ]}
-              >
-                <List.Item.Meta
-                  title={
-                    <div className='flex flex-wrap items-center gap-8px'>
-                      <span>{item.name}</span>
-                      <Tag color={catalogOrigin(item) === 'organization' ? 'arcoblue' : 'purple'}>
-                        {t(`workspace.abilities.origin.${catalogOrigin(item)}`)}
-                      </Tag>
-                      {item.isDefault ? <Tag color='green'>{t('workspace.abilities.default')}</Tag> : null}
-                      {runtimeIssues.some((issue) => issue.id === item.id && issue.type === item.resourceType) && (
-                        <Tag color='red'>{t('workspace.abilities.unavailable')}</Tag>
+                        </Button>
                       )}
-                      <Tag color={item.enabled && !item.securityDisabled ? 'blue' : 'gray'}>
-                        {item.enabled && !item.securityDisabled
-                          ? t('workspace.abilities.configuredEnabled')
-                          : t('workspace.abilities.configuredDisabled')}
-                      </Tag>
-                    </div>
-                  }
-                  description={
-                    <div className='grid gap-4px text-14px'>
-                      {item.description && <span>{item.description}</span>}
-                      {!item.actions.includes('USE') && <span>{t('workspace.errors.forbidden')}</span>}
-                      <details className='text-13px'>
-                        <summary className='cursor-pointer'>{t('common.technical_details')}</summary>
-                        <div>{t('workspace.abilities.version', { version: item.version })}</div>
-                        <div>
-                          {t('workspace.abilities.authorization', {
-                            actions: item.actions.join(', ') || '—',
-                          })}
-                        </div>
-                        {runtimeIssues
-                          .filter((issue) => issue.id === item.id && issue.type === item.resourceType)
-                          .map((issue) => (
-                            <div key={issue.code}>{issue.code}</div>
-                          ))}
-                      </details>
-                    </div>
-                  }
-                />
-              </List.Item>
-            )}
-          />
+                  </Space>
+                </div>
+              </article>
+            ))}
+          </div>
         )}
       </Spin>
       {capabilityType !== 'MODEL' && (page > 1 || hasMore) && (

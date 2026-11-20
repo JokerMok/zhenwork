@@ -293,6 +293,11 @@
   padding: 16px;
 }
 
+.employee-workspace .employee-composer {
+  padding: 20px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 3%);
+}
+
 .employee-workspace .employee-composer:focus-within,
 .employee-workspace .employee-reply .sendbox-panel:focus-within {
   border-color: rgb(var(--primary-5));
@@ -309,6 +314,32 @@
   width: 36px;
   height: 36px;
   flex-shrink: 0;
+}
+
+.employee-workspace .arco-btn-primary:not(.arco-btn-disabled) .i-icon {
+  color: inherit;
+}
+
+.employee-workspace .arco-btn-primary:not(.arco-btn-disabled) .i-icon svg [stroke]:not([stroke='none']) {
+  stroke: currentColor;
+}
+
+.employee-account-menu {
+  min-width: 220px;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  border-radius: 10px;
+}
+
+.employee-account-menu .arco-menu-item {
+  min-height: 36px;
+  border-radius: 6px;
+}
+
+.employee-account-menu .arco-menu-item:focus {
+  outline: 2px solid rgb(var(--primary-6));
+  outline-offset: -2px;
+  background-color: var(--color-fill-1);
 }
 
 .employee-workspace .employee-history-row {

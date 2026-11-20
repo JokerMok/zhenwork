@@ -60,6 +60,404 @@
   text-decoration: none;
 }
 
+.catalogPage {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  container: workspace-catalog / inline-size;
+}
+
+.pageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 24px;
+  min-width: 0;
+  margin-block-end: 4px;
+}
+
+.pageTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 34px;
+  letter-spacing: -0.4px;
+}
+
+.pageDescription {
+  margin: 5px 0 0;
+  max-width: 620px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 21px;
+}
+
+.pageToolbar {
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
+.pageToolbar :global(.arco-btn),
+.knowledgeControls :global(.arco-btn) {
+  height: 36px;
+  border-radius: 8px;
+}
+
+.pageToolbar :global(.arco-select-view),
+.knowledgeControls :global(.arco-select-view) {
+  min-height: 36px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 8px;
+  background: var(--bg-base);
+}
+
+.pageToolbar :global(.arco-select-view:hover),
+.knowledgeControls :global(.arco-select-view:hover) {
+  border-color: var(--color-border-3);
+}
+
+.pageToolbar :global(.arco-select-focused .arco-select-view),
+.knowledgeControls :global(.arco-select-focused .arco-select-view) {
+  border-color: rgb(var(--primary-6));
+}
+
+.resourceGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.resourceCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px;
+  background: var(--bg-base);
+  border: 1px solid var(--color-border-2);
+  border-radius: 12px;
+}
+
+.resourceCard:hover,
+.resourceCard:focus-within {
+  border-color: var(--color-border-3);
+}
+
+.resourceIdentity {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.resourceIdentityText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.resourceIcon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  color: var(--text-secondary);
+}
+
+.resourceTitle {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+
+.resourceOrigin {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.resourceDescription {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-height: 42px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 21px;
+  overflow-wrap: anywhere;
+}
+
+.resourceStatus,
+.resourceHeading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.resourceStatus :global(.arco-tag),
+.resourceHeading :global(.arco-tag) {
+  height: 22px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.resourceDetails {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.resourceDetails summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.resourceDetails[open] summary {
+  margin-block-end: 6px;
+}
+
+.resourceActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding-block-start: 12px;
+  margin-block-start: auto;
+  border-block-start: 1px solid var(--color-border-2);
+}
+
+.resourceActions :global(.arco-btn) {
+  height: 32px;
+  padding-inline: 12px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.resourceActions > :global(.arco-btn-text) {
+  margin-inline-start: -8px;
+  color: var(--text-secondary);
+}
+
+.modelCard {
+  gap: 16px;
+}
+
+.modelCard .resourceDetails {
+  padding-block-start: 12px;
+  margin-block-start: auto;
+  border-block-start: 1px solid var(--color-border-2);
+}
+
+.nativeCapability {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 12px;
+  background: var(--bg-1);
+}
+
+.nativeCapabilityContent {
+  flex: 1;
+  min-width: 180px;
+}
+
+.nativeCapabilityDescription {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 21px;
+}
+
+.knowledgeControls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.scopeSelect {
+  width: 150px;
+  flex: 0 0 150px;
+}
+
+.knowledgeBaseSelect {
+  flex: 1 1 240px;
+  min-width: 0;
+  max-width: 360px;
+}
+
+.knowledgeSearch {
+  flex: 1 1 280px;
+  min-width: 0;
+  max-width: 420px;
+  margin-inline-start: auto;
+}
+
+.knowledgeSearch :global(.arco-input-inner-wrapper) {
+  min-height: 36px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 8px 0 0 8px;
+}
+
+.knowledgeSearch :global(.arco-input-inner-wrapper:hover) {
+  border-color: var(--color-border-3);
+}
+
+.knowledgeSearch :global(.arco-input-inner-wrapper:focus-within) {
+  border-color: rgb(var(--primary-6));
+}
+
+.knowledgeSearch :global(.arco-input-search-btn) {
+  border-radius: 0 8px 8px 0;
+}
+
+.knowledgeContext {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin-block-start: -6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.knowledgeDocuments,
+.knowledgeResults {
+  min-width: 0;
+  border-radius: 12px;
+}
+
+.knowledgeDocuments :global(.arco-list-item),
+.knowledgeResults :global(.arco-list-item) {
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.knowledgeDocuments :global(.arco-list-item-main),
+.knowledgeResults :global(.arco-list-item-main) {
+  min-width: 0;
+}
+
+.knowledgeDocuments :global(.arco-list-item-meta-title) {
+  margin-block-end: 4px;
+}
+
+.knowledgeDocuments :global(.arco-list-item-meta-description),
+.knowledgeResults :global(.arco-list-item-meta-description) {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 21px;
+  overflow-wrap: anywhere;
+}
+
+.knowledgeDocumentHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.knowledgeDocumentName {
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+
+.knowledgeDocumentHeading :global(.arco-tag) {
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.catalogPagination {
+  justify-content: flex-end;
+}
+
+@container workspace-catalog (max-width: 960px) {
+  .resourceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container workspace-catalog (max-width: 620px) {
+  .resourceGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pageHeader {
+    align-items: flex-start;
+  }
+
+  .knowledgeBaseSelect {
+    max-width: none;
+    flex-basis: 180px;
+  }
+
+  .knowledgeSearch {
+    flex-basis: 100%;
+    max-width: none;
+    margin-inline-start: 0;
+  }
+
+  .catalogPage .knowledgeDocuments :global(.arco-list-item),
+  .catalogPage .knowledgeResults :global(.arco-list-item) {
+    flex-wrap: wrap;
+    padding: 14px 16px;
+  }
+
+  .catalogPage .knowledgeDocuments :global(.arco-list-item-main),
+  .catalogPage .knowledgeResults :global(.arco-list-item-main) {
+    flex-basis: 100%;
+  }
+
+  .catalogPage .knowledgeDocuments :global(.arco-list-item-action),
+  .catalogPage .knowledgeResults :global(.arco-list-item-action) {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-inline-start: 0;
+  }
+
+  .catalogPage .knowledgeDocuments :global(.arco-list-item-action > li),
+  .catalogPage .knowledgeResults :global(.arco-list-item-action > li) {
+    margin: 0;
+  }
+}
+
 .artifactList {
   border-top: 1px solid var(--color-border-2);
 }
@@ -99,6 +497,46 @@
   min-width: 0;
 }
 
+.artifactContent {
+  min-width: 0;
+  flex: 1;
+}
+
+.artifactRow .artifactContent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 24px;
+}
+
+.artifactRow .artifactTitleLine {
+  flex-wrap: nowrap;
+}
+
+.artifactRow .artifactTitleLine > :global(.arco-tag) {
+  flex-shrink: 0;
+  height: 22px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.artifactRow .artifactMeta {
+  flex-wrap: nowrap;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.artifactFileSize {
+  min-width: 64px;
+  text-align: end;
+  white-space: nowrap;
+}
+
+.artifactModified {
+  min-width: 148px;
+  white-space: nowrap;
+}
+
 .artifactIcon {
   display: grid;
   place-items: center;
@@ -136,6 +574,12 @@
   font-weight: 600 !important;
   font-size: 15px !important;
   color: var(--text-primary) !important;
+}
+
+.artifactRow .artifactName {
+  min-width: 0;
+  font-weight: 500 !important;
+  font-size: 14px !important;
 }
 
 .artifactName:hover {
@@ -179,6 +623,26 @@
   gap: 4px;
   padding-block: 4px;
   overflow-wrap: anywhere;
+}
+
+@container workspace-catalog (max-width: 1000px) {
+  .artifactRow .artifactContent {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .artifactRow .artifactMeta {
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+
+  .artifactFileSize {
+    min-width: 0;
+    text-align: start;
+  }
+
+  .artifactModified {
+    min-width: 0;
+  }
 }
 
 @media (max-width: 680px) {

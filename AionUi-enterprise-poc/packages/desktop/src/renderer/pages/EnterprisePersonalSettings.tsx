@@ -271,193 +271,204 @@ export default function EnterprisePersonalSettings({ section }: { section: Secti
 
   return (
     <section
-      className='box-border w-full max-w-720px min-w-0 min-h-0 flex-1 overflow-y-auto px-20px py-24px md:px-32px'
+      className='employee-personal-settings box-border w-full min-w-0 min-h-0 flex-1 overflow-y-auto px-20px py-32px md:px-32px'
       aria-labelledby='enterprise-personal-title'
     >
-      <h1 id='enterprise-personal-title' className='text-24px font-600 mt-0 mb-20px'>
-        {t(section === 'profile' ? 'settings.enterpriseAccount.profile' : 'settings.enterpriseAccount.personalization')}
-      </h1>
-      {loading && (
-        <div role='status' className='py-28px'>
-          <Spin />
-        </div>
-      )}
-      {error && (
-        <Alert
-          type='error'
-          className='mb-16px'
-          content={
-            conflict
-              ? t('settings.enterpriseAccount.conflict')
-              : t(workspaceErrorTranslationKey(error, active ? 'action' : 'load'), { code: error })
-          }
-          action={
-            !active || conflict ? (
-              <Button
-                size='small'
-                disabled={loading || saving}
-                onClick={() => void load(conflict && active?.section === 'personalization' ? active : undefined)}
-              >
-                {t(conflict ? 'settings.enterpriseAccount.reloadPreferences' : 'common.retry')}
-              </Button>
-            ) : undefined
-          }
-        />
-      )}
-      {active?.section === 'profile' && (
-        <>
-          <div className='flex items-center gap-12px mb-16px'>
-            <Avatar size={44}>
-              {avatar ? <img src={avatar} alt='' referrerPolicy='no-referrer' /> : [...displayName][0]?.toUpperCase()}
-            </Avatar>
-            <span className='text-16px font-600'>{displayName}</span>
+      <div className='mx-auto w-full max-w-720px'>
+        <h1 id='enterprise-personal-title' className='text-24px font-600 mt-0 mb-24px'>
+          {t(
+            section === 'profile' ? 'settings.enterpriseAccount.profile' : 'settings.enterpriseAccount.personalization'
+          )}
+        </h1>
+        {loading && (
+          <div role='status' className='py-28px'>
+            <Spin />
           </div>
-          <dl className='grid grid-cols-[auto_minmax(0,1fr)] gap-x-24px gap-y-10px pb-20px mb-20px border-b border-solid border-border-2'>
-            <dt>{t('login.enterpriseAccountLabel')}</dt>
-            <dd className='m-0 break-all'>{active.profile.username}</dd>
-            {active.profile.department && (
-              <>
-                <dt>{t('settings.enterpriseAccount.department')}</dt>
-                <dd className='m-0'>{active.profile.department}</dd>
-              </>
-            )}
-            {active.profile.position && (
-              <>
-                <dt>{t('settings.enterpriseAccount.position')}</dt>
-                <dd className='m-0'>{active.profile.position}</dd>
-              </>
-            )}
-          </dl>
-          <label className='block mb-6px' htmlFor='enterprise-nickname'>
-            {t('settings.enterpriseAccount.nickname')}
-          </label>
-          <Input
-            id='enterprise-nickname'
-            className='max-w-360px'
-            value={active.nickname}
-            maxLength={30}
-            disabled={loading || saving}
-            onChange={(nickname) => update({ ...active, nickname })}
+        )}
+        {error && (
+          <Alert
+            type='error'
+            className='mb-16px'
+            content={
+              conflict
+                ? t('settings.enterpriseAccount.conflict')
+                : t(workspaceErrorTranslationKey(error, active ? 'action' : 'load'), { code: error })
+            }
+            action={
+              !active || conflict ? (
+                <Button
+                  size='small'
+                  disabled={loading || saving}
+                  onClick={() => void load(conflict && active?.section === 'personalization' ? active : undefined)}
+                >
+                  {t(conflict ? 'settings.enterpriseAccount.reloadPreferences' : 'common.retry')}
+                </Button>
+              ) : undefined
+            }
           />
-        </>
-      )}
-      {active?.section === 'personalization' && (
-        <div className='flex flex-col gap-16px'>
-          <div className='flex items-center gap-12px pb-16px border-b border-solid border-border-2'>
-            <span id='enterprise-preferences-enable'>{t('settings.enterpriseAccount.enable')}</span>
-            <Switch
-              aria-labelledby='enterprise-preferences-enable'
-              checked={active.draft.enabled}
-              disabled={loading || saving}
-              onChange={(enabled) => editPreferences({ enabled })}
-            />
-          </div>
-          {active.draft.enabled && (
-            <p className='m-0 text-13px text-t-secondary'>{t('settings.enterpriseAccount.preferenceTiming')}</p>
-          )}
-          <div
-            className='grid gap-12px'
-            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 144px), 1fr))' }}
-          >
-            <div>
-              <label className='block mb-6px' id='enterprise-reply-style'>
-                {label('style')}
-              </label>
-              <Select
-                value={active.draft.style}
-                disabled={loading || saving}
-                aria-labelledby='enterprise-reply-style'
-                onChange={(style: string) => editPreferences({ style })}
-              >
-                <Select.Option value=''>{t('common.default')}</Select.Option>
-                <Select.Option value='neutral'>{t('settings.enterpriseAccount.neutral')}</Select.Option>
-                <Select.Option value='direct'>{t('settings.enterpriseAccount.direct')}</Select.Option>
-                <Select.Option value='friendly'>{t('settings.enterpriseAccount.friendly')}</Select.Option>
-              </Select>
+        )}
+        {active?.section === 'profile' && (
+          <div className='rounded-t-12px border border-b-0 border-solid border-arco-2 bg-base p-20px md:p-24px'>
+            <div className='flex min-w-0 items-center gap-16px mb-20px'>
+              <Avatar size={48}>
+                {avatar ? <img src={avatar} alt='' referrerPolicy='no-referrer' /> : [...displayName][0]?.toUpperCase()}
+              </Avatar>
+              <span className='min-w-0 break-words text-18px font-600'>{displayName}</span>
             </div>
-            <div>
-              <label className='block mb-6px' id='enterprise-reply-detail'>
-                {label('detail')}
-              </label>
-              <Select
-                value={active.draft.detail}
-                disabled={loading || saving}
-                aria-labelledby='enterprise-reply-detail'
-                onChange={(detail: string) => editPreferences({ detail })}
-              >
-                <Select.Option value=''>{t('common.default')}</Select.Option>
-                <Select.Option value='brief'>{t('settings.enterpriseAccount.brief')}</Select.Option>
-                <Select.Option value='balanced'>{t('settings.enterpriseAccount.balanced')}</Select.Option>
-                <Select.Option value='detailed'>{t('settings.enterpriseAccount.detailed')}</Select.Option>
-              </Select>
-            </div>
-            <div>
-              <label className='block mb-6px' id='enterprise-reply-language'>
-                {label('replyLanguage')}
-              </label>
-              <Select
-                value={active.draft.language}
-                disabled={loading || saving}
-                aria-labelledby='enterprise-reply-language'
-                onChange={(language: string) => editPreferences({ language })}
-              >
-                <Select.Option value=''>{t('common.default')}</Select.Option>
-                {replyLanguages.map((language) => (
-                  <Select.Option key={language} value={language}>
-                    {names.of(language)}
-                  </Select.Option>
-                ))}
-              </Select>
-            </div>
-          </div>
-          <div>
-            <label className='block mb-6px' htmlFor='enterprise-instructions'>
-              {label('instructions')}
+            <dl className='grid grid-cols-[auto_minmax(0,1fr)] gap-x-24px gap-y-12px mt-0 pb-24px mb-24px border-b border-solid border-arco-2 text-14px'>
+              <dt className='text-t-secondary'>{t('login.enterpriseAccountLabel')}</dt>
+              <dd className='m-0 break-all'>{active.profile.username}</dd>
+              {active.profile.department && (
+                <>
+                  <dt className='text-t-secondary'>{t('settings.enterpriseAccount.department')}</dt>
+                  <dd className='m-0 break-words'>{active.profile.department}</dd>
+                </>
+              )}
+              {active.profile.position && (
+                <>
+                  <dt className='text-t-secondary'>{t('settings.enterpriseAccount.position')}</dt>
+                  <dd className='m-0 break-words'>{active.profile.position}</dd>
+                </>
+              )}
+            </dl>
+            <label className='block mb-8px text-14px font-500' htmlFor='enterprise-nickname'>
+              {t('settings.enterpriseAccount.nickname')}
             </label>
-            <Input.TextArea
-              id='enterprise-instructions'
-              value={active.draft.instructions}
+            <Input
+              id='enterprise-nickname'
+              className='max-w-400px'
+              size='large'
+              value={active.nickname}
+              maxLength={30}
               disabled={loading || saving}
-              maxLength={2000}
-              showWordLimit
-              autoSize={{ minRows: 4, maxRows: 10 }}
-              onChange={(instructions) => editPreferences({ instructions })}
+              onChange={(nickname) => update({ ...active, nickname })}
             />
           </div>
-        </div>
-      )}
-      {active && (
-        <div className='sticky bottom-0 z-1 mt-16px flex flex-wrap items-center gap-10px border-t border-solid border-border-2 bg-bg-1 py-12px'>
-          <Button type='primary' loading={saving} disabled={!dirty || loading || conflict} onClick={() => void save()}>
-            {t('common.save')}
-          </Button>
-          {active.section === 'personalization' && (
-            <Button disabled={loading || saving} onClick={() => editPreferences(defaultPreferences)}>
-              {t('settings.enterpriseAccount.reset')}
+        )}
+        {active?.section === 'personalization' && (
+          <div className='flex flex-col gap-20px rounded-t-12px border border-b-0 border-solid border-arco-2 bg-base p-20px md:p-24px'>
+            <div className='flex items-center justify-between gap-12px pb-20px border-b border-solid border-arco-2'>
+              <span id='enterprise-preferences-enable'>{t('settings.enterpriseAccount.enable')}</span>
+              <Switch
+                aria-labelledby='enterprise-preferences-enable'
+                checked={active.draft.enabled}
+                disabled={loading || saving}
+                onChange={(enabled) => editPreferences({ enabled })}
+              />
+            </div>
+            {active.draft.enabled && (
+              <p className='m-0 text-13px text-t-secondary'>{t('settings.enterpriseAccount.preferenceTiming')}</p>
+            )}
+            <div
+              className='grid gap-12px'
+              style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 144px), 1fr))' }}
+            >
+              <div>
+                <label className='block mb-6px' id='enterprise-reply-style'>
+                  {label('style')}
+                </label>
+                <Select
+                  value={active.draft.style}
+                  disabled={loading || saving}
+                  aria-labelledby='enterprise-reply-style'
+                  onChange={(style: string) => editPreferences({ style })}
+                >
+                  <Select.Option value=''>{t('common.default')}</Select.Option>
+                  <Select.Option value='neutral'>{t('settings.enterpriseAccount.neutral')}</Select.Option>
+                  <Select.Option value='direct'>{t('settings.enterpriseAccount.direct')}</Select.Option>
+                  <Select.Option value='friendly'>{t('settings.enterpriseAccount.friendly')}</Select.Option>
+                </Select>
+              </div>
+              <div>
+                <label className='block mb-6px' id='enterprise-reply-detail'>
+                  {label('detail')}
+                </label>
+                <Select
+                  value={active.draft.detail}
+                  disabled={loading || saving}
+                  aria-labelledby='enterprise-reply-detail'
+                  onChange={(detail: string) => editPreferences({ detail })}
+                >
+                  <Select.Option value=''>{t('common.default')}</Select.Option>
+                  <Select.Option value='brief'>{t('settings.enterpriseAccount.brief')}</Select.Option>
+                  <Select.Option value='balanced'>{t('settings.enterpriseAccount.balanced')}</Select.Option>
+                  <Select.Option value='detailed'>{t('settings.enterpriseAccount.detailed')}</Select.Option>
+                </Select>
+              </div>
+              <div>
+                <label className='block mb-6px' id='enterprise-reply-language'>
+                  {label('replyLanguage')}
+                </label>
+                <Select
+                  value={active.draft.language}
+                  disabled={loading || saving}
+                  aria-labelledby='enterprise-reply-language'
+                  onChange={(language: string) => editPreferences({ language })}
+                >
+                  <Select.Option value=''>{t('common.default')}</Select.Option>
+                  {replyLanguages.map((language) => (
+                    <Select.Option key={language} value={language}>
+                      {names.of(language)}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+            <div>
+              <label className='block mb-6px' htmlFor='enterprise-instructions'>
+                {label('instructions')}
+              </label>
+              <Input.TextArea
+                id='enterprise-instructions'
+                value={active.draft.instructions}
+                disabled={loading || saving}
+                maxLength={2000}
+                showWordLimit
+                autoSize={{ minRows: 4, maxRows: 10 }}
+                onChange={(instructions) => editPreferences({ instructions })}
+              />
+            </div>
+          </div>
+        )}
+        {active && (
+          <div className='sticky bottom-0 z-1 flex flex-wrap items-center gap-10px rounded-b-12px border border-solid border-arco-2 bg-base px-20px py-16px md:px-24px'>
+            <Button
+              type='primary'
+              loading={saving}
+              disabled={!dirty || loading || conflict}
+              onClick={() => void save()}
+            >
+              {t('common.save')}
             </Button>
-          )}
-          {dirty && (
-            <>
-              <Button disabled={loading || saving} onClick={discardDraft}>
-                {t('settings.enterpriseAccount.discard')}
+            {active.section === 'personalization' && (
+              <Button disabled={loading || saving} onClick={() => editPreferences(defaultPreferences)}>
+                {t('settings.enterpriseAccount.reset')}
               </Button>
+            )}
+            {dirty && (
+              <>
+                <Button disabled={loading || saving} onClick={discardDraft}>
+                  {t('settings.enterpriseAccount.discard')}
+                </Button>
+                <span role='status' className='text-t-secondary'>
+                  {t('settings.enterpriseAccount.unsaved')}
+                </span>
+              </>
+            )}
+            {saved && (
               <span role='status' className='text-t-secondary'>
-                {t('settings.enterpriseAccount.unsaved')}
+                {t('settings.enterpriseAccount.saved')}
               </span>
-            </>
-          )}
-          {saved && (
-            <span role='status' className='text-t-secondary'>
-              {t('settings.enterpriseAccount.saved')}
-            </span>
-          )}
-        </div>
-      )}
-      {active?.section === 'profile' && (
-        <div className='mt-24px pt-16px border-t border-solid border-border-2'>
-          <Button onClick={() => setPasswordOpen(true)}>{t('settings.enterpriseAccount.changePassword')}</Button>
-        </div>
-      )}
+            )}
+          </div>
+        )}
+        {active?.section === 'profile' && (
+          <div className='mt-24px flex flex-wrap items-center justify-between gap-16px rounded-12px border border-solid border-arco-2 bg-base px-20px py-16px md:px-24px'>
+            <span className='text-14px font-500'>{t('login.password')}</span>
+            <Button onClick={() => setPasswordOpen(true)}>{t('settings.enterpriseAccount.changePassword')}</Button>
+          </div>
+        )}
+      </div>
       <Modal
         visible={passwordOpen && section === 'profile'}
         title={t('settings.enterpriseAccount.changePassword')}

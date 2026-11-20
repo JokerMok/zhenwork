@@ -655,7 +655,13 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
             />
           )}
         </div>
-        <EnterpriseKnowledgePicker onAttach={(filePath) => onFilesPicked([filePath])} />
+        {contextTools ? (
+          <div className={styles.knowledgeControl}>
+            <EnterpriseKnowledgePicker onAttach={(filePath) => onFilesPicked([filePath])} />
+          </div>
+        ) : (
+          <EnterpriseKnowledgePicker onAttach={(filePath) => onFilesPicked([filePath])} />
+        )}
         {contextTools}
       </div>
       {isMobile && (

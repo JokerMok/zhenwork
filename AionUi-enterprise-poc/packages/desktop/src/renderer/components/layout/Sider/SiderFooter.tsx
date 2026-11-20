@@ -146,6 +146,7 @@ function EmployeeAccountMenu({
   const menu = (
     <Menu
       id={menuId}
+      className='employee-account-menu'
       aria-label={t('login.enterpriseAccountLabel')}
       onClickMenuItem={(key) => {
         if (key === 'logout') {
